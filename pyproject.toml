@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "okx-quant"
+version = "0.1.0"
+description = "OKX crypto quantitative trading system"
+requires-python = ">=3.10"
+dependencies = [
+    "python-okx>=0.3",
+    "websockets>=12",
+    "sortedcontainers>=2.4",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "loguru>=0.7",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "statsmodels>=0.14",
+    "redis[hiredis]>=5.0",
+    "httpx>=0.26",
+    "pyarrow>=14",
+    "hmmlearn>=0.3",
+    "PyPortfolioOpt>=1.5",
+    "httpx>=0.26",
+]
+
+[project.optional-dependencies]
+backtest = [
+    "vectorbt>=0.26",
+    "nautilus_trader>=1.190",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/okx_quant"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

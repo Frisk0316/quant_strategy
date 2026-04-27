@@ -1,0 +1,75 @@
+obi_market_maker:
+  enabled: true
+  symbols:
+    - BTC-USDT-SWAP
+  # Order book depth to use for multi-level OBI
+  depth: 5
+  # Exponential decay weight for multi-level OFI: w_k = exp(-alpha * k)
+  alpha_decay: 0.5
+  # EWMA half-life in milliseconds for OFI smoothing
+  ewma_halflife_ms: 200
+  # Minimum OBI threshold to generate a signal (avoid noise)
+  obi_threshold: 0.15
+  # Alpha coefficient: fair_value = mid + c_alpha * ewma_ofi
+  c_alpha: 100.0
+  # Quote refresh interval in milliseconds
+  refresh_interval_ms: 500
+  # Maximum inventory in contracts before cancelling that side
+  max_inventory: 50
+  # td_mode: cross | isolated
+  td_mode: cross
+
+as_market_maker:
+  enabled: true
+  symbols:
+    - BTC-USDT-SWAP
+    - ETH-USDT-SWAP
+  # Risk aversion parameter (higher = wider spread, less inventory risk)
+  gamma: 0.1
+  # Lookback window in minutes for realized vol estimation
+  sigma_lookback_min: 5
+  # Order arrival intensity decay (higher k = tighter spread, more competition)
+  kappa: 1.5
+  # Maximum inventory in contracts (both sides)
+  max_pos_contracts: 50
+  # Alpha coefficient for OFI signal integration
+  c_alpha: 100.0
+  # VPIN spread scaling factor: spread *= (1 + beta_vpin * max(vpin - 0.4, 0))
+  beta_vpin: 2.0
+  # VPIN bucket size as fraction of estimated daily volume (1/N)
+  vpin_bucket_divisor: 75
+  # VPIN rolling window (number of buckets)
+  vpin_window: 50
+  # Quote refresh interval in milliseconds
+  refresh_interval_ms: 500
+  # Recalibrate kappa from recent trade data every N seconds
+  kappa_recal_interval_secs: 3600
+  td_mode: cross
+
+funding_carry:
+  enabled: true
+  perp_symbol: BTC-USDT-SWAP
+  spot_symbol: BTC-USDT
+  # Minimum annualized APR to enter a carry position (12%)
+  min_apr_threshold: 0.12
+  # Rebalance spot/perp notional if they drift more than this fraction
+  rebalance_drift_threshold: 0.02
+  # Check funding rate every N seconds (REST poll between WS updates)
+  funding_check_interval_secs: 300
+  td_mode: cross
+
+pairs_trading:
+  enabled: false
+  symbol_y: ETH-USDT-SWAP
+  symbol_x: BTC-USDT-SWAP
+  # Kalman filter process noise (controls how fast beta drifts)
+  kalman_delta: 0.0001
+  # Z-score entry threshold
+  entry_z: 2.0
+  # Z-score exit threshold
+  exit_z: 0.3
+  # Z-score emergency stop-loss threshold
+  stop_z: 4.0
+  # Lookback for OU parameter estimation in hours
+  lookback_hours: 168
+  td_mode: cross

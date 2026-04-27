@@ -1,0 +1,74 @@
+version: "3.9"
+
+services:
+  okx-quant:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: always
+    env_file: ../.env
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - ../config:/app/config
+    depends_on:
+      - redis
+    networks:
+      - quant-net
+    command: python scripts/run_demo.py
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - quant-net
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    restart: always
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-changeme}
+      POSTGRES_DB: okx_quant
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - quant-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - quant-net
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - quant-net
+
+volumes:
+  redis-data:
+  timescale-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  quant-net:
+    driver: bridge

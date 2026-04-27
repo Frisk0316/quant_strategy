@@ -1,0 +1,30 @@
+risk:
+  # Fat-finger guard: reject any single order with notional > this (USD)
+  max_order_notional_usd: 500.0
+
+  # Maximum position size per instrument as fraction of total equity
+  max_pos_pct_equity: 0.30
+
+  # Maximum leverage (position notional / equity)
+  max_leverage: 3.0
+
+  # Daily loss halt threshold — kill all trading for the day
+  max_daily_loss_pct: 0.05
+
+  # Soft drawdown — halve all strategy size multipliers
+  soft_drawdown_pct: 0.10
+
+  # Hard drawdown — close all positions, 48h cooldown
+  hard_drawdown_pct: 0.15
+
+  # Reject order if its price deviates more than this from last mid
+  stale_quote_pct: 0.02
+
+  # Circuit breakers
+  ws_reconnect_circuit_threshold: 3
+  ws_reconnect_window_secs: 60
+  rest_error_rate_circuit_threshold: 0.05
+  rest_error_rate_window: 100
+
+  # Cooldown after hard stop before manual reset is allowed (hours)
+  hard_stop_cooldown_hours: 48

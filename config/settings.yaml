@@ -1,0 +1,33 @@
+system:
+  # demo | shadow | live
+  mode: demo
+  symbols:
+    - BTC-USDT-SWAP
+    - ETH-USDT-SWAP
+  spot_symbols:
+    - BTC-USDT
+    - ETH-USDT
+  equity_usd: 5000.0
+  log_level: INFO
+  json_logs: false
+
+okx:
+  base_url: https://www.okx.com
+  ws_public: wss://ws.okx.com:8443/ws/v5/public
+  ws_private: wss://ws.okx.com:8443/ws/v5/private
+  ws_business: wss://ws.okx.com:8443/ws/v5/business
+  # Demo WebSocket host (append ?brokerId=9999)
+  ws_demo_host: wspap.okx.com
+  # Book depth to subscribe (max 400)
+  book_depth: 400
+
+storage:
+  # parquet | timescaledb
+  backend: parquet
+  parquet_dir: ./data/ticks
+  timescale_dsn: null
+  redis_url: redis://localhost:6379
+
+clock:
+  # Sync OKX server clock every N seconds to prevent 50102 errors
+  sync_interval_secs: 300

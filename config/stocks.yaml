@@ -1,0 +1,15 @@
+stocks:
+  tw:
+    market: TW
+    symbols: ["2330"]
+    bar: "1m"
+    lot_size: 1000
+    max_order_notional: 500000
+    broker: paper
+  us:
+    market: US
+    symbols: ["AAPL"]
+    bar: "1m"
+    lot_size: 1
+    max_order_notional: 10000
+    broker: paper
