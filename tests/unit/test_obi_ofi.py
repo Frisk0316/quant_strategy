@@ -8,6 +8,8 @@ import pytest
 
 from okx_quant.signals.obi_ofi import (
     compute_obi_features,
+    compute_level_ofi,
+    compute_mlofi_increment,
     compute_ofi,
     ewma_ofi,
     book_to_l1_snap,
@@ -116,3 +118,29 @@ def test_book_to_l1_snap():
     assert snap["qb"] == 10.0
     assert snap["pa"] == 100.1
     assert snap["qa"] == 8.0
+
+
+def test_compute_level_ofi_depth_values():
+    """Level OFI should capture pressure at each aligned L2 level."""
+    prev_bids = np.array([[100.0, 10.0], [99.9, 8.0]])
+    prev_asks = np.array([[100.1, 10.0], [100.2, 8.0]])
+    curr_bids = np.array([[100.0, 12.0], [99.9, 9.0]])
+    curr_asks = np.array([[100.1, 7.0], [100.2, 7.0]])
+
+    level_ofi = compute_level_ofi(prev_bids, prev_asks, curr_bids, curr_asks, depth=2)
+
+    assert len(level_ofi) == 2
+    assert (level_ofi > 0).all()
+
+
+def test_compute_mlofi_increment_normalized_range():
+    """Normalized MLOFI should be a finite bounded alpha feature."""
+    prev_bids = np.array([[100.0, 10.0], [99.9, 10.0]])
+    prev_asks = np.array([[100.1, 10.0], [100.2, 10.0]])
+    curr_bids = np.array([[100.0, 11.0], [99.9, 11.0]])
+    curr_asks = np.array([[100.1, 9.0], [100.2, 9.0]])
+
+    mlofi = compute_mlofi_increment(prev_bids, prev_asks, curr_bids, curr_asks, depth=2)
+
+    assert np.isfinite(mlofi)
+    assert 0 < mlofi < 1

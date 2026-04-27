@@ -125,6 +125,80 @@ def compute_mlofi(
     return np.array(results)
 
 
+def compute_level_ofi(
+    prev_bids: np.ndarray,
+    prev_asks: np.ndarray,
+    curr_bids: np.ndarray,
+    curr_asks: np.ndarray,
+    depth: int = 10,
+) -> np.ndarray:
+    """
+    Compute level-by-level OFI increments for two L2 snapshots.
+
+    This generalizes Cont-Kukanov-Stoikov L1 OFI to aligned book levels. It is
+    intentionally conservative: padded or missing levels contribute zero.
+
+    Args:
+        prev_bids/prev_asks: Previous arrays shaped (depth, 2).
+        curr_bids/curr_asks: Current arrays shaped (depth, 2).
+        depth: Number of levels to compare.
+
+    Returns:
+        Array of OFI increments, one value per level.
+    """
+    n = min(depth, len(prev_bids), len(prev_asks), len(curr_bids), len(curr_asks))
+    if n <= 0:
+        return np.array([])
+
+    out = np.zeros(n, dtype=float)
+    for i in range(n):
+        pb0, qb0 = float(prev_bids[i, 0]), float(prev_bids[i, 1])
+        pa0, qa0 = float(prev_asks[i, 0]), float(prev_asks[i, 1])
+        pb1, qb1 = float(curr_bids[i, 0]), float(curr_bids[i, 1])
+        pa1, qa1 = float(curr_asks[i, 0]), float(curr_asks[i, 1])
+
+        if min(pb0, pa0, pb1, pa1) <= 0:
+            continue
+
+        e_bid = (qb1 if pb1 >= pb0 else 0.0) - (qb0 if pb1 <= pb0 else 0.0)
+        e_ask = (qa1 if pa1 <= pa0 else 0.0) - (qa0 if pa1 >= pa0 else 0.0)
+        out[i] = e_bid - e_ask
+
+    return out
+
+
+def compute_mlofi_increment(
+    prev_bids: np.ndarray,
+    prev_asks: np.ndarray,
+    curr_bids: np.ndarray,
+    curr_asks: np.ndarray,
+    depth: int = 10,
+    decay_alpha: float = 0.5,
+    normalize: bool = True,
+) -> float:
+    """
+    Compute one depth-weighted multi-level OFI increment.
+
+    When normalized, the result is scaled by weighted displayed depth so it is
+    suitable as a bounded alpha feature alongside OBI-style signals.
+    """
+    level_ofi = compute_level_ofi(prev_bids, prev_asks, curr_bids, curr_asks, depth=depth)
+    if len(level_ofi) == 0:
+        return 0.0
+
+    k = np.arange(len(level_ofi))
+    weights = np.exp(-decay_alpha * k)
+    weighted_ofi = float(np.dot(weights, level_ofi))
+
+    if not normalize:
+        return weighted_ofi
+
+    curr_depth = curr_bids[: len(level_ofi), 1] + curr_asks[: len(level_ofi), 1]
+    prev_depth = prev_bids[: len(level_ofi), 1] + prev_asks[: len(level_ofi), 1]
+    depth_scale = float(np.dot(weights, 0.5 * (curr_depth + prev_depth)))
+    return weighted_ofi / (depth_scale + 1e-12)
+
+
 def ewma_ofi(ofi_series: np.ndarray, halflife_ms: float = 200.0, dt_ms: float = 100.0) -> float:
     """
     Exponentially weighted moving average of OFI series.

@@ -10,7 +10,9 @@ import pytest
 from okx_quant.signals.vpin import (
     classify_bvc,
     vpin_regime,
+    vpin_position_multiplier,
     vpin_spread_multiplier,
+    vpin_toxicity_controls,
     compute_vpin,
     estimate_bucket_size,
 )
@@ -68,6 +70,20 @@ def test_spread_multiplier_above_threshold():
     mult = vpin_spread_multiplier(0.7, beta=2.0)
     expected = 1.0 + 2.0 * (0.7 - 0.4)
     assert abs(mult - expected) < 1e-9
+
+
+def test_vpin_position_multiplier_directionless_throttle():
+    """VPIN should throttle size without creating direction."""
+    assert vpin_position_multiplier(0.10) == 1.0
+    assert vpin_position_multiplier(0.50) == 0.5
+    assert vpin_position_multiplier(0.90) == 0.25
+
+
+def test_vpin_toxicity_controls_are_serializable():
+    controls = vpin_toxicity_controls(0.90, beta=2.0)
+    assert controls["regime"] == "toxic"
+    assert controls["spread_multiplier"] > 1.0
+    assert controls["size_multiplier"] == 0.25
 
 
 def test_estimate_bucket_size():

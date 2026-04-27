@@ -24,6 +24,30 @@ from okx_quant.strategies.base import Strategy
 _SETTLEMENT_SECS = 8 * 3600
 
 
+def evaluate_funding_carry_entry(
+    *,
+    apr: float,
+    min_apr: float,
+    basis_z: Optional[float] = None,
+    max_abs_basis_z: float = 2.5,
+    crowding: Optional[float] = None,
+    max_crowding: float = 0.85,
+) -> tuple[bool, str]:
+    """
+    Funding carry entry gate with basis and crowding filters.
+
+    Returns:
+        (allowed, reason)
+    """
+    if apr <= min_apr:
+        return False, "apr_below_threshold"
+    if basis_z is not None and abs(basis_z) > max_abs_basis_z:
+        return False, "basis_too_extreme"
+    if crowding is not None and crowding > max_crowding:
+        return False, "crowding_too_high"
+    return True, "allowed"
+
+
 class FundingCarryStrategy(Strategy):
     def __init__(self, params: dict) -> None:
         super().__init__("funding_carry", params)
@@ -31,11 +55,15 @@ class FundingCarryStrategy(Strategy):
         self.spot_symbol: str = params.get("spot_symbol", "BTC-USDT")
         self.min_apr: float = params.get("min_apr_threshold", 0.12)
         self.rebalance_drift: float = params.get("rebalance_drift_threshold", 0.02)
+        self.max_abs_basis_z: float = params.get("max_abs_basis_z", 2.5)
+        self.max_crowding: float = params.get("max_crowding", 0.85)
 
         self._spot_notional: float = 0.0     # USD value of spot position
         self._perp_notional: float = 0.0     # USD value of perp short
         self._last_rebalance_ts: float = 0.0
         self._current_apr: float = 0.0
+        self._basis_z: Optional[float] = None
+        self._crowding: Optional[float] = None
         self._in_position: bool = False
 
     def _rate_to_apr(self, rate_8h: float) -> float:
@@ -63,11 +91,22 @@ class FundingCarryStrategy(Strategy):
 
         apr = self._rate_to_apr(rate_8h)
         self._current_apr = apr
+        self._basis_z = getattr(payload, "basis_z", None)
+        self._crowding = getattr(payload, "crowding", None)
         logger.debug("Funding rate", inst_id=self.perp_symbol, rate_8h=rate_8h, apr_pct=apr * 100)
 
         if not self._in_position:
-            if apr > self.min_apr:
+            allowed, reason = evaluate_funding_carry_entry(
+                apr=apr,
+                min_apr=self.min_apr,
+                basis_z=self._basis_z,
+                max_abs_basis_z=self.max_abs_basis_z,
+                crowding=self._crowding,
+                max_crowding=self.max_crowding,
+            )
+            if allowed:
                 return self._entry_signal()
+            logger.debug("Funding carry entry blocked", reason=reason, apr=apr)
         else:
             # Check rebalance
             if self._needs_rebalance():
@@ -95,6 +134,8 @@ class FundingCarryStrategy(Strategy):
             metadata={
                 "action": "entry",
                 "apr_pct": self._current_apr * 100,
+                "basis_z": self._basis_z,
+                "crowding": self._crowding,
                 "spot_symbol": self.spot_symbol,
                 "leg": "dual",  # Both legs: buy spot + sell perp
             },

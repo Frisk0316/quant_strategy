@@ -125,3 +125,43 @@ def vpin_spread_multiplier(vpin_cdf: float, beta: float = 2.0) -> float:
         Spread multiplier >= 1.0.
     """
     return 1.0 + beta * max(vpin_cdf - 0.4, 0.0)
+
+
+def vpin_position_multiplier(
+    vpin_cdf: float,
+    elevated_multiplier: float = 0.5,
+    toxic_multiplier: float = 0.25,
+) -> float:
+    """
+    Convert VPIN percentile into a conservative size multiplier.
+
+    VPIN remains directionless: this multiplier throttles participation only.
+    """
+    regime = vpin_regime(vpin_cdf)
+    if regime == "toxic":
+        return toxic_multiplier
+    if regime == "elevated":
+        return elevated_multiplier
+    return 1.0
+
+
+def vpin_toxicity_controls(
+    vpin_cdf: float,
+    beta: float = 2.0,
+    elevated_multiplier: float = 0.5,
+    toxic_multiplier: float = 0.25,
+) -> dict:
+    """
+    Return spread and size controls implied by VPIN.
+
+    The output is deliberately small and serializable for strategy metadata.
+    """
+    return {
+        "regime": vpin_regime(vpin_cdf),
+        "spread_multiplier": vpin_spread_multiplier(vpin_cdf, beta=beta),
+        "size_multiplier": vpin_position_multiplier(
+            vpin_cdf,
+            elevated_multiplier=elevated_multiplier,
+            toxic_multiplier=toxic_multiplier,
+        ),
+    }

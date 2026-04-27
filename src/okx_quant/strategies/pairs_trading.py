@@ -63,6 +63,8 @@ class PairsTradingStrategy(Strategy):
         self.exit_z: float = params.get("exit_z", 0.3)
         self.stop_z: float = params.get("stop_z", 4.0)
         self.lookback_hours: int = params.get("lookback_hours", 168)
+        self.max_half_life: float = params.get("max_half_life", 48.0)
+        self.max_hedge_uncertainty: float = params.get("max_hedge_uncertainty", 10.0)
 
         # Kalman filter state: beta (hedge ratio)
         self._beta = 1.0
@@ -81,6 +83,20 @@ class PairsTradingStrategy(Strategy):
         self._in_position: bool = False
         self._position_side: str = ""  # 'long_y' or 'short_y'
         self._last_ou_update: float = 0.0
+
+    def _quality_gate_passed(self) -> tuple[bool, str]:
+        """Return whether current spread parameters are tradeable."""
+        half_life = float(self._ou_params.get("half_life", np.inf))
+        sigma = float(self._ou_params.get("sigma", 0.0))
+        if not np.isfinite(half_life) or half_life <= 0:
+            return False, "invalid_half_life"
+        if half_life > self.max_half_life:
+            return False, "half_life_too_slow"
+        if sigma <= 0 or not np.isfinite(sigma):
+            return False, "invalid_spread_sigma"
+        if self._P > self.max_hedge_uncertainty:
+            return False, "hedge_ratio_uncertain"
+        return True, "passed"
 
     def _kalman_update(self, y: float, x: float) -> float:
         """
@@ -182,19 +198,27 @@ class PairsTradingStrategy(Strategy):
 
         # Entry
         if not self._in_position and abs(z) > self.entry_z:
+            gate_ok, gate_reason = self._quality_gate_passed()
+            if not gate_ok:
+                logger.debug("Pairs entry blocked by quality gate", reason=gate_reason, z=z)
+                return None
             side_y = "sell" if z > 0 else "buy"  # sell ETH when spread too high
             self._position_side = "short_y" if z > 0 else "long_y"
             logger.info("Pairs entry", z=z, side_y=side_y)
+            half_life = float(self._ou_params["half_life"])
+            half_life_quality = max(0.0, 1.0 - half_life / self.max_half_life)
             return SignalPayload(
                 strategy=self.name,
                 inst_id=self.symbol_y,
                 side=side_y,
-                strength=min(abs(z) / self.entry_z, 1.0),
+                strength=min(abs(z) / self.entry_z, 1.0) * max(0.25, half_life_quality),
                 fair_value=price_y,
                 metadata={
                     "action": "entry",
                     "z_score": z,
                     "beta": self._beta,
+                    "half_life": half_life,
+                    "hedge_uncertainty": self._P,
                     "hedge_inst_id": self.symbol_x,
                     "hedge_side": "buy" if side_y == "sell" else "sell",
                 },

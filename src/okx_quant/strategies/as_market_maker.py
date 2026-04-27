@@ -23,8 +23,14 @@ from loguru import logger
 
 from okx_quant.core.events import Event, SignalPayload
 from okx_quant.data.okx_book import OkxBook
-from okx_quant.signals.obi_ofi import compute_obi_features, compute_ofi, ewma_ofi, book_to_l1_snap
-from okx_quant.signals.vpin import compute_vpin, vpin_spread_multiplier
+from okx_quant.signals.obi_ofi import (
+    book_to_l1_snap,
+    compute_mlofi_increment,
+    compute_obi_features,
+    compute_ofi,
+    ewma_ofi,
+)
+from okx_quant.signals.vpin import compute_vpin, vpin_spread_multiplier, vpin_toxicity_controls
 from okx_quant.strategies.base import Strategy
 
 
@@ -95,6 +101,11 @@ class ASMarketMaker(Strategy):
         self.max_pos: int = params.get("max_pos_contracts", 50)
         self.c_alpha: float = params.get("c_alpha", 100.0)
         self.beta_vpin: float = params.get("beta_vpin", 2.0)
+        self.mlofi_depth: int = params.get("mlofi_depth", 5)
+        self.mlofi_decay: float = params.get("mlofi_decay", 0.5)
+        self.mlofi_weight: float = params.get("mlofi_weight", 1.0)
+        self.toxic_size_multiplier: float = params.get("toxic_size_multiplier", 0.25)
+        self.elevated_size_multiplier: float = params.get("elevated_size_multiplier", 0.5)
         self.vpin_bucket_divisor: int = params.get("vpin_bucket_divisor", 75)
         self.vpin_window: int = params.get("vpin_window", 50)
         self.refresh_ms: float = params.get("refresh_interval_ms", 500.0)
@@ -107,6 +118,9 @@ class ASMarketMaker(Strategy):
         self._last_mid: dict[str, float] = {s: 0.0 for s in self.symbols}
         self._ofi_series: dict[str, deque] = {s: deque(maxlen=100) for s in self.symbols}
         self._prev_snap: dict[str, Optional[dict]] = {s: None for s in self.symbols}
+        self._prev_book: dict[str, Optional[tuple[np.ndarray, np.ndarray]]] = {
+            s: None for s in self.symbols
+        }
         self._last_quote_ts: dict[str, float] = {s: 0.0 for s in self.symbols}
         # Trade buffer for VPIN (recent trades as dicts with ts, price, size)
         self._trade_buffer: dict[str, list] = {s: [] for s in self.symbols}
@@ -153,7 +167,12 @@ class ASMarketMaker(Strategy):
         bids_list = [(bids[i, 0], bids[i, 1]) for i in range(len(bids)) if bids[i, 0] > 0]
         asks_list = [(asks[i, 0], asks[i, 1]) for i in range(len(asks)) if asks[i, 0] > 0]
 
-        features = compute_obi_features(bids_list, asks_list, depth=min(5, len(bids_list)))
+        features = compute_obi_features(
+            bids_list,
+            asks_list,
+            depth=min(self.mlofi_depth, len(bids_list)),
+            alpha=self.mlofi_decay,
+        )
         mid = features["mid"]
         if mid <= 0:
             return None
@@ -176,10 +195,25 @@ class ASMarketMaker(Strategy):
             self._ofi_series[inst_id].append(ofi)
         self._prev_snap[inst_id] = curr_snap
 
+        mlofi_signal = 0.0
+        prev_book = self._prev_book[inst_id]
+        if prev_book is not None:
+            prev_bids, prev_asks = prev_book
+            mlofi_signal = compute_mlofi_increment(
+                prev_bids,
+                prev_asks,
+                bids,
+                asks,
+                depth=self.mlofi_depth,
+                decay_alpha=self.mlofi_decay,
+                normalize=True,
+            )
+        self._prev_book[inst_id] = (bids.copy(), asks.copy())
+
         alpha_signal = ewma_ofi(
             np.array(self._ofi_series[inst_id]),
             halflife_ms=200.0,
-        )
+        ) + self.mlofi_weight * mlofi_signal
 
         # Compute VPIN from trade buffer
         trades = self._trade_buffer[inst_id]
@@ -199,6 +233,13 @@ class ASMarketMaker(Strategy):
 
         # Get tick size from instrument specs (default 0.1 for BTC perp)
         tick = 0.1
+
+        toxicity_controls = vpin_toxicity_controls(
+            self._vpin_cdf[inst_id],
+            beta=self.beta_vpin,
+            elevated_multiplier=self.elevated_size_multiplier,
+            toxic_multiplier=self.toxic_size_multiplier,
+        )
 
         bid, ask = as_quote(
             mid=mid,
@@ -225,8 +266,13 @@ class ASMarketMaker(Strategy):
             target_ask=ask if ask != np.inf else None,
             metadata={
                 "obi_l1": features["obi_l1"],
+                "obi_multi": features["obi_multi"],
                 "alpha_signal": alpha_signal,
+                "mlofi_signal": mlofi_signal,
                 "vpin_cdf": self._vpin_cdf[inst_id],
+                "vpin_regime": toxicity_controls["regime"],
+                "size_multiplier": toxicity_controls["size_multiplier"],
+                "spread_multiplier": toxicity_controls["spread_multiplier"],
                 "sigma": self._sigma_ewma[inst_id],
                 "inventory": self._inventory[inst_id],
             },

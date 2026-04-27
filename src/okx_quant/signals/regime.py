@@ -184,3 +184,44 @@ def correlation_breakdown(
         strategy_returns.shape[1] ** 2 - strategy_returns.shape[1]
     )
     return float(avg_corr) > threshold
+
+
+def composite_risk_multiplier(
+    *,
+    vpin_cdf: Optional[float] = None,
+    spread_percentile: Optional[float] = None,
+    drawdown_pct: float = 0.0,
+    high_vol: bool = False,
+    soft_drawdown_pct: float = 0.10,
+    hard_drawdown_pct: float = 0.15,
+) -> float:
+    """
+    Shared risk multiplier for strategy throttling.
+
+    This is a lightweight implementation of the research-layer volatility
+    regime filter: it does not create alpha, it only scales risk when multiple
+    stress indicators are active.
+    """
+    multiplier = 1.0
+
+    if vpin_cdf is not None:
+        if vpin_cdf > 0.70:
+            multiplier *= 0.25
+        elif vpin_cdf > 0.25:
+            multiplier *= 0.5
+
+    if spread_percentile is not None:
+        if spread_percentile > 0.95:
+            multiplier *= 0.25
+        elif spread_percentile > 0.80:
+            multiplier *= 0.5
+
+    if high_vol:
+        multiplier *= 0.5
+
+    if drawdown_pct >= hard_drawdown_pct:
+        return 0.0
+    if drawdown_pct >= soft_drawdown_pct:
+        multiplier *= 0.5
+
+    return float(np.clip(multiplier, 0.0, 1.0))

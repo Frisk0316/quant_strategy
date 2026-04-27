@@ -12,6 +12,8 @@ obi_market_maker:
   obi_threshold: 0.15
   # Alpha coefficient: fair_value = mid + c_alpha * ewma_ofi
   c_alpha: 100.0
+  # Multi-level OFI alpha weight; 0 disables the research synthesis extension
+  mlofi_weight: 1.0
   # Quote refresh interval in milliseconds
   refresh_interval_ms: 500
   # Maximum inventory in contracts before cancelling that side
@@ -34,8 +36,15 @@ as_market_maker:
   max_pos_contracts: 50
   # Alpha coefficient for OFI signal integration
   c_alpha: 100.0
+  # Multi-level OFI feature controls
+  mlofi_depth: 5
+  mlofi_decay: 0.5
+  mlofi_weight: 1.0
   # VPIN spread scaling factor: spread *= (1 + beta_vpin * max(vpin - 0.4, 0))
   beta_vpin: 2.0
+  # VPIN size throttles; VPIN remains directionless
+  elevated_size_multiplier: 0.5
+  toxic_size_multiplier: 0.25
   # VPIN bucket size as fraction of estimated daily volume (1/N)
   vpin_bucket_divisor: 75
   # VPIN rolling window (number of buckets)
@@ -54,6 +63,10 @@ funding_carry:
   min_apr_threshold: 0.12
   # Rebalance spot/perp notional if they drift more than this fraction
   rebalance_drift_threshold: 0.02
+  # Block entry if perp/spot basis z-score is already too extreme
+  max_abs_basis_z: 2.5
+  # Block entry if open-interest/crowding proxy exceeds this percentile
+  max_crowding: 0.85
   # Check funding rate every N seconds (REST poll between WS updates)
   funding_check_interval_secs: 300
   td_mode: cross
@@ -72,4 +85,8 @@ pairs_trading:
   stop_z: 4.0
   # Lookback for OU parameter estimation in hours
   lookback_hours: 168
+  # Block entries if OU half-life is slower than this many observations
+  max_half_life: 48.0
+  # Block entries if Kalman hedge-ratio covariance is too large
+  max_hedge_uncertainty: 10.0
   td_mode: cross

@@ -44,7 +44,29 @@ backtesting/
 ├── walk_forward.py Rolling walk-forward validation (non-overlapping IS/OOS)
 ├── data_loader.py  Parquet/Tardis loaders + simple/log return helpers
 └── vectorbt_scanner.py Fast parameter research before higher-fidelity validation
+
+research/
+├── README.md             Research layer overview and navigation
+├── papers_database.md    Quant strategy paper catalog by year and category
+├── strategy_synthesis.md Crypto strategy ideas mapped to this codebase
+└── search_log.md         Search notes and future expansion queries
 ```
+
+## Research
+
+The standalone [research](research/README.md) layer tracks quantitative finance
+literature and maps it into OKX-ready strategy hypotheses. It is intentionally
+separate from `src/` and `backtesting/`: no imports, no runtime dependency, just
+decision support for what to test next.
+
+- [research/papers_database.md](research/papers_database.md): curated paper
+  database with data requirements, evidence quality, implementation readiness,
+  and crypto applicability.
+- [research/strategy_synthesis.md](research/strategy_synthesis.md): synthesized
+  crypto strategies with signal sources, sizing rules, expected edges, risk
+  controls, and hooks into existing modules.
+- [research/search_log.md](research/search_log.md): reproducible search notes
+  for future literature refreshes.
 
 ## Risk Limits
 

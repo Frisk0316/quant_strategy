@@ -64,7 +64,11 @@ class PortfolioManager:
         strategy = sig.strategy
         inst_id = sig.inst_id
 
-        size_mult = self._risk.get_size_multiplier(strategy)
+        signal_mult = _signal_size_multiplier(sig)
+        if signal_mult <= 0:
+            return
+
+        size_mult = self._risk.get_size_multiplier(strategy) * signal_mult
         if size_mult <= 0:
             return
 
@@ -266,3 +270,18 @@ def _decimals(tick_sz: float) -> int:
     if "." in s:
         return len(s.rstrip("0").split(".")[-1])
     return 0
+
+
+def _signal_size_multiplier(sig: SignalPayload) -> float:
+    """
+    Resolve per-signal sizing strength.
+
+    Strategies can provide an explicit metadata size multiplier, otherwise the
+    standard SignalPayload.strength field is used.
+    """
+    metadata = sig.metadata or {}
+    raw = metadata.get("size_multiplier", sig.strength)
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 1.0

@@ -17,7 +17,13 @@ from loguru import logger
 
 from okx_quant.core.events import Event, SignalPayload
 from okx_quant.data.okx_book import OkxBook
-from okx_quant.signals.obi_ofi import compute_obi_features, compute_ofi, ewma_ofi, book_to_l1_snap
+from okx_quant.signals.obi_ofi import (
+    book_to_l1_snap,
+    compute_mlofi_increment,
+    compute_obi_features,
+    compute_ofi,
+    ewma_ofi,
+)
 from okx_quant.strategies.base import Strategy
 
 
@@ -30,6 +36,7 @@ class OBIMarketMaker(Strategy):
         self.ewma_halflife_ms: float = params.get("ewma_halflife_ms", 200.0)
         self.obi_threshold: float = params.get("obi_threshold", 0.15)
         self.c_alpha: float = params.get("c_alpha", 100.0)
+        self.mlofi_weight: float = params.get("mlofi_weight", 1.0)
         self.refresh_ms: float = params.get("refresh_interval_ms", 500.0)
         self.max_inventory: int = params.get("max_inventory", 50)
         self.min_half_spread_ticks: int = 1
@@ -37,6 +44,9 @@ class OBIMarketMaker(Strategy):
         # Per-symbol state
         self._inventory: dict[str, float] = {s: 0.0 for s in self.symbols}
         self._prev_snap: dict[str, Optional[dict]] = {s: None for s in self.symbols}
+        self._prev_book: dict[str, Optional[tuple[np.ndarray, np.ndarray]]] = {
+            s: None for s in self.symbols
+        }
         self._ofi_series: dict[str, deque] = {s: deque(maxlen=50) for s in self.symbols}
         self._last_quote_ts: dict[str, float] = {s: 0.0 for s in self.symbols}
 
@@ -85,17 +95,33 @@ class OBIMarketMaker(Strategy):
             self._ofi_series[inst_id].append(ofi)
         self._prev_snap[inst_id] = curr_snap
 
+        mlofi_signal = 0.0
+        prev_book = self._prev_book[inst_id]
+        if prev_book is not None:
+            prev_bids, prev_asks = prev_book
+            mlofi_signal = compute_mlofi_increment(
+                prev_bids,
+                prev_asks,
+                bids,
+                asks,
+                depth=self.depth,
+                decay_alpha=self.alpha_decay,
+                normalize=True,
+            )
+        self._prev_book[inst_id] = (bids.copy(), asks.copy())
+
         ewma_ofi_val = ewma_ofi(
             np.array(self._ofi_series[inst_id]),
             halflife_ms=self.ewma_halflife_ms,
         )
+        alpha_signal = ewma_ofi_val + self.mlofi_weight * mlofi_signal
 
         # Only generate signal when OBI exceeds threshold (filter noise)
-        if abs(obi_l1) < self.obi_threshold and abs(ewma_ofi_val) < 1e-6:
+        if abs(obi_l1) < self.obi_threshold and abs(alpha_signal) < 1e-6:
             return None
 
         # Fair value = mid + c_alpha * ewma_ofi
-        fair = mid + self.c_alpha * ewma_ofi_val
+        fair = mid + self.c_alpha * alpha_signal
 
         # Minimum half-spread of 1 tick
         half_spread = max(tick * self.min_half_spread_ticks, spread * 0.3)
@@ -123,6 +149,8 @@ class OBIMarketMaker(Strategy):
                 "obi_l1": obi_l1,
                 "obi_multi": features["obi_multi"],
                 "ewma_ofi": ewma_ofi_val,
+                "mlofi_signal": mlofi_signal,
+                "alpha_signal": alpha_signal,
                 "mid": mid,
                 "spread": spread,
                 "inventory": inventory,
