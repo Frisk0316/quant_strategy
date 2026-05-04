@@ -68,6 +68,13 @@ decision support for what to test next.
 - [research/search_log.md](research/search_log.md): reproducible search notes
   for future literature refreshes.
 
+## AI Collaboration
+
+When using Codex and Claude together, follow
+[docs/ai_collaboration.md](docs/ai_collaboration.md). The root
+[AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) files point each assistant to
+the same division of labor, handoff format, backtest gate, and deployment gate.
+
 ## Risk Limits
 
 | Level | Threshold | Action |

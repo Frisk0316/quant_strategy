@@ -586,3 +586,153 @@ print(f"\n  Output → {RESULTS_DIR}/")
 for f in sorted(RESULTS_DIR.glob("0*.png")):
     print(f"    {f.name}")
 print()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9.  SAVE JSON RESULTS FOR FRONTEND
+#     Produces results/{run_id}/result.json in the window.MOCK schema so the
+#     React frontend can load real backtest data instead of mock data.
+# ═══════════════════════════════════════════════════════════════════════════════
+import json as _json
+import shutil as _shutil
+import time as _time
+
+_run_id  = f"backtest_{START_DATE}_{END_DATE}_{_time.strftime('%Y%m%dT%H%M%S')}"
+_run_dir = RESULTS_DIR / _run_id
+_run_dir.mkdir(exist_ok=True)
+
+# Timestamps: btc_df.index[1:] aligns with returns_asmm / asmm_equity
+_ts_ms = [int(t.timestamp() * 1000) for t in btc_df.index[1:]]
+
+# CAGR is not in summary() — compute manually
+def _cagr(eq_arr, periods):
+    years = len(eq_arr) / periods
+    if years <= 0 or eq_arr[-1] <= 0:
+        return 0.0
+    return float(np.exp(np.log(float(eq_arr[-1])) / years) - 1)
+
+_main_stats = {**asmm_summary, "cagr": _cagr(asmm_equity, PERIODS_1H)}
+
+# Walk-forward rows — derived from wf_results DataFrame
+_wf_rows = []
+if n_windows > 0:
+    for _, _row in wf_results.iterrows():
+        _oos_rets = np.asarray(_row["result"], dtype=float)
+        _oos_rets = _oos_rets[~np.isnan(_oos_rets)]
+        _oos_ret  = float((1 + _oos_rets).prod() - 1) if len(_oos_rets) else 0.0
+        _oos_mdd  = float(max_drawdown(_oos_rets)) if len(_oos_rets) else 0.0
+        _wf_rows.append({
+            "i":          int(_row["window"]),
+            "is_start":   int(_row["is_start"].timestamp() * 1000),
+            "is_end":     int(_row["is_end"].timestamp() * 1000),
+            "oos_start":  int(_row["oos_start"].timestamp() * 1000),
+            "oos_end":    int(_row["oos_end"].timestamp() * 1000),
+            "is_sharpe":  0.0,   # not stored by WalkForward.evaluate()
+            "oos_sharpe": float(_row["oos_sharpe"]),
+            "oos_return": _oos_ret,
+            "oos_mdd":    _oos_mdd,
+        })
+
+# Compare runs: AS MM vs Pairs Trading (same hourly time axis)
+# Pairs starts at ZSCORE_WINDOW; pad front with zeros so lengths match.
+_n = len(returns_asmm)
+_pairs_padded = np.zeros(_n, dtype=float)
+_pairs_padded[_n - len(returns_pairs):] = returns_pairs
+_pairs_eq_padded = (1 + _pairs_padded).cumprod()
+_pairs_dd_padded = (
+    (_pairs_eq_padded - np.maximum.accumulate(_pairs_eq_padded))
+    / np.maximum.accumulate(_pairs_eq_padded)
+)
+
+def _make_run(run_id, name, strategy, color, ret_arr, eq_arr, dd_arr, periods):
+    return {
+        "id":       run_id,
+        "name":     name,
+        "strategy": strategy,
+        "color":    color,
+        "eq":       eq_arr.tolist(),
+        "ret":      ret_arr.tolist(),
+        "dd":       dd_arr.tolist(),
+        "stats":    {**summary(ret_arr, periods=periods), "cagr": _cagr(eq_arr, periods)},
+    }
+
+_compare_runs = [
+    _make_run("as_market_maker", "AS Market Maker", "as_market_maker",
+              "#1565C0", returns_asmm, asmm_equity, asmm_dd, PERIODS_1H),
+    _make_run("pairs_trading",   "Pairs Trading",   "pairs_trading",
+              "#AD1457", _pairs_padded, _pairs_eq_padded, _pairs_dd_padded, PERIODS_1H),
+]
+
+# Sample candles from the first 6 bars
+_sample_candles = [
+    {
+        "ts":    str(btc_df.index[i]),
+        "open":  float(btc_df["open"].iloc[i]),
+        "high":  float(btc_df["high"].iloc[i]),
+        "low":   float(btc_df["low"].iloc[i]),
+        "close": float(btc_df["close"].iloc[i]),
+        "vol":   float(btc_df["vol"].iloc[i]),
+    }
+    for i in range(min(6, len(btc_df)))
+]
+
+_result = {
+    "run_id":     _run_id,
+    "created_at": int(_time.time()),
+    "strategy":   "as_market_maker",
+    "symbol":     "BTC-USDT-SWAP",
+    "bar":        "1H",
+    "start_date": START_DATE,
+    "end_date":   END_DATE,
+    "STRATEGIES": [
+        {"id": "as_market_maker", "name": "Avellaneda–Stoikov MM",  "tag": "Market Making",
+         "desc": "AS quotes with VPIN spread multiplier and OBI/OFI alpha skew"},
+        {"id": "obi_market_maker", "name": "OBI Market Maker",      "tag": "Market Making",
+         "desc": "Order book imbalance-driven market making"},
+        {"id": "funding_carry",    "name": "Funding Carry",         "tag": "Carry",
+         "desc": "Delta-neutral long spot / short perp, earns 8h funding"},
+        {"id": "pairs_trading",    "name": "Pairs Trading",         "tag": "Stat Arb",
+         "desc": "Kalman filter hedge ratio + OU spread z-score"},
+    ],
+    "SYMBOLS":  ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "BTC-USDT", "ETH-USDT", "SOL-USDT-SWAP"],
+    "N":        len(_ts_ms),
+    "ts":       _ts_ms,
+    "PERIODS":  PERIODS_1H,
+    "main": {
+        "eq":  asmm_equity.tolist(),
+        "ret": returns_asmm.tolist(),
+        "dd":  asmm_dd.tolist(),
+    },
+    "mainStats":   _main_stats,
+    "walkForward": _wf_rows,
+    "cpcv": {
+        "combos": [],
+        "paths":  [],
+        "dsr":    asmm_psr,
+        "psr":    asmm_psr,
+        "mean_oos_sharpe": mean_oos if n_windows > 0 else 0.0,
+        "std_oos_sharpe":  float(wf_results["oos_sharpe"].std()) if n_windows > 1 else 0.0,
+    },
+    "trades":      [],
+    "compareRuns": _compare_runs,
+    "risk":        {},
+    "sampleCandles": _sample_candles,
+}
+
+
+def _sanitize(obj):
+    """Replace NaN/Inf with JSON-safe values."""
+    if isinstance(obj, float):
+        if obj != obj:              return None   # NaN → null
+        if obj == float("inf"):     return  1e9
+        if obj == float("-inf"):    return -1e9
+        return obj
+    if isinstance(obj, dict):   return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):   return [_sanitize(x) for x in obj]
+    return obj
+
+
+(_run_dir / "result.json").write_text(_json.dumps(_sanitize(_result)))
+for _png in sorted(RESULTS_DIR.glob("0*.png")):
+    _shutil.copy(_png, _run_dir / _png.name)
+
+print(f"  JSON  → results/{_run_id}/result.json")

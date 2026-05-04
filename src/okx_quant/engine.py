@@ -16,9 +16,13 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from pathlib import Path
 from typing import Optional
 
 from loguru import logger
+
+# Project root: src/okx_quant/engine.py → ../../.. = project root
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig
@@ -71,7 +75,7 @@ def _build_broker(cfg: AppConfig, sim_broker: bool = False):
     )
 
 
-async def main(cfg: AppConfig, sim_broker: bool = False) -> None:
+async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -> None:
     setup_logging(cfg.system.log_level, cfg.system.json_logs)
     logger.info("Starting OKX Quant Engine", mode=cfg.system.mode)
     use_demo_environment = _should_use_demo_environment(cfg)
@@ -231,6 +235,22 @@ async def main(cfg: AppConfig, sim_broker: bool = False) -> None:
         logger.info("Strategy enabled", name=strat.name)
 
     # ------------------------------------------------------------------
+    # API server state (must be built before bus subscriptions below)
+    # ------------------------------------------------------------------
+    from okx_quant.api.state import EngineState
+    from okx_quant.api.server import run_api_server
+
+    api_state = EngineState(
+        positions=positions,
+        dd_tracker=dd_tracker,
+        risk_guard=risk_guard,
+        order_manager=order_manager,
+        circuit_breaker=circuit_breaker,
+        mode=cfg.system.mode,
+        strategy_count=len(strategies),
+    )
+
+    # ------------------------------------------------------------------
     # Market data
     # ------------------------------------------------------------------
     mdh = MarketDataHandler(
@@ -317,6 +337,41 @@ async def main(cfg: AppConfig, sim_broker: bool = False) -> None:
     bus.subscribe(EvtType.FILL, on_fill_event)
 
     # ------------------------------------------------------------------
+    # API bridge subscriptions — tap FILL and RISK events for the browser
+    # ------------------------------------------------------------------
+    async def on_fill_for_api(event: Event) -> None:
+        payload = event.payload
+        if not isinstance(payload, FillPayload):
+            return
+        api_state.record_fill(payload)
+        await api_state.broadcast({
+            "type": "FILL",
+            "ts": event.ts,
+            "payload": {
+                "inst_id": payload.inst_id,
+                "side": payload.side,
+                "fill_px": payload.fill_px,
+                "fill_sz": payload.fill_sz,
+                "fee": payload.fee,
+                "strategy": payload.strategy,
+            },
+        })
+
+    async def on_risk_for_api(event: Event) -> None:
+        payload = event.payload
+        await api_state.broadcast({
+            "type": "RISK",
+            "ts": event.ts,
+            "payload": {
+                "level": getattr(payload, "level", ""),
+                "reason": getattr(payload, "reason", ""),
+            },
+        })
+
+    bus.subscribe(EvtType.FILL, on_fill_for_api)
+    bus.subscribe(EvtType.RISK, on_risk_for_api)
+
+    # ------------------------------------------------------------------
     # Graceful shutdown
     # ------------------------------------------------------------------
     stop_event = asyncio.Event()
@@ -339,6 +394,16 @@ async def main(cfg: AppConfig, sim_broker: bool = False) -> None:
         asyncio.create_task(feed_store.flush_loop(), name="feed_store"),
         asyncio.create_task(_clock_sync_loop(rest, cfg.clock.sync_interval_secs), name="clock_sync"),
         asyncio.create_task(_daily_reset_loop(risk_guard), name="daily_reset"),
+        asyncio.create_task(
+            run_api_server(
+                state=api_state,
+                results_dir=_PROJECT_ROOT / "results",
+                frontend_dir=_PROJECT_ROOT / "frontend",
+                port=api_port,
+            ),
+            name="api_server",
+        ),
+        asyncio.create_task(_risk_snapshot_loop(api_state), name="risk_snapshot"),
     ]
 
     if telegram:
@@ -393,3 +458,14 @@ async def _daily_reset_loop(risk_guard: RiskGuard) -> None:
         wait_secs = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_secs)
         risk_guard.reset_daily()
+
+
+async def _risk_snapshot_loop(api_state) -> None:
+    """Push a full risk snapshot to all connected WebSocket clients every 2 seconds."""
+    while True:
+        await asyncio.sleep(2.0)
+        api_state.tick_risk_snapshot()
+        await api_state.broadcast({
+            "type": "RISK_SNAPSHOT",
+            "payload": api_state.get_live_risk(),
+        })
