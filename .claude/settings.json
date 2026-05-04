@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(ConvertTo-String)",
+      "PowerShell(head -150)",
+      "Bash(find c:\\\\\\\\quant_strategy -type f)",
+      "Bash(pip install *)",
+      "Bash(python -m pytest tests/unit/ -q --ignore=tests/unit/test_execution_flow.py)",
+      "Bash(python -m pytest tests/unit/test_execution_flow.py -q)",
+      "Bash(Get-ChildItem -Path \"c:\\\\quant_strategy\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(xargs -I {} find {} -maxdepth 1 -type d)",
+      "Bash(Get-ChildItem -Path c:\\\\quant_strategy -Recurse -Force)",
+      "Bash(Select-Object -First 100)",
+      "Bash(Format-Table FullName)",
+      "Bash(xargs grep *)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(python3)"
+    ]
+  }
+}

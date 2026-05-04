@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.0",
     "numpy>=1.24",
+    "matplotlib>=3.8",
     "scipy>=1.11",
     "statsmodels>=0.14",
     "redis[hiredis]>=5.0",

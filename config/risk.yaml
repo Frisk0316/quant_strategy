@@ -28,3 +28,9 @@ risk:
 
   # Cooldown after hard stop before manual reset is allowed (hours)
   hard_stop_cooldown_hours: 48
+
+backtest:
+  # Conservative research defaults for replay execution lifecycle.
+  order_latency_ms: 0
+  cancel_latency_ms: 200
+  queue_fill_fraction: 0.20

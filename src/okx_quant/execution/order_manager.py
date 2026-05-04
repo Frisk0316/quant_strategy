@@ -10,7 +10,7 @@ from typing import Optional
 
 from loguru import logger
 
-from okx_quant.core.events import FillPayload, OrderPayload
+from okx_quant.core.events import FillPayload, MarketPayload, OrderPayload
 from okx_quant.execution.broker import Broker
 from okx_quant.execution.rate_limiter import RateLimiter
 
@@ -111,3 +111,13 @@ class OrderManager:
 
     def get_pending_order(self, cl_ord_id: str) -> Optional[OrderPayload]:
         return self._pending.get(cl_ord_id)
+
+    def on_market(self, payload: MarketPayload) -> list[FillPayload]:
+        on_market = getattr(self._broker, "on_market", None)
+        if on_market is None:
+            return []
+        fills = on_market(payload)
+        for fill in fills:
+            if fill.state == "filled":
+                self.on_fill(fill.cl_ord_id, fill.side, fill.strategy, fill.inst_id)
+        return fills

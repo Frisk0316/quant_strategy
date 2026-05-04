@@ -175,6 +175,34 @@ class PositionLedger:
         })
         self.save_snapshot()
 
+    def apply_cashflow(
+        self,
+        amount: float,
+        *,
+        inst_id: str = "",
+        reason: str = "cashflow",
+        strategy: str = "",
+        ts: float | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Apply non-trade cashflows such as funding settlements."""
+        if amount == 0:
+            return
+        event_ts = time.time() if ts is None else ts
+        self._cash_equity += amount
+        self._trade_log.append({
+            "ts": event_ts,
+            "inst_id": inst_id,
+            "side": reason,
+            "fill_px": 0.0,
+            "fill_sz": 0.0,
+            "fee": 0.0,
+            "cashflow": amount,
+            "strategy": strategy,
+            "metadata": metadata or {},
+        })
+        self.save_snapshot()
+
     def update_price(self, inst_id: str, price: float) -> None:
         """Update mark price for unrealized PnL calculation."""
         if inst_id in self._positions:

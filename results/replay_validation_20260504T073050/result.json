@@ -1,0 +1,41 @@
+{
+  "created_at": "2026-05-04T07:30:50.494373+00:00",
+  "strategy": "as_market_maker",
+  "symbol": "BTC-USDT-SWAP",
+  "bar": "1H",
+  "start": "2024-01-01T00:00:00",
+  "end": "2024-01-14T23:00:00",
+  "param_grid": [
+    {
+      "gamma": 0.1,
+      "kappa": 1.5,
+      "beta_vpin": 2.0
+    }
+  ],
+  "backtest_execution": {
+    "order_latency_ms": 0,
+    "cancel_latency_ms": 200,
+    "queue_fill_fraction": 0.2
+  },
+  "cpcv": {
+    "sharpe_list": [
+      0.966847718178759,
+      5.819701710027498,
+      8.280396669270855
+    ],
+    "overall_oos_sharpe": 4.839205757293426,
+    "dsr": 0.9803267586418325,
+    "n_combinations": 3,
+    "mean_oos_sharpe": 5.022315365825704,
+    "psr": 0.9624013682031947,
+    "n_paths": 1,
+    "path_sharpes": [
+      4.839205757293426
+    ],
+    "n_trials": 1,
+    "returns_source": "replay_asmm_parameter_selection",
+    "cost_model_complete": true,
+    "calibration_required": true,
+    "cost_model_note": "Replay CPCV uses SimBroker plus ReplayExecutionModel for fees, slippage, missed fills, partial fills, and cancel latency. Queue and latency parameters still require demo/shadow calibration."
+  }
+}

@@ -95,3 +95,27 @@ def test_size_in_contracts_btc_perp():
         min_sz=1.0,
     )
     assert result == "2"  # 1000 / (0.01 * 50000) = 1000/500 = 2
+
+
+def test_size_in_contracts_ct_val_one_does_not_use_swap_fallback():
+    result = size_in_contracts(
+        notional_usd=1_000.0,
+        ct_val=1.0,
+        price=100.0,
+        lot_sz=1.0,
+        min_sz=1.0,
+    )
+
+    assert result == "10"
+
+
+@pytest.mark.parametrize("ct_val", [0.0, -0.01, 1.01])
+def test_size_in_contracts_rejects_invalid_ct_val(ct_val):
+    with pytest.raises(ValueError, match="ct_val"):
+        size_in_contracts(
+            notional_usd=1_000.0,
+            ct_val=ct_val,
+            price=100.0,
+            lot_sz=1.0,
+            min_sz=1.0,
+        )

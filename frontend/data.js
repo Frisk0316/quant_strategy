@@ -292,3 +292,54 @@ window.API = (function () {
     fetchBacktest:      (id)      => _get("/api/backtest/" + id),
   };
 })();
+
+// Fetch the most recent backtest result and patch window.MOCK in-place with real data.
+// Returns { run_id, strategy, symbol, bar } on success, null on failure.
+window.API.loadLatestBacktest = async function () {
+  // C(6,2) test-group pairs in lexicographic order — 15 combinations for N=6
+  const pairs = [];
+  for (let i = 0; i < 6; i++)
+    for (let j = i + 1; j < 6; j++)
+      pairs.push([i, j]);
+
+  try {
+    const runs = await window.API.fetchBacktestRuns();
+    if (!runs || runs.length === 0) return null;
+    runs.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+    const data = await window.API.fetchBacktest(runs[0].run_id);
+    if (!data) return null;
+
+    if (data.ts)        window.MOCK.ts = data.ts;
+    if (data.N)         window.MOCK.N  = data.N;
+    if (data.main)      Object.assign(window.MOCK.main, data.main);
+    if (data.mainStats) Object.assign(window.MOCK.mainStats, data.mainStats);
+    if (data.STRATEGIES) window.MOCK.STRATEGIES = data.STRATEGIES;
+    if (data.SYMBOLS)    window.MOCK.SYMBOLS    = data.SYMBOLS;
+
+    if (data.walkForward && data.walkForward.length > 0)
+      window.MOCK.walkForward = data.walkForward;
+
+    if (data.cpcv) {
+      const cpcv = { ...data.cpcv };
+      // result.json stores combos as {i, sharpe} without test_groups — reconstruct
+      cpcv.combos = (cpcv.combos || []).map((c, idx) => ({
+        ...c,
+        test_groups: pairs[idx] ?? [0, 1],
+      }));
+      // Paths may lack equity curves; mark absent so CPCVView can skip the chart
+      cpcv.paths = (cpcv.paths || []).map((p) => ({ eq: null, ret: 0, mdd: 0, ...p }));
+      Object.assign(window.MOCK.cpcv, cpcv);
+    }
+
+    if (data.trades && data.trades.length > 0)
+      window.MOCK.trades = data.trades;
+
+    if (data.compareRuns && data.compareRuns.length > 0)
+      window.MOCK.compareRuns = data.compareRuns;
+
+    return { run_id: data.run_id, strategy: data.strategy, symbol: data.symbol, bar: data.bar };
+  } catch (e) {
+    console.warn("loadLatestBacktest failed:", e);
+    return null;
+  }
+};

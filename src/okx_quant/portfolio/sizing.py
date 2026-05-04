@@ -10,6 +10,22 @@ import numpy as np
 import pandas as pd
 
 
+def validate_ct_val(ct_val: float, inst_id: str = "") -> float:
+    """
+    Validate OKX contract face value before sizing or fee calculations.
+
+    ``ctVal`` must come from instrument metadata. Values above 1 are treated as
+    suspicious for the small-contract OKX perp/spot universe this project
+    targets and should be reviewed instead of silently used.
+    """
+    value = float(ct_val)
+    if value <= 0:
+        raise ValueError(f"ct_val must be positive for {inst_id or 'instrument'}")
+    if value > 1:
+        raise ValueError(f"ct_val is outside expected range for {inst_id or 'instrument'}: {value}")
+    return value
+
+
 def vol_target_size(
     returns: pd.Series | np.ndarray,
     equity: float,
@@ -138,7 +154,8 @@ def size_in_contracts(
         lot_sz: Minimum lot size (typically 1 for perp contracts).
         min_sz: Minimum order size.
     """
-    if ct_val <= 0 or price <= 0:
+    ct_val = validate_ct_val(ct_val)
+    if price <= 0:
         return ""
     contract_value = ct_val * price
     n_contracts = notional_usd / contract_value

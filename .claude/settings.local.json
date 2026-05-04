@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\quant_strategy\" -Recurse -Force)",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Head -100)"
+    ]
+  }
+}

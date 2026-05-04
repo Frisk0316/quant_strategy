@@ -182,6 +182,7 @@ class CPCV:
         df: pd.DataFrame,
         strategy_fn: Callable[[pd.DataFrame, pd.DataFrame], pd.Series],
         periods: int = 365,
+        n_trials: int | None = None,
     ) -> dict:
         """
         Run CPCV evaluation and compute OOS combination/path metrics.
@@ -190,6 +191,10 @@ class CPCV:
             df: Full dataset with DatetimeIndex.
             strategy_fn: Callable(train_data, test_data) → pd.Series of returns.
             periods: Annualization period.
+            n_trials: Number of strategy/parameter trials actually researched.
+                Used as N in Deflated Sharpe Ratio. When omitted, falls back to
+                the number of CPCV paths or combinations for backward
+                compatibility.
 
         Returns:
             dict with combination-level and path-level OOS metrics.
@@ -233,6 +238,7 @@ class CPCV:
                 "psr": 0.0,
                 "n_paths": 0,
                 "path_sharpes": [],
+                "n_trials": int(n_trials or 0),
             }
 
         combo_sharpes = [result["sharpe"] for result in combo_results]
@@ -265,7 +271,7 @@ class CPCV:
                 returns=np.asarray(combined_returns, dtype=float),
                 sr=overall_sr,
                 sr_list=path_sharpes,
-                N=max(len(path_sharpes), 1),
+                N=max(int(n_trials or len(path_sharpes)), 1),
             )
             psr_val = float(
                 np.mean([psr(np.asarray(path_returns, dtype=float)) for path_returns in path_returns_list])
@@ -277,7 +283,7 @@ class CPCV:
                 returns=np.asarray(combined_returns, dtype=float),
                 sr=overall_sr,
                 sr_list=combo_sharpes,
-                N=max(len(combo_sharpes), 1),
+                N=max(int(n_trials or len(combo_sharpes)), 1),
             )
             psr_val = psr(np.asarray(combined_returns, dtype=float))
 
@@ -290,4 +296,5 @@ class CPCV:
             "psr": psr_val,
             "n_paths": len(path_sharpes),
             "path_sharpes": path_sharpes,
+            "n_trials": max(int(n_trials or 0), 0),
         }

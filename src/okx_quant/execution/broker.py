@@ -16,7 +16,9 @@ from typing import Optional
 
 from loguru import logger
 
-from okx_quant.core.events import FillPayload
+from okx_quant.core.events import FillPayload, MarketPayload
+from okx_quant.execution.replay_execution import ReplayExecutionModel
+from okx_quant.portfolio.sizing import validate_ct_val
 
 
 _SHADOW_MIRROR_PREFIX = "m_"
@@ -168,14 +170,23 @@ class SimBroker(Broker):
         slippage_bps: float = 2.0,
         fill_probability: float = 0.95,
         strategy_name: str = "sim",
+        instrument_specs: dict | None = None,
+        maker_fee_rate: float = 0.0002,
+        execution_model: ReplayExecutionModel | None = None,
     ) -> None:
         self._slippage = slippage_bps / 10_000
         self._fill_prob = fill_probability
         self._strategy = strategy_name
+        self._specs = instrument_specs or {}
+        self._maker_fee_rate = maker_fee_rate
+        self._execution_model = execution_model
         self._positions: dict[str, float] = {}
 
     async def submit(self, order: dict) -> Optional[FillPayload]:
         """Simulate a fill with slippage."""
+        if self._execution_model is not None:
+            return self._execution_model.submit(order)
+
         if random.random() > self._fill_prob:
             logger.debug("SimBroker: order not filled (probability)", order=order)
             return None
@@ -188,11 +199,18 @@ class SimBroker(Broker):
             fill_px = price - slippage
 
         fill_sz = float(order["sz"])
-        fee = fill_px * fill_sz * 0.0002  # ~0.02% maker fee
+        ct_val = validate_ct_val(float(self._specs.get(order["inst_id"], {}).get("ctVal", 1.0)), order["inst_id"])
+        notional_usd = fill_px * fill_sz * ct_val
+        fee = notional_usd * self._maker_fee_rate
 
         inst_id = order["inst_id"]
         signed_size = fill_sz if order["side"] == "buy" else -fill_sz
         self._positions[inst_id] = self._positions.get(inst_id, 0) + signed_size
+
+        metadata = dict(order.get("metadata", {}))
+        metadata.setdefault("notional_usd", notional_usd)
+        metadata.setdefault("fee_rate", self._maker_fee_rate)
+        metadata.setdefault("ct_val", ct_val)
 
         return FillPayload(
             cl_ord_id=order.get("cl_ord_id", str(uuid.uuid4())),
@@ -206,15 +224,24 @@ class SimBroker(Broker):
             ts=int(time.time() * 1000),
             strategy=order.get("strategy", self._strategy),
             state="filled",
-            metadata=order.get("metadata", {}),
+            metadata=metadata,
         )
 
     async def cancel(self, inst_id: str, cl_ord_id: str) -> bool:
+        if self._execution_model is not None:
+            return self._execution_model.cancel(inst_id, cl_ord_id)
         return True
 
     async def close_all(self) -> None:
+        if self._execution_model is not None:
+            self._execution_model.close_all()
         self._positions.clear()
         logger.info("SimBroker: all positions cleared")
+
+    def on_market(self, payload: MarketPayload) -> list[FillPayload]:
+        if self._execution_model is None:
+            return []
+        return self._execution_model.on_market(payload)
 
 
 class ShadowBroker(Broker):
@@ -226,17 +253,30 @@ class ShadowBroker(Broker):
     demo fills can be observed without contaminating local PnL.
     """
 
-    def __init__(self, primary: Broker, mirror: Broker) -> None:
+    def __init__(self, primary: Broker, mirror: Broker, calibration_log=None) -> None:
         self._primary = primary
         self._mirror = mirror
         self._mirror_tasks: set[asyncio.Task] = set()
+        self._calibration_log = calibration_log
 
     async def submit(self, order: dict) -> Optional[FillPayload]:
         primary_fill = await self._primary.submit(order)
 
         mirror_order = dict(order)
+        mirror_cl_ord_id: Optional[str] = None
         if mirror_order.get("cl_ord_id"):
-            mirror_order["cl_ord_id"] = to_shadow_mirror_cl_ord_id(mirror_order["cl_ord_id"])
+            mirror_cl_ord_id = to_shadow_mirror_cl_ord_id(mirror_order["cl_ord_id"])
+            mirror_order["cl_ord_id"] = mirror_cl_ord_id
+
+        if self._calibration_log is not None and mirror_cl_ord_id:
+            self._calibration_log.record_submit(
+                cl_ord_id=mirror_cl_ord_id,
+                inst_id=order.get("inst_id", ""),
+                side=order.get("side", ""),
+                order_px=float(order.get("px", 0)),
+                order_sz=float(order.get("sz", 0)),
+                submit_ts=int(time.time() * 1000),
+            )
 
         task = asyncio.create_task(self._submit_mirror(mirror_order))
         self._mirror_tasks.add(task)
@@ -252,8 +292,14 @@ class ShadowBroker(Broker):
 
     async def cancel(self, inst_id: str, cl_ord_id: str) -> bool:
         primary_result = await self._primary.cancel(inst_id, cl_ord_id)
+        mirror_cl_ord_id = to_shadow_mirror_cl_ord_id(cl_ord_id)
+        if self._calibration_log is not None:
+            self._calibration_log.record_cancel_request(
+                cl_ord_id=mirror_cl_ord_id,
+                ts=int(time.time() * 1000),
+            )
         try:
-            await self._mirror.cancel(inst_id, to_shadow_mirror_cl_ord_id(cl_ord_id))
+            await self._mirror.cancel(inst_id, mirror_cl_ord_id)
         except Exception as exc:
             logger.warning("Shadow mirror cancel failed", exc=str(exc), cl_ord_id=cl_ord_id)
         return primary_result

@@ -26,7 +26,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig
-from okx_quant.core.events import Event, EvtType, RiskPayload
+from okx_quant.core.events import Event, EvtType, FillPayload, RiskPayload
 from okx_quant.core.logging import setup_logging
 from okx_quant.data.feed_store import FeedStore
 from okx_quant.data.market_data_handler import MarketDataHandler
@@ -35,6 +35,7 @@ from okx_quant.execution.broker import OKXBroker, ShadowBroker, SimBroker
 from okx_quant.execution.execution_handler import ExecutionHandler
 from okx_quant.execution.order_manager import OrderManager
 from okx_quant.execution.rate_limiter import RateLimiter
+from okx_quant.monitoring.calibration_log import CalibrationLogger
 from okx_quant.monitoring.telegram_alert import TelegramMonitor
 from okx_quant.portfolio.portfolio_manager import PortfolioManager
 from okx_quant.portfolio.positions import PositionLedger
@@ -52,7 +53,7 @@ def _should_use_demo_environment(cfg: AppConfig) -> bool:
     return cfg.is_demo() or cfg.system.mode == "shadow"
 
 
-def _build_broker(cfg: AppConfig, sim_broker: bool = False):
+def _build_broker(cfg: AppConfig, sim_broker: bool = False, calibration_log: Optional[CalibrationLogger] = None):
     if cfg.system.mode == "shadow":
         return ShadowBroker(
             primary=SimBroker(slippage_bps=2.0),
@@ -62,6 +63,7 @@ def _build_broker(cfg: AppConfig, sim_broker: bool = False):
                 passphrase=cfg.secrets.okx_passphrase,
                 demo=True,
             ),
+            calibration_log=calibration_log,
         )
 
     if sim_broker:
@@ -186,15 +188,28 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     )
 
     # ------------------------------------------------------------------
+    # Calibration logger (shadow and demo modes only)
+    # ------------------------------------------------------------------
+    calib_log: Optional[CalibrationLogger] = None
+    if cfg.system.mode in ("shadow", "demo"):
+        calib_log = CalibrationLogger(
+            output_dir=_PROJECT_ROOT / "results" / "calibration"
+        )
+
+    # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
     rate_limiter = RateLimiter()
 
-    broker = _build_broker(cfg, sim_broker=sim_broker)
+    broker = _build_broker(cfg, sim_broker=sim_broker, calibration_log=calib_log)
 
     order_manager = OrderManager(broker=broker, rate_limiter=rate_limiter)
-    exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager,
-                                    stale_quote_pct=cfg.risk.stale_quote_pct)
+    exec_handler = ExecutionHandler(
+        bus=bus,
+        order_manager=order_manager,
+        stale_quote_pct=cfg.risk.stale_quote_pct,
+        calibration_log=calib_log,
+    )
 
     portfolio_mgr = PortfolioManager(
         bus=bus,
@@ -381,8 +396,12 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
         stop_event.set()
 
     loop = asyncio.get_event_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig.name: _shutdown(s))
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig.name: _shutdown(s))
+    except NotImplementedError:
+        # Windows does not support add_signal_handler; KeyboardInterrupt propagates naturally.
+        pass
 
     # ------------------------------------------------------------------
     # Start background tasks
@@ -418,8 +437,11 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
             level="info"
         )
 
-    # Wait for shutdown signal
-    await stop_event.wait()
+    # Wait for shutdown signal (KeyboardInterrupt on Windows cancels the loop)
+    try:
+        await stop_event.wait()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        _shutdown("KeyboardInterrupt")
 
     # Cleanup
     logger.warning("Shutting down engine...")
@@ -429,6 +451,15 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
 
     if telegram:
         await telegram.send_alert("Engine stopped", level="warning")
+
+    if calib_log is not None:
+        summary = calib_log.flush_summary()
+        logger.info(
+            "Calibration session complete — run scripts/run_calibration_apply.py to update backtest config",
+            fill_rate=summary.get("fill_rate"),
+            mean_order_latency_ms=summary.get("mean_order_latency_ms"),
+            mean_cancel_latency_ms=summary.get("mean_cancel_latency_ms"),
+        )
 
     rest.close()
     logger.info("Engine shutdown complete")
@@ -469,3 +500,9 @@ async def _risk_snapshot_loop(api_state) -> None:
             "type": "RISK_SNAPSHOT",
             "payload": api_state.get_live_risk(),
         })
+
+
+if __name__ == "__main__":
+    import asyncio
+    from okx_quant.core.config import load_config
+    asyncio.run(main(load_config()))

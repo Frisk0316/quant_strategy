@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import sys
 from collections import deque
+from itertools import product
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -36,13 +38,24 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 
-from okx_quant.analytics.performance import sharpe, summary
+from okx_quant.analytics.performance import sharpe, summary, max_drawdown
 from okx_quant.analytics.dsr import psr
 from okx_quant.strategies.as_market_maker import as_quote
 from okx_quant.strategies.pairs_trading import estimate_ou
 from okx_quant.signals.vpin import classify_bvc
+from cpcv import CPCV
 from data_loader import load_candles, load_funding
 from walk_forward import WalkForward
+
+
+AS_CPCV_GAMMA_GRID = [0.05, 0.1, 0.2]
+AS_CPCV_KAPPA_GRID = [1.0, 1.5, 2.0]
+AS_CPCV_BETA_VPIN_GRID = [1.0, 2.0, 3.0]
+N_RESEARCH_TRIALS = (
+    len(AS_CPCV_GAMMA_GRID)
+    * len(AS_CPCV_KAPPA_GRID)
+    * len(AS_CPCV_BETA_VPIN_GRID)
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -127,6 +140,96 @@ BETA_VPIN = 2.0
 MAX_POS = 10
 TICK    = 0.1
 ALPHA_SIGMA = 1 - np.exp(-np.log(2) / 5)   # half-life = 5 bars
+
+
+def _simulate_asmm_returns(
+    candles: pd.DataFrame,
+    *,
+    gamma: float,
+    kappa: float,
+    beta_vpin: float,
+) -> pd.Series:
+    """Bar-level AS MM proxy used only for research-stage CPCV."""
+    if len(candles) < 2:
+        return pd.Series(dtype=float)
+
+    closes = candles["close"].to_numpy(dtype=float)
+    highs = candles["high"].to_numpy(dtype=float)
+    lows = candles["low"].to_numpy(dtype=float)
+    vols = candles["vol"].to_numpy(dtype=float)
+
+    inventory = 0.0
+    sigma_ewma = 0.003
+    vpin_cdf = 0.3
+    prev_close = float(closes[0])
+    prev_inv_sign = 0
+    vpin_buf: deque = deque(maxlen=50)
+    returns = []
+
+    for i in range(1, len(candles)):
+        c = closes[i]
+        h = highs[i]
+        l = lows[i]
+        v = vols[i]
+        mid = (h + l) / 2.0
+        bar_ret = float(np.log(c / max(prev_close, 1e-8)))
+        prev_close = c
+
+        sigma_ewma = ALPHA_SIGMA * abs(bar_ret) + (1 - ALPHA_SIGMA) * sigma_ewma
+        alpha_signal = bar_ret * 0.001
+
+        if sigma_ewma > 0:
+            vb, vs = classify_bvc(bar_ret, sigma_ewma, float(v))
+            imb_frac = abs(vb - vs) / (float(v) + 1e-8)
+        else:
+            imb_frac = 0.5
+        vpin_buf.append(imb_frac)
+        if len(vpin_buf) >= 5:
+            buf_arr = np.array(vpin_buf)
+            vpin_cdf = float(np.searchsorted(np.sort(buf_arr), imb_frac)) / len(buf_arr)
+
+        bid, ask = as_quote(
+            mid=mid,
+            inventory=inventory,
+            alpha_signal=alpha_signal,
+            vpin=vpin_cdf,
+            gamma=gamma,
+            sigma=sigma_ewma,
+            kappa=kappa,
+            T_minus_t=1.0,
+            tick=TICK,
+            max_pos=MAX_POS,
+            c_alpha=C_ALPHA,
+            beta_vpin=beta_vpin,
+        )
+
+        if bid == -np.inf or ask == np.inf:
+            returns.append(0.0)
+            continue
+
+        spread_as = (ask - bid) / mid
+        spread_mkt = (h - l) / mid if mid > 0 else 1e-6
+        fill_prob = min(1.0, spread_as / max(spread_mkt, 1e-8))
+
+        pnl_spread = fill_prob * spread_as / 2.0
+        pnl_inv = inventory * bar_ret * LOT_SIZE
+
+        delta = fill_prob * LOT_SIZE
+        inventory = float(np.clip(
+            inventory + (-delta if bar_ret > 0 else delta),
+            -MAX_POS,
+            MAX_POS,
+        ))
+
+        commission = 0.0
+        inv_sign = int(np.sign(inventory))
+        if inv_sign != 0 and inv_sign != prev_inv_sign and prev_inv_sign != 0:
+            commission = COMM_MAKER
+        prev_inv_sign = inv_sign
+
+        returns.append(pnl_spread + pnl_inv - commission)
+
+    return pd.Series(returns, index=candles.index[1:], name="ret")
 
 closes_btc = btc_df["close"].values
 highs_btc  = btc_df["high"].values
@@ -481,6 +584,83 @@ n_windows = len(wf_results)
 mean_oos = float(wf_results["oos_sharpe"].mean()) if n_windows else float("nan")
 print(f"    WF windows={n_windows}  mean OOS Sharpe={mean_oos:.2f}")
 
+print("[7/8] Running CPCV validation (AS MM parameter selection) …")
+
+_asmm_param_returns = {}
+for _gamma, _kappa, _beta_vpin in product(
+    AS_CPCV_GAMMA_GRID,
+    AS_CPCV_KAPPA_GRID,
+    AS_CPCV_BETA_VPIN_GRID,
+):
+    _params_key = (_gamma, _kappa, _beta_vpin)
+    _asmm_param_returns[_params_key] = _simulate_asmm_returns(
+        btc_df,
+        gamma=_gamma,
+        kappa=_kappa,
+        beta_vpin=_beta_vpin,
+    )
+
+
+def asmm_cpcv_strategy_fn(train_data: pd.DataFrame, test_data: pd.DataFrame) -> dict:
+    best_params = {
+        "gamma": GAMMA,
+        "kappa": KAPPA,
+        "beta_vpin": BETA_VPIN,
+    }
+    best_sr = -np.inf
+
+    for gamma, kappa, beta_vpin in product(
+        AS_CPCV_GAMMA_GRID,
+        AS_CPCV_KAPPA_GRID,
+        AS_CPCV_BETA_VPIN_GRID,
+    ):
+        is_returns = _asmm_param_returns[(gamma, kappa, beta_vpin)].reindex(train_data.index).dropna()
+        if len(is_returns) < 2 or is_returns.std() <= 1e-12:
+            continue
+        sr = sharpe(is_returns, periods=PERIODS_1H)
+        if sr > best_sr:
+            best_sr = sr
+            best_params = {
+                "gamma": gamma,
+                "kappa": kappa,
+                "beta_vpin": beta_vpin,
+            }
+
+    oos_returns = _asmm_param_returns[
+        (best_params["gamma"], best_params["kappa"], best_params["beta_vpin"])
+    ].reindex(test_data.index).dropna()
+    return {
+        "returns": oos_returns,
+        "selected_params": best_params,
+        "is_sharpe": best_sr if np.isfinite(best_sr) else 0.0,
+    }
+
+
+if len(btc_df) >= 6:
+    cpcv = CPCV(n_splits=6, k_test=2, embargo_pct=0.02, purge_size=1)
+    cpcv_results = cpcv.evaluate(
+        btc_df,
+        asmm_cpcv_strategy_fn,
+        periods=PERIODS_1H,
+        n_trials=N_RESEARCH_TRIALS,
+    )
+else:
+    cpcv_results = {
+        "sharpe_list": [],
+        "path_sharpes": [],
+        "dsr": 0.0,
+        "psr": 0.0,
+        "mean_oos_sharpe": 0.0,
+        "overall_oos_sharpe": 0.0,
+        "n_combinations": 0,
+        "n_paths": 0,
+        "n_trials": N_RESEARCH_TRIALS,
+    }
+print(
+    f"    CPCV trials={N_RESEARCH_TRIALS} combos={cpcv_results['n_combinations']} paths={cpcv_results['n_paths']} "
+    f"DSR={cpcv_results['dsr']:.3f} PSR={cpcv_results['psr']:.3f}"
+)
+
 # ── Figure 5 ─────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(14, 5))
 fig.suptitle("Walk-Forward Validation — Funding Carry OOS Sharpe", fontsize=14, fontweight="bold")
@@ -705,12 +885,26 @@ _result = {
     "mainStats":   _main_stats,
     "walkForward": _wf_rows,
     "cpcv": {
-        "combos": [],
-        "paths":  [],
-        "dsr":    asmm_psr,
-        "psr":    asmm_psr,
-        "mean_oos_sharpe": mean_oos if n_windows > 0 else 0.0,
-        "std_oos_sharpe":  float(wf_results["oos_sharpe"].std()) if n_windows > 1 else 0.0,
+        "combos": [
+            {"i": i, "sharpe": float(sr)}
+            for i, sr in enumerate(cpcv_results.get("sharpe_list", []))
+        ],
+        "paths": [
+            {"i": i, "sharpe": float(sr)}
+            for i, sr in enumerate(cpcv_results.get("path_sharpes", []))
+        ],
+        "dsr":    float(cpcv_results.get("dsr", 0.0)),
+        "psr":    float(cpcv_results.get("psr", 0.0)),
+        "mean_oos_sharpe": float(cpcv_results.get("mean_oos_sharpe", 0.0)),
+        "std_oos_sharpe":  float(np.std(cpcv_results.get("path_sharpes", [])))
+                           if cpcv_results.get("path_sharpes") else 0.0,
+        "overall_oos_sharpe": float(cpcv_results.get("overall_oos_sharpe", 0.0)),
+        "n_combinations": int(cpcv_results.get("n_combinations", 0)),
+        "n_paths": int(cpcv_results.get("n_paths", 0)),
+        "n_research_trials": int(cpcv_results.get("n_trials", N_RESEARCH_TRIALS)),
+        "returns_source": "bar_proxy_asmm_parameter_selection",
+        "cost_model_complete": False,
+        "cost_model_note": "CPCV selects AS MM parameters in IS and executes OOS, but returns are still bar-level proxy. Full cost model requires replay-based SimBroker returns.",
     },
     "trades":      [],
     "compareRuns": _compare_runs,

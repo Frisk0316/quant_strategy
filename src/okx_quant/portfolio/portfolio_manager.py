@@ -12,7 +12,7 @@ from loguru import logger
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload, OrderPayload, SignalPayload
 from okx_quant.portfolio.positions import PositionLedger
-from okx_quant.portfolio.sizing import vol_target_size, fixed_fractional
+from okx_quant.portfolio.sizing import fixed_fractional, validate_ct_val, vol_target_size
 from okx_quant.risk.risk_guard import RiskGuard
 
 
@@ -84,6 +84,9 @@ class PortfolioManager:
         else:
             # Fallback to 1% fixed-fractional
             size_usd = fixed_fractional(equity, risk_pct=0.01) * size_mult
+        max_order_notional = float(getattr(self._risk, "max_order_notional", 0.0) or 0.0)
+        if max_order_notional > 0:
+            size_usd = min(size_usd, max_order_notional)
 
         ref_price = self._resolve_price(inst_id, sig.fair_value)
         if ref_price <= 0:
@@ -117,7 +120,10 @@ class PortfolioManager:
         size_usd: float,
     ) -> tuple[str, float]:
         specs = self._specs.get(inst_id, {})
-        ct_val = float(specs.get("ctVal", 0.01 if "SWAP" in inst_id else 1.0))
+        if "ctVal" in specs:
+            ct_val = validate_ct_val(float(specs["ctVal"]), inst_id)
+        else:
+            ct_val = _fallback_ct_val(inst_id)
         min_sz = float(specs.get("minSz", 1 if "SWAP" in inst_id else 0.0001))
         lot_sz = float(specs.get("lotSz", 1 if "SWAP" in inst_id else 0.0001))
         contract_value = ct_val * price
@@ -270,6 +276,17 @@ def _decimals(tick_sz: float) -> int:
     if "." in s:
         return len(s.rstrip("0").split(".")[-1])
     return 0
+
+
+def _fallback_ct_val(inst_id: str) -> float:
+    if "SWAP" not in inst_id:
+        logger.warning("Instrument ctVal missing; falling back to spot ctVal=1.0", inst_id=inst_id)
+        return 1.0
+    if inst_id.startswith(("BTC-", "ETH-")):
+        logger.warning("Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01", inst_id=inst_id)
+        return 0.01
+    logger.error("Instrument ctVal missing for non-BTC/ETH swap; refusing silent fallback", inst_id=inst_id)
+    raise ValueError(f"Missing ctVal for non-BTC/ETH swap: {inst_id}")
 
 
 def _signal_size_multiplier(sig: SignalPayload) -> float:

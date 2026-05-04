@@ -78,6 +78,7 @@ class OBIMarketMakerParams(BaseModel):
     ewma_halflife_ms: float = 200.0
     obi_threshold: float = 0.15
     c_alpha: float = 100.0
+    mlofi_weight: float = 1.0
     refresh_interval_ms: float = 500.0
     max_inventory: int = 50
     td_mode: str = "cross"
@@ -91,7 +92,12 @@ class ASMarketMakerParams(BaseModel):
     kappa: float = 1.5
     max_pos_contracts: int = 50
     c_alpha: float = 100.0
+    mlofi_depth: int = 5
+    mlofi_decay: float = 0.5
+    mlofi_weight: float = 1.0
     beta_vpin: float = 2.0
+    elevated_size_multiplier: float = 0.5
+    toxic_size_multiplier: float = 0.25
     vpin_bucket_divisor: int = 75
     vpin_window: int = 50
     refresh_interval_ms: float = 500.0
@@ -105,6 +111,8 @@ class FundingCarryParams(BaseModel):
     spot_symbol: str = "BTC-USDT"
     min_apr_threshold: float = 0.12
     rebalance_drift_threshold: float = 0.02
+    max_abs_basis_z: float = 2.5
+    max_crowding: float = 0.85
     funding_check_interval_secs: int = 300
     td_mode: str = "cross"
 
@@ -118,6 +126,8 @@ class PairsTradingParams(BaseModel):
     exit_z: float = 0.3
     stop_z: float = 4.0
     lookback_hours: int = 168
+    max_half_life: float = 48.0
+    max_hedge_uncertainty: float = 10.0
     td_mode: str = "cross"
 
 
@@ -155,6 +165,12 @@ class RiskConfig(BaseModel):
         return self
 
 
+class BacktestConfig(BaseModel):
+    order_latency_ms: int = Field(default=0, ge=0)
+    cancel_latency_ms: int = Field(default=200, ge=0)
+    queue_fill_fraction: float = Field(default=0.20, ge=0.0, le=1.0)
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -166,6 +182,7 @@ class AppConfig(BaseModel):
     clock: ClockConfig = ClockConfig()
     strategies: StrategiesConfig = StrategiesConfig()
     risk: RiskConfig = RiskConfig()
+    backtest: BacktestConfig = BacktestConfig()
     secrets: OKXSecrets = None  # type: ignore[assignment]
 
     def is_demo(self) -> bool:
@@ -184,12 +201,13 @@ def load_config(
     strategies_path: str = "config/strategies.yaml",
     risk_path: str = "config/risk.yaml",
     env_file: str = ".env",
+    require_secrets: bool = True,
 ) -> AppConfig:
     def _load(path: str) -> dict:
         p = Path(path)
         if not p.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
     settings_raw = _load(settings_path)
@@ -202,11 +220,22 @@ def load_config(
     clock = ClockConfig(**settings_raw.get("clock", {}))
     strategies = StrategiesConfig(**strategies_raw)
     risk = RiskConfig(**risk_raw.get("risk", {}))
+    backtest = BacktestConfig(**risk_raw.get("backtest", {}))
 
-    # Load secrets — raises ValidationError if keys are missing
-    if env_file and Path(env_file).exists():
-        os.environ.setdefault("_dotenv_loaded", "1")
-    secrets = OKXSecrets(_env_file=env_file)
+    # Load secrets — live/demo engine keeps fail-fast behavior, offline
+    # backtests can opt out because they do not call authenticated APIs.
+    if require_secrets:
+        if env_file and Path(env_file).exists():
+            os.environ.setdefault("_dotenv_loaded", "1")
+        secrets = OKXSecrets(_env_file=env_file)
+    else:
+        secrets = OKXSecrets.model_construct(
+            okx_api_key="",
+            okx_secret="",
+            okx_passphrase="",
+            telegram_token=None,
+            telegram_chat_id=None,
+        )
 
     return AppConfig(
         system=system,
@@ -215,5 +244,6 @@ def load_config(
         clock=clock,
         strategies=strategies,
         risk=risk,
+        backtest=backtest,
         secrets=secrets,
     )

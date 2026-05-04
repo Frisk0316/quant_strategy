@@ -25,11 +25,13 @@ class ExecutionHandler:
         order_manager: OrderManager,
         stale_quote_pct: float = 0.02,
         fill_timeout_secs: float = 5.0,
+        calibration_log=None,
     ) -> None:
         self._bus = bus
         self._order_manager = order_manager
         self._stale_quote_pct = stale_quote_pct
         self._fill_timeout = fill_timeout_secs
+        self._calibration_log = calibration_log
 
         # Last known mid prices per instrument (for stale check)
         self._last_mids: dict[str, float] = {}
@@ -48,6 +50,8 @@ class ExecutionHandler:
                 self._last_mids[payload.inst_id] = mid
             except (IndexError, TypeError, ValueError):
                 pass
+        for fill in self._order_manager.on_market(payload):
+            await self._bus.put(Event(EvtType.FILL, payload=fill))
 
     # ------------------------------------------------------------------
     # Order event handler
@@ -107,12 +111,28 @@ class ExecutionHandler:
         for d in raw_msg.get("data", []):
             cl_ord_id = d.get("clOrdId", "")
             if is_shadow_mirror_cl_ord_id(cl_ord_id):
+                state = d.get("state", "")
                 logger.info(
                     "Shadow mirror fill received",
                     inst_id=d.get("instId", ""),
                     cl_ord_id=cl_ord_id,
-                    state=d.get("state", ""),
+                    state=state,
                 )
+                if self._calibration_log is not None:
+                    if state in ("filled", "partially_filled"):
+                        self._calibration_log.record_fill(
+                            cl_ord_id=cl_ord_id,
+                            inst_id=d.get("instId", ""),
+                            fill_px=float(d.get("fillPx", d.get("avgPx", 0))),
+                            fill_sz=float(d.get("fillSz", d.get("accFillSz", 0))),
+                            fill_ts=int(d.get("uTime", time.time() * 1000)),
+                            state=state,
+                        )
+                    elif state == "cancelled":
+                        self._calibration_log.record_cancel_ack(
+                            cl_ord_id=cl_ord_id,
+                            ack_ts=int(d.get("uTime", time.time() * 1000)),
+                        )
                 continue
 
             state = d.get("state", "")
