@@ -133,6 +133,129 @@ Downloads:
 - `data/ticks/ETH_USDT_SWAP/candles_1H.parquet`
 - `data/ticks/BTC_USDT_SWAP/funding.parquet`
 
+### Optional Step 1b - Initialize TimescaleDB OHLCV storage
+
+The backtest loader can read OHLCV candles from either Parquet or PostgreSQL/TimescaleDB.
+Parquet remains the default fallback, but the canonical database path is:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d timescaledb
+python scripts/market_data/init_db.py
+python scripts/market_data/import_parquet_ohlcv.py --bar 1H
+python scripts/market_data/import_parquet_funding.py
+```
+
+To fetch newer funding-rate rows directly from OKX into TimescaleDB:
+
+```bash
+python scripts/market_data/backfill_funding.py \
+    --inst BTC-USDT-SWAP \
+    --start 2026-04-30 \
+    --end   2026-05-06
+```
+
+Validate funding coverage for BTC/ETH. Funding intervals are reported from
+stored timestamps; pass `--max-gap-hours` only when you want a hard gap gate:
+
+```bash
+python scripts/market_data/validate_funding.py \
+    --inst BTC-USDT-SWAP \
+    --inst ETH-USDT-SWAP \
+    --start 2026-01-28 \
+    --end   2026-05-06 \
+    --max-gap-hours 8
+```
+
+For long-running, resumable backfills, use the checkpointed ingestor. It flushes after
+10 requests by default, writes idempotently, stores progress in `ingestion_checkpoints`,
+and writes the multi-exchange canonical layer:
+
+- `market_instruments`: one row per exchange-native USDT perpetual instrument
+- `market_klines`: `PRIMARY KEY (instrument_id, bar, ts)`
+- `market_funding_rates`: `PRIMARY KEY (instrument_id, funding_time)`
+
+```bash
+python scripts/market_data/ingest.py \
+    --exchange okx \
+    --dataset klines_1m \
+    --symbols BTC-USDT-SWAP \
+    --start 2023-07-01T00:00:00Z \
+    --end now \
+    --direction backward \
+    --flush-every-requests 10
+```
+
+Background Docker run:
+
+```bash
+docker compose -f docker/docker-compose.yml --profile tools run -d \
+    --name okx_btc_1m_backfill ingestor \
+    python scripts/market_data/ingest.py \
+      --exchange okx \
+      --dataset klines_1m \
+      --symbols BTC-USDT-SWAP \
+      --start 2023-07-01T00:00:00Z \
+      --end now \
+      --direction backward
+
+docker logs -f okx_btc_1m_backfill
+```
+
+Binance and Bybit USDT perpetual examples:
+
+```bash
+python scripts/market_data/ingest.py \
+    --exchange binance \
+    --dataset klines_1m \
+    --symbols BTCUSDT,ETHUSDT \
+    --start 2020-01-01T00:00:00Z \
+    --end now
+
+python scripts/market_data/ingest.py \
+    --exchange bybit \
+    --dataset funding_rate \
+    --symbols BTCUSDT \
+    --start 2020-03-25T00:00:00Z \
+    --end now
+```
+
+Check ingestion progress:
+
+```sql
+SELECT source, dataset, inst_id, direction, cursor_time, request_count, row_count, status, updated_at
+FROM ingestion_checkpoints
+ORDER BY updated_at DESC;
+```
+
+Query multi-exchange coverage:
+
+```sql
+SELECT
+  mi.exchange,
+  mi.inst_id,
+  mi.normalized_symbol,
+  COUNT(k.*) AS rows,
+  MIN(k.ts) AS first_ts,
+  MAX(k.ts) AS last_ts
+FROM market_instruments mi
+JOIN market_klines k USING (instrument_id)
+GROUP BY mi.exchange, mi.inst_id, mi.normalized_symbol
+ORDER BY mi.exchange, mi.inst_id;
+```
+
+After the import succeeds, switch `config/settings.yaml`:
+
+```yaml
+storage:
+  candle_backend: postgres
+```
+
+The database stores exchange-native candles in `raw_candles` and strategy-ready OHLCV in
+`canonical_candles`. Higher timeframe views are available for 5m, 15m, and 1H when 1m data
+has been backfilled; direct 1H imports are also readable from `canonical_candles`.
+Funding-rate history is stored in `funding_rates`, and the backtest/replay loaders use it
+when `storage.candle_backend: postgres`.
+
 ---
 
 ### Step 2 — Bar-proxy backtest (fast, all three strategies)

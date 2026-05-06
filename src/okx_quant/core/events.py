@@ -48,6 +48,7 @@ class MarketPayload:
     # For funding channel
     funding_rate: Optional[float] = None
     next_funding_time: Optional[int] = None
+    funding_interval_hours: Optional[float] = None
 
 
 @dataclass

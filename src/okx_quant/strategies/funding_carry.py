@@ -66,9 +66,10 @@ class FundingCarryStrategy(Strategy):
         self._crowding: Optional[float] = None
         self._in_position: bool = False
 
-    def _rate_to_apr(self, rate_8h: float) -> float:
-        """Convert 8-hour funding rate to annualized APR."""
-        return rate_8h * (365 * 24 / 8)
+    def _rate_to_apr(self, funding_rate: float, interval_hours: Optional[float] = None) -> float:
+        """Convert exchange-native funding rate to annualized APR."""
+        hours = interval_hours if interval_hours and interval_hours > 0 else 8.0
+        return funding_rate * (365 * 24 / hours)
 
     async def on_market(
         self,
@@ -89,7 +90,8 @@ class FundingCarryStrategy(Strategy):
         if rate_8h is None:
             return None
 
-        apr = self._rate_to_apr(rate_8h)
+        interval_hours = getattr(payload, "funding_interval_hours", None)
+        apr = self._rate_to_apr(rate_8h, interval_hours=interval_hours)
         self._current_apr = apr
         self._basis_z = getattr(payload, "basis_z", None)
         self._crowding = getattr(payload, "crowding", None)

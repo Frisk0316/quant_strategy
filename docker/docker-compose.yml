@@ -37,8 +37,33 @@ services:
       - timescale-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant -d okx_quant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - quant-net
+
+  ingestor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    profiles:
+      - tools
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:-changeme}@timescaledb:5432/okx_quant
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - ../config:/app/config
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - quant-net
+    command: python scripts/market_data/ingest.py --help
 
   prometheus:
     image: prom/prometheus:latest

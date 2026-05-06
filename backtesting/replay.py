@@ -15,6 +15,8 @@ import pandas as pd
 import pyarrow.parquet as pq
 from loguru import logger
 
+from backtesting.data_loader import load_candles as load_ohlcv_candles
+from backtesting.data_loader import load_funding as load_funding_rates
 from okx_quant.analytics.dsr import psr
 from okx_quant.analytics.performance import summary
 from okx_quant.core.bus import EventBus
@@ -204,6 +206,8 @@ def load_l1_books(
     bar: str = "1H",
     synthetic_spread_bps: float = 1.0,
     fallback_inst_id: Optional[str] = None,
+    backend: str = "parquet",
+    dsn: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load top-of-book snapshots.
@@ -214,6 +218,36 @@ def load_l1_books(
     3. Synthetic L1 books derived from candle closes
     """
     inst_dir = Path(data_dir) / inst_id.replace("-", "_")
+    if backend == "postgres":
+        try:
+            candles = load_ohlcv_candles(
+                inst_id,
+                bar=bar,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend="postgres",
+                dsn=dsn,
+            )
+        except FileNotFoundError:
+            candles = pd.DataFrame()
+        if candles.empty and fallback_inst_id:
+            candles = load_ohlcv_candles(
+                fallback_inst_id,
+                bar=bar,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend="postgres",
+                dsn=dsn,
+            )
+        if not candles.empty:
+            return _synthetic_l1_from_candles(
+                inst_id=inst_id,
+                candles=candles,
+                synthetic_spread_bps=synthetic_spread_bps,
+            )
+
     if inst_dir.exists():
         raw_ticks = _load_parquet_frames(sorted(inst_dir.glob("ob_ticks_*.parquet")))
         if not raw_ticks.empty:
@@ -248,11 +282,31 @@ def load_l1_books(
 
     candles = pq.read_table(candle_path).to_pandas()
     candles = _normalize_time_filter(candles, ts_col="ts", start=start, end=end)
-    mid = candles["close"].astype(float)
+    return _synthetic_l1_from_candles(
+        inst_id=inst_id,
+        candles=candles,
+        synthetic_spread_bps=synthetic_spread_bps,
+    )
+
+
+def _synthetic_l1_from_candles(
+    *,
+    inst_id: str,
+    candles: pd.DataFrame,
+    synthetic_spread_bps: float,
+) -> pd.DataFrame:
+    data = candles.copy()
+    if "ts" not in data.columns:
+        data = data.reset_index(names="ts")
+    data["ts"] = pd.to_datetime(data["ts"], utc=True, errors="coerce")
+    data = data.dropna(subset=["ts"]).sort_values("ts")
+    if data.empty:
+        return pd.DataFrame(columns=["ts", "inst_id", "bid_px_0", "bid_sz_0", "ask_px_0", "ask_sz_0"])
+    mid = data["close"].astype(float)
     half_spread = mid * synthetic_spread_bps / 20_000.0
-    size = candles["vol"].astype(float).clip(lower=1.0) if "vol" in candles.columns else 1.0
+    size = data["vol"].astype(float).clip(lower=1.0) if "vol" in data.columns else 1.0
     return pd.DataFrame({
-        "ts": candles["ts"].astype("int64") // 1_000_000,
+        "ts": data["ts"].astype("int64") // 1_000_000,
         "inst_id": inst_id,
         "bid_px_0": (mid - half_spread).astype(float),
         "bid_sz_0": size,
@@ -266,7 +320,29 @@ def load_funding_events(
     data_dir: str = "data/ticks",
     start: Optional[str] = None,
     end: Optional[str] = None,
+    backend: str = "parquet",
+    dsn: Optional[str] = None,
 ) -> pd.DataFrame:
+    if backend == "postgres":
+        funding = load_funding_rates(
+            inst_id=inst_id,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            backend="postgres",
+            dsn=dsn,
+        )
+        if funding.empty:
+            return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
+        frame = funding.reset_index(names="ts")
+        return pd.DataFrame({
+            "ts": frame["ts"].astype("int64") // 1_000_000,
+            "inst_id": inst_id,
+            "funding_rate": frame["rate"].astype(float),
+            "next_funding_time": frame.get("nextFundingTime", 0),
+            "funding_interval_hours": frame.get("funding_interval_hours", None),
+        })
+
     path = Path(data_dir) / inst_id.replace("-", "_") / "funding.parquet"
     if not path.exists():
         return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
@@ -277,6 +353,7 @@ def load_funding_events(
         "inst_id": inst_id,
         "funding_rate": funding["rate"].astype(float),
         "next_funding_time": funding.get("nextFundingTime", 0),
+        "funding_interval_hours": funding.get("funding_interval_hours", None),
     })
 
 
@@ -309,6 +386,12 @@ class HistoricalEventFeed:
                 channel="funding-rate",
                 funding_rate=float(row.funding_rate),
                 next_funding_time=int(getattr(row, "next_funding_time", 0) or 0),
+                funding_interval_hours=(
+                    float(row.funding_interval_hours)
+                    if getattr(row, "funding_interval_hours", None) is not None
+                    and pd.notna(getattr(row, "funding_interval_hours", None))
+                    else None
+                ),
             )
             combined.append((int(row.ts), 1, Event(EvtType.FUNDING, payload=payload)))
 
@@ -595,20 +678,60 @@ def build_feed_for_strategies(
     strategy_set = set(strategy_names)
     if "obi_market_maker" in strategy_set:
         for symbol in cfg.strategies.obi_market_maker.symbols:
-            market_frames.append(load_l1_books(symbol, data_dir=data_dir, start=start, end=end, bar=bar))
+            market_frames.append(load_l1_books(
+                symbol,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                bar=bar,
+                backend=cfg.storage.candle_backend,
+                dsn=cfg.storage.timescale_dsn,
+            ))
 
     if "as_market_maker" in strategy_set:
         for symbol in cfg.strategies.as_market_maker.symbols:
-            market_frames.append(load_l1_books(symbol, data_dir=data_dir, start=start, end=end, bar=bar))
+            market_frames.append(load_l1_books(
+                symbol,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                bar=bar,
+                backend=cfg.storage.candle_backend,
+                dsn=cfg.storage.timescale_dsn,
+            ))
 
     if "pairs_trading" in strategy_set:
-        market_frames.append(load_l1_books(cfg.strategies.pairs_trading.symbol_y, data_dir=data_dir, start=start, end=end, bar=bar))
-        market_frames.append(load_l1_books(cfg.strategies.pairs_trading.symbol_x, data_dir=data_dir, start=start, end=end, bar=bar))
+        market_frames.append(load_l1_books(
+            cfg.strategies.pairs_trading.symbol_y,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+        market_frames.append(load_l1_books(
+            cfg.strategies.pairs_trading.symbol_x,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
 
     if "funding_carry" in strategy_set:
         perp = cfg.strategies.funding_carry.perp_symbol
         spot = cfg.strategies.funding_carry.spot_symbol
-        market_frames.append(load_l1_books(perp, data_dir=data_dir, start=start, end=end, bar=bar))
+        market_frames.append(load_l1_books(
+            perp,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
         market_frames.append(
             load_l1_books(
                 spot,
@@ -617,9 +740,18 @@ def build_feed_for_strategies(
                 end=end,
                 bar=bar,
                 fallback_inst_id=perp,
+                backend=cfg.storage.candle_backend,
+                dsn=cfg.storage.timescale_dsn,
             )
         )
-        funding_frames.append(load_funding_events(perp, data_dir=data_dir, start=start, end=end))
+        funding_frames.append(load_funding_events(
+            perp,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
 
     market_df = _concat_non_empty(market_frames)
     funding_df = _concat_non_empty(funding_frames)

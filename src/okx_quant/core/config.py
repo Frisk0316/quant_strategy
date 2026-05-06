@@ -51,6 +51,44 @@ class StorageConfig(BaseModel):
     parquet_dir: str = "./data/ticks"
     timescale_dsn: Optional[str] = None
     redis_url: str = "redis://localhost:6379"
+    candle_backend: Literal["parquet", "postgres"] = "parquet"
+
+
+# ---------------------------------------------------------------------------
+# Market data pipeline config — from settings.yaml market_data section
+# ---------------------------------------------------------------------------
+
+class MarketDataCanonicalConfig(BaseModel):
+    base_bar: str = "1m"
+    derived_bars: list[str] = ["5m", "15m", "1H"]
+
+
+class MarketDataValidationConfig(BaseModel):
+    manual_only: bool = True
+    sigma_threshold: float = 3.0
+    replace_outliers_default: bool = False
+    sources: list[str] = ["binance", "bybit"]
+
+
+class MarketDataIngestionConfig(BaseModel):
+    default_concurrency: int = 1
+    max_retries: int = 3
+    retry_backoff_seconds: list[int] = [1, 3, 9]
+    chunk_days: dict[str, int] = {
+        "1m": 7,
+        "5m": 30,
+        "15m": 60,
+        "1H": 180,
+    }
+
+
+class MarketDataConfig(BaseModel):
+    source_primary: str = "okx"
+    canonical: MarketDataCanonicalConfig = MarketDataCanonicalConfig()
+    bars: list[str] = ["1m", "5m", "15m", "1H"]
+    instruments: list[str] = []
+    validation: MarketDataValidationConfig = MarketDataValidationConfig()
+    ingestion: MarketDataIngestionConfig = MarketDataIngestionConfig()
 
 
 class ClockConfig(BaseModel):
@@ -183,6 +221,7 @@ class AppConfig(BaseModel):
     strategies: StrategiesConfig = StrategiesConfig()
     risk: RiskConfig = RiskConfig()
     backtest: BacktestConfig = BacktestConfig()
+    market_data: MarketDataConfig = MarketDataConfig()
     secrets: OKXSecrets = None  # type: ignore[assignment]
 
     def is_demo(self) -> bool:
@@ -221,6 +260,8 @@ def load_config(
     strategies = StrategiesConfig(**strategies_raw)
     risk = RiskConfig(**risk_raw.get("risk", {}))
     backtest = BacktestConfig(**risk_raw.get("backtest", {}))
+    market_data_raw = settings_raw.get("market_data", {})
+    market_data = MarketDataConfig(**market_data_raw) if market_data_raw else MarketDataConfig()
 
     # Load secrets — live/demo engine keeps fail-fast behavior, offline
     # backtests can opt out because they do not call authenticated APIs.
@@ -245,5 +286,6 @@ def load_config(
         strategies=strategies,
         risk=risk,
         backtest=backtest,
+        market_data=market_data,
         secrets=secrets,
     )

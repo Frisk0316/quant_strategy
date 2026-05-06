@@ -88,7 +88,15 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
-    candles = load_candles(args.symbol, bar=args.bar, data_dir=args.data_dir, start=args.start, end=args.end)
+    candles = load_candles(
+        args.symbol,
+        bar=args.bar,
+        data_dir=args.data_dir,
+        start=args.start,
+        end=args.end,
+        backend=cfg.storage.candle_backend,
+        dsn=cfg.storage.timescale_dsn,
+    )
     grid = ASMMReplayParamGrid(
         gamma=tuple(args.gamma_grid),
         kappa=tuple(args.kappa_grid),

@@ -40,6 +40,7 @@ import pandas as pd
 
 from okx_quant.analytics.performance import sharpe, summary, max_drawdown
 from okx_quant.analytics.dsr import psr
+from okx_quant.core.config import load_config
 from okx_quant.strategies.as_market_maker import as_quote
 from okx_quant.strategies.pairs_trading import estimate_ou
 from okx_quant.signals.vpin import classify_bvc
@@ -57,6 +58,8 @@ N_RESEARCH_TRIALS = (
     * len(AS_CPCV_BETA_VPIN_GRID)
 )
 
+CFG = load_config(require_secrets=False)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1.  LOAD REAL MARKET DATA
@@ -65,11 +68,22 @@ print("[1/8] Loading real OKX market data …")
 
 
 def _load_candles(inst_id: str, bar: str = "1H") -> pd.DataFrame:
-    return load_candles(inst_id=inst_id, bar=bar, data_dir=str(DATA_DIR))
+    return load_candles(
+        inst_id=inst_id,
+        bar=bar,
+        data_dir=str(DATA_DIR),
+        backend=CFG.storage.candle_backend,
+        dsn=CFG.storage.timescale_dsn,
+    )
 
 
 def _load_funding(inst_id: str) -> pd.DataFrame:
-    return load_funding(inst_id=inst_id, data_dir=str(DATA_DIR))
+    return load_funding(
+        inst_id=inst_id,
+        data_dir=str(DATA_DIR),
+        backend=CFG.storage.candle_backend,
+        dsn=CFG.storage.timescale_dsn,
+    )
 
 
 btc_df    = _load_candles("BTC-USDT-SWAP", "1H")

@@ -25,8 +25,52 @@ storage:
   # parquet | timescaledb
   backend: parquet
   parquet_dir: ./data/ticks
-  timescale_dsn: null
+  timescale_dsn: "postgresql://quant:changeme@localhost:5432/okx_quant"
   redis_url: redis://localhost:6379
+  # Switch to 'postgres' after running init_db.py and backfill
+  candle_backend: postgres
+
+market_data:
+  source_primary: okx
+
+  canonical:
+    base_bar: 1m
+    derived_bars: [5m, 15m, 1H]
+
+  bars: [1m, 5m, 15m, 1H]
+
+  instruments:
+    - BTC-USDT-SWAP
+    - ETH-USDT-SWAP
+    - BNB-USDT-SWAP
+    - SOL-USDT-SWAP
+    - XRP-USDT-SWAP
+    - ADA-USDT-SWAP
+    - DOGE-USDT-SWAP
+    - TON-USDT-SWAP
+    - TRX-USDT-SWAP
+    - LINK-USDT-SWAP
+    - AVAX-USDT-SWAP
+    - MATIC-USDT-SWAP
+    - DOT-USDT-SWAP
+    - SHIB-USDT-SWAP
+    - LTC-USDT-SWAP
+
+  validation:
+    manual_only: true
+    sigma_threshold: 3.0
+    replace_outliers_default: false
+    sources: [binance, bybit]
+
+  ingestion:
+    default_concurrency: 1
+    max_retries: 3
+    retry_backoff_seconds: [1, 3, 9]
+    chunk_days:
+      1m: 7
+      5m: 30
+      15m: 60
+      1H: 180
 
 clock:
   # Sync OKX server clock every N seconds to prevent 50102 errors
