@@ -216,6 +216,35 @@ python scripts/market_data/ingest.py \
     --flush-every-requests 10
 ```
 
+```bash
+# OKX（必須用 backward）
+python scripts/market_data/ingest.py `
+    --exchange okx `
+    --dataset funding_rate `
+    --symbols BTC-USDT-SWAP,ETH-USDT-SWAP `
+    --start 2022-03-01T00:00:00Z `
+    --end now `
+    --direction backward
+
+# Binance
+python scripts/market_data/ingest.py `
+    --exchange binance `
+    --dataset funding_rate `
+    --symbols BTCUSDT,ETHUSDT `
+    --start 2020-01-01T00:00:00Z `
+    --end now `
+    --direction backward
+
+# Bybit
+python scripts/market_data/ingest.py `
+    --exchange bybit `
+    --dataset funding_rate `
+    --symbols BTCUSDT `
+    --start 2020-03-25T00:00:00Z `
+    --end now `
+    --direction forward
+```
+
 Background Docker run:
 
 ```bash

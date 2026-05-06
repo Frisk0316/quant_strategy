@@ -243,19 +243,74 @@ def load_funding(
     return df
 
 
+# def _load_funding_pg(
+#     inst_id: str,
+#     dsn: str,
+#     start: Optional[str],
+#     end: Optional[str],
+# ) -> pd.DataFrame:
+#     """Synchronous wrapper around CandleStore.get_funding_rates()."""
+#     import sys
+#     from pathlib import Path as _Path
+#     src_root = str(_Path(__file__).parent.parent / "src")
+#     if src_root not in sys.path:
+#         sys.path.insert(0, src_root)
+#     from okx_quant.data.candle_store import CandleStore
+
+#     def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
+#         if not value:
+#             return None
+#         ts = pd.Timestamp(value)
+#         if ts.tzinfo is None:
+#             ts = ts.tz_localize("UTC")
+#         else:
+#             ts = ts.tz_convert("UTC")
+#         return ts.to_pydatetime()
+
+#     async def _fetch() -> pd.DataFrame:
+#         async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
+#             return await store.get_funding_rates(
+#                 inst_id=inst_id,
+#                 start=_to_utc_dt(start),
+#                 end=_to_utc_dt(end),
+#             )
+
+#     try:
+#         asyncio.get_running_loop()
+#         import concurrent.futures
+#         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+#             df = pool.submit(asyncio.run, _fetch()).result()
+#     except RuntimeError:
+#         df = asyncio.run(_fetch())
+
+#     if df.empty:
+#         return pd.DataFrame(columns=["rate", "realized_rate", "nextFundingTime", "apr"])
+
+#     if df.index.tz is not None:
+#         df.index = df.index.tz_convert("UTC").tz_localize(None)
+#     if "apr" not in df.columns and "rate" in df.columns:
+#         interval = df.get("funding_interval_hours", 8.0)
+#         if hasattr(interval, "fillna"):
+#             interval = interval.fillna(8.0)
+#         df["apr"] = df["rate"] * (365 * 24 / interval)
+#     return df
+
 def _load_funding_pg(
     inst_id: str,
     dsn: str,
     start: Optional[str],
     end: Optional[str],
 ) -> pd.DataFrame:
-    """Synchronous wrapper around CandleStore.get_funding_rates()."""
-    import sys
-    from pathlib import Path as _Path
-    src_root = str(_Path(__file__).parent.parent / "src")
-    if src_root not in sys.path:
-        sys.path.insert(0, src_root)
-    from okx_quant.data.candle_store import CandleStore
+    """
+    Load funding rates directly from legacy funding_rates.
+
+    This intentionally bypasses CandleStore.get_funding_rates() because the
+    current multi-exchange ingestion mirrors market_funding_rates into the
+    legacy funding_rates table with source='binance' and inst_id='BTC-USDT-SWAP'.
+    """
+    import asyncio
+    import concurrent.futures
+    import asyncpg
 
     def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -267,34 +322,77 @@ def _load_funding_pg(
             ts = ts.tz_convert("UTC")
         return ts.to_pydatetime()
 
+    start_dt = _to_utc_dt(start)
+    end_dt = _to_utc_dt(end)
+
     async def _fetch() -> pd.DataFrame:
-        async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
-            return await store.get_funding_rates(
-                inst_id=inst_id,
-                start=_to_utc_dt(start),
-                end=_to_utc_dt(end),
+        conn = await asyncpg.connect(dsn)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    ts,
+                    funding_rate AS rate,
+                    realized_rate,
+                    next_funding_ts AS "nextFundingTime",
+                    funding_interval_hours,
+                    mark_price,
+                    source
+                FROM funding_rates
+                WHERE inst_id = $1
+                  AND ($2::timestamptz IS NULL OR ts >= $2)
+                  AND ($3::timestamptz IS NULL OR ts <  $3)
+                ORDER BY ts
+                """,
+                inst_id,
+                start_dt,
+                end_dt,
             )
+        finally:
+            await conn.close()
+
+        if not rows:
+            return pd.DataFrame(
+                columns=[
+                    "rate",
+                    "realized_rate",
+                    "nextFundingTime",
+                    "funding_interval_hours",
+                    "mark_price",
+                    "source",
+                    "apr",
+                ]
+            )
+
+        df = pd.DataFrame([dict(r) for r in rows])
+        df["ts"] = pd.to_datetime(df["ts"], utc=True)
+        df = df.set_index("ts").sort_index()
+
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert("UTC").tz_localize(None)
+
+        interval = df["funding_interval_hours"].fillna(8.0)
+        interval = interval.replace(0, 8.0)
+        df["apr"] = df["rate"] * (365 * 24 / interval)
+
+        return df[
+            [
+                "rate",
+                "realized_rate",
+                "nextFundingTime",
+                "funding_interval_hours",
+                "mark_price",
+                "source",
+                "apr",
+            ]
+        ]
 
     try:
         asyncio.get_running_loop()
-        import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            df = pool.submit(asyncio.run, _fetch()).result()
+            return pool.submit(asyncio.run, _fetch()).result()
     except RuntimeError:
-        df = asyncio.run(_fetch())
-
-    if df.empty:
-        return pd.DataFrame(columns=["rate", "realized_rate", "nextFundingTime", "apr"])
-
-    if df.index.tz is not None:
-        df.index = df.index.tz_convert("UTC").tz_localize(None)
-    if "apr" not in df.columns and "rate" in df.columns:
-        interval = df.get("funding_interval_hours", 8.0)
-        if hasattr(interval, "fillna"):
-            interval = interval.fillna(8.0)
-        df["apr"] = df["rate"] * (365 * 24 / interval)
-    return df
-
+        return asyncio.run(_fetch())
 
 def load_tardis_books(
     path: str,

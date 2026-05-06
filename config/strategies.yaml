@@ -90,3 +90,5 @@ pairs_trading:
   # Block entries if Kalman hedge-ratio covariance is too large
   max_hedge_uncertainty: 10.0
   td_mode: cross
+
+
