@@ -98,12 +98,22 @@ async def main(config_path: str) -> None:
     instruments = cfg.market_data.instruments
     bars = cfg.market_data.bars
 
+    migration_002_path = (
+        Path(__file__).parent.parent.parent
+        / "src" / "okx_quant" / "data" / "migrations" / "002_market_canonical_bridge.sql"
+    )
+
     click.echo(f"Connecting to {dsn.split('@')[-1]}...")
     conn = await asyncpg.connect(dsn)
     try:
         click.echo("Applying migration 001_ohlcv_pipeline_v2.sql...")
         await _apply_migration(conn, migration_path)
         click.echo("  Migration applied.")
+
+        if migration_002_path.exists():
+            click.echo("Applying migration 002_market_canonical_bridge.sql...")
+            await _apply_migration(conn, migration_002_path)
+            click.echo("  Migration applied.")
 
         click.echo(f"Seeding {len(instruments)} instruments...")
         seeded_insts = await _seed_instruments(conn, instruments)

@@ -19,26 +19,35 @@ def load_candles(
     data_dir: str = "data/ticks",
     start: Optional[str] = None,
     end: Optional[str] = None,
-    backend: Literal["parquet", "postgres"] = "parquet",
+    backend: Literal["parquet", "postgres", "market"] = "parquet",
     dsn: Optional[str] = None,
     include_suspect: bool = False,
+    exchange: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load OHLCV candles from Parquet (default) or PostgreSQL/TimescaleDB.
+    Load OHLCV candles from Parquet, PostgreSQL canonical layer, or market layer.
 
     Returns:
         DataFrame with columns [open, high, low, close, vol]
         indexed by ts (tz-naive datetime UTC).
 
     Args:
-        backend: 'parquet' (default, backward-compatible) or 'postgres'.
-        dsn:     PostgreSQL DSN, required when backend='postgres'.
-        include_suspect: Include candles marked quality_status='suspect'.
+        backend: 'parquet' (default), 'postgres' (canonical_candles), or
+                 'market' (market_klines — multi-exchange raw layer).
+        dsn:     PostgreSQL DSN, required when backend='postgres' or 'market'.
+        include_suspect: Include candles marked quality_status='suspect'
+                         (only applies to backend='postgres').
+        exchange: Filter by exchange name, e.g. 'binance'.
+                  Only used when backend='market'.
     """
     if backend == "postgres":
         if not dsn:
             raise ValueError("dsn is required when backend='postgres'")
         return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect)
+    if backend == "market":
+        if not dsn:
+            raise ValueError("dsn is required when backend='market'")
+        return _load_candles_market(inst_id, bar, dsn, start, end, exchange)
     return _load_candles_parquet(inst_id, bar, data_dir, start, end)
 
 
@@ -131,6 +140,72 @@ def _load_candles_pg(
     elif "vol_contract" in df.columns:
         df["vol"] = df["vol_contract"]
     else:
+        df["vol"] = float("nan")
+
+    return df[["open", "high", "low", "close", "vol"]]
+
+
+def _load_candles_market(
+    inst_id: str,
+    bar: str,
+    dsn: str,
+    start: Optional[str],
+    end: Optional[str],
+    exchange: Optional[str],
+) -> pd.DataFrame:
+    """
+    Load candles directly from market_klines (multi-exchange raw layer).
+    inst_id is treated as normalized_symbol (e.g. 'BTC-USDT-SWAP').
+    Returns tz-naive DatetimeIndex (UTC), columns [open, high, low, close, vol].
+    When multiple exchanges have data for the same ts, all rows are returned
+    unless exchange= is specified to filter to a single source.
+    """
+    import sys
+    from pathlib import Path as _Path
+    src_root = str(_Path(__file__).parent.parent / "src")
+    if src_root not in sys.path:
+        sys.path.insert(0, src_root)
+    from okx_quant.data.candle_store import CandleStore
+
+    def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        ts = pd.Timestamp(value)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        return ts.to_pydatetime()
+
+    start_dt = _to_utc_dt(start)
+    end_dt = _to_utc_dt(end)
+
+    async def _fetch() -> pd.DataFrame:
+        async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
+            return await store.get_market_klines(
+                normalized_symbol=inst_id,
+                bar=bar,
+                start=start_dt,
+                end=end_dt,
+                exchange=exchange,
+            )
+
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            df = pool.submit(asyncio.run, _fetch()).result()
+    except RuntimeError:
+        df = asyncio.run(_fetch())
+
+    if df.empty:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert("UTC").tz_localize(None)
+
+    df = df.rename(columns={"vol": "vol"})
+    if "vol" not in df.columns:
         df["vol"] = float("nan")
 
     return df[["open", "high", "low", "close", "vol"]]

@@ -421,6 +421,7 @@ class CandleStore:
         listing_time: Optional[datetime] = None,
         delisting_time: Optional[datetime] = None,
         is_active: bool = True,
+        canonical_inst_id: Optional[str] = None,
     ) -> str:
         await self.ensure_market_data_schema()
         row = await self._pool.fetchrow(
@@ -428,8 +429,8 @@ class CandleStore:
             INSERT INTO market_instruments
                 (exchange, market_type, inst_id, normalized_symbol, base_asset,
                  quote_asset, settlement_asset, contract_type, listing_time,
-                 delisting_time, is_active)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                 delisting_time, is_active, canonical_inst_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             ON CONFLICT (exchange, market_type, inst_id) DO UPDATE SET
                 normalized_symbol=EXCLUDED.normalized_symbol,
                 base_asset=EXCLUDED.base_asset,
@@ -442,14 +443,181 @@ class CandleStore:
                 ),
                 delisting_time=EXCLUDED.delisting_time,
                 is_active=EXCLUDED.is_active,
+                canonical_inst_id=COALESCE(
+                    EXCLUDED.canonical_inst_id,
+                    market_instruments.canonical_inst_id
+                ),
                 updated_at=NOW()
             RETURNING instrument_id::TEXT
             """,
             exchange, market_type, inst_id, normalized_symbol, base_asset,
             quote_asset, settlement_asset, contract_type, listing_time,
-            delisting_time, is_active,
+            delisting_time, is_active, canonical_inst_id,
         )
         return str(row["instrument_id"])
+
+    async def update_market_instrument_canonical(
+        self,
+        *,
+        exchange: str,
+        market_type: str,
+        inst_id: str,
+        canonical_inst_id: str,
+    ) -> None:
+        """Set the canonical_inst_id bridge for an existing market_instruments row."""
+        await self._pool.execute(
+            """
+            UPDATE market_instruments
+            SET canonical_inst_id=$4, updated_at=NOW()
+            WHERE exchange=$1 AND market_type=$2 AND inst_id=$3
+            """,
+            exchange, market_type, inst_id, canonical_inst_id,
+        )
+
+    async def get_market_klines(
+        self,
+        normalized_symbol: str,
+        bar: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        exchange: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Query market_klines for a normalized symbol across all exchanges.
+
+        Returns tz-aware UTC DatetimeIndex with columns:
+        [open, high, low, close, vol, quote_vol, exchange].
+        When multiple exchanges have data for the same ts, all rows are
+        returned (use exchange filter or canonicalize_from_market_klines
+        to get a single source-of-truth series).
+        """
+        conditions = ["mi.normalized_symbol=$1", "k.bar=$2"]
+        params: list[Any] = [normalized_symbol, bar]
+        if exchange:
+            params.append(exchange)
+            conditions.append(f"mi.exchange=${len(params)}")
+        if start:
+            params.append(start)
+            conditions.append(f"k.ts >= ${len(params)}")
+        if end:
+            params.append(end)
+            conditions.append(f"k.ts < ${len(params)}")
+        where = " AND ".join(conditions)
+
+        rows = await self._pool.fetch(
+            f"""
+            SELECT k.ts, k.open, k.high, k.low, k.close,
+                   k.volume AS vol, k.quote_volume AS quote_vol,
+                   mi.exchange
+            FROM market_klines k
+            JOIN market_instruments mi ON mi.instrument_id = k.instrument_id
+            WHERE {where}
+            ORDER BY k.ts, mi.exchange
+            """,
+            *params,
+        )
+        if not rows:
+            return pd.DataFrame(
+                columns=["open", "high", "low", "close", "vol", "quote_vol", "exchange"]
+            )
+        df = pd.DataFrame([dict(r) for r in rows])
+        df["ts"] = pd.to_datetime(df["ts"], utc=True)
+        return df.set_index("ts").sort_index()
+
+    async def canonicalize_from_market_klines(
+        self,
+        canonical_inst_id: str,
+        bar: str,
+        prefer_exchanges: list[str],
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> dict:
+        """
+        Promote market_klines data into canonical_candles.
+
+        For each timestamp, selects the row from the highest-priority exchange
+        in prefer_exchanges (e.g. ['okx', 'binance', 'bybit']).
+        Uses ON CONFLICT DO NOTHING to preserve already-validated canonical rows.
+
+        Returns {promoted: int, source_counts: {exchange: int}}.
+        """
+        if not prefer_exchanges:
+            raise ValueError("prefer_exchanges must not be empty")
+
+        # Build a CASE expression for exchange preference ranking
+        case_parts = [
+            f"WHEN mi.exchange='{ex}' THEN {i + 1}"
+            for i, ex in enumerate(prefer_exchanges)
+        ]
+        case_expr = "CASE " + " ".join(case_parts) + " ELSE 999 END"
+
+        conditions = ["mi.canonical_inst_id=$1", "k.bar=$2"]
+        params: list[Any] = [canonical_inst_id, bar]
+        if start:
+            params.append(start)
+            conditions.append(f"k.ts >= ${len(params)}")
+        if end:
+            params.append(end)
+            conditions.append(f"k.ts < ${len(params)}")
+        where = " AND ".join(conditions)
+
+        # Count per-exchange before promoting so we can report breakdown
+        count_rows = await self._pool.fetch(
+            f"""
+            WITH ranked AS (
+                SELECT mi.exchange,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY k.ts
+                           ORDER BY {case_expr}
+                       ) AS rn
+                FROM market_klines k
+                JOIN market_instruments mi ON mi.instrument_id = k.instrument_id
+                WHERE {where}
+            )
+            SELECT exchange, COUNT(*) AS cnt
+            FROM ranked WHERE rn = 1
+            GROUP BY exchange
+            """,
+            *params,
+        )
+        source_counts = {r["exchange"]: r["cnt"] for r in count_rows}
+
+        result = await self._pool.execute(
+            f"""
+            INSERT INTO canonical_candles
+                (ts, inst_id, bar, open, high, low, close,
+                 vol_contract, vol_base, vol_quote, source_primary, quality_status)
+            WITH ranked AS (
+                SELECT
+                    k.ts,
+                    mi.canonical_inst_id AS inst_id,
+                    k.bar,
+                    k.open, k.high, k.low, k.close,
+                    NULL::DOUBLE PRECISION AS vol_contract,
+                    k.volume             AS vol_base,
+                    k.quote_volume       AS vol_quote,
+                    mi.exchange          AS source_primary,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY k.ts
+                        ORDER BY {case_expr}
+                    ) AS rn
+                FROM market_klines k
+                JOIN market_instruments mi ON mi.instrument_id = k.instrument_id
+                WHERE {where}
+            )
+            SELECT ts, inst_id, bar, open, high, low, close,
+                   vol_contract, vol_base, vol_quote, source_primary, 'raw'
+            FROM ranked
+            WHERE rn = 1
+            ON CONFLICT (inst_id, bar, ts) DO NOTHING
+            """,
+            *params,
+        )
+        try:
+            promoted = int(result.split()[-1])
+        except (ValueError, IndexError):
+            promoted = 0
+        return {"promoted": promoted, "source_counts": source_counts}
 
     async def upsert_market_klines(
         self,

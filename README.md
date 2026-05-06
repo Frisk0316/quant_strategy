@@ -53,6 +53,10 @@ EventBus (asyncio.Queue)
 src/okx_quant/
 ├── core/           config (Pydantic v2), events (dataclasses), bus (asyncio)
 ├── data/           rest_client, okx_book (SortedDict + CRC32), market_data_handler, feed_store
+│   ├── candle_store.py          Async TimescaleDB client (raw + canonical + market layer)
+│   ├── exchange_clients/        Public REST clients: okx_public, binance_public, bybit_public
+│   ├── validators/              cross_exchange.py — Z-score cross-exchange validation
+│   └── migrations/              001_ohlcv_pipeline_v2.sql, 002_market_canonical_bridge.sql
 ├── signals/        obi_ofi, vpin, regime (HMM + GARCH + CUSUM)
 ├── strategies/     as_market_maker, obi_market_maker, funding_carry, pairs_trading
 ├── portfolio/      sizing (vol-target, quarter-Kelly, fixed-fractional), positions, portfolio_manager
@@ -69,10 +73,37 @@ backtesting/
 ├── replay_validation.py    AS MM replay walk-forward and CPCV helpers
 ├── cpcv.py                 Combinatorial Purged Cross-Validation (López de Prado)
 ├── walk_forward.py         Rolling walk-forward (non-overlapping IS/OOS windows)
-├── data_loader.py          Parquet loaders + simple/log return helpers
+├── data_loader.py          Parquet / PostgreSQL / market-layer loaders + return helpers
 ├── result_utils.py         Normalize strategy outputs, extract returns
 └── vectorbt_scanner.py     Fast parameter scanner for initial research
+
+scripts/market_data/
+├── init_db.py              Apply migrations 001 + 002 and seed instruments
+├── ingest.py               Long-running resumable multi-exchange ingestor (OKX / Binance / Bybit)
+├── canonicalize.py         Bridge market_klines → canonical_candles with exchange preference
+├── backfill.py             Single-instrument historical backfill
+├── update_all.py           One-click incremental update for all active pairs
+├── repair_gaps.py          Detect and re-fetch gaps in canonical_candles
+├── validate.py             Cross-exchange Z-score outlier validation
+├── manage_pairs.py         Add / remove / list / status for tracked instruments
+├── import_parquet_ohlcv.py Bridge legacy Parquet → TimescaleDB
+├── import_parquet_funding.py Bridge legacy funding Parquet → TimescaleDB
+├── backfill_funding.py     OKX funding-rate backfill
+└── validate_funding.py     Funding coverage validation with gap detection
 ```
+
+### Database layer
+
+Two parallel systems exist and are bridged by a `canonical_inst_id` column:
+
+| Layer | Old system (OKX-only) | New system (multi-exchange) |
+| --- | --- | --- |
+| Identity | `instruments.inst_id TEXT PK` | `market_instruments.instrument_id UUID` |
+| K-line storage | `raw_candles (source, inst_id, bar, ts)` | `market_klines (instrument_id, bar, ts)` |
+| Strategy-ready | `canonical_candles (inst_id, bar, ts)` ← backtest reads here | promoted via `canonicalize.py` |
+| Funding | `funding_rates (source, inst_id, ts)` | `market_funding_rates (instrument_id, funding_time)` |
+
+OKX data is mirror-written to both systems for backward compatibility. Binance/Bybit data lands only in the new `market_*` tables and must be promoted to `canonical_candles` via `canonicalize.py` before backtests can use it.
 
 ---
 
@@ -241,6 +272,113 @@ FROM market_instruments mi
 JOIN market_klines k USING (instrument_id)
 GROUP BY mi.exchange, mi.inst_id, mi.normalized_symbol
 ORDER BY mi.exchange, mi.inst_id;
+```
+
+**Symbol format by exchange:**
+
+| Exchange | Format | Example |
+| --- | --- | --- |
+| OKX | `BASE-QUOTE-SWAP` | `BTC-USDT-SWAP` |
+| Binance | `BASEQUOTE` | `BTCUSDT` |
+| Bybit | `BASEQUOTE` | `BTCUSDT` |
+
+`--direction forward` paginates oldest→newest; `--direction backward` paginates newest→oldest (default for OKX history endpoint). Both directions are supported for Binance and Bybit.
+
+### Optional Step 1c — Promote Binance/Bybit data into canonical_candles
+
+After ingesting Binance or Bybit data, run this 3-step sequence to make it available to backtests.
+
+**1. Apply the bridge migration (idempotent):**
+
+```bash
+python scripts/market_data/init_db.py
+```
+
+**2. Set `canonical_inst_id` on the market instrument (once per exchange/symbol pair):**
+
+Connect to TimescaleDB:
+
+```bash
+# Find your container name first
+docker ps --format '{{.Names}}' | grep timescale
+
+# Open psql (replace docker-timescaledb-1 with your container name)
+docker exec -it docker-timescaledb-1 psql -U quant -d okx_quant
+```
+
+Then run:
+
+```sql
+-- Confirm the row exists
+SELECT instrument_id, exchange, inst_id, canonical_inst_id
+FROM market_instruments
+WHERE exchange = 'binance' AND inst_id = 'BTCUSDT';
+
+-- Set the bridge (BTC-USDT-SWAP must exist in instruments table)
+UPDATE market_instruments
+SET canonical_inst_id = 'BTC-USDT-SWAP'
+WHERE exchange = 'binance' AND inst_id = 'BTCUSDT';
+```
+
+Repeat for each symbol and exchange (e.g. `ETHUSDT` → `ETH-USDT-SWAP`).
+
+**3. Run `canonicalize.py` to promote into `canonical_candles`:**
+
+Processes month-by-month and prints per-chunk progress:
+
+```bash
+python scripts/market_data/canonicalize.py \
+    --canonical-inst BTC-USDT-SWAP \
+    --bar 1m \
+    --prefer okx,binance,bybit \
+    --start 2024-01-01 \
+    --end 2026-05-07
+```
+
+Example output:
+
+```text
+Canonicalizing  BTC-USDT-SWAP / 1m  prefer=['okx', 'binance', 'bybit']  2024-01-01 → 2026-05-07  (29 monthly chunks)
+
+  [  1/ 29]  2024-01  +90,720     binance=90720    3.4% done
+  [  2/ 29]  2024-02  +87,480     binance=87480    6.9% done
+  ...
+  [ 29/ 29]  2026-05  +8,640      okx=8640       100.0% done
+
+DONE  BTC-USDT-SWAP/1m  total promoted: 1,222,560  [binance=800,000  okx=422,560]
+```
+
+To canonicalize all instruments in `config/settings.yaml` at once:
+
+```bash
+python scripts/market_data/canonicalize.py \
+    --all \
+    --prefer okx,binance,bybit \
+    --start 2024-01-01 \
+    --end 2026-05-07
+```
+
+**4. Verify the result:**
+
+```sql
+-- Row count by source exchange
+SELECT source_primary, COUNT(*) AS rows,
+       MIN(ts) AS first_ts, MAX(ts) AS last_ts
+FROM canonical_candles
+WHERE inst_id = 'BTC-USDT-SWAP' AND bar = '1m'
+GROUP BY source_primary
+ORDER BY first_ts;
+
+-- Spot-check for gaps on any given day (should return 0)
+SELECT COUNT(*) AS missing_1m
+FROM generate_series(
+    '2024-01-01'::timestamptz,
+    '2024-01-02'::timestamptz - interval '1 minute',
+    interval '1 minute'
+) gs(ts)
+LEFT JOIN canonical_candles c
+    ON c.ts = gs.ts AND c.inst_id = 'BTC-USDT-SWAP' AND c.bar = '1m'
+WHERE c.ts IS NULL;
 ```
 
 After the import succeeds, switch `config/settings.yaml`:

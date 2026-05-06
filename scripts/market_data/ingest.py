@@ -172,23 +172,45 @@ def _fetch_page(
 ) -> tuple[list[dict], int, bool]:
     if dataset == "klines_1m":
         if exchange == "binance":
-            rows = client.get_klines(
-                symbol, "1m", start_ms=cursor_ms, end_ms=end_ms - 1,
-                limit=1500, market_type="futures",
-            )
-            rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
-            next_cursor = (rows[-1]["ts_ms"] + BAR_MS) if rows else end_ms
-            return rows, next_cursor, next_cursor >= end_ms or not rows
+            if direction == "backward":
+                # Walk backward: each page covers [window_start, cursor_ms)
+                window_start = max(start_ms, cursor_ms - 1500 * BAR_MS)
+                rows = client.get_klines(
+                    symbol, "1m", start_ms=window_start, end_ms=cursor_ms - 1,
+                    limit=1500, market_type="futures",
+                )
+                rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
+                next_cursor = (min(r["ts_ms"] for r in rows) - 1) if rows else start_ms - 1
+                return rows, next_cursor, next_cursor < start_ms
+            else:
+                rows = client.get_klines(
+                    symbol, "1m", start_ms=cursor_ms, end_ms=end_ms - 1,
+                    limit=1500, market_type="futures",
+                )
+                rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
+                next_cursor = (rows[-1]["ts_ms"] + BAR_MS) if rows else end_ms
+                return rows, next_cursor, next_cursor >= end_ms or not rows
 
         if exchange == "bybit":
-            window_end = min(cursor_ms + 1000 * BAR_MS - 1, end_ms - 1)
-            rows = client.get_kline(
-                symbol, "1m", start_ms=cursor_ms, end_ms=window_end,
-                limit=1000, category="linear",
-            )
-            rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
-            next_cursor = (rows[-1]["ts_ms"] + BAR_MS) if rows else window_end + 1
-            return rows, next_cursor, next_cursor >= end_ms
+            if direction == "backward":
+                window_start = max(start_ms, cursor_ms - 1000 * BAR_MS)
+                window_end = cursor_ms - 1
+                rows = client.get_kline(
+                    symbol, "1m", start_ms=window_start, end_ms=window_end,
+                    limit=1000, category="linear",
+                )
+                rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
+                next_cursor = (min(r["ts_ms"] for r in rows) - 1) if rows else start_ms - 1
+                return rows, next_cursor, next_cursor < start_ms
+            else:
+                window_end = min(cursor_ms + 1000 * BAR_MS - 1, end_ms - 1)
+                rows = client.get_kline(
+                    symbol, "1m", start_ms=cursor_ms, end_ms=window_end,
+                    limit=1000, category="linear",
+                )
+                rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
+                next_cursor = (rows[-1]["ts_ms"] + BAR_MS) if rows else window_end + 1
+                return rows, next_cursor, next_cursor >= end_ms
 
         if exchange == "okx":
             if direction != "backward":
@@ -305,9 +327,10 @@ async def _flush(
     )
     state.requests_since_flush = 0
     state.last_flush_ts = time.monotonic()
+    checkpoint_dt = datetime.fromtimestamp(state.cursor_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
     click.echo(
-        f"  FLUSH {exchange} {dataset} {symbol}: rows={len(rows)} "
-        f"checkpoint={state.cursor_ms}"
+        f"  ↓ FLUSHED {inserted:,} rows to DB"
+        f"  checkpoint {checkpoint_dt} UTC"
     )
     return inserted
 
@@ -367,11 +390,17 @@ async def ingest_symbol(
         )
         await store.update_checkpoint(exchange, dataset, symbol, direction, state.cursor_ms, "running")
 
+        if dataset == "klines_1m":
+            expected_rows = max(1, (end_ms - start_ms) // BAR_MS)
+        else:
+            expected_rows = max(1, (end_ms - start_ms) // EIGHT_HOURS_MS)
+
+        start_dt_str = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+        end_dt_str   = datetime.fromtimestamp(end_ms   / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
         click.echo(
-            f"INGEST {exchange} {dataset} {symbol} "
-            f"{datetime.fromtimestamp(start_ms/1000, tz=timezone.utc)} -> "
-            f"{datetime.fromtimestamp(end_ms/1000, tz=timezone.utc)} "
-            f"direction={direction} cursor={state.cursor_ms}"
+            f"INGEST  {exchange} / {symbol} / {dataset}\n"
+            f"  range     {start_dt_str} → {end_dt_str}  direction={direction}\n"
+            f"  expected  ~{expected_rows:,} rows"
         )
 
         done = False
@@ -395,9 +424,13 @@ async def ingest_symbol(
             state.request_count += 1
             state.requests_since_flush += 1
             state.row_count += len(rows)
+
+            req_status = f"OK  +{len(rows):,} rows" if rows else "EMPTY"
+            pct = min(100.0, state.row_count / expected_rows * 100)
             click.echo(
-                f"  request={state.request_count} cursor={state.cursor_ms} "
-                f"rows={len(rows)} buffer={len(buffer)} done={done}"
+                f"  #{state.request_count:4d}  {req_status:<18s}"
+                f"  fetched {state.row_count:>8,} / ~{expected_rows:,} ({pct:5.1f}%)"
+                f"  buffer {len(buffer):,}"
             )
 
             should_flush = (
@@ -422,6 +455,11 @@ async def ingest_symbol(
             if done:
                 break
 
+        click.echo(
+            f"\nALL DONE — {state.row_count:,} rows written"
+            f"  ({state.request_count} requests)"
+            f"  {exchange} / {symbol} / {dataset}"
+        )
         await store.update_checkpoint(exchange, dataset, symbol, direction, state.cursor_ms, "success")
         await store.finish_job(
             job_id,
