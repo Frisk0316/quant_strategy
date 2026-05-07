@@ -49,6 +49,10 @@ class ReplayBacktestResult:
     fill_log: pd.DataFrame
     funding_log: pd.DataFrame
     trade_log: pd.DataFrame
+    signal_log: list[dict] = field(default_factory=list)
+    risk_event_log: list[dict] = field(default_factory=list)
+    rejected_log: list[dict] = field(default_factory=list)
+    cancel_log: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -58,6 +62,8 @@ class ReplayRecorder:
     fill_log: list[dict] = field(default_factory=list)
     funding_log: list[dict] = field(default_factory=list)
     equity_samples: list[dict] = field(default_factory=list)
+    signal_log: list[dict] = field(default_factory=list)
+    risk_event_log: list[dict] = field(default_factory=list)
 
     def record_order(self, order: OrderPayload, ts: int) -> None:
         self.order_log.append({
@@ -113,7 +119,60 @@ class ReplayRecorder:
     def record_equity(self, ts: int, equity: float) -> None:
         self.equity_samples.append({"ts": ts, "equity": equity})
 
-    def build_result(self, positions: PositionLedger, periods: int) -> ReplayBacktestResult:
+    def record_signal(self, signal, ts: int) -> None:
+        from okx_quant.core.events import SignalPayload
+        import json
+        if not isinstance(signal, SignalPayload):
+            return
+        self.signal_log.append({
+            "ts": ts,
+            "strategy": signal.strategy,
+            "inst_id": signal.inst_id,
+            "side": signal.side,
+            "strength": signal.strength,
+            "fair_value": signal.fair_value,
+            "target_bid": signal.target_bid,
+            "target_ask": signal.target_ask,
+            "metadata": dict(signal.metadata) if signal.metadata else {},
+        })
+
+    def record_risk_event(
+        self,
+        *,
+        ts: int,
+        strategy: str,
+        inst_id: str,
+        side: str,
+        px: float,
+        sz: float,
+        notional_usd: float,
+        reason: str,
+        current_position: float = 0.0,
+        position_limit: float = 0.0,
+        current_equity: float = 0.0,
+        metadata: dict | None = None,
+    ) -> None:
+        self.risk_event_log.append({
+            "ts": ts,
+            "strategy": strategy,
+            "inst_id": inst_id,
+            "side": side,
+            "px": px,
+            "sz": sz,
+            "notional_usd": notional_usd,
+            "reason": reason,
+            "current_position": current_position,
+            "position_limit": position_limit,
+            "current_equity": current_equity,
+            "metadata": metadata or {},
+        })
+
+    def build_result(
+        self,
+        positions: PositionLedger,
+        periods: int,
+        execution_model: Optional["ReplayExecutionModel"] = None,
+    ) -> ReplayBacktestResult:
         if not self.equity_samples:
             self.record_equity(0, self.initial_equity)
 
@@ -125,6 +184,9 @@ class ReplayRecorder:
         metrics = summary(returns, periods=periods)
         metrics.update(self._execution_metrics(returns))
 
+        rejected_log = list(execution_model.rejected_log) if execution_model else []
+        cancel_log = list(execution_model.cancel_log) if execution_model else []
+
         return ReplayBacktestResult(
             returns=returns,
             equity_curve=equity_series,
@@ -133,6 +195,10 @@ class ReplayRecorder:
             fill_log=pd.DataFrame(self.fill_log),
             funding_log=pd.DataFrame(self.funding_log),
             trade_log=pd.DataFrame(positions.get_trade_log()),
+            signal_log=list(self.signal_log),
+            risk_event_log=list(self.risk_event_log),
+            rejected_log=rejected_log,
+            cancel_log=cancel_log,
         )
 
     def _execution_metrics(self, returns: pd.Series) -> dict:
@@ -144,11 +210,21 @@ class ReplayRecorder:
         computed via ``backtesting/cpcv.py`` with N equal to the actual number
         of parameter/strategy trials.
         """
-        order_count = len(self.order_log)
-        fill_count = len(self.fill_log)
-        total_fees = float(sum(row["fee"] for row in self.fill_log))
-        fill_notional = float(sum(row.get("notional_usd", 0.0) for row in self.fill_log))
+        submitted_order_count = len(self.order_log)
+        real_fills = [
+            row for row in self.fill_log
+            if float(row.get("fill_sz", 0)) > 0
+            and row.get("state") in {"filled", "partially_filled"}
+        ]
+        pending_fills = [row for row in self.fill_log if row.get("state") == "pending"]
+        partial_fills = [row for row in real_fills if row.get("state") == "partially_filled"]
+        real_fill_count = len(real_fills)
+        filled_order_ids = {row.get("cl_ord_id") for row in real_fills if row.get("cl_ord_id")}
+        orders_filled_count = len(filled_order_ids)
+        total_fees = float(sum(row["fee"] for row in real_fills))
+        fill_notional = float(sum(row.get("notional_usd", 0.0) for row in real_fills))
         funding_cashflow = float(sum(row["cashflow"] for row in self.funding_log))
+        fill_rate = orders_filled_count / submitted_order_count if submitted_order_count else 0.0
         ret_arr = returns.to_numpy(dtype=float)
         if len(ret_arr) < 4 or float(returns.std()) == 0.0:
             psr_val = 0.0
@@ -157,9 +233,14 @@ class ReplayRecorder:
             psr_val = psr(ret_arr, sr_benchmark=0.0)
             dsr_val = psr_val
         return {
-            "order_count": order_count,
-            "fill_count": fill_count,
-            "fill_rate": fill_count / order_count if order_count else 0.0,
+            "submitted_order_count": submitted_order_count,
+            "order_count": submitted_order_count,
+            "orders_filled_count": orders_filled_count,
+            "real_fill_count": real_fill_count,
+            "fill_count": real_fill_count,
+            "pending_fill_event_count": len(pending_fills),
+            "partial_fill_count": len(partial_fills),
+            "fill_rate": fill_rate,
             "total_fees": total_fees,
             "fill_notional_usd": fill_notional,
             "funding_cashflow": funding_cashflow,
@@ -186,6 +267,18 @@ def _normalize_time_filter(df: pd.DataFrame, ts_col: str = "ts", start: Optional
     if end:
         data = data[data[ts_col] < pd.Timestamp(end, tz="UTC")]
     return data.sort_values(ts_col)
+
+
+def _to_ms_int(val) -> int:
+    """Convert a timestamp value (Timestamp, int, float, None) to milliseconds integer."""
+    if val is None:
+        return 0
+    try:
+        if isinstance(val, pd.Timestamp):
+            return int(val.timestamp() * 1000)
+        return int(float(val))
+    except (TypeError, ValueError, OSError):
+        return 0
 
 
 def _load_parquet_frames(paths: Iterable[Path]) -> pd.DataFrame:
@@ -385,7 +478,7 @@ class HistoricalEventFeed:
                 seq_id=0,
                 channel="funding-rate",
                 funding_rate=float(row.funding_rate),
-                next_funding_time=int(getattr(row, "next_funding_time", 0) or 0),
+                next_funding_time=_to_ms_int(getattr(row, "next_funding_time", 0)),
                 funding_interval_hours=(
                     float(row.funding_interval_hours)
                     if getattr(row, "funding_interval_hours", None) is not None
@@ -554,6 +647,7 @@ class ReplayBacktestEngine:
                     if strategy.is_active:
                         signal = await strategy.on_market(event, books.get(payload.inst_id))
                         if signal:
+                            recorder.record_signal(signal, payload.ts)
                             await bus.put(Event(EvtType.SIGNAL, payload=signal))
 
         async def on_funding_event(event: Event) -> None:
@@ -604,7 +698,7 @@ class ReplayBacktestEngine:
             dispatch_task.cancel()
             await asyncio.gather(dispatch_task, return_exceptions=True)
 
-        return recorder.build_result(positions, periods=self._periods)
+        return recorder.build_result(positions, periods=self._periods, execution_model=execution_model)
 
     def run_sync(self, feed: HistoricalEventFeed) -> ReplayBacktestResult:
         return asyncio.run(self.run(feed))
@@ -754,6 +848,35 @@ def build_feed_for_strategies(
         ))
 
     market_df = _concat_non_empty(market_frames)
+
+    # Load funding for all SWAP symbols that appear in market data,
+    # not only for funding_carry. Missing funding data is non-fatal.
+    swap_symbols_with_funding: set[str] = set()
+    if not market_df.empty and "inst_id" in market_df.columns:
+        swap_symbols_with_funding = {
+            s for s in market_df["inst_id"].unique()
+            if isinstance(s, str) and "SWAP" in s
+        }
+    for sym in swap_symbols_with_funding:
+        if any(
+            not df.empty and "inst_id" in df.columns and sym in df["inst_id"].values
+            for df in funding_frames
+        ):
+            continue
+        try:
+            extra = load_funding_events(
+                sym,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend=cfg.storage.candle_backend,
+                dsn=cfg.storage.timescale_dsn,
+            )
+            if not extra.empty:
+                funding_frames.append(extra)
+        except Exception:
+            logger.warning("No funding data available for {}", sym)
+
     funding_df = _concat_non_empty(funding_frames)
     return HistoricalEventFeed(market_events=market_df, funding_events=funding_df)
 

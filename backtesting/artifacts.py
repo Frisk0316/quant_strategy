@@ -1,0 +1,897 @@
+"""
+Backtest artifacts exporter.
+
+Writes a self-contained results/<run_id>/ directory containing JSON summaries
+and CSV tables for every aspect of a replay backtest run.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+import numpy as np
+import pandas as pd
+from loguru import logger
+
+
+# ---------------------------------------------------------------------------
+# Fixed column schemas — ensures every CSV has the correct header even when
+# the corresponding DataFrame is empty.
+# ---------------------------------------------------------------------------
+
+ORDER_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "ord_type",
+    "px", "sz", "notional_usd", "td_mode", "cl_ord_id", "state", "reason", "metadata",
+]
+
+FILL_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "fill_px", "fill_sz",
+    "fee", "fee_ccy", "state", "cl_ord_id", "ord_id", "notional_usd", "fee_rate",
+    "ct_val", "remaining_sz", "execution_model", "metadata",
+]
+
+TRADE_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "fill_px", "fill_sz",
+    "fee", "fee_ccy",
+    "size_before", "size_after", "avg_entry_before", "avg_entry_after",
+    "position_notional_before", "position_notional_after",
+    "realized_pnl", "net_realized_pnl", "unrealized_pnl_after",
+    "cash_before", "cash_after", "equity_after",
+    "is_opening", "is_reducing", "is_closing", "is_reversing",
+    "metadata",
+]
+
+POSITION_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "size", "avg_entry",
+    "mark_price", "notional", "unrealized_pnl", "realized_pnl",
+    "net_realized_pnl", "cash", "equity", "leverage",
+]
+
+EQUITY_COLUMNS = [
+    "ts", "datetime", "equity", "cash", "realized_pnl",
+    "unrealized_pnl", "funding_pnl", "fee_paid", "drawdown", "return",
+]
+
+RETURN_COLUMNS = ["ts", "datetime", "return", "log_return"]
+
+DRAWDOWN_COLUMNS = [
+    "ts", "datetime", "equity", "running_max_equity", "drawdown", "drawdown_pct",
+]
+
+FUNDING_COLUMNS = [
+    "ts", "datetime", "inst_id", "strategy", "funding_rate", "funding_rate_pct",
+    "funding_interval_hours", "mark_price", "position_size", "position_notional",
+    "funding_fee", "cash_before", "cash_after", "equity_after", "source",
+]
+
+SIGNAL_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "strength",
+    "fair_value", "target_bid", "target_ask", "metadata",
+]
+
+RISK_EVENT_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "px", "sz",
+    "notional_usd", "reason", "current_position", "position_limit",
+    "current_equity", "metadata",
+]
+
+REJECTED_ORDER_COLUMNS = [
+    "ts", "datetime", "strategy", "inst_id", "side", "px", "sz",
+    "cl_ord_id", "reason", "best_bid", "best_ask", "metadata",
+]
+
+CANCEL_LOG_COLUMNS = [
+    "ts", "datetime", "inst_id", "cl_ord_id", "state", "effective_ts", "reason",
+]
+
+EXECUTION_MARKER_COLUMNS = [
+    "ts", "datetime", "inst_id", "strategy", "side", "price", "qty", "fee",
+    "net_realized_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
+]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _now_utc() -> str:
+    return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+
+
+def _ts_to_datetime(ts_series: pd.Series) -> pd.Series:
+    """Convert a ts column (ms integer or datetime-like) to ISO-8601 UTC strings."""
+    try:
+        converted = pd.to_datetime(ts_series, unit="ms", utc=True, errors="coerce")
+        if converted.isna().all():
+            converted = pd.to_datetime(ts_series, utc=True, errors="coerce")
+    except Exception:
+        converted = pd.to_datetime(ts_series, utc=True, errors="coerce")
+    return converted.dt.strftime("%Y-%m-%dT%H:%M:%SZ").fillna("")
+
+
+def _dump_metadata(val: Any) -> str:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return "{}"
+    if isinstance(val, dict):
+        return json.dumps(val, ensure_ascii=False)
+    if isinstance(val, str):
+        return val if val.startswith("{") else json.dumps({"raw": val}, ensure_ascii=False)
+    return json.dumps({"raw": str(val)}, ensure_ascii=False)
+
+
+def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Add any missing columns as None and reorder to match schema."""
+    for col in columns:
+        if col not in df.columns:
+            df[col] = None
+    return df[columns]
+
+
+def _safe_float(val: Any, default: float = float("nan")) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+# ---------------------------------------------------------------------------
+# run_id generation
+# ---------------------------------------------------------------------------
+
+def build_run_id(
+    strategy_names: list[str],
+    start: Optional[str],
+    end: Optional[str],
+    bar: str,
+    run_id: Optional[str] = None,
+) -> str:
+    if run_id:
+        return re.sub(r'[<>:"/\\|?*]', "_", run_id)
+    strat = "_".join(sorted(strategy_names)) if strategy_names else "unknown"
+    start_s = (start or "nostart").replace("-", "")[:8]
+    end_s = (end or "noend").replace("-", "")[:8]
+    bar_s = bar.replace(":", "")
+    now_s = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return f"replay_{strat}_{start_s}_{end_s}_{bar_s}_{now_s}"
+
+
+# ---------------------------------------------------------------------------
+# Individual writers
+# ---------------------------------------------------------------------------
+
+def _write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+
+
+def _write_csv(path: Path, df: pd.DataFrame, columns: list[str]) -> None:
+    df = df.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    if "metadata" in columns and "metadata" in df.columns:
+        df["metadata"] = df["metadata"].apply(_dump_metadata)
+    df = ensure_columns(df, columns)
+    df.to_csv(path, index=False)
+
+
+def _artifact_mode() -> str:
+    """Return files/db/both. With DATABASE_URL configured, default to DB-only."""
+    raw = os.environ.get("BACKTEST_ARTIFACT_MODE", "").strip().lower()
+    if raw in {"files", "db", "both"}:
+        if raw == "db" and not os.environ.get("DATABASE_URL"):
+            logger.warning("BACKTEST_ARTIFACT_MODE=db requested but DATABASE_URL is not set; writing files instead")
+            return "files"
+        return raw
+    return "db" if os.environ.get("DATABASE_URL") else "files"
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, float) and np.isnan(value):
+        return None
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return None if np.isnan(float(value)) else float(value)
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (datetime, pd.Timestamp)):
+        if pd.isna(value):
+            return None
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if pd.isna(value) if not isinstance(value, (list, dict, tuple, set)) else False:
+        return None
+    return value
+
+
+def _df_records(df: pd.DataFrame) -> list[dict]:
+    if df.empty:
+        return []
+    return _json_safe(json.loads(df.to_json(orient="records", force_ascii=False, date_format="iso")))
+
+
+def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path) -> None:
+    """Best-effort: insert run summary into backtest_runs table. Non-fatal."""
+    try:
+        import asyncio
+        import os
+
+        import asyncpg
+
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn:
+            return
+
+        metrics = meta.get("metrics", {})
+
+        def _parse_date(value: Any) -> Any:
+            if not value:
+                return None
+            try:
+                return datetime.fromisoformat(str(value)[:10]).date()
+            except Exception:
+                return None
+
+        async def _insert() -> None:
+            conn = await asyncpg.connect(dsn)
+            try:
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS backtest_runs (
+                        run_id          TEXT PRIMARY KEY,
+                        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        strategies      TEXT[] NOT NULL DEFAULT '{}',
+                        symbols         TEXT[] NOT NULL DEFAULT '{}',
+                        bar             TEXT NOT NULL DEFAULT '',
+                        start_date      DATE,
+                        end_date        DATE,
+                        artifact_dir    TEXT NOT NULL,
+                        total_return    FLOAT8,
+                        sharpe          FLOAT8,
+                        max_drawdown    FLOAT8,
+                        order_count     INT,
+                        real_fill_count INT,
+                        fill_rate       FLOAT8,
+                        bankrupt        BOOLEAN DEFAULT FALSE,
+                        metadata        JSONB DEFAULT '{}'
+                    )
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO backtest_runs
+                      (run_id, created_at, strategies, symbols, bar, start_date, end_date,
+                       artifact_dir, total_return, sharpe, max_drawdown, order_count,
+                       real_fill_count, fill_rate, bankrupt)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                    ON CONFLICT (run_id) DO NOTHING
+                    """,
+                    run_id,
+                    datetime.now(tz=timezone.utc),
+                    meta.get("strategies", []),
+                    meta.get("symbols", []),
+                    meta.get("bar", ""),
+                    _parse_date(meta.get("start")),
+                    _parse_date(meta.get("end")),
+                    str(artifact_dir),
+                    metrics.get("total_return"),
+                    metrics.get("sharpe"),
+                    metrics.get("max_drawdown"),
+                    metrics.get("order_count", metrics.get("submitted_order_count")),
+                    metrics.get("real_fill_count", metrics.get("fill_count", metrics.get("orders_filled_count"))),
+                    metrics.get("fill_rate"),
+                    bool(metrics.get("bankrupt", False)),
+                )
+            finally:
+                await conn.close()
+
+        asyncio.run(_insert())
+    except Exception as exc:
+        logger.warning("Could not upsert run {} to DB: {}", run_id, exc)
+
+
+def _upsert_artifacts_to_db(run_id: str, artifacts: dict[str, Any]) -> None:
+    """Best-effort: store full artifacts in backtest_artifacts JSONB rows."""
+    try:
+        import asyncio
+
+        import asyncpg
+
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn or _artifact_mode() not in {"db", "both"}:
+            return
+
+        async def _insert() -> None:
+            conn = await asyncpg.connect(dsn)
+            try:
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS backtest_artifacts (
+                        run_id        TEXT NOT NULL REFERENCES backtest_runs(run_id) ON DELETE CASCADE,
+                        artifact_type TEXT NOT NULL,
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        row_count     INT NOT NULL DEFAULT 0,
+                        payload       JSONB NOT NULL,
+                        PRIMARY KEY (run_id, artifact_type)
+                    )
+                    """
+                )
+                rows = []
+                for artifact_type, payload in artifacts.items():
+                    safe_payload = _json_safe(payload)
+                    row_count = len(safe_payload) if isinstance(safe_payload, list) else 1
+                    rows.append((
+                        run_id,
+                        artifact_type,
+                        row_count,
+                        json.dumps(safe_payload, ensure_ascii=False, default=str),
+                    ))
+                await conn.executemany(
+                    """
+                    INSERT INTO backtest_artifacts (run_id, artifact_type, row_count, payload)
+                    VALUES ($1, $2, $3, $4::jsonb)
+                    ON CONFLICT (run_id, artifact_type) DO UPDATE SET
+                        row_count=EXCLUDED.row_count,
+                        payload=EXCLUDED.payload,
+                        created_at=NOW()
+                    """,
+                    rows,
+                )
+            finally:
+                await conn.close()
+
+        asyncio.run(_insert())
+    except Exception as exc:
+        logger.warning("Could not upsert artifacts for run {} to DB: {}", run_id, exc)
+
+
+def _normalize_orders(order_log: pd.DataFrame) -> pd.DataFrame:
+    if order_log.empty:
+        return order_log
+    df = order_log.copy()
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    if "metadata" not in df.columns:
+        df["metadata"] = "{}"
+    else:
+        df["metadata"] = df["metadata"].apply(_dump_metadata)
+    for col in ["state", "reason", "ord_type", "td_mode"]:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _normalize_fills(fill_log: pd.DataFrame) -> pd.DataFrame:
+    if fill_log.empty:
+        return fill_log
+    df = fill_log.copy()
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    # Extract structured fields from metadata
+    if "metadata" in df.columns:
+        meta_series = df["metadata"].apply(
+            lambda m: m if isinstance(m, dict) else {}
+        )
+        for field in ["fee_rate", "ct_val", "remaining_sz", "execution_model", "notional_usd"]:
+            if field not in df.columns:
+                df[field] = meta_series.apply(lambda m: m.get(field))
+        if "notional_usd" in df.columns:
+            fallback_mask = df["notional_usd"].isna() | (df["notional_usd"] == 0)
+            if fallback_mask.any():
+                ct_val = df.get("ct_val", pd.Series(1.0, index=df.index)).fillna(1.0)
+                df.loc[fallback_mask, "notional_usd"] = (
+                    df.loc[fallback_mask, "fill_px"].astype(float)
+                    * df.loc[fallback_mask, "fill_sz"].astype(float)
+                    * ct_val.loc[fallback_mask].astype(float)
+                )
+        df["metadata"] = df["metadata"].apply(_dump_metadata)
+    for col in ["fee_ccy", "ord_id"]:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_equity_df(
+    equity_curve: pd.Series,
+    fill_log: pd.DataFrame,
+    funding_log: pd.DataFrame,
+) -> pd.DataFrame:
+    if equity_curve.empty:
+        return pd.DataFrame(columns=EQUITY_COLUMNS)
+
+    eq = equity_curve.copy()
+    if not isinstance(eq.index, pd.DatetimeIndex):
+        idx = pd.to_datetime(eq.index, unit="ms", utc=True, errors="coerce")
+        if idx.isna().all():
+            idx = pd.to_datetime(eq.index, utc=True, errors="coerce")
+    else:
+        idx = eq.index
+
+    df = pd.DataFrame({
+        "ts": eq.index,
+        "equity": eq.values.astype(float),
+    })
+    df["datetime"] = _ts_to_datetime(df["ts"])
+    df["return"] = df["equity"].pct_change().fillna(0.0)
+    running_max = df["equity"].cummax()
+    df["drawdown"] = (df["equity"] - running_max) / running_max.replace(0, float("nan"))
+    df["drawdown"] = df["drawdown"].fillna(0.0)
+
+    # Aggregate fee_paid from fills
+    total_fee = 0.0
+    if not fill_log.empty and "fee" in fill_log.columns:
+        total_fee = float(fill_log["fee"].sum())
+
+    # Aggregate funding_pnl from funding log
+    total_funding = 0.0
+    if not funding_log.empty and "cashflow" in funding_log.columns:
+        total_funding = float(funding_log["cashflow"].sum())
+
+    df["cash"] = float("nan")
+    df["realized_pnl"] = float("nan")
+    df["unrealized_pnl"] = float("nan")
+    df["funding_pnl"] = total_funding
+    df["fee_paid"] = total_fee
+    return df
+
+
+def _build_returns_df(equity_curve: pd.Series) -> pd.DataFrame:
+    if equity_curve.empty:
+        return pd.DataFrame(columns=RETURN_COLUMNS)
+    eq = equity_curve.values.astype(float)
+    rets = pd.Series(eq).pct_change().fillna(0.0).values
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_rets = np.where(
+            (eq[:-1] > 0) & (eq[1:] > 0),
+            np.log(eq[1:] / eq[:-1]),
+            float("nan"),
+        )
+    log_rets = np.concatenate([[float("nan")], log_rets])
+    df = pd.DataFrame({
+        "ts": equity_curve.index,
+        "return": rets,
+        "log_return": log_rets,
+    })
+    df["datetime"] = _ts_to_datetime(df["ts"])
+    return df
+
+
+def _build_drawdown_df(equity_curve: pd.Series) -> pd.DataFrame:
+    if equity_curve.empty:
+        return pd.DataFrame(columns=DRAWDOWN_COLUMNS)
+    eq = equity_curve.values.astype(float)
+    running_max = pd.Series(eq).cummax().values
+    dd = eq - running_max
+    dd_pct = np.where(running_max != 0, dd / running_max, 0.0)
+    df = pd.DataFrame({
+        "ts": equity_curve.index,
+        "equity": eq,
+        "running_max_equity": running_max,
+        "drawdown": dd,
+        "drawdown_pct": dd_pct,
+    })
+    df["datetime"] = _ts_to_datetime(df["ts"])
+    return df
+
+
+def _build_funding_df(funding_log: pd.DataFrame) -> pd.DataFrame:
+    if funding_log.empty:
+        return funding_log
+    df = funding_log.copy()
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    col_map = {
+        "rate": "funding_rate",
+        "cashflow": "funding_fee",
+        "notional_usd": "position_notional",
+    }
+    df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns and v not in df.columns})
+    if "funding_rate" in df.columns:
+        df["funding_rate_pct"] = df["funding_rate"] * 100
+    for col in ["strategy", "funding_interval_hours", "source", "cash_before", "cash_after", "equity_after"]:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) -> pd.DataFrame:
+    real_fills = fill_log[
+        (fill_log["fill_sz"].astype(float) > 0)
+        & (fill_log["state"].isin({"filled", "partially_filled"}))
+    ].copy() if not fill_log.empty and "state" in fill_log.columns else pd.DataFrame()
+
+    if real_fills.empty:
+        return pd.DataFrame(columns=EXECUTION_MARKER_COLUMNS)
+
+    real_fills["datetime"] = _ts_to_datetime(real_fills["ts"])
+
+    # Join net_realized_pnl from trade_log where available
+    net_pnl_map: dict = {}
+    if not trade_log.empty and "net_realized_pnl" in trade_log.columns:
+        for _, row in trade_log.iterrows():
+            key = (row.get("inst_id", ""), row.get("ts", 0))
+            net_pnl_map[key] = row.get("net_realized_pnl", 0.0)
+
+    rows = []
+    for _, f in real_fills.iterrows():
+        side = str(f.get("side", "buy"))
+        price = _safe_float(f.get("fill_px"), 0.0)
+        qty = _safe_float(f.get("fill_sz"), 0.0)
+        fee = _safe_float(f.get("fee"), 0.0)
+        pnl = _safe_float(
+            net_pnl_map.get((f.get("inst_id", ""), f.get("ts", 0)), float("nan")),
+            float("nan"),
+        )
+        pnl_str = f"{pnl:.2f}" if not np.isnan(pnl) else "n/a"
+        marker_position = "belowBar" if side == "buy" else "aboveBar"
+        marker_shape = "arrowUp" if side == "buy" else "arrowDown"
+        marker_text = f"{side.upper()} {qty} @ {price:.4g} | PnL: {pnl_str}"
+
+        # position_after from trade_log
+        pos_after = float("nan")
+        if not trade_log.empty and "size_after" in trade_log.columns:
+            match = trade_log[
+                (trade_log.get("inst_id", pd.Series()) == f.get("inst_id", ""))
+                & (trade_log.get("ts", pd.Series()) == f.get("ts", 0))
+            ]
+            if not match.empty:
+                pos_after = _safe_float(match.iloc[0].get("size_after"), float("nan"))
+
+        rows.append({
+            "ts": f.get("ts"),
+            "datetime": f.get("datetime", ""),
+            "inst_id": f.get("inst_id", ""),
+            "strategy": f.get("strategy", ""),
+            "side": side,
+            "price": price,
+            "qty": qty,
+            "fee": fee,
+            "net_realized_pnl": pnl,
+            "position_after": pos_after,
+            "marker_position": marker_position,
+            "marker_shape": marker_shape,
+            "marker_text": marker_text,
+        })
+    return pd.DataFrame(rows)
+
+
+def _build_data_coverage(
+    market_frames_meta: list[dict],
+    funding_frames_meta: list[dict],
+) -> dict:
+    return {
+        "candles": market_frames_meta,
+        "funding": funding_frames_meta,
+    }
+
+
+def _build_positions_from_trades(trade_log: pd.DataFrame) -> pd.DataFrame:
+    """Build position snapshots from trade log (one row per real fill)."""
+    if trade_log.empty:
+        return pd.DataFrame(columns=POSITION_COLUMNS)
+    df = trade_log.copy()
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    df["size"] = df.get("size_after", None)
+    df["avg_entry"] = df.get("avg_entry_after", None)
+    df["mark_price"] = df.get("fill_px", None)
+    df["notional"] = df.get("position_notional_after", None)
+    df["unrealized_pnl"] = df.get("unrealized_pnl_after", None)
+    df["realized_pnl"] = df.get("realized_pnl", None)
+    df["net_realized_pnl"] = df.get("net_realized_pnl", None)
+    df["cash"] = df.get("cash_after", None)
+    df["equity"] = df.get("equity_after", None)
+    df["leverage"] = float("nan")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Sensitive key filter for config export
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_KEYS = {
+    "api_key", "secret", "passphrase", "password", "token",
+    "telegram_token", "bot_token", "webhook_secret",
+}
+
+
+def _scrub_secrets(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {
+            k: "***REDACTED***" if k.lower() in _SENSITIVE_KEYS else _scrub_secrets(v)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_scrub_secrets(v) for v in obj]
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def save_backtest_artifacts(
+    result: Any,
+    cfg: Any,
+    args: Any,
+    output_dir: str = "results",
+    run_id: Optional[str] = None,
+    strategy_names: Optional[list[str]] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    bar: str = "1H",
+    market_frames_meta: Optional[list[dict]] = None,
+    funding_frames_meta: Optional[list[dict]] = None,
+) -> Path:
+    """
+    Write all backtest artifacts for a single run.
+
+    Returns the path to the run directory.
+    """
+    # Build run directory
+    strats = strategy_names or getattr(args, "strategy", []) or []
+    start_s = start or getattr(args, "start", None)
+    end_s = end or getattr(args, "end", None)
+    bar_s = bar or getattr(args, "bar", "1H")
+    run_id_final = build_run_id(strats, start_s, end_s, bar_s, run_id)
+
+    artifact_mode = _artifact_mode()
+    write_files = artifact_mode in {"files", "both"}
+    run_dir = Path(output_dir) / run_id_final
+    if write_files:
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    # -------------------------------------------------------------------
+    # Pull data from result
+    # -------------------------------------------------------------------
+    order_log: pd.DataFrame = getattr(result, "order_log", pd.DataFrame())
+    fill_log: pd.DataFrame = getattr(result, "fill_log", pd.DataFrame())
+    trade_log: pd.DataFrame = getattr(result, "trade_log", pd.DataFrame())
+    funding_log: pd.DataFrame = getattr(result, "funding_log", pd.DataFrame())
+    equity_curve: pd.Series = getattr(result, "equity_curve", pd.Series(dtype=float))
+    metrics: dict = dict(getattr(result, "metrics", {}))
+    signal_log: list[dict] = getattr(result, "signal_log", [])
+    risk_event_log: list[dict] = getattr(result, "risk_event_log", [])
+    rejected_log: list[dict] = getattr(result, "rejected_log", [])
+    cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
+
+    # -------------------------------------------------------------------
+    # config.json
+    # -------------------------------------------------------------------
+    try:
+        cfg_dict = cfg.model_dump() if hasattr(cfg, "model_dump") else {}
+    except Exception:
+        cfg_dict = {}
+    config_data = _scrub_secrets({
+        "system": cfg_dict.get("system", {}),
+        "strategies": cfg_dict.get("strategies", {}),
+        "risk": cfg_dict.get("risk", {}),
+        "backtest": cfg_dict.get("backtest", {}),
+        "storage": cfg_dict.get("storage", {}),
+        "cli_args": {
+            k: v for k, v in vars(args).items()
+            if k.lower() not in _SENSITIVE_KEYS
+        } if args else {},
+    })
+    if write_files:
+        _write_json(run_dir / "config.json", config_data)
+
+    # -------------------------------------------------------------------
+    # metrics.json — use already-computed metrics from result
+    # -------------------------------------------------------------------
+    if write_files:
+        _write_json(run_dir / "metrics.json", metrics)
+
+    # -------------------------------------------------------------------
+    # orders.csv
+    # -------------------------------------------------------------------
+    orders_df = _normalize_orders(order_log) if not order_log.empty else pd.DataFrame()
+    if write_files:
+        _write_csv(run_dir / "orders.csv", orders_df, ORDER_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # fills.csv
+    # -------------------------------------------------------------------
+    fills_df = _normalize_fills(fill_log) if not fill_log.empty else pd.DataFrame()
+    if write_files:
+        _write_csv(run_dir / "fills.csv", fills_df, FILL_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # trades.csv
+    # -------------------------------------------------------------------
+    trades_df = trade_log.copy() if not trade_log.empty else pd.DataFrame()
+    if not trades_df.empty:
+        # Only real trades (not funding cashflow entries)
+        trades_df = trades_df[trades_df.get("fill_sz", pd.Series(0, index=trades_df.index)).astype(float) > 0].copy()
+        if "datetime" not in trades_df.columns:
+            trades_df["datetime"] = _ts_to_datetime(trades_df["ts"])
+        if "metadata" in trades_df.columns:
+            trades_df["metadata"] = trades_df["metadata"].apply(_dump_metadata)
+    if write_files:
+        _write_csv(run_dir / "trades.csv", trades_df, TRADE_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # positions.csv
+    # -------------------------------------------------------------------
+    positions_df = _build_positions_from_trades(trade_log)
+    if write_files:
+        _write_csv(run_dir / "positions.csv", positions_df, POSITION_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # equity_curve.csv
+    # -------------------------------------------------------------------
+    equity_df = _build_equity_df(equity_curve, fill_log, funding_log)
+    if write_files:
+        _write_csv(run_dir / "equity_curve.csv", equity_df, EQUITY_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # returns.csv
+    # -------------------------------------------------------------------
+    returns_df = _build_returns_df(equity_curve)
+    if write_files:
+        _write_csv(run_dir / "returns.csv", returns_df, RETURN_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # drawdown.csv
+    # -------------------------------------------------------------------
+    drawdown_df = _build_drawdown_df(equity_curve)
+    if write_files:
+        _write_csv(run_dir / "drawdown.csv", drawdown_df, DRAWDOWN_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # funding.csv
+    # -------------------------------------------------------------------
+    funding_df = _build_funding_df(funding_log) if not funding_log.empty else pd.DataFrame()
+    if write_files:
+        _write_csv(run_dir / "funding.csv", funding_df, FUNDING_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # signals.csv
+    # -------------------------------------------------------------------
+    signals_df = pd.DataFrame(signal_log) if signal_log else pd.DataFrame()
+    if not signals_df.empty and "datetime" not in signals_df.columns:
+        signals_df["datetime"] = _ts_to_datetime(signals_df["ts"])
+    if not signals_df.empty and "metadata" in signals_df.columns:
+        signals_df["metadata"] = signals_df["metadata"].apply(_dump_metadata)
+    if write_files:
+        _write_csv(run_dir / "signals.csv", signals_df, SIGNAL_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # risk_events.csv
+    # -------------------------------------------------------------------
+    risk_df = pd.DataFrame(risk_event_log) if risk_event_log else pd.DataFrame()
+    if not risk_df.empty and "datetime" not in risk_df.columns:
+        risk_df["datetime"] = _ts_to_datetime(risk_df["ts"])
+    if not risk_df.empty and "metadata" in risk_df.columns:
+        risk_df["metadata"] = risk_df["metadata"].apply(_dump_metadata)
+    if write_files:
+        _write_csv(run_dir / "risk_events.csv", risk_df, RISK_EVENT_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # rejected_orders.csv
+    # -------------------------------------------------------------------
+    rejected_df = pd.DataFrame(rejected_log) if rejected_log else pd.DataFrame()
+    if not rejected_df.empty:
+        if "datetime" not in rejected_df.columns:
+            rejected_df["datetime"] = _ts_to_datetime(rejected_df["ts"])
+        if "metadata" in rejected_df.columns:
+            rejected_df["metadata"] = rejected_df["metadata"].apply(_dump_metadata)
+    if write_files:
+        _write_csv(run_dir / "rejected_orders.csv", rejected_df, REJECTED_ORDER_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # cancel_log.csv
+    # -------------------------------------------------------------------
+    cancel_df = pd.DataFrame(cancel_log_data) if cancel_log_data else pd.DataFrame()
+    if not cancel_df.empty and "datetime" not in cancel_df.columns:
+        cancel_df["datetime"] = _ts_to_datetime(cancel_df["ts"])
+    if write_files:
+        _write_csv(run_dir / "cancel_log.csv", cancel_df, CANCEL_LOG_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # execution_markers.csv
+    # -------------------------------------------------------------------
+    markers_df = _build_execution_markers(fills_df, trades_df)
+    if write_files:
+        _write_csv(run_dir / "execution_markers.csv", markers_df, EXECUTION_MARKER_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # data_coverage.json
+    # -------------------------------------------------------------------
+    coverage = _build_data_coverage(
+        market_frames_meta or [],
+        funding_frames_meta or [],
+    )
+    if write_files:
+        _write_json(run_dir / "data_coverage.json", coverage)
+
+    # -------------------------------------------------------------------
+    # result.json — top-level index
+    # -------------------------------------------------------------------
+    symbols = list({
+        row.get("inst_id", "") for _, row in (
+            fills_df.iterrows() if not fills_df.empty else iter([])
+        )
+    } | {
+        row.get("inst_id", "") for _, row in (
+            orders_df.iterrows() if not orders_df.empty else iter([])
+        )
+    })
+    symbols = [s for s in symbols if s]
+
+    artifact_refs = {
+        "config": "config.json",
+        "metrics": "metrics.json",
+        "orders": "orders.csv",
+        "fills": "fills.csv",
+        "trades": "trades.csv",
+        "positions": "positions.csv",
+        "equity": "equity_curve.csv",
+        "returns": "returns.csv",
+        "drawdown": "drawdown.csv",
+        "funding": "funding.csv",
+        "signals": "signals.csv",
+        "risk_events": "risk_events.csv",
+        "rejected_orders": "rejected_orders.csv",
+        "cancel_log": "cancel_log.csv",
+        "execution_markers": "execution_markers.csv",
+        "data_coverage": "data_coverage.json",
+    }
+    if artifact_mode == "db":
+        artifact_refs = {
+            key: f"db://backtest_artifacts/{run_id_final}/{key}"
+            for key in artifact_refs
+        }
+
+    result_json = {
+        "run_id": run_id_final,
+        "created_at": _now_utc(),
+        "mode": "replay_backtest",
+        "strategies": strats,
+        "symbols": symbols,
+        "bar": bar_s,
+        "start": start_s,
+        "end": end_s,
+        "backend": getattr(getattr(cfg, "storage", None), "candle_backend", "parquet"),
+        "data_source": {
+            "ohlcv_layer": "canonical_candles",
+            "funding_layer": "funding_rates",
+            "primary_exchange": "binance",
+        },
+        "metrics": metrics,
+        "artifacts": artifact_refs,
+    }
+    if write_files:
+        _write_json(run_dir / "result.json", result_json)
+    _upsert_run_to_db(run_id_final, result_json, run_dir)
+    _upsert_artifacts_to_db(run_id_final, {
+        "result": result_json,
+        "config": config_data,
+        "metrics": metrics,
+        "orders": _df_records(ensure_columns(orders_df.copy(), ORDER_COLUMNS)),
+        "fills": _df_records(ensure_columns(fills_df.copy(), FILL_COLUMNS)),
+        "trades": _df_records(ensure_columns(trades_df.copy(), TRADE_COLUMNS)),
+        "positions": _df_records(ensure_columns(positions_df.copy(), POSITION_COLUMNS)),
+        "equity": _df_records(ensure_columns(equity_df.copy(), EQUITY_COLUMNS)),
+        "returns": _df_records(ensure_columns(returns_df.copy(), RETURN_COLUMNS)),
+        "drawdown": _df_records(ensure_columns(drawdown_df.copy(), DRAWDOWN_COLUMNS)),
+        "funding": _df_records(ensure_columns(funding_df.copy(), FUNDING_COLUMNS)),
+        "signals": _df_records(ensure_columns(signals_df.copy(), SIGNAL_COLUMNS)),
+        "risk_events": _df_records(ensure_columns(risk_df.copy(), RISK_EVENT_COLUMNS)),
+        "rejected_orders": _df_records(ensure_columns(rejected_df.copy(), REJECTED_ORDER_COLUMNS)),
+        "cancel_log": _df_records(ensure_columns(cancel_df.copy(), CANCEL_LOG_COLUMNS)),
+        "execution_markers": _df_records(ensure_columns(markers_df.copy(), EXECUTION_MARKER_COLUMNS)),
+        "data_coverage": coverage,
+    })
+
+    return run_dir

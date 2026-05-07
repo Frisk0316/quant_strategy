@@ -128,6 +128,8 @@ class PositionLedger:
         fill_sz: float,
         fee: float,
         strategy: str = "",
+        ts: int | None = None,
+        metadata: dict | None = None,
     ) -> None:
         """Update position on fill. side: 'buy' | 'sell'."""
         pos = self._positions.get(inst_id)
@@ -135,11 +137,21 @@ class PositionLedger:
             pos = Position(inst_id=inst_id, strategy=strategy)
             self._positions[inst_id] = pos
 
+        size_before = pos.size
+        avg_entry_before = pos.avg_entry
+        cash_before = self._cash_equity
+
         signed_size = fill_sz if side == "buy" else -fill_sz
         new_size = pos.size + signed_size
         realized_pnl = 0.0
 
         same_direction = pos.size == 0 or pos.size * signed_size > 0
+        is_opening = same_direction and pos.size == 0
+        is_adding = same_direction and pos.size != 0
+        is_reducing = not same_direction and abs(new_size) < abs(pos.size) and new_size * pos.size > 0
+        is_closing = not same_direction and abs(new_size) < 1e-9
+        is_reversing = not same_direction and not is_closing
+
         if same_direction:
             if new_size != 0:
                 weighted_notional = abs(pos.size) * pos.avg_entry + abs(signed_size) * fill_px
@@ -167,11 +179,40 @@ class PositionLedger:
         # Remove flat positions
         if abs(pos.size) < 1e-9:
             self._positions.pop(inst_id, None)
+            avg_entry_after = 0.0
+        else:
+            avg_entry_after = pos.avg_entry
 
+        unrealized_pnl_after = pos.unrealized_pnl if abs(new_size) >= 1e-9 else 0.0
+        equity_after = self._cash_equity + sum(p.unrealized_pnl for p in self._positions.values())
+
+        event_ts = ts if ts is not None else int(time.time() * 1000)
         self._trade_log.append({
-            "ts": time.time(), "inst_id": inst_id, "side": side,
-            "fill_px": fill_px, "fill_sz": fill_sz, "fee": fee,
+            "ts": event_ts,
+            "inst_id": inst_id,
+            "side": side,
+            "fill_px": fill_px,
+            "fill_sz": fill_sz,
+            "fee": fee,
+            "fee_ccy": "USDT",
             "strategy": strategy,
+            "size_before": size_before,
+            "size_after": new_size,
+            "avg_entry_before": avg_entry_before,
+            "avg_entry_after": avg_entry_after,
+            "position_notional_before": abs(size_before) * avg_entry_before,
+            "position_notional_after": abs(new_size) * avg_entry_after,
+            "realized_pnl": realized_pnl,
+            "net_realized_pnl": net_realized,
+            "unrealized_pnl_after": unrealized_pnl_after,
+            "cash_before": cash_before,
+            "cash_after": self._cash_equity,
+            "equity_after": equity_after,
+            "is_opening": is_opening or is_adding,
+            "is_reducing": is_reducing,
+            "is_closing": is_closing,
+            "is_reversing": is_reversing,
+            "metadata": metadata or {},
         })
         self.save_snapshot()
 

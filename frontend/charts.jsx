@@ -47,7 +47,7 @@ function LineChart({ series, height = 220, mode = "line", color = "var(--accent)
   const y0 = yMin - yPad, y1 = yMax + yPad;
 
   const xN = series[0]?.values.length || 1;
-  const xScale = (i) => padL + (i / (xN - 1)) * innerW;
+  const xScale = (i) => padL + (i / Math.max(xN - 1, 1)) * innerW;
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
 
   const ticks = 4;
@@ -87,7 +87,7 @@ function Sparkline({ values, color = "var(--accent)", height = 36, mode = "line"
   const y0 = yMin - yPad, y1 = yMax + yPad;
   const ds = downsample(values, 80);
   const pts = ds.map(([i, v], k) => [
-    (k / (ds.length - 1)) * w,
+    (k / Math.max(ds.length - 1, 1)) * w,
     padT + (1 - (v - y0) / (y1 - y0)) * (h - padT - padB),
   ]);
   return (

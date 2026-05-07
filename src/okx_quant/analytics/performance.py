@@ -63,7 +63,10 @@ def calmar(r: pd.Series | np.ndarray, periods: int = 365) -> float:
     years = len(r) / periods
     if years == 0:
         return 0.0
-    log_cagr = np.log(float(eq[-1])) / years
+    final_eq = float(eq[-1])
+    if final_eq <= 0:
+        return float("nan")
+    log_cagr = np.log(final_eq) / years
     cagr = float("inf") if log_cagr > 709 else float(np.exp(log_cagr) - 1)
     mdd = abs(max_drawdown(r))
     if mdd == 0:
@@ -119,6 +122,10 @@ def summary(r: pd.Series | np.ndarray, periods: int = 365) -> dict:
     """Compute all metrics at once. Convenient for reporting."""
     r = np.asarray(r, dtype=float)
     r = r[~np.isnan(r)]
+    eq = (1 + r).cumprod() if len(r) > 0 else np.array([1.0])
+    bankrupt = bool(np.any(eq <= 0))
+    min_equity = float(eq.min()) if len(eq) > 0 else float("nan")
+    last_equity = float(eq[-1]) if len(eq) > 0 else float("nan")
     return {
         "n_periods": len(r),
         "total_return": float((1 + r).prod() - 1),
@@ -132,4 +139,7 @@ def summary(r: pd.Series | np.ndarray, periods: int = 365) -> dict:
         "tail_ratio": tail_ratio(r),
         "skewness": float(skew(r)) if len(r) >= 3 else 0.0,
         "kurtosis": float(kurtosis(r, fisher=False)) if len(r) >= 4 else 3.0,
+        "bankrupt": bankrupt,
+        "min_equity": min_equity,
+        "last_equity": last_equity,
     }

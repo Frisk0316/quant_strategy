@@ -1,74 +1,133 @@
-/* global React, MOCK, Charts, KPI, fmt */
-const { useState, useMemo: useMemo2 } = React;
+/* global React, Charts, KPI, fmt */
+const { useState: useStateResults, useEffect: useEffectResults, useMemo: useMemoResults } = React;
 
-function OverviewView({ tweaks }) {
-  const s = MOCK.mainStats;
+function metricLabel(key) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function displayMetric(key, value) {
+  if (value == null) return "-";
+  if (typeof value === "boolean") return String(value);
+  if (typeof value !== "number") return String(value);
+  if (key.includes("return") || key.includes("drawdown") || key.includes("rate") || key.includes("pct")) {
+    return fmt.pct(value);
+  }
+  return Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : fmt.num(value, 2);
+}
+
+function valueAt(row, keys, fallback = 0) {
+  for (const key of keys) {
+    if (row?.[key] != null && row[key] !== "") return +row[key];
+  }
+  return fallback;
+}
+
+function OverviewView({ tweaks, selectedRunId }) {
+  const [metrics, setMetrics] = useStateResults(null);
+  const [equity, setEquity] = useStateResults([]);
+  const [returns, setReturns] = useStateResults([]);
+  const [drawdown, setDrawdown] = useStateResults([]);
+  const [loading, setLoading] = useStateResults(false);
   const equityMode = tweaks.equityMode || "area";
-  const equityValues = MOCK.main.eq.map((v) => v - 1); // PnL %
-  const ddValues = MOCK.main.dd;
 
-  const monthlyRet = useMemo2(() => {
-    const buckets = [];
-    const ret = MOCK.main.ret;
-    const ts = MOCK.ts;
-    const map = new Map();
-    ret.forEach((r, i) => {
-      const d = new Date(ts[i]);
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-      map.set(key, (1 + (map.get(key) ?? 0)) * (1 + r) - 1);
+  useEffectResults(() => {
+    if (!selectedRunId) return;
+    setLoading(true);
+    Promise.all([
+      window.API.fetchBacktestMetrics(selectedRunId),
+      window.API.fetchBacktestEquity(selectedRunId).catch(() => []),
+      window.API.fetchBacktestReturns(selectedRunId).catch(() => []),
+      window.API.fetchBacktestDrawdown(selectedRunId).catch(() => []),
+    ]).then(([m, eq, ret, dd]) => {
+      setMetrics(m || {});
+      setEquity(eq || []);
+      setReturns(ret || []);
+      setDrawdown(dd || []);
+    }).finally(() => setLoading(false));
+  }, [selectedRunId]);
+
+  const equityValues = useMemoResults(() => {
+    if (!equity.length) return [];
+    const first = valueAt(equity[0], ["equity_usd", "equity"], 1) || 1;
+    return equity.map((r) => {
+      if (r.cum_return != null) return +r.cum_return;
+      return valueAt(r, ["equity_usd", "equity"], first) / first - 1;
     });
-    for (const [k, v] of map.entries()) buckets.push({ month: k, ret: v });
-    return buckets;
-  }, []);
+  }, [equity]);
+
+  const ddValues = useMemoResults(() => {
+    if (drawdown.length) return drawdown.map((r) => valueAt(r, ["drawdown_pct", "drawdown"], 0));
+    return equity.map((r) => valueAt(r, ["drawdown"], 0));
+  }, [drawdown, equity]);
+
+  const monthlyRet = useMemoResults(() => {
+    const map = new Map();
+    returns.forEach((r) => {
+      const ts = r.ts || r.datetime;
+      if (!ts) return;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      const ret = valueAt(r, ["simple_return", "return"], 0);
+      map.set(key, (1 + (map.get(key) ?? 0)) * (1 + ret) - 1);
+    });
+    return [...map.entries()].map(([month, ret]) => ({ month, ret }));
+  }, [returns]);
+
+  if (!selectedRunId || !metrics) return (
+    <div style={{ padding: 48, textAlign: "center", color: "var(--text-subtle)" }}>
+      <div style={{ fontSize: 18, marginBottom: 12 }}>No run selected</div>
+      <div className="field-hint">Go to <strong>Backtest Runs</strong> and click a run to inspect it here.</div>
+    </div>
+  );
+
+  if (loading) return <div className="field-hint" style={{ padding: 32 }}>Loading selected run...</div>;
 
   return (
     <div className="col" style={{ gap: "var(--gap-lg)" }}>
-      {/* KPI strip */}
       <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <KPI label="Total Return" value={fmt.pct(s.total_return)} sub={`CAGR ${fmt.pct(s.cagr)}`} tone={s.total_return >= 0 ? "up" : "down"} spark={MOCK.main.eq.map((v) => v - 1)} sparkMode={equityMode} />
-        <KPI label="Sharpe (ann.)" value={fmt.num(s.sharpe, 2)} sub={`Sortino ${fmt.num(s.sortino, 2)}`} tone="up" />
-        <KPI label="Max Drawdown" value={fmt.pct(s.max_drawdown)} sub={`Calmar ${fmt.num(s.calmar, 2)}`} tone="down" spark={ddValues} sparkMode="area" />
-        <KPI label="Win rate" value={fmt.pct(s.win_rate)} sub={`PF ${fmt.num(s.profit_factor, 2)}`} />
+        <KPI label="Total Return" value={fmt.pct(metrics.total_return)} sub={`CAGR ${fmt.pct(metrics.cagr)}`} tone={metrics.total_return >= 0 ? "up" : "down"} spark={equityValues.length ? equityValues : null} sparkMode={equityMode} />
+        <KPI label="Sharpe (ann.)" value={fmt.num(metrics.sharpe, 2)} sub={`Sortino ${fmt.num(metrics.sortino, 2)}`} tone={metrics.sharpe >= 0 ? "up" : "down"} />
+        <KPI label="Max Drawdown" value={fmt.pct(metrics.max_drawdown)} sub={`Calmar ${fmt.num(metrics.calmar, 2)}`} tone="down" spark={ddValues.length ? ddValues : null} sparkMode="area" />
+        <KPI label="Win rate" value={fmt.pct(metrics.win_rate)} sub={`PF ${fmt.num(metrics.profit_factor, 2)}`} />
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <KPI label="DSR" value={fmt.num(MOCK.cpcv.dsr, 2)} sub="≥ 0.95 to promote" tone="up" hint="CPCV" />
-        <KPI label="PSR" value={fmt.num(MOCK.cpcv.psr, 2)} sub="prob Sharpe > 0" />
-        <KPI label="Trades" value={MOCK.trades.length.toLocaleString()} sub="post_only · maker-only" />
-        <KPI label="Avg Fee" value="$0.04" sub="VIP0 maker rebate" />
+        <KPI label="DSR" value={fmt.num(metrics.dsr, 2)} sub="0.95 promotion gate" tone={metrics.dsr >= 0.95 ? "up" : "down"} hint="CPCV" />
+        <KPI label="PSR" value={fmt.num(metrics.psr, 2)} sub="prob Sharpe > 0" />
+        <KPI label="Orders" value={(metrics.order_count ?? metrics.submitted_order_count ?? 0).toLocaleString()} sub={`${metrics.real_fill_count ?? metrics.orders_filled_count ?? 0} real fills`} />
+        <KPI label="Fill rate" value={fmt.pct(metrics.fill_rate)} sub={metrics.bankrupt ? "bankrupt run" : "execution model"} tone={metrics.bankrupt ? "down" : undefined} />
       </div>
 
-      {/* Equity + DD */}
       <div className="card">
         <div className="card-h">
           <div>
             <div className="card-title">Equity curve</div>
-            <div className="card-sub">funding_carry · BTC-USDT-SWAP · 1H · 90 days</div>
+            <div className="card-sub mono">{selectedRunId}</div>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <span className="chip accent">Walk-Forward verified</span>
-            <span className="chip">N = {MOCK.main.eq.length.toLocaleString()}</span>
+            <span className="chip">N = {equity.length.toLocaleString()}</span>
           </div>
         </div>
-        <Charts.LineChart series={[{ values: equityValues, color: "var(--accent)" }]} height={260} mode={equityMode} />
+        <Charts.LineChart series={[{ values: equityValues.length ? equityValues : [0], color: "var(--accent)" }]} height={260} mode={equityMode} />
       </div>
 
-      <div className="row" style={{ gap: "var(--gap-lg)" }}>
+      <div className="row" style={{ gap: "var(--gap-lg)", alignItems: "flex-start" }}>
         <div className="card" style={{ flex: 2 }}>
           <div className="card-h">
             <div>
               <div className="card-title">Drawdown</div>
               <div className="card-sub">underwater curve</div>
             </div>
-            <span className="chip loss">Max {fmt.pct(s.max_drawdown)}</span>
+            <span className="chip loss">Max {fmt.pct(metrics.max_drawdown)}</span>
           </div>
-          <Charts.LineChart series={[{ values: ddValues, color: "var(--loss)" }]} height={180} mode="area" />
+          <Charts.LineChart series={[{ values: ddValues.length ? ddValues : [0], color: "var(--loss)" }]} height={180} mode="area" />
         </div>
         <div className="card" style={{ flex: 1 }}>
           <div className="card-h">
             <div>
               <div className="card-title">Monthly returns</div>
-              <div className="card-sub">UTC</div>
+              <div className="card-sub">compounded from returns.csv</div>
             </div>
           </div>
           <table className="tbl" style={{ fontSize: 12 }}>
@@ -85,35 +144,22 @@ function OverviewView({ tweaks }) {
                   </td>
                 </tr>
               ))}
+              {!monthlyRet.length && <tr><td colSpan={3} className="field-hint" style={{ textAlign: "center", padding: 16 }}>No returns.csv data.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Extended metrics */}
       <div className="card">
         <div className="card-h">
           <div className="card-title">Extended metrics</div>
-          <div className="card-sub">analytics/performance.py</div>
+          <div className="card-sub">full metrics.json object</div>
         </div>
         <div className="grid" style={{ gridTemplateColumns: "repeat(6, 1fr)", gap: 16 }}>
-          {[
-            ["Sharpe", fmt.num(s.sharpe, 2)],
-            ["Sortino", fmt.num(s.sortino, 2)],
-            ["Calmar", fmt.num(s.calmar, 2)],
-            ["Profit Factor", fmt.num(s.profit_factor, 2)],
-            ["Win rate", fmt.pct(s.win_rate)],
-            ["Total Return", fmt.pct(s.total_return)],
-            ["CAGR", fmt.pct(s.cagr)],
-            ["Max DD", fmt.pct(s.max_drawdown)],
-            ["DSR", fmt.num(MOCK.cpcv.dsr, 2)],
-            ["PSR", fmt.num(MOCK.cpcv.psr, 2)],
-            ["Periods", s.n_periods.toLocaleString()],
-            ["Annualization", "8,760"],
-          ].map(([k, v]) => (
+          {Object.entries(metrics).map(([k, v]) => (
             <div key={k}>
-              <div className="kpi-label">{k}</div>
-              <div className="mono" style={{ fontSize: 18, marginTop: 2 }}>{v}</div>
+              <div className="kpi-label">{metricLabel(k)}</div>
+              <div className="mono" style={{ fontSize: 18, marginTop: 2 }}>{displayMetric(k, v)}</div>
             </div>
           ))}
         </div>
@@ -122,68 +168,71 @@ function OverviewView({ tweaks }) {
   );
 }
 
-function WalkForwardView() {
-  const wf = MOCK.walkForward;
-  const oos = wf.map((w) => w.oos_sharpe);
-  const isS = wf.map((w) => w.is_sharpe);
+function WalkForwardView({ selectedRunId }) {
+  const [windows, setWindows] = useStateResults([]);
+  const [loaded, setLoaded] = useStateResults(false);
+
+  useEffectResults(() => {
+    if (!selectedRunId) return;
+    setLoaded(false);
+    window.API.fetchWalkForward(selectedRunId)
+      .then((rows) => setWindows(rows || []))
+      .catch(() => setWindows([]))
+      .finally(() => setLoaded(true));
+  }, [selectedRunId]);
+
+  if (!selectedRunId) return <div style={{ padding: 32, color: "var(--text-subtle)" }}>Select a backtest run first.</div>;
+  if (!loaded) return <div className="field-hint" style={{ padding: 32 }}>Loading walk-forward data...</div>;
+  if (!windows.length) return <div style={{ padding: 32, color: "var(--text-subtle)" }}>Walk-Forward validation was not run for this backtest.</div>;
+
+  const oos = windows.map((w) => +w.oos_sharpe || 0);
+  const isS = windows.map((w) => +w.is_sharpe || 0);
+  const meanOos = oos.reduce((a, b) => a + b, 0) / Math.max(oos.length, 1);
   return (
     <div className="col" style={{ gap: "var(--gap-lg)" }}>
       <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <KPI label="Windows" value={wf.length} sub="non-overlapping IS/OOS" />
-        <KPI label="Mean OOS Sharpe" value={fmt.num(oos.reduce((a, b) => a + b, 0) / oos.length, 2)} tone="up" />
-        <KPI label="OOS positive %" value={fmt.pct(oos.filter((v) => v > 0).length / oos.length)} />
-        <KPI label="IS / OOS span" value="14d / 7d" sub="walk_forward.py" />
+        <KPI label="Windows" value={windows.length} sub="non-overlapping IS/OOS" />
+        <KPI label="Mean OOS Sharpe" value={fmt.num(meanOos, 2)} tone={meanOos >= 0 ? "up" : "down"} />
+        <KPI label="OOS positive %" value={fmt.pct(oos.filter((v) => v > 0).length / Math.max(oos.length, 1))} />
+        <KPI label="Selected run" value={selectedRunId.slice(-8)} sub="result.json walk_forward" />
       </div>
 
       <div className="card">
         <div className="card-h">
           <div>
             <div className="card-title">IS vs OOS Sharpe</div>
-            <div className="card-sub">per window · expecting OOS ≈ 0.7× IS</div>
-          </div>
-          <div className="row" style={{ gap: 12 }}>
-            <span className="chip"><i style={{ width: 8, height: 8, borderRadius: 999, background: "var(--text-subtle)", display: "inline-block", marginRight: 6 }}></i> IS</span>
-            <span className="chip accent"><i style={{ width: 8, height: 8, borderRadius: 999, background: "var(--accent)", display: "inline-block", marginRight: 6 }}></i> OOS</span>
+            <div className="card-sub">per validation window</div>
           </div>
         </div>
-        <Charts.LineChart
-          series={[
-            { values: isS, color: "var(--text-subtle)" },
-            { values: oos, color: "var(--accent)" },
-          ]}
-          height={200}
-        />
+        <Charts.LineChart series={[
+          { values: isS, color: "var(--text-subtle)" },
+          { values: oos, color: "var(--accent)" },
+        ]} height={200} />
       </div>
 
       <div className="card">
         <div className="card-h">
           <div>
             <div className="card-title">Window timeline</div>
-            <div className="card-sub">每 row = 1 window</div>
+            <div className="card-sub">one row per validation window</div>
           </div>
         </div>
         <div className="tbl-wrap">
           <table className="tbl">
             <thead>
               <tr>
-                <th>#</th>
-                <th>IS start</th>
-                <th>IS end</th>
-                <th>OOS start</th>
-                <th>OOS end</th>
-                <th className="num">IS Sharpe</th>
-                <th className="num">OOS Sharpe</th>
-                <th className="num">OOS Return</th>
-                <th className="num">OOS MDD</th>
-                <th className="num">Decay</th>
+                <th>#</th><th>IS start</th><th>IS end</th><th>OOS start</th><th>OOS end</th>
+                <th className="num">IS Sharpe</th><th className="num">OOS Sharpe</th>
+                <th className="num">OOS Return</th><th className="num">OOS MDD</th><th className="num">Decay</th>
               </tr>
             </thead>
             <tbody>
-              {wf.map((w) => {
-                const decay = w.oos_sharpe / (w.is_sharpe || 1e-9);
+              {windows.map((w, i) => {
+                const idx = w.i ?? i;
+                const decay = (+w.oos_sharpe || 0) / (+w.is_sharpe || 1e-9);
                 return (
-                  <tr key={w.i}>
-                    <td className="mono">{w.i.toString().padStart(2, "0")}</td>
+                  <tr key={idx}>
+                    <td className="mono">{String(idx).padStart(2, "0")}</td>
                     <td className="mono" style={{ color: "var(--text-muted)" }}>{fmt.date(w.is_start)}</td>
                     <td className="mono" style={{ color: "var(--text-muted)" }}>{fmt.date(w.is_end)}</td>
                     <td className="mono">{fmt.date(w.oos_start)}</td>
@@ -192,7 +241,7 @@ function WalkForwardView() {
                     <td className="num" style={{ color: w.oos_sharpe >= 0 ? "var(--profit)" : "var(--loss)" }}>{fmt.num(w.oos_sharpe, 2)}</td>
                     <td className="num" style={{ color: w.oos_return >= 0 ? "var(--profit)" : "var(--loss)" }}>{fmt.pct(w.oos_return)}</td>
                     <td className="num" style={{ color: "var(--loss)" }}>{fmt.pct(w.oos_mdd)}</td>
-                    <td className="num" style={{ color: "var(--text-muted)" }}>{fmt.num(decay, 2)}×</td>
+                    <td className="num" style={{ color: "var(--text-muted)" }}>{fmt.num(decay, 2)}x</td>
                   </tr>
                 );
               })}
@@ -204,75 +253,79 @@ function WalkForwardView() {
   );
 }
 
-function CPCVView() {
-  const c = MOCK.cpcv;
-  // Heatmap: 6x6 cells where (a,b) = sharpe of combo with test_groups (a,b)
-  const grid = Array.from({ length: 6 }, () => Array(6).fill(null));
-  c.combos.forEach((co) => {
-    const [a, b] = co.test_groups;
-    grid[a][b] = co.sharpe;
-    grid[b][a] = co.sharpe;
+function CPCVView({ selectedRunId }) {
+  const [cpcv, setCpcv] = useStateResults(null);
+  const [loaded, setLoaded] = useStateResults(false);
+
+  useEffectResults(() => {
+    if (!selectedRunId) return;
+    setLoaded(false);
+    window.API.fetchCPCV(selectedRunId)
+      .then((data) => setCpcv(data || null))
+      .catch(() => setCpcv(null))
+      .finally(() => setLoaded(true));
+  }, [selectedRunId]);
+
+  if (!selectedRunId) return <div style={{ padding: 32, color: "var(--text-subtle)" }}>Select a backtest run first.</div>;
+  if (!loaded) return <div className="field-hint" style={{ padding: 32 }}>Loading CPCV data...</div>;
+  if (!cpcv) return <div style={{ padding: 32, color: "var(--text-subtle)" }}>CPCV validation was not run for this backtest.</div>;
+
+  const combos = cpcv.combos || [];
+  if (!combos.length) return <div style={{ padding: 32, color: "var(--text-subtle)" }}>CPCV validation was not run for this backtest.</div>;
+
+  const groupCount = Math.max(6, ...combos.flatMap((co) => co.test_groups || []).map((v) => +v + 1));
+  const grid = Array.from({ length: groupCount }, () => Array(groupCount).fill(null));
+  combos.forEach((co, idx) => {
+    const groups = co.test_groups || [];
+    if (groups.length >= 2) {
+      const [a, b] = groups;
+      grid[a][b] = co.sharpe;
+      grid[b][a] = co.sharpe;
+    } else {
+      const a = Math.floor(idx / groupCount);
+      const b = idx % groupCount;
+      grid[a][b] = co.sharpe;
+    }
   });
-  const allS = c.combos.map((co) => co.sharpe);
+  const allS = combos.map((co) => +co.sharpe || 0);
   const minS = Math.min(...allS), maxS = Math.max(...allS);
   function heat(v) {
     if (v == null) return "var(--surface-2)";
     const t = (v - minS) / (maxS - minS || 1);
-    if (v >= 0) {
-      const l = 0.95 - t * 0.40;
-      return `oklch(${l} ${0.05 + t * 0.13} 155)`;
-    } else {
-      const l = 0.95 - (1 - t) * 0.40;
-      return `oklch(${l} ${0.05 + (1 - t) * 0.13} 25)`;
-    }
+    if (v >= 0) return `oklch(${0.95 - t * 0.40} ${0.05 + t * 0.13} 155)`;
+    return `oklch(${0.95 - (1 - t) * 0.40} ${0.05 + (1 - t) * 0.13} 25)`;
   }
 
   return (
     <div className="col" style={{ gap: "var(--gap-lg)" }}>
       <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <KPI label="DSR (Deflated Sharpe)" value={fmt.num(c.dsr, 2)} sub={c.dsr >= 0.95 ? "✓ promote-eligible" : "below 0.95 gate"} tone={c.dsr >= 0.95 ? "up" : "down"} />
-        <KPI label="PSR" value={fmt.num(c.psr, 2)} sub="prob true SR > 0" tone="up" />
-        <KPI label="Mean OOS Sharpe" value={fmt.num(c.mean_oos_sharpe, 2)} sub={`σ ${fmt.num(c.std_oos_sharpe, 2)}`} />
-        <KPI label="Combinations" value={`${c.combos.length} · ${c.paths.length} paths`} sub="N=6, k=2, embargo=2%" />
+        <KPI label="DSR (Deflated Sharpe)" value={fmt.num(cpcv.dsr, 2)} sub={cpcv.dsr >= 0.95 ? "promote-eligible" : "below 0.95 gate"} tone={cpcv.dsr >= 0.95 ? "up" : "down"} />
+        <KPI label="PSR" value={fmt.num(cpcv.psr, 2)} sub="prob true SR > 0" tone="up" />
+        <KPI label="Mean OOS Sharpe" value={fmt.num(cpcv.mean_oos_sharpe, 2)} sub={`std ${fmt.num(cpcv.std_oos_sharpe, 2)}`} />
+        <KPI label="Combinations" value={`${combos.length} / ${(cpcv.paths || []).length} paths`} sub="result.json cpcv" />
       </div>
 
-      <div className="row" style={{ gap: "var(--gap-lg)" }}>
+      <div className="row" style={{ gap: "var(--gap-lg)", alignItems: "flex-start" }}>
         <div className="card" style={{ flex: 1 }}>
           <div className="card-h">
             <div>
               <div className="card-title">Combination heatmap</div>
-              <div className="card-sub">test groups (i, j) → OOS Sharpe</div>
+              <div className="card-sub">test groups to OOS Sharpe</div>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "auto repeat(6, 1fr)", gap: 4, fontSize: 11 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `auto repeat(${groupCount}, 1fr)`, gap: 4, fontSize: 11 }}>
             <div></div>
-            {[0, 1, 2, 3, 4, 5].map((j) => (
-              <div key={j} className="mono" style={{ textAlign: "center", color: "var(--text-subtle)" }}>g{j}</div>
-            ))}
+            {Array.from({ length: groupCount }, (_, j) => <div key={j} className="mono" style={{ textAlign: "center", color: "var(--text-subtle)" }}>g{j}</div>)}
             {grid.map((row, i) => (
               <React.Fragment key={i}>
                 <div className="mono" style={{ color: "var(--text-subtle)" }}>g{i}</div>
                 {row.map((v, j) => (
-                  <div
-                    key={j}
-                    className="heat-cell"
-                    style={{
-                      height: 44,
-                      background: heat(v),
-                      color: v != null ? (Math.abs(v) > (maxS - minS) * 0.5 ? "white" : "var(--text)") : "var(--text-subtle)",
-                    }}
-                    title={v != null ? `g${i}+g${j}: Sharpe ${v.toFixed(2)}` : "—"}
-                  >
-                    {v != null ? v.toFixed(2) : ""}
+                  <div key={j} className="heat-cell" style={{ height: 44, background: heat(v), color: v != null && Math.abs(v) > (maxS - minS) * 0.5 ? "white" : "var(--text)" }}>
+                    {v != null ? (+v).toFixed(2) : ""}
                   </div>
                 ))}
               </React.Fragment>
             ))}
-          </div>
-          <div className="row" style={{ gap: 12, marginTop: 12, alignItems: "center", fontSize: 11 }}>
-            <span className="mono" style={{ color: "var(--text-subtle)" }}>{minS.toFixed(2)}</span>
-            <div style={{ flex: 1, height: 6, background: "linear-gradient(to right, var(--loss-soft), var(--surface-2), var(--profit-soft))", borderRadius: 3 }}></div>
-            <span className="mono" style={{ color: "var(--text-subtle)" }}>{maxS.toFixed(2)}</span>
           </div>
         </div>
 
@@ -280,35 +333,11 @@ function CPCVView() {
           <div className="card-h">
             <div>
               <div className="card-title">Sharpe distribution</div>
-              <div className="card-sub">over 15 combinations</div>
+              <div className="card-sub">over CPCV combinations</div>
             </div>
           </div>
           <Charts.HistogramChart values={allS} bins={12} height={200} color="var(--accent)" />
-          <div className="field-hint" style={{ marginTop: 8 }}>μ = {c.mean_oos_sharpe.toFixed(2)} · σ = {c.std_oos_sharpe.toFixed(2)}</div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-h">
-          <div>
-            <div className="card-title">5 OOS paths</div>
-            <div className="card-sub">each path covers all 6 groups exactly once</div>
-          </div>
-        </div>
-        <Charts.LineChart
-          series={c.paths.map((p, i) => ({
-            values: p.eq.map((v) => v - 1),
-            color: `oklch(${0.55 + i * 0.05} 0.16 ${235 + i * 18})`,
-          }))}
-          height={240}
-        />
-        <div className="row wrap" style={{ gap: 16, marginTop: 14 }}>
-          {c.paths.map((p, i) => (
-            <div key={i} className="row" style={{ gap: 8, alignItems: "center" }}>
-              <div style={{ width: 18, height: 3, background: `oklch(${0.55 + i * 0.05} 0.16 ${235 + i * 18})`, borderRadius: 2 }}></div>
-              <div className="mono" style={{ fontSize: 12 }}>path {i} · SR {p.sharpe.toFixed(2)} · ret {fmt.pct(p.ret)} · mdd {fmt.pct(p.mdd)}</div>
-            </div>
-          ))}
+          <div className="field-hint" style={{ marginTop: 8 }}>mean = {fmt.num(cpcv.mean_oos_sharpe, 2)} · std = {fmt.num(cpcv.std_oos_sharpe, 2)}</div>
         </div>
       </div>
     </div>

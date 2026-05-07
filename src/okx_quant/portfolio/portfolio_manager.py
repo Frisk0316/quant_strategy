@@ -214,7 +214,11 @@ class PortfolioManager:
             metadata=metadata if metadata is not None else dict(sig.metadata),
         )
         pos = self._positions.get_position(inst_id)
-        if self._risk.check(order, pos.notional, self._resolve_price(inst_id, price)):
+        # Reducing/closing orders don't increase position risk; pass 0 so the
+        # position-limit check is not triggered for exit trades.
+        would_reduce = (pos.size > 0 and side == "sell") or (pos.size < 0 and side == "buy")
+        check_notional = 0.0 if would_reduce else pos.notional
+        if self._risk.check(order, check_notional, self._resolve_price(inst_id, price)):
             await self._bus.put(Event(EvtType.ORDER, payload=order))
 
     async def _place_linked_hedges(self, sig: SignalPayload, base_size_usd: float) -> None:
@@ -264,6 +268,8 @@ class PortfolioManager:
                 fill_sz=fill.fill_sz,
                 fee=abs(fill.fee),
                 strategy=fill.strategy,
+                ts=fill.ts,
+                metadata=dict(fill.metadata) if fill.metadata else {},
             )
             if prev_fill_px > 0:
                 self.update_return(fill.inst_id, fill.fill_px / prev_fill_px - 1.0)

@@ -76,6 +76,10 @@
     "BTC-USDT",
     "ETH-USDT",
     "SOL-USDT-SWAP",
+    "LTC-USDT-SWAP",
+    "BNB-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "ADA-USDT-SWAP",
   ];
 
   // Default current run — Funding Carry on BTC-USDT-SWAP, hourly, 90 days
@@ -279,17 +283,41 @@ window.API = (function () {
 
   return {
     /** Check if the engine is running. Resolves with status dict or rejects. */
-    fetchStatus:        ()        => _get("/api/live/status"),
+    fetchStatus:              ()        => _get("/api/live/status"),
     /** Current risk metrics matching window.MOCK.risk schema. */
-    fetchLiveRisk:      ()        => _get("/api/live/risk"),
+    fetchLiveRisk:            ()        => _get("/api/live/risk"),
     /** List of open positions. */
-    fetchLivePositions: ()        => _get("/api/live/positions"),
+    fetchLivePositions:       ()        => _get("/api/live/positions"),
     /** Recent fills matching window.MOCK.trades schema. */
-    fetchLiveTrades:    (n = 200) => _get("/api/live/trades?limit=" + n),
+    fetchLiveTrades:          (n = 200) => _get("/api/live/trades?limit=" + n),
     /** List of saved backtest runs (summary only). */
-    fetchBacktestRuns:  ()        => _get("/api/backtest/runs"),
-    /** Full result.json for a run — same shape as window.MOCK. */
-    fetchBacktest:      (id)      => _get("/api/backtest/" + id),
+    fetchBacktestRuns:        ()        => _get("/api/backtest/runs"),
+    fetchRuns:                ()        => _get("/api/backtest/runs"),
+    /** Full result.json for a run. */
+    fetchBacktest:            (id)      => _get("/api/backtest/" + id),
+    fetchBacktestMetrics:     (id)      => _get("/api/backtest/" + id + "/metrics"),
+    /** Equity curve CSV as JSON records. */
+    fetchBacktestEquity:      (id)      => _get("/api/backtest/" + id + "/equity"),
+    fetchBacktestReturns:     (id)      => _get("/api/backtest/" + id + "/returns"),
+    fetchBacktestDrawdown:    (id)      => _get("/api/backtest/" + id + "/drawdown"),
+    /** Fills CSV as JSON records. */
+    fetchBacktestFills:       (id)      => _get("/api/backtest/" + id + "/fills"),
+    /** Trades CSV as JSON records. */
+    fetchBacktestTrades:      (id)      => _get("/api/backtest/" + id + "/trades"),
+    /** Risk events CSV as JSON records. */
+    fetchBacktestRiskEvents:  (id)      => _get("/api/backtest/" + id + "/risk-events"),
+    /** Data coverage JSON. */
+    fetchBacktestCoverage:    (id)      => _get("/api/backtest/" + id + "/data-coverage"),
+    fetchWalkForward:         (id)      => _get("/api/backtest/" + id + "/walk-forward"),
+    fetchCPCV:                (id)      => _get("/api/backtest/" + id + "/cpcv"),
+    fetchRiskConfig:          ()        => _get("/api/config/risk"),
+    fetchDataCoverage:        ()        => _get("/api/data/coverage"),
+    fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
+    triggerDataFetch:         (body)    => fetch("/api/data/fetch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
+    fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
+    triggerBacktestRun:       (body)    => fetch("/api/backtest/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
+    fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
+    deleteRun:                (id)      => fetch("/api/backtest/" + id, { method: "DELETE" }).then((r) => r.json()),
   };
 })();
 

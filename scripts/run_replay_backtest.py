@@ -13,6 +13,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 from backtesting.replay import run_replay_backtest
 from okx_quant.core.config import load_config
 
+BAR_PERIODS = {
+    "1m": 525600, "3m": 175200, "5m": 105120, "15m": 35040,
+    "30m": 17520, "1H": 8760, "2H": 4380, "4H": 2190, "1D": 365,
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -21,10 +26,53 @@ def main() -> None:
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--bar", default="1H")
+    parser.add_argument("--periods", type=int, default=None,
+                        help="Annualization periods for the selected bar size")
+    parser.add_argument("--symbol", action="append", default=[],
+                        help="Instrument symbol for single/multi-symbol market-making strategies")
+    parser.add_argument("--symbol-x", default=None,
+                        help="Reference/independent symbol for pairs_trading")
+    parser.add_argument("--symbol-y", default=None,
+                        help="Trade/spread/dependent symbol for pairs_trading")
+    parser.add_argument("--perp-symbol", default=None,
+                        help="Perpetual symbol for funding_carry")
+    parser.add_argument("--spot-symbol", default=None,
+                        help="Spot symbol for funding_carry")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
+    parser.add_argument("--save-artifacts", action="store_true",
+                        help="Save all backtest artifacts to --output-dir/<run_id>/")
+    parser.add_argument("--output-dir", default="results",
+                        help="Directory to write artifact subdirectories (default: results)")
+    parser.add_argument("--run-id", default=None,
+                        help="Custom run ID; auto-generated if omitted")
+    parser.add_argument("--artifact-format", default="csv", choices=["csv"],
+                        help="Output format for tabular artifacts (default: csv)")
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
+    if args.symbol:
+        if "obi_market_maker" in args.strategy:
+            cfg.strategies.obi_market_maker.symbols = args.symbol
+        if "as_market_maker" in args.strategy:
+            cfg.strategies.as_market_maker.symbols = args.symbol
+        cfg.system.symbols = args.symbol
+    if "pairs_trading" in args.strategy:
+        if args.symbol_x:
+            cfg.strategies.pairs_trading.symbol_x = args.symbol_x
+        if args.symbol_y:
+            cfg.strategies.pairs_trading.symbol_y = args.symbol_y
+        cfg.system.symbols = [
+            cfg.strategies.pairs_trading.symbol_y,
+            cfg.strategies.pairs_trading.symbol_x,
+        ]
+    if "funding_carry" in args.strategy:
+        if args.perp_symbol:
+            cfg.strategies.funding_carry.perp_symbol = args.perp_symbol
+            cfg.system.symbols = [args.perp_symbol]
+        if args.spot_symbol:
+            cfg.strategies.funding_carry.spot_symbol = args.spot_symbol
+            cfg.system.spot_symbols = [args.spot_symbol]
+
     result = run_replay_backtest(
         strategy_names=args.strategy,
         cfg=cfg,
@@ -32,18 +80,36 @@ def main() -> None:
         start=args.start,
         end=args.end,
         bar=args.bar,
+        periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
     )
 
     print("=" * 72)
     print("REPLAY BACKTEST SUMMARY")
     print(f"Strategies: {', '.join(args.strategy)}")
-    print(f"Orders: {len(result.order_log)} | Fills: {len(result.fill_log)}")
+    real_fill_count = result.metrics.get("real_fill_count", len(result.fill_log))
+    print(f"Orders: {len(result.order_log)} | Real Fills: {real_fill_count}")
     for key, value in result.metrics.items():
         if isinstance(value, float):
-            print(f"{key:>16}: {value:.6f}")
+            print(f"{key:>28}: {value:.6f}")
         else:
-            print(f"{key:>16}: {value}")
+            print(f"{key:>28}: {value}")
     print("=" * 72)
+
+    if args.save_artifacts:
+        from backtesting.artifacts import save_backtest_artifacts
+        output_dir = str(PROJECT_ROOT / args.output_dir) if not Path(args.output_dir).is_absolute() else args.output_dir
+        run_dir = save_backtest_artifacts(
+            result=result,
+            cfg=cfg,
+            args=args,
+            output_dir=output_dir,
+            run_id=args.run_id,
+            strategy_names=args.strategy,
+            start=args.start,
+            end=args.end,
+            bar=args.bar,
+        )
+        print(f"Saved backtest artifacts to {run_dir}")
 
 
 if __name__ == "__main__":
