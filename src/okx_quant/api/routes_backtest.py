@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -136,6 +136,15 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
         df = pd.read_csv(path)
         return json.loads(df.to_json(orient="records", force_ascii=False))
+
+    def _downsample_records(records: list[dict], n: int) -> list[dict]:
+        """Return at most n evenly-spaced records, always including first and last."""
+        if n <= 0 or len(records) <= n:
+            return records
+        step = len(records) / n
+        indices = set(int(i * step) for i in range(n))
+        indices.add(len(records) - 1)
+        return [records[i] for i in sorted(indices)]
 
     async def _read_db_artifact(run_id: str, artifact_type: str) -> Any | None:
         try:
@@ -335,11 +344,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.get("/{run_id}/equity")
-    async def get_equity(run_id: str):
+    async def get_equity(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "equity")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "equity_curve.csv")
+        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "equity_curve.csv")
+        return _downsample_records(records, n)
 
     # ------------------------------------------------------------------
     # Orders / Fills / Trades / Positions
@@ -353,18 +361,32 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         return _read_csv(_run_dir(run_id) / "orders.csv")
 
     @router.get("/{run_id}/fills")
-    async def get_fills(run_id: str):
+    async def get_fills(
+        run_id: str,
+        limit: int = Query(default=0, ge=0),
+        offset: int = Query(default=0, ge=0),
+    ):
         payload = await _read_db_artifact(run_id, "fills")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "fills.csv")
+        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "fills.csv")
+        if offset:
+            records = records[offset:]
+        if limit:
+            records = records[:limit]
+        return records
 
     @router.get("/{run_id}/trades")
-    async def get_trades(run_id: str):
+    async def get_trades(
+        run_id: str,
+        limit: int = Query(default=0, ge=0),
+        offset: int = Query(default=0, ge=0),
+    ):
         payload = await _read_db_artifact(run_id, "trades")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "trades.csv")
+        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "trades.csv")
+        if offset:
+            records = records[offset:]
+        if limit:
+            records = records[:limit]
+        return records
 
     @router.get("/{run_id}/positions")
     async def get_positions(run_id: str):
@@ -378,18 +400,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.get("/{run_id}/returns")
-    async def get_returns(run_id: str):
+    async def get_returns(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "returns")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "returns.csv")
+        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "returns.csv")
+        return _downsample_records(records, n)
 
     @router.get("/{run_id}/drawdown")
-    async def get_drawdown(run_id: str):
+    async def get_drawdown(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "drawdown")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "drawdown.csv")
+        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "drawdown.csv")
+        return _downsample_records(records, n)
 
     # ------------------------------------------------------------------
     # Funding / Signals / Risk events

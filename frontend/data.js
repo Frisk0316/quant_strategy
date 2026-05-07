@@ -275,11 +275,13 @@
 // available as the fallback data source).
 // ---------------------------------------------------------------------------
 window.API = (function () {
-  async function _get(path) {
-    const r = await fetch(path, { signal: AbortSignal.timeout(3000) });
+  // Short timeout for list/status endpoints, long timeout for heavy data payloads.
+  async function _get(path, timeoutMs = 10000) {
+    const r = await fetch(path, { signal: AbortSignal.timeout(timeoutMs) });
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
   }
+  async function _getLarge(path) { return _get(path, 60000); }
 
   async function _post(path, body) {
     const r = await fetch(path, {
@@ -302,21 +304,21 @@ window.API = (function () {
     /** Recent fills matching window.MOCK.trades schema. */
     fetchLiveTrades:          (n = 200) => _get("/api/live/trades?limit=" + n),
     /** List of saved backtest runs (summary only). */
-    fetchBacktestRuns:        ()        => _get("/api/backtest/runs"),
-    fetchRuns:                ()        => _get("/api/backtest/runs"),
+    fetchBacktestRuns:        ()        => _get("/api/backtest/runs", 10000),
+    fetchRuns:                ()        => _get("/api/backtest/runs", 10000),
     /** Full result.json for a run. */
     fetchBacktest:            (id)      => _get("/api/backtest/" + id),
     fetchBacktestMetrics:     (id)      => _get("/api/backtest/" + id + "/metrics"),
-    /** Equity curve CSV as JSON records. */
-    fetchBacktestEquity:      (id)      => _get("/api/backtest/" + id + "/equity"),
-    fetchBacktestReturns:     (id)      => _get("/api/backtest/" + id + "/returns"),
-    fetchBacktestDrawdown:    (id)      => _get("/api/backtest/" + id + "/drawdown"),
+    /** Equity curve — downsampled to n points for fast chart rendering. Use n=0 for all rows. */
+    fetchBacktestEquity:      (id, n = 600) => _getLarge("/api/backtest/" + id + "/equity" + (n ? "?n=" + n : "")),
+    fetchBacktestReturns:     (id, n = 600) => _getLarge("/api/backtest/" + id + "/returns" + (n ? "?n=" + n : "")),
+    fetchBacktestDrawdown:    (id, n = 600) => _getLarge("/api/backtest/" + id + "/drawdown" + (n ? "?n=" + n : "")),
     /** Fills CSV as JSON records. */
-    fetchBacktestFills:       (id)      => _get("/api/backtest/" + id + "/fills"),
+    fetchBacktestFills:       (id)      => _getLarge("/api/backtest/" + id + "/fills"),
     /** Trades CSV as JSON records. */
-    fetchBacktestTrades:      (id)      => _get("/api/backtest/" + id + "/trades"),
+    fetchBacktestTrades:      (id)      => _getLarge("/api/backtest/" + id + "/trades"),
     /** Risk events CSV as JSON records. */
-    fetchBacktestRiskEvents:  (id)      => _get("/api/backtest/" + id + "/risk-events"),
+    fetchBacktestRiskEvents:  (id)      => _getLarge("/api/backtest/" + id + "/risk-events"),
     /** Data coverage JSON. */
     fetchBacktestCoverage:    (id)      => _get("/api/backtest/" + id + "/data-coverage"),
     fetchWalkForward:         (id)      => _get("/api/backtest/" + id + "/walk-forward"),

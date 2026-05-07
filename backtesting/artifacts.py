@@ -103,8 +103,15 @@ def _now_utc() -> str:
 
 
 def _ts_to_datetime(ts_series: pd.Series) -> pd.Series:
-    """Convert a ts column (ms integer or datetime-like) to ISO-8601 UTC strings."""
+    """Convert a ts column (ms or seconds integer, or datetime-like) to ISO-8601 UTC strings."""
     try:
+        numeric = pd.to_numeric(ts_series, errors="coerce").dropna()
+        if not numeric.empty:
+            med = float(numeric.median())
+            # Timestamps < 1e11 are almost certainly seconds (year ~1970–5138 in seconds
+            # vs year 1970–1973 in ms). Multiply to ms so pd.to_datetime unit="ms" works.
+            if 0 < med < 1e11:
+                ts_series = pd.to_numeric(ts_series, errors="coerce") * 1000
         converted = pd.to_datetime(ts_series, unit="ms", utc=True, errors="coerce")
         if converted.isna().all():
             converted = pd.to_datetime(ts_series, utc=True, errors="coerce")

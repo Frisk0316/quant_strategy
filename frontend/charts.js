@@ -1,7 +1,6 @@
 // Tiny SVG chart primitives — no third-party libs.
-/* global React */
-
-const { useMemo } = React;
+import { h } from 'preact';
+import { html } from 'htm/preact';
 
 function lineFromPoints(pts) {
   return pts.map((p, i) => (i === 0 ? `M${p[0]},${p[1]}` : `L${p[0]},${p[1]}`)).join(" ");
@@ -53,30 +52,30 @@ function LineChart({ series, height = 220, mode = "line", color = "var(--accent)
   const ticks = 4;
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => y0 + (i / ticks) * (y1 - y0));
 
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: "block" }}>
-      {showAxes && yTicks.map((t, i) => (
-        <g key={i}>
-          <line x1={padL} x2={w - padR} y1={yScale(t)} y2={yScale(t)} stroke="var(--border)" strokeDasharray="2 4" />
-          <text x={padL - 8} y={yScale(t) + 3} fontSize="10" textAnchor="end" fill="var(--text-subtle)" fontFamily="var(--font-mono)">
-            {Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}
+  return html`
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+      ${showAxes && yTicks.map((t, i) => html`
+        <g key=${i}>
+          <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
+          <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">
+            ${Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}
           </text>
         </g>
-      ))}
-      {series.map((s, si) => {
+      `)}
+      ${series.map((s, si) => {
         const ds = downsample(s.values, 240);
         const pts = ds.map(([i, v]) => [xScale(i), yScale(v)]);
         const stroke = s.color || color;
         const d = mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts);
-        return (
-          <g key={si}>
-            {mode === "area" && <path d={areaFromPoints(pts, yScale(y0))} fill={stroke} opacity="0.12" />}
-            <path d={d} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+        return html`
+          <g key=${si}>
+            ${mode === "area" && html`<path d=${areaFromPoints(pts, yScale(y0))} fill=${stroke} opacity="0.12" />`}
+            <path d=${d} fill="none" stroke=${stroke} stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
           </g>
-        );
+        `;
       })}
     </svg>
-  );
+  `;
 }
 
 function Sparkline({ values, color = "var(--accent)", height = 36, mode = "line" }) {
@@ -90,12 +89,12 @@ function Sparkline({ values, color = "var(--accent)", height = 36, mode = "line"
     (k / Math.max(ds.length - 1, 1)) * w,
     padT + (1 - (v - y0) / (y1 - y0)) * (h - padT - padB),
   ]);
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: "block" }}>
-      {mode === "area" && <path d={areaFromPoints(pts, h - padB)} fill={color} opacity="0.14" />}
-      <path d={mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts)} fill="none" stroke={color} strokeWidth="1.4" />
+  return html`
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+      ${mode === "area" && html`<path d=${areaFromPoints(pts, h - padB)} fill=${color} opacity="0.14" />`}
+      <path d=${mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts)} fill="none" stroke=${color} stroke-width="1.4" />
     </svg>
-  );
+  `;
 }
 
 function BarChart({ values, height = 160, color = "var(--accent)", labels, threshold }) {
@@ -108,25 +107,23 @@ function BarChart({ values, height = 160, color = "var(--accent)", labels, thres
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
   const xScale = (i) => padL + (i + 0.1) * (innerW / values.length);
   const barW = (innerW / values.length) * 0.8;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: "block" }}>
-      <line x1={padL} x2={w - padR} y1={yScale(0)} y2={yScale(0)} stroke="var(--border-strong)" />
-      {threshold != null && (
-        <line x1={padL} x2={w - padR} y1={yScale(threshold)} y2={yScale(threshold)} stroke="var(--warn)" strokeDasharray="3 4" />
-      )}
-      {values.map((v, i) => {
+  return html`
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+      <line x1=${padL} x2=${w - padR} y1=${yScale(0)} y2=${yScale(0)} stroke="var(--border-strong)" />
+      ${threshold != null && html`
+        <line x1=${padL} x2=${w - padR} y1=${yScale(threshold)} y2=${yScale(threshold)} stroke="var(--warn)" stroke-dasharray="3 4" />
+      `}
+      ${values.map((v, i) => {
         const y = yScale(Math.max(v, 0));
         const yEnd = yScale(Math.min(v, 0));
         const fill = v < 0 ? "var(--loss)" : color;
-        return (
-          <rect key={i} x={xScale(i)} y={y} width={barW} height={Math.max(yEnd - y, 1)} fill={fill} rx="1.5" opacity={v < 0 ? 0.8 : 0.9} />
-        );
+        return html`<rect key=${i} x=${xScale(i)} y=${y} width=${barW} height=${Math.max(yEnd - y, 1)} fill=${fill} rx="1.5" opacity=${v < 0 ? 0.8 : 0.9} />`;
       })}
-      {labels && labels.map((l, i) => (
-        <text key={i} x={xScale(i) + barW / 2} y={h - 8} fontSize="10" textAnchor="middle" fill="var(--text-subtle)" fontFamily="var(--font-mono)">{l}</text>
-      ))}
+      ${labels && labels.map((l, i) => html`
+        <text key=${i} x=${xScale(i) + barW / 2} y=${h - 8} font-size="10" text-anchor="middle" fill="var(--text-subtle)" font-family="var(--font-mono)">${l}</text>
+      `)}
     </svg>
-  );
+  `;
 }
 
 function HistogramChart({ values, bins = 24, height = 140, color = "var(--accent)" }) {
@@ -137,7 +134,7 @@ function HistogramChart({ values, bins = 24, height = 140, color = "var(--accent
     const idx = Math.min(bins - 1, Math.max(0, Math.floor((v - min) / step)));
     counts[idx]++;
   });
-  return <BarChart values={counts} height={height} color={color} labels={null} />;
+  return html`<${BarChart} values=${counts} height=${height} color=${color} labels=${null} />`;
 }
 
 window.Charts = { LineChart, Sparkline, BarChart, HistogramChart };

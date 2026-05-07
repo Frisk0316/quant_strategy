@@ -229,7 +229,7 @@ class PositionLedger:
         """Apply non-trade cashflows such as funding settlements."""
         if amount == 0:
             return
-        event_ts = time.time() if ts is None else ts
+        event_ts = int(time.time() * 1000) if ts is None else ts
         self._cash_equity += amount
         self._trade_log.append({
             "ts": event_ts,

@@ -745,7 +745,7 @@ class ReplayBacktestEngine:
             inst_id=payload.inst_id,
             reason="funding",
             strategy=pos.strategy,
-            ts=payload.ts / 1000,
+            ts=payload.ts,
             metadata={"funding_rate": rate, "ct_val": ct_val, "mark_price": mark_price},
         )
         recorder.record_funding(
