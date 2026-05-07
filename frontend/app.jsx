@@ -52,7 +52,8 @@ function App() {
     let ws;
     window.API.fetchStatus()
       .then((status) => {
-        if (status?.running) setMode("live");
+        if (!status?.running) return;
+        setMode("live");
         const wsUrl = `ws://${location.host}/api/ws`;
         ws = new WebSocket(wsUrl);
         ws.onmessage = (e) => {

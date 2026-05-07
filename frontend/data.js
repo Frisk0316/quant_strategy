@@ -281,6 +281,17 @@ window.API = (function () {
     return r.json();
   }
 
+  async function _post(path, body) {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(payload.detail || ("HTTP " + r.status));
+    return payload;
+  }
+
   return {
     /** Check if the engine is running. Resolves with status dict or rejects. */
     fetchStatus:              ()        => _get("/api/live/status"),
@@ -313,9 +324,9 @@ window.API = (function () {
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
     fetchDataCoverage:        ()        => _get("/api/data/coverage"),
     fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
-    triggerDataFetch:         (body)    => fetch("/api/data/fetch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
+    triggerDataFetch:         (body)    => _post("/api/data/fetch", body),
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
-    triggerBacktestRun:       (body)    => fetch("/api/backtest/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
+    triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     deleteRun:                (id)      => fetch("/api/backtest/" + id, { method: "DELETE" }).then((r) => r.json()),
   };
@@ -344,8 +355,9 @@ window.API.loadLatestBacktest = async function () {
     if (data.STRATEGIES) window.MOCK.STRATEGIES = data.STRATEGIES;
     if (data.SYMBOLS)    window.MOCK.SYMBOLS    = data.SYMBOLS;
 
-    if (data.walkForward && data.walkForward.length > 0)
-      window.MOCK.walkForward = data.walkForward;
+    const walkForward = data.walk_forward || data.walkForward;
+    if (walkForward && walkForward.length > 0)
+      window.MOCK.walkForward = walkForward;
 
     if (data.cpcv) {
       const cpcv = { ...data.cpcv };

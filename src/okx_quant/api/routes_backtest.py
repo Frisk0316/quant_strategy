@@ -16,7 +16,7 @@ from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _run_jobs: dict[str, dict[str, Any]] = {}
@@ -34,6 +34,7 @@ class RunBacktestRequest(BaseModel):
     start: str | None = None
     end: str | None = None
     run_id: str | None = None
+    validation: str | None = Field(default=None, alias="validate")
 
 
 def _run_backtest_job(
@@ -63,6 +64,8 @@ def _run_backtest_job(
             cmd.extend(["--end", req.end])
         if req.periods:
             cmd.extend(["--periods", str(req.periods)])
+        if req.validation:
+            cmd.extend(["--validate", req.validation])
         for symbol in req.symbols:
             cmd.extend(["--symbol", symbol])
         if req.symbol_x:
@@ -241,8 +244,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.post("/run")
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
         allowed = {"obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading"}
+        validate_allowed = {None, "wf", "cpcv", "both"}
         if req.strategy not in allowed:
             raise HTTPException(status_code=400, detail="Unsupported strategy")
+        if req.validation not in validate_allowed:
+            raise HTTPException(status_code=400, detail="Unsupported validation mode")
         if req.strategy == "pairs_trading" and req.symbol_x == req.symbol_y:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
         job_id = str(uuid.uuid4())[:8]

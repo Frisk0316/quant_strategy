@@ -1,4 +1,5 @@
 """Unit tests for backtesting data loaders and validation splitters."""
+import json
 import sys
 from pathlib import Path
 
@@ -11,6 +12,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from types import SimpleNamespace
+
+from backtesting.artifacts import save_backtest_artifacts
 from backtesting.cpcv import CPCV
 from backtesting.data_loader import compute_returns, load_funding
 from backtesting.replay import (
@@ -18,7 +22,9 @@ from backtesting.replay import (
     ReplayBacktestResult,
     ReplayRecorder,
     build_feed_for_strategies,
+    make_replay_strategy_fn,
     run_replay_backtest,
+    run_replay_validations,
 )
 from backtesting.replay_validation import (
     ASMMReplayParamGrid,
@@ -200,6 +206,136 @@ def _stub_replay_runner(strategy_names, cfg, data_dir, start, end, bar, periods)
         funding_log=pd.DataFrame(),
         trade_log=pd.DataFrame(),
     )
+
+
+def test_generic_replay_strategy_fn_runs_train_and_oos_windows():
+    idx = pd.date_range("2024-01-01", periods=8, freq="1h", tz="UTC")
+    df = pd.DataFrame({"event_count": 1}, index=idx)
+    cfg = AppConfig(
+        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
+        strategies=StrategiesConfig(),
+        risk=RiskConfig(),
+        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
+    )
+    calls = []
+
+    def runner(strategy_names, cfg, data_dir, start, end, bar, periods):
+        calls.append((start, end))
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        ridx = pd.date_range(start_ts, end_ts - pd.Timedelta(hours=1), freq="1h", tz="UTC")
+        returns = pd.Series(np.full(len(ridx), 0.001), index=(ridx.view("int64") // 1_000_000))
+        return ReplayBacktestResult(
+            returns=returns,
+            equity_curve=pd.Series(dtype=float),
+            metrics={"sharpe": 1.5, "total_return": 0.01, "max_drawdown": -0.02},
+            order_log=pd.DataFrame([{"cl_ord_id": "o"}]),
+            fill_log=pd.DataFrame([{"cl_ord_id": "o"}]),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    strategy_fn = make_replay_strategy_fn(
+        strategy_names=["pairs_trading"],
+        cfg=cfg,
+        include_train_metrics=True,
+        runner=runner,
+    )
+    result = strategy_fn(df.iloc[:4], df.iloc[4:])
+
+    assert len(calls) == 2
+    assert len(result["returns"]) == 4
+    assert isinstance(result["returns"].index, pd.DatetimeIndex)
+    assert result["is_metrics"]["sharpe"] == pytest.approx(1.5)
+    assert result["oos_order_count"] == 1
+    assert result["returns_source"] == "replay_window"
+
+
+def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
+    idx = pd.date_range("2024-01-01", periods=30, freq="1D", tz="UTC")
+    df = pd.DataFrame({"event_count": 1}, index=idx)
+    cfg = AppConfig(
+        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
+        strategies=StrategiesConfig(),
+        risk=RiskConfig(),
+        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
+    )
+    monkeypatch.setattr("backtesting.replay.build_replay_validation_frame", lambda **_: df)
+
+    def runner(strategy_names, cfg, data_dir, start, end, bar, periods):
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        ridx = pd.date_range(start_ts, end_ts - pd.Timedelta(days=1), freq="1D", tz="UTC")
+        returns = pd.Series(np.full(len(ridx), 0.001), index=(ridx.view("int64") // 1_000_000))
+        return ReplayBacktestResult(
+            returns=returns,
+            equity_curve=pd.Series(dtype=float),
+            metrics={"sharpe": 1.2, "total_return": 0.01, "max_drawdown": -0.01},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    validation = run_replay_validations(
+        strategy_names=["pairs_trading"],
+        cfg=cfg,
+        mode="both",
+        wf_is_days=10,
+        wf_oos_days=5,
+        cpcv_n_splits=3,
+        cpcv_k_test=1,
+        cpcv_embargo_pct=0.0,
+        cpcv_purge_size=0,
+        runner=runner,
+    )
+
+    assert validation["walk_forward"]
+    assert "oos_sharpe" in validation["walk_forward"][0]
+    assert validation["cpcv"]["n_combinations"] == 3
+    assert len(validation["cpcv"]["combos"]) == 3
+    assert "dsr" in validation["cpcv"]
+
+
+def test_save_backtest_artifacts_writes_validation_to_result_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKTEST_ARTIFACT_MODE", "files")
+    cfg = AppConfig(
+        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
+        strategies=StrategiesConfig(),
+        risk=RiskConfig(),
+        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
+    )
+    result = ReplayBacktestResult(
+        returns=pd.Series([0.0, 0.001], index=[1_704_067_200_000, 1_704_070_800_000]),
+        equity_curve=pd.Series([10_000.0, 10_010.0], index=[1_704_067_200_000, 1_704_070_800_000]),
+        metrics={"sharpe": 1.0},
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+    )
+
+    run_dir = save_backtest_artifacts(
+        result=result,
+        cfg=cfg,
+        args=SimpleNamespace(strategy=["pairs_trading"], start="2024-01-01", end="2024-01-02", bar="1H"),
+        output_dir=str(tmp_path),
+        run_id="validation_result",
+        strategy_names=["pairs_trading"],
+        start="2024-01-01",
+        end="2024-01-02",
+        bar="1H",
+        validation_results={
+            "walk_forward": [{"window": 0, "oos_sharpe": 1.23}],
+            "cpcv": {"dsr": 0.97, "psr": 0.95, "combos": [{"i": 0, "sharpe": 1.0}]},
+            "validation_frame_rows": 2,
+        },
+    )
+
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    assert payload["walk_forward"][0]["oos_sharpe"] == pytest.approx(1.23)
+    assert payload["cpcv"]["dsr"] == pytest.approx(0.97)
+    assert payload["validation"]["validation_frame_rows"] == 2
 
 
 def test_replay_asmm_parameter_selection_uses_is_and_oos_windows():

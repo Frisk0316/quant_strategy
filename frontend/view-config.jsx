@@ -57,6 +57,7 @@ function RunBacktestView() {
   const [start, setStart] = useConfigState("2024-01-01");
   const [end, setEnd] = useConfigState(yesterday);
   const [equity, setEquity] = useConfigState(5000);
+  const [validation, setValidation] = useConfigState("both");
   const [runJob, setRunJob] = useConfigState(null);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
@@ -103,6 +104,7 @@ function RunBacktestView() {
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
+      validate: validation === "none" ? null : validation,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -228,10 +230,11 @@ function RunBacktestView() {
             </div>
             <div className="field">
               <div className="field-label">Validation</div>
-              <select className="select">
-                <option>Walk-Forward IS=14d / OOS=7d</option>
-                <option>CPCV N=6 / k=2 / embargo=2%</option>
-                <option>Both (full report)</option>
+              <select className="select" value={validation} onChange={(e) => setValidation(e.target.value)}>
+                <option value="both">Both (WF + CPCV)</option>
+                <option value="wf">Walk-Forward</option>
+                <option value="cpcv">CPCV</option>
+                <option value="none">None</option>
               </select>
             </div>
           </div>

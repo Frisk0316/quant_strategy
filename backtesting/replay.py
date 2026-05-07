@@ -9,7 +9,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional
+from itertools import combinations
+from typing import Any, Callable, Iterable, Optional
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -886,6 +887,311 @@ def _concat_non_empty(frames: list[pd.DataFrame]) -> pd.DataFrame:
     if not non_empty:
         return pd.DataFrame()
     return pd.concat(non_empty, ignore_index=True)
+
+
+def _as_utc_index(index: pd.Index) -> pd.DatetimeIndex:
+    dt_index = pd.DatetimeIndex(index)
+    if dt_index.tz is None:
+        return dt_index.tz_localize("UTC")
+    return dt_index.tz_convert("UTC")
+
+
+def _infer_index_step(index: pd.DatetimeIndex) -> pd.Timedelta:
+    if len(index) < 2:
+        return pd.Timedelta(hours=1)
+    diffs = index.to_series().diff().dropna()
+    if diffs.empty:
+        return pd.Timedelta(hours=1)
+    return pd.Timedelta(diffs.median())
+
+
+def _window_bounds(data: pd.DataFrame) -> tuple[str, str]:
+    if data.empty:
+        raise ValueError("Replay validation window cannot be empty")
+    index = _as_utc_index(data.index)
+    start = index[0]
+    end = index[-1] + _infer_index_step(index)
+    return start.isoformat(), end.isoformat()
+
+
+def _returns_to_datetime_index(returns: pd.Series) -> pd.Series:
+    if returns.empty:
+        return returns
+    normalized = pd.Series(returns.to_numpy(dtype=float), index=returns.index)
+    if isinstance(normalized.index, pd.DatetimeIndex):
+        normalized.index = _as_utc_index(normalized.index)
+        return normalized.sort_index()
+    normalized.index = pd.to_datetime(normalized.index, unit="ms", utc=True, errors="coerce")
+    normalized = normalized[~normalized.index.isna()]
+    return normalized.sort_index()
+
+
+def _align_replay_returns(returns: pd.Series, target_index: pd.Index) -> pd.Series:
+    target = _as_utc_index(target_index)
+    if returns.empty:
+        return pd.Series(0.0, index=target)
+    replay_returns = _returns_to_datetime_index(returns).groupby(level=0).sum()
+    return replay_returns.reindex(target, fill_value=0.0)
+
+
+def build_replay_validation_frame(
+    cfg: AppConfig,
+    strategy_names: list[str],
+    data_dir: str = "data/ticks",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    bar: str = "1H",
+) -> pd.DataFrame:
+    """
+    Build the timestamp frame used by WF/CPCV splitters for replay validation.
+
+    The validators only need a leak-free DatetimeIndex. The strategy callback
+    replays the actual market data for each train/test window.
+    """
+    feed = build_feed_for_strategies(
+        cfg=cfg,
+        strategy_names=strategy_names,
+        data_dir=data_dir,
+        start=start,
+        end=end,
+        bar=bar,
+    )
+    frames = [df for df in [feed.market_events, feed.funding_events] if not df.empty and "ts" in df.columns]
+    if not frames:
+        return pd.DataFrame(columns=["event_count"], index=pd.DatetimeIndex([], tz="UTC"))
+
+    ts = pd.concat([df["ts"] for df in frames], ignore_index=True)
+    idx = pd.to_datetime(ts, unit="ms", utc=True, errors="coerce")
+    idx = idx[~idx.isna()]
+    if len(idx) == 0:
+        return pd.DataFrame(columns=["event_count"], index=pd.DatetimeIndex([], tz="UTC"))
+
+    validation_frame = pd.DataFrame({"event_count": 1}, index=idx)
+    return validation_frame.groupby(level=0).sum().sort_index()
+
+
+ReplayValidationRunner = Callable[..., ReplayBacktestResult]
+
+
+def make_replay_strategy_fn(
+    *,
+    strategy_names: list[str],
+    cfg: AppConfig,
+    data_dir: str = "data/ticks",
+    bar: str = "1H",
+    periods: int = 365 * 24,
+    include_train_metrics: bool = False,
+    runner: ReplayValidationRunner | None = None,
+) -> Callable[[pd.DataFrame, pd.DataFrame], dict[str, Any]]:
+    """
+    Return the strategy_fn expected by WalkForward.evaluate() and CPCV.evaluate().
+
+    The callback replays the supplied OOS/test window through the full event
+    stack and returns a dict with a returns Series aligned to test_data.index.
+    """
+    replay_runner = runner or run_replay_backtest
+
+    def strategy_fn(train_data: pd.DataFrame, test_data: pd.DataFrame) -> dict[str, Any]:
+        is_metrics: dict[str, Any] | None = None
+        if include_train_metrics and not train_data.empty:
+            is_start, is_end = _window_bounds(train_data)
+            is_result = replay_runner(
+                strategy_names=strategy_names,
+                cfg=cfg,
+                data_dir=data_dir,
+                start=is_start,
+                end=is_end,
+                bar=bar,
+                periods=periods,
+            )
+            is_metrics = dict(is_result.metrics)
+
+        oos_start, oos_end = _window_bounds(test_data)
+        oos_result = replay_runner(
+            strategy_names=strategy_names,
+            cfg=cfg,
+            data_dir=data_dir,
+            start=oos_start,
+            end=oos_end,
+            bar=bar,
+            periods=periods,
+        )
+        return {
+            "returns": _align_replay_returns(oos_result.returns, test_data.index),
+            "is_metrics": is_metrics or {},
+            "oos_metrics": dict(oos_result.metrics),
+            "oos_order_count": len(oos_result.order_log),
+            "oos_fill_count": len(oos_result.fill_log),
+            "returns_source": "replay_window",
+        }
+
+    return strategy_fn
+
+
+def _jsonable_validation_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _jsonable_validation_value(v) for k, v in value.items() if k != "returns"}
+    if isinstance(value, list):
+        return [_jsonable_validation_value(v) for v in value]
+    if isinstance(value, tuple):
+        return [_jsonable_validation_value(v) for v in value]
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
+
+
+def _summarize_walk_forward(results: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if results.empty:
+        return rows
+    for row in results.to_dict(orient="records"):
+        result = row.get("result", {}) or {}
+        is_metrics = result.get("is_metrics", {}) if isinstance(result, dict) else {}
+        oos_metrics = result.get("oos_metrics", {}) if isinstance(result, dict) else {}
+        window = row.get("window")
+        rows.append(_jsonable_validation_value({
+            "window": window,
+            "i": window,
+            "is_start": row.get("is_start"),
+            "is_end": row.get("is_end"),
+            "oos_start": row.get("oos_start"),
+            "oos_end": row.get("oos_end"),
+            "is_n": row.get("is_n"),
+            "oos_n": row.get("oos_n"),
+            "is_sharpe": is_metrics.get("sharpe"),
+            "oos_sharpe": row.get("oos_sharpe"),
+            "oos_return": oos_metrics.get("total_return"),
+            "oos_mdd": oos_metrics.get("max_drawdown"),
+            "oos_metrics": oos_metrics,
+            "oos_order_count": result.get("oos_order_count") if isinstance(result, dict) else None,
+            "oos_fill_count": result.get("oos_fill_count") if isinstance(result, dict) else None,
+        }))
+    return rows
+
+
+def _summarize_cpcv(results: dict[str, Any], n_splits: int, k_test: int) -> dict[str, Any]:
+    sharpe_list = [float(v) for v in results.get("sharpe_list", [])]
+    path_sharpes = [float(v) for v in results.get("path_sharpes", [])]
+    test_groups = list(combinations(range(n_splits), k_test))
+    std_oos = float(pd.Series(sharpe_list).std(ddof=1)) if len(sharpe_list) > 1 else 0.0
+
+    payload = {
+        key: _jsonable_validation_value(value)
+        for key, value in results.items()
+        if key not in {"sharpe_list", "path_sharpes"}
+    }
+    payload.update({
+        "sharpe_list": sharpe_list,
+        "path_sharpes": path_sharpes,
+        "combos": [
+            {
+                "i": i,
+                "test_groups": list(test_groups[i]) if i < len(test_groups) else [],
+                "sharpe": sr,
+            }
+            for i, sr in enumerate(sharpe_list)
+        ],
+        "paths": [
+            {"i": i, "sharpe": sr}
+            for i, sr in enumerate(path_sharpes)
+        ],
+        "std_oos_sharpe": std_oos,
+        "n_research_trials": int(results.get("n_trials", 1) or 1),
+    })
+    return payload
+
+
+def run_replay_validations(
+    *,
+    strategy_names: list[str],
+    cfg: AppConfig,
+    data_dir: str = "data/ticks",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    bar: str = "1H",
+    periods: int = 365 * 24,
+    mode: str = "both",
+    wf_is_days: int = 30,
+    wf_oos_days: int = 7,
+    cpcv_n_splits: int = 6,
+    cpcv_k_test: int = 2,
+    cpcv_embargo_pct: float = 0.02,
+    cpcv_purge_size: int = 1,
+    n_trials: int = 1,
+    runner: ReplayValidationRunner | None = None,
+) -> dict[str, Any]:
+    """Run replay-backed WF/CPCV validation and return result.json-ready data."""
+    from backtesting.cpcv import CPCV
+    from backtesting.walk_forward import WalkForward
+
+    validate_mode = mode.lower()
+    if validate_mode not in {"wf", "cpcv", "both"}:
+        raise ValueError("--validate must be one of: wf, cpcv, both")
+
+    df = build_replay_validation_frame(
+        cfg=cfg,
+        strategy_names=strategy_names,
+        data_dir=data_dir,
+        start=start,
+        end=end,
+        bar=bar,
+    )
+    if df.empty:
+        raise ValueError("Replay validation cannot run because no market/funding data was loaded")
+
+    validation: dict[str, Any] = {
+        "validation_frame_rows": int(len(df)),
+        "validation_frame_start": df.index[0].isoformat(),
+        "validation_frame_end": df.index[-1].isoformat(),
+    }
+
+    replay_runner = runner or run_replay_backtest
+    if validate_mode in {"wf", "both"}:
+        wf = WalkForward(is_days=wf_is_days, oos_days=wf_oos_days)
+        wf_results = wf.evaluate(
+            df,
+            make_replay_strategy_fn(
+                strategy_names=strategy_names,
+                cfg=cfg,
+                data_dir=data_dir,
+                bar=bar,
+                periods=periods,
+                include_train_metrics=True,
+                runner=replay_runner,
+            ),
+            periods=periods,
+        )
+        validation["walk_forward"] = _summarize_walk_forward(wf_results)
+
+    if validate_mode in {"cpcv", "both"}:
+        cpcv = CPCV(
+            n_splits=cpcv_n_splits,
+            k_test=cpcv_k_test,
+            embargo_pct=cpcv_embargo_pct,
+            purge_size=cpcv_purge_size,
+        )
+        cpcv_results = cpcv.evaluate(
+            df,
+            make_replay_strategy_fn(
+                strategy_names=strategy_names,
+                cfg=cfg,
+                data_dir=data_dir,
+                bar=bar,
+                periods=periods,
+                include_train_metrics=False,
+                runner=replay_runner,
+            ),
+            periods=periods,
+            n_trials=n_trials,
+        )
+        validation["cpcv"] = _summarize_cpcv(cpcv_results, cpcv_n_splits, cpcv_k_test)
+
+    return validation
 
 
 def run_replay_backtest(

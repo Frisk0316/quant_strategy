@@ -15,8 +15,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 
 from okx_quant.api.routes_backtest import make_backtest_router
+from okx_quant.api.routes_config import make_config_router
+from okx_quant.api.routes_data import make_data_router
 from okx_quant.api.routes_live import make_live_router
 from okx_quant.api.state import EngineState
+from okx_quant.core.config import load_config
+
+
+def _db_dsn() -> str | None:
+    try:
+        cfg = load_config(require_secrets=False)
+        return cfg.storage.timescale_dsn
+    except Exception:
+        return None
 
 
 def create_app(
@@ -34,6 +45,8 @@ def create_app(
 
     app.include_router(make_live_router(state), prefix="/api/live", tags=["live"])
     app.include_router(make_backtest_router(results_dir), prefix="/api/backtest", tags=["backtest"])
+    app.include_router(make_config_router(), prefix="/api", tags=["config"])
+    app.include_router(make_data_router(_db_dsn()), prefix="/api/data", tags=["data"])
 
     @app.websocket("/api/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:

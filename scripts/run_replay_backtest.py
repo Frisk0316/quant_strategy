@@ -10,7 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
-from backtesting.replay import run_replay_backtest
+from backtesting.replay import run_replay_backtest, run_replay_validations
 from okx_quant.core.config import load_config
 
 BAR_PERIODS = {
@@ -47,6 +47,8 @@ def main() -> None:
                         help="Custom run ID; auto-generated if omitted")
     parser.add_argument("--artifact-format", default="csv", choices=["csv"],
                         help="Output format for tabular artifacts (default: csv)")
+    parser.add_argument("--validate", choices=["wf", "cpcv", "both"], default=None,
+                        help="Run replay-backed Walk-Forward, CPCV, or both and write them into result.json")
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
@@ -98,6 +100,19 @@ def main() -> None:
     if args.save_artifacts:
         from backtesting.artifacts import save_backtest_artifacts
         output_dir = str(PROJECT_ROOT / args.output_dir) if not Path(args.output_dir).is_absolute() else args.output_dir
+        validation_results = None
+        if args.validate:
+            print(f"Running replay validation: {args.validate}")
+            validation_results = run_replay_validations(
+                strategy_names=args.strategy,
+                cfg=cfg,
+                data_dir=args.data_dir,
+                start=args.start,
+                end=args.end,
+                bar=args.bar,
+                periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
+                mode=args.validate,
+            )
         run_dir = save_backtest_artifacts(
             result=result,
             cfg=cfg,
@@ -108,6 +123,7 @@ def main() -> None:
             start=args.start,
             end=args.end,
             bar=args.bar,
+            validation_results=validation_results,
         )
         print(f"Saved backtest artifacts to {run_dir}")
 

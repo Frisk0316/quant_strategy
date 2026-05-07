@@ -16,7 +16,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -49,6 +49,13 @@ def create_app(results_dir: Path, frontend_dir: Path) -> FastAPI:
     @app.get("/api/live/status")
     def live_status():
         return {"mode": "offline", "running": False}
+
+    @app.websocket("/api/ws")
+    async def ws_offline(websocket: WebSocket):
+        # Accept then immediately close — prevents StaticFiles AssertionError
+        # when the frontend tries to connect in backtest-only mode.
+        await websocket.accept()
+        await websocket.close(code=1001)
 
     app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="static")
     return app

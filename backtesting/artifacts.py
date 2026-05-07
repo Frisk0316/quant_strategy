@@ -632,6 +632,7 @@ def save_backtest_artifacts(
     bar: str = "1H",
     market_frames_meta: Optional[list[dict]] = None,
     funding_frames_meta: Optional[list[dict]] = None,
+    validation_results: Optional[dict[str, Any]] = None,
 ) -> Path:
     """
     Write all backtest artifacts for a single run.
@@ -871,6 +872,16 @@ def save_backtest_artifacts(
         "metrics": metrics,
         "artifacts": artifact_refs,
     }
+    if validation_results:
+        if "walk_forward" in validation_results:
+            result_json["walk_forward"] = validation_results["walk_forward"]
+        if "cpcv" in validation_results:
+            result_json["cpcv"] = validation_results["cpcv"]
+        result_json["validation"] = {
+            key: value
+            for key, value in validation_results.items()
+            if key not in {"walk_forward", "cpcv"}
+        }
     if write_files:
         _write_json(run_dir / "result.json", result_json)
     _upsert_run_to_db(run_id_final, result_json, run_dir)
