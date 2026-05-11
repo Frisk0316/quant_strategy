@@ -16,7 +16,7 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Establish AI governance infrastructure: documentation lifecycle rules, CI skeleton, and regression tests for highest-risk PnL and execution logic.
+Establish AI governance infrastructure: CI skeleton and regression tests for highest-risk PnL and execution logic.
 
 ## Current Branch
 
@@ -46,16 +46,16 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| PR4 `(current)` | Add documentation lifecycle policy, docs index, archive/deprecated rules, and documentation authority rules | Governance docs only |
-| PR3 | Immediate predecessor: fixed PR1/PR2 doc consistency and marked ADR-0005 as proposed | No current action unless docs conflict is found |
+| PR6 `(current)` | Add SWAP `ct_val` PnL regression tests for unrealized, notional, and realized PnL | Test-only coverage for portfolio accounting |
+| PR5 | Add CI skeleton with ruff and unit-test gate | First CI version does not run integration tests or TimescaleDB |
 
 ## Known Bugs / Open Issues
 
 1. **Shadow mode mismatch** (P0): `scripts/run_shadow.py` claims SimBroker vs OKX demo comparison, but engine only instantiates SimBroker in shadow mode. No true comparison happens.
 2. **SimBroker fill event gap** (P0): `ExecutionHandler.on_order()` expects WebSocket fill, but `SimBroker.submit()` does not emit a simulated fill event — blocks unified backtest/live engine path.
 3. **Replay bar-level approximation** (P1): `scripts/run_backtest.py` uses per-bar approximation formulas, not the true `Strategy → Signal → Order → Fill → Ledger` path.
-4. **No CI gate**: No `.github/workflows/` — no automated test enforcement on PRs.
-5. **Missing regression tests**: No tests for ct_val PnL, funding carry dual leg alignment, pairs trading hedge close, or replay terminal liquidation.
+4. **CI gate is minimal**: `.github/workflows/ci.yml` runs ruff and unit tests only. Integration tests still require TimescaleDB planning.
+5. **Missing regression tests**: No tests for funding carry dual leg alignment, pairs trading hedge close, or replay terminal liquidation.
 6. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR11–12).
 
 ## Do Not Touch (without explicit issue + user approval)
@@ -69,18 +69,15 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[PR4]** Documentation lifecycle policy — `docs/DOC_LIFECYCLE.md`, docs index, archive/deprecated rules
-2. **[PR5]** CI skeleton: `.github/workflows/ci.yml` with ruff + pytest unit gate
-3. **[PR6]** Regression test: SWAP `ct_val` PnL — `tests/unit/test_position_pnl_accounting.py`
-4. **[PR7]** Regression test: frontend MIME smoke — `tests/unit/test_frontend_static_mime.py`
-5. **[PR8]** Regression test: backtest artifact schema — `tests/unit/test_backtest_artifact_schema.py`
-6. **[PR9]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
-7. **[PR10]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
-8. **[PR11A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
-9. **[PR11B]** Implementation: terminal liquidation in `backtesting/replay.py`
-10. **[PR12]** Replay validation gates implementation (ADR-0005 → Accepted)
-11. **[PR13A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
-12. **[PR13B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+1. **[PR7]** Regression test: frontend MIME smoke — `tests/unit/test_frontend_static_mime.py`
+2. **[PR8]** Regression test: backtest artifact schema — `tests/unit/test_backtest_artifact_schema.py`
+3. **[PR9]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
+4. **[PR10]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
+5. **[PR11A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
+6. **[PR11B]** Implementation: terminal liquidation in `backtesting/replay.py`
+7. **[PR12]** Replay validation gates implementation (ADR-0005 → Accepted)
+8. **[PR13A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
+9. **[PR13B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
 
 ## Documentation Cleanup Next Step
 

@@ -496,7 +496,7 @@ footer {
       <h1>quant_strategy Repository Architecture Map</h1>
       <p>
         這份文件用直觀方式整理 <code>Frisk0316/quant_strategy</code> 的系統架構、事件流程、策略參數、風控、DB、回測、測試與錯誤處理。
-        它可以作為新 AI session、Codex / Claude Code、或人工 review 前的架構入口。
+        它可以作為新 AI session、Codex / Claude Code、或人工 review 前的架構入口。本版新增 PR / docs lifecycle 更新，以及完整 backtest metrics 字典與 funding_carry 截圖數據。
       </p>
       <div class="badges">
         <span class="badge">Event-driven trading engine</span>
@@ -522,10 +522,12 @@ footer {
     <a href="#risk">風控</a>
     <a href="#data-db">DB / Data</a>
     <a href="#backtest">Backtest</a>
+    <a href="#backtest-metrics">回測指標</a>
     <a href="#frontend">Frontend / API</a>
     <a href="#tests">測試</a>
     <a href="#errors">錯誤處理</a>
     <a href="#ai">AI 協作</a>
+    <a href="#pr-docs">PR / Docs</a>
   </div>
 </nav>
 
@@ -935,10 +937,304 @@ cash_equity
   </div>
 </section>
 
+
+<section id="backtest-metrics">
+  <div class="section-title">
+    <div>
+      <h2>11. Backtest Metrics：回測指標字典與目前截圖數據</h2>
+      <p>
+        本節整理 dashboard「All metrics」中每個欄位代表的意義、計算來源、判讀方式，以及你目前 funding_carry 截圖中的數值。
+        指標主要來自 <code>analytics/performance.py</code> 的 <code>summary()</code> 與 <code>backtesting/replay.py</code> 的 execution metrics。
+      </p>
+    </div>
+  </div>
+
+  <div class="grid cols-4">
+    <div class="card"><div class="kpi"><div class="num">-10.70%</div><div class="label">Total Return<br/>期末總報酬</div></div></div>
+    <div class="card"><div class="kpi"><div class="num">-3.60</div><div class="label">Sharpe<br/>年化風險調整報酬</div></div></div>
+    <div class="card"><div class="kpi"><div class="num">-138.48%</div><div class="label">Max Drawdown<br/>最大回撤</div></div></div>
+    <div class="card"><div class="kpi"><div class="num">true</div><div class="label">Bankrupt<br/>曾低於零 equity</div></div></div>
+  </div>
+
+  <div class="callout red" style="margin-top:16px;">
+    <b>目前 funding_carry 截圖判讀：</b>
+    雖然最終 <code>total_return = -0.1070</code>，但 <code>max_drawdown = -1.38</code>、<code>min_equity = -0.4121</code>、<code>bankrupt = true</code>，
+    代表回測期間曾出現實盤中應視為爆倉 / 被強制平倉的路徑。這類 run 不應只看最後總報酬。
+  </div>
+
+  <div class="table-wrap" style="margin-top:16px;">
+    <table>
+      <thead>
+        <tr>
+          <th>指標</th>
+          <th>截圖數值</th>
+          <th>代表內容</th>
+          <th>來源 / 公式</th>
+          <th>判讀方式</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>n_periods</code></td>
+          <td>735.00</td>
+          <td>回測 return series 的期間數量。</td>
+          <td><code>len(returns)</code></td>
+          <td>用於年化 Sharpe / Sortino / Calmar；bar 不同時不可直接比較。</td>
+        </tr>
+        <tr>
+          <td><code>total_return</code></td>
+          <td>-0.1070</td>
+          <td>整段期間的累積總報酬。</td>
+          <td><code>prod(1 + r) - 1</code></td>
+          <td>-0.1070 = -10.70%。但若途中 bankrupt，最後回來也不代表可交易。</td>
+        </tr>
+        <tr>
+          <td><code>sharpe</code></td>
+          <td>-3.60</td>
+          <td>年化平均超額報酬 / 波動率。</td>
+          <td><code>sqrt(periods) * mean(r-rf) / std(r-rf)</code></td>
+          <td>越高越好；負值表示風險調整後報酬為負。</td>
+        </tr>
+        <tr>
+          <td><code>sortino</code></td>
+          <td>-2.55</td>
+          <td>只用 downside deviation 的風險調整報酬。</td>
+          <td><code>sqrt(periods) * mean(excess) / downside_std</code></td>
+          <td>比 Sharpe 更聚焦下檔風險；負值同樣不好。</td>
+        </tr>
+        <tr>
+          <td><code>max_drawdown</code></td>
+          <td>-1.38</td>
+          <td>最大回撤比例。</td>
+          <td>equity cumulative max 對比當前 equity。</td>
+          <td>-1.38 = -138%，已超過 100%，代表 equity 曾跌破零。</td>
+        </tr>
+        <tr>
+          <td><code>calmar</code></td>
+          <td>-0.5347</td>
+          <td>年化 CAGR / 最大回撤絕對值。</td>
+          <td><code>CAGR / abs(max_drawdown)</code></td>
+          <td>越高越好；負值表示 CAGR 為負或路徑極差。</td>
+        </tr>
+        <tr>
+          <td><code>profit_factor</code></td>
+          <td>0.0856</td>
+          <td>總盈利 / 總虧損。</td>
+          <td><code>sum(r>0) / abs(sum(r<0))</code></td>
+          <td>&gt;1 才代表總盈利大於總虧損；0.0856 非常差。</td>
+        </tr>
+        <tr>
+          <td><code>win_rate</code></td>
+          <td>0.4959</td>
+          <td>非零 return 中為正的比例。</td>
+          <td><code>count(r&gt;0) / count(r!=0)</code></td>
+          <td>49.59% 接近一半；但 win rate 不代表賺錢，還要看盈虧比。</td>
+        </tr>
+        <tr>
+          <td><code>omega</code></td>
+          <td>0.0856</td>
+          <td>門檻以上 gains / 門檻以下 losses。</td>
+          <td>預設門檻 <code>tau=0</code>。</td>
+          <td>&gt;1 較好；目前小於 1，虧損尾端壓過收益。</td>
+        </tr>
+        <tr>
+          <td><code>tail_ratio</code></td>
+          <td>0.8273</td>
+          <td>右尾 / 左尾報酬比例。</td>
+          <td><code>abs(p95) / abs(p5)</code></td>
+          <td>&gt;1 表示上行尾端比下行尾端厚；目前 &lt;1。</td>
+        </tr>
+        <tr>
+          <td><code>skewness</code></td>
+          <td>-26.90</td>
+          <td>報酬分布偏態。</td>
+          <td><code>scipy.stats.skew(r)</code></td>
+          <td>極度負偏，代表少數大虧損主導風險。</td>
+        </tr>
+        <tr>
+          <td><code>kurtosis</code></td>
+          <td>727.49</td>
+          <td>報酬分布峰態 / 厚尾程度。</td>
+          <td><code>scipy.stats.kurtosis(r, fisher=False)</code></td>
+          <td>遠高於常態分布 3，表示極端值很多。</td>
+        </tr>
+        <tr>
+          <td><code>bankrupt</code></td>
+          <td>true</td>
+          <td>累積 equity 是否曾小於等於 0。</td>
+          <td><code>any(cumprod(1+r) &lt;= 0)</code></td>
+          <td>true 時應直接標成不可交易 run。</td>
+        </tr>
+        <tr>
+          <td><code>min_equity</code></td>
+          <td>-0.4121</td>
+          <td>標準化 equity 曲線的最低值。</td>
+          <td><code>min(cumprod(1+r))</code></td>
+          <td>小於 0 代表中途爆倉路徑。</td>
+        </tr>
+        <tr>
+          <td><code>last_equity</code></td>
+          <td>0.8930</td>
+          <td>標準化期末 equity。</td>
+          <td><code>last(cumprod(1+r))</code></td>
+          <td>0.893 = 初始資金的 89.3%，對應約 -10.7%。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">
+    <div>
+      <h3 style="margin:0;font-size:24px;">Execution / Replay Metrics：成交、費用、Funding、統計顯著性</h3>
+      <p>這些不是單純績效指標，而是 replay execution 與統計驗證指標。它們用來判斷回測機械是否合理。</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>指標</th>
+          <th>截圖數值</th>
+          <th>代表內容</th>
+          <th>來源 / 計算</th>
+          <th>判讀方式</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>submitted_order_count</code></td>
+          <td>2.00</td>
+          <td>提交到 execution layer 的 order 數。</td>
+          <td><code>len(order_log)</code></td>
+          <td>策略活躍度與交易頻率。</td>
+        </tr>
+        <tr>
+          <td><code>order_count</code></td>
+          <td>2.00</td>
+          <td>同 submitted_order_count，用於 dashboard 兼容。</td>
+          <td>Replay execution metrics。</td>
+          <td>通常與 submitted_order_count 一致。</td>
+        </tr>
+        <tr>
+          <td><code>orders_filled_count</code></td>
+          <td>2.00</td>
+          <td>至少有一次 real fill 的 unique order id 數。</td>
+          <td>unique filled <code>cl_ord_id</code></td>
+          <td>與 real_fill_count 不同，因為一張 order 可拆成多次 partial fill。</td>
+        </tr>
+        <tr>
+          <td><code>real_fill_count</code></td>
+          <td>10.00</td>
+          <td>真實成交事件數。</td>
+          <td>state in <code>filled</code> / <code>partially_filled</code> 且 fill_sz &gt; 0。</td>
+          <td>目前 2 張 order 被拆成 10 筆 fill。</td>
+        </tr>
+        <tr>
+          <td><code>fill_count</code></td>
+          <td>10.00</td>
+          <td>同 real_fill_count，用於 dashboard 兼容。</td>
+          <td>Replay execution metrics。</td>
+          <td>不是完整交易數，而是 fill event 數。</td>
+        </tr>
+        <tr>
+          <td><code>partial_fill_count</code></td>
+          <td>8.00</td>
+          <td>部分成交事件數。</td>
+          <td>state = <code>partially_filled</code></td>
+          <td>高 partial fill 表示 queue fill / order slicing 影響大。</td>
+        </tr>
+        <tr>
+          <td><code>pending_fill_event_count</code></td>
+          <td>0.00</td>
+          <td>尚未完成或等待中的 fill event 數。</td>
+          <td>state = <code>pending</code></td>
+          <td>0 表示沒有 pending fill 留在 log 中。</td>
+        </tr>
+        <tr>
+          <td><code>fill_rate</code></td>
+          <td>1.00</td>
+          <td>有成交的 order 比例。</td>
+          <td><code>orders_filled_count / submitted_order_count</code></td>
+          <td>1.00 = 100%；但仍需看 partial fills 與成交價合理性。</td>
+        </tr>
+        <tr>
+          <td><code>total_fees</code></td>
+          <td>0.1988</td>
+          <td>所有 real fills 的手續費總額。</td>
+          <td><code>sum(fee)</code></td>
+          <td>目前約 $0.20；應與 notional × fee rate 對得上。</td>
+        </tr>
+        <tr>
+          <td><code>fill_notional_usd</code></td>
+          <td>993.94</td>
+          <td>成交名目金額總和。</td>
+          <td><code>sum(notional_usd)</code></td>
+          <td>約 10 筆 × $99.39。</td>
+        </tr>
+        <tr>
+          <td><code>funding_cashflow</code></td>
+          <td>5.33</td>
+          <td>funding settlement 對 cash equity 的總影響。</td>
+          <td><code>sum(funding_log.cashflow)</code></td>
+          <td>正值代表 funding 淨流入；但不代表總策略賺錢。</td>
+        </tr>
+        <tr>
+          <td><code>funding_settlement_count</code></td>
+          <td>89.00</td>
+          <td>funding settlement 事件數。</td>
+          <td><code>len(funding_log)</code></td>
+          <td>Funding carry 至少要有 settlement 才能評估策略。</td>
+        </tr>
+        <tr>
+          <td><code>psr</code></td>
+          <td>0.0157</td>
+          <td>Probabilistic Sharpe Ratio：觀察到的 Sharpe 超過基準 Sharpe 的機率。</td>
+          <td>Bailey & López de Prado PSR，預設 benchmark 0。</td>
+          <td>0.0157 遠低於 0.95，表示無法證明優於 0。</td>
+        </tr>
+        <tr>
+          <td><code>dsr</code></td>
+          <td>0.0157</td>
+          <td>此 replay 中作為 single-run PSR-like diagnostic；真正 DSR 需 CPCV 多 trial。</td>
+          <td><code>backtesting/replay.py</code> 目前將 replay <code>dsr</code> 設為 PSR diagnostic。</td>
+          <td>0.0157 非常差；不要把此 run 當成有效 alpha。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px;">
+    <div class="card">
+      <h3>Fill table 欄位補充</h3>
+      <table>
+        <thead><tr><th>欄位</th><th>意思</th><th>截圖範例</th></tr></thead>
+        <tbody>
+          <tr><td><code>Fill px</code></td><td>成交價格。</td><td>42476.0000</td></tr>
+          <tr><td><code>Qty</code></td><td>成交數量。SWAP 是合約張數；SPOT 是幣數。</td><td>SWAP 0.2340；SPOT 0.0023</td></tr>
+          <tr><td><code>Notional</code></td><td>成交名目金額。SWAP = px × qty × ct_val；SPOT = px × qty。</td><td>約 $99.39</td></tr>
+          <tr><td><code>Fee</code></td><td>手續費。</td><td>約 $0.0199</td></tr>
+          <tr><td><code>Net PnL</code></td><td>通常只有平倉或 trade log 有 realized PnL；單純 fill event 可能顯示 dash。</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>這組數據的重點結論</h3>
+      <ul>
+        <li><code>funding_cashflow = +5.33</code>，代表 funding 這一塊是正貢獻。</li>
+        <li><code>total_return = -10.70%</code>，代表 funding 收益無法抵消 mark-to-market / execution / position risk。</li>
+        <li><code>max_drawdown = -138.48%</code> 與 <code>bankrupt = true</code> 是最高優先警訊。</li>
+        <li><code>psr/dsr = 0.0157</code> 表示統計上非常不可靠。</li>
+        <li><code>fill_rate = 1.00</code> 不代表策略好，只代表 submitted orders 都有成交。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section id="frontend">
   <div class="section-title">
     <div>
-      <h2>11. API / Frontend Dashboard</h2>
+      <h2>12. API / Frontend Dashboard</h2>
       <p>FastAPI 服務同時提供 REST、WebSocket 與靜態 frontend。前端以 ES module 載入，因此 <code>.js</code> / <code>.jsx</code> MIME type 必須正確。</p>
     </div>
   </div>
@@ -975,7 +1271,7 @@ cash_equity
 <section id="tests">
   <div class="section-title">
     <div>
-      <h2>12. Testing / CI：建議測試矩陣</h2>
+      <h2>13. Testing / CI：建議測試矩陣</h2>
       <p>目前最重要的工作不是繼續加策略，而是用 regression tests 保護高風險邏輯。</p>
     </div>
   </div>
@@ -1013,7 +1309,7 @@ python scripts/run_replay_backtest.py \
 <section id="errors">
   <div class="section-title">
     <div>
-      <h2>13. 錯誤處理與 Debug Runbook</h2>
+      <h2>14. 錯誤處理與 Debug Runbook</h2>
       <p>系統出錯時，不應直接要求 AI「幫我修」。應先收集 evidence、定位 layer、建立 issue，再讓 Claude plan / Codex implement。</p>
     </div>
   </div>
@@ -1058,7 +1354,7 @@ python scripts/run_replay_backtest.py \
 <section id="ai">
   <div class="section-title">
     <div>
-      <h2>14. AI 協作治理：Codex / Claude Code 如何遵守架構</h2>
+      <h2>15. AI 協作治理：Codex / Claude Code 如何遵守架構</h2>
       <p>repo 的長期記憶不應是聊天紀錄，而是 docs、issues、PR template、CI 與 tests。</p>
     </div>
   </div>
@@ -1098,10 +1394,97 @@ python scripts/run_replay_backtest.py \
   </div>
 </section>
 
+
+<section id="pr-docs">
+  <div class="section-title">
+    <div>
+      <h2>16. PR / Documentation Governance：目前新增 commit 後的文件生命週期</h2>
+      <p>
+        最新 repo 已經加入 documentation lifecycle 相關內容。這代表架構文件、handoff、ADR、plans、reviews 之間開始有清楚的權威順序與淘汰規則。
+      </p>
+    </div>
+  </div>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>目前 PR 狀態脈絡</h3>
+      <ul>
+        <li><span class="pill green">PR3</span> 已修正 PR1 / PR2 文件一致性，並將 ADR-0005 標成 proposed。</li>
+        <li><span class="pill yellow">PR4 current</span> 新增 documentation lifecycle policy、docs index、archive / deprecated 規則。</li>
+        <li><span class="pill blue">Next</span> PR5 建議建立 CI skeleton，PR6 開始補 SWAP <code>ct_val</code> PnL regression test。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Markdown 文件權威規則</h3>
+      <ul>
+        <li><code>status: current</code> 與 <code>status: accepted</code> 可作為 implementation authority。</li>
+        <li><code>draft</code>、<code>proposed</code>、<code>deprecated</code>、<code>archived</code> 不能當作目前行為依據。</li>
+        <li>沒有 lifecycle metadata 的文件，一律先視為 draft。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>文件清理規則</h3>
+      <ul>
+        <li><code>AI_HANDOFF.md</code> 只保留 current state，不當永久 changelog。</li>
+        <li><code>docs/plans/</code> PR merge 後整併或移到 archive。</li>
+        <li><code>docs/reviews/</code> review findings 解決後歸檔。</li>
+        <li>ADR 不刪除，只改 status 或 superseded_by。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="table-wrap" style="margin-top:16px;">
+    <table>
+      <thead>
+        <tr><th>文件類型</th><th>位置</th><th>生命週期</th><th>AI 使用方式</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Current docs</td>
+          <td><code>docs/ARCHITECTURE.md</code>, <code>docs/AI_WORKFLOW.md</code>, <code>docs/DEBUGGING_RUNBOOK.md</code></td>
+          <td><code>status: current</code></td>
+          <td>可作為目前規則，但若與 source code / tests 衝突，以 source code / tests 為準。</td>
+        </tr>
+        <tr>
+          <td>Accepted ADR</td>
+          <td><code>docs/ADR/*.md</code></td>
+          <td><code>status: accepted</code></td>
+          <td>可作為架構決策依據；若被 superseded，不能當作新實作依據。</td>
+        </tr>
+        <tr>
+          <td>Proposed ADR / Plan</td>
+          <td><code>docs/plans/</code> 或 proposed ADR</td>
+          <td><code>status: proposed</code></td>
+          <td>只能當作目標設計；Codex 不可直接依此修改 code，除非 issue 明確授權。</td>
+        </tr>
+        <tr>
+          <td>Archive</td>
+          <td><code>docs/archive/</code></td>
+          <td><code>status: archived</code></td>
+          <td>只能查歷史，不能當作 current truth。</td>
+        </tr>
+        <tr>
+          <td>Deprecated</td>
+          <td><code>docs/deprecated/</code></td>
+          <td><code>status: deprecated</code></td>
+          <td>已廢棄，不可引用為目前系統行為。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout blue" style="margin-top:16px;">
+    <b>新 session 建議：</b>
+    Claude / Codex 應先讀 <code>docs/README.md</code> 與 <code>docs/DOC_LIFECYCLE.md</code>，
+    再讀 <code>AI_HANDOFF.md</code>、<code>AI_WORKFLOW.md</code> 與相關 issue / ADR。
+    只有 <code>current</code> / <code>accepted</code> 文件可作為實作依據。
+  </div>
+</section>
+
 <section id="source-notes">
   <div class="section-title">
     <div>
-      <h2>15. Source Notes</h2>
+      <h2>17. Source Notes</h2>
       <p>此 HTML 是根據 repo 目前主要文件與程式碼整理；若未來程式碼與文件不一致，請以 source code、tests 與最新 ADR / AI_HANDOFF 為準。</p>
     </div>
   </div>
@@ -1118,6 +1501,8 @@ python scripts/run_replay_backtest.py \
       <li><code>config/strategies.yaml</code></li>
       <li><code>config/risk.yaml</code></li>
       <li><code>docs/AI_WORKFLOW.md</code> / <code>docs/AI_HANDOFF.md</code> / <code>docs/ARCHITECTURE.md</code> / <code>docs/ADR/*</code></li>
+      <li><code>docs/DOC_LIFECYCLE.md</code> / <code>docs/README.md</code></li>
+      <li><code>src/okx_quant/analytics/performance.py</code> / <code>src/okx_quant/analytics/dsr.py</code></li>
     </ul>
   </div>
 </section>
