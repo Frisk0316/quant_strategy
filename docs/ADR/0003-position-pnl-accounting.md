@@ -42,11 +42,30 @@ net_realized_pnl = realized_pnl − fee
 
 ### Funding cashflow
 
+Position size convention: positive size = long, negative size = short.
+
 ```
-funding_pnl = perp_size × ct_val × funding_rate × mark_price
+funding_cashflow = -perp_size × ct_val × funding_rate × mark_price
 ```
 
-Sign convention: positive `funding_rate` means longs pay shorts. Short perp position receives funding when rate > 0.
+The leading negative sign ensures:
+
+- Long perp (`perp_size > 0`) **pays** funding when `funding_rate > 0`
+- Short perp (`perp_size < 0`) **receives** funding when `funding_rate > 0`
+
+Numeric example:
+
+```
+perp_size    = -0.25 contracts   (short)
+ct_val       =  0.01
+mark_price   =  40,000 USDT
+funding_rate =  0.0001
+
+funding_cashflow = -(-0.25) × 0.01 × 40,000 × 0.0001
+                 = +0.01 USDT
+
+A short perp receives +0.01 USDT when funding rate is positive.
+```
 
 ### Source of ct_val
 

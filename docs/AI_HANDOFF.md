@@ -34,13 +34,13 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Recent Changes (last 5 sessions)
 
-| Commit | Change | Risk |
+| Commit / PR | Change | Risk |
 |---|---|---|
+| PR3 `(current)` | Fix PR1/PR2 doc consistency: funding sign, ADR-0005 status, MIME `.js`, templates | Docs only + one-line server.py fix |
+| `389939a` fix | Route `DATABASE_URL` through `cfg` so local backtest scripts write to DB | `config.py` + `artifacts.py` only |
+| PR2 `b58ad3e` | Add `ARCHITECTURE.md` and `ADR/0001–0005` | Some ADRs describe target behavior not yet fully implemented |
+| PR1 `55b9d67` | Add AI workflow, handoff, debugging runbook, PR/issue templates, `.gitignore` fixes | Governance docs only |
 | `cb022c5` | Add TradesView, CompareView, RiskView to frontend | Frontend regression risk if component imports break |
-| `48b7321` | Add validation options for backtests, enhance replay validation | Replay result schema may have changed |
-| `50849e6` | Add backtest viewer with API server and DB integration | API route/schema dependency with frontend |
-| `725e9aa` | SQL scripts for mirroring funding rates and canonicalizing market data | Data pipeline dependency for replay tests |
-| `b1926bd` | Enhance funding rate ingestion and diagnostics SQL | Funding carry backtest depends on this data |
 
 ## Known Bugs / Open Issues
 
@@ -49,6 +49,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 3. **Replay bar-level approximation** (P1): `scripts/run_backtest.py` uses per-bar approximation formulas, not the true `Strategy → Signal → Order → Fill → Ledger` path.
 4. **No CI gate**: No `.github/workflows/` — no automated test enforcement on PRs.
 5. **Missing regression tests**: No tests for ct_val PnL, funding carry dual leg alignment, pairs trading hedge close, or replay terminal liquidation.
+6. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR10–11).
 
 ## Do Not Touch (without explicit issue + user approval)
 
@@ -61,13 +62,20 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[Done — this session]** Create governance docs and GitHub templates (PR 1)
-2. **[PR 2]** Write `docs/ARCHITECTURE.md` and `docs/ADR/` after full source read
-3. **[PR 3]** Create `.github/workflows/ci.yml` with ruff + pytest unit gate
-4. **[PR 4]** Add regression test: SWAP `ct_val` PnL (highest risk)
-5. **[PR 5]** Add regression test: pairs trading hedge close
-6. **[PR 6]** Add regression test: replay terminal liquidation
-7. **[PR 7]** Fix shadow mode SimBroker vs OKX demo gap (P0)
+1. **[Done]** PR1 — AI governance docs, GitHub templates, `.gitignore` fixes
+2. **[Done]** PR2 — `ARCHITECTURE.md`, `ADR/0001–0005`
+3. **[Done]** PR3 — Fix PR1/PR2 doc consistency (funding sign, ADR-0005 status, MIME `.js`, templates)
+4. **[PR4]** CI skeleton: `.github/workflows/ci.yml` with ruff + pytest unit gate
+5. **[PR5]** Regression test: SWAP `ct_val` PnL — `tests/unit/test_position_pnl_accounting.py`
+6. **[PR6]** Regression test: frontend MIME smoke — `tests/unit/test_frontend_static_mime.py`
+7. **[PR7]** Regression test: backtest artifact schema — `tests/unit/test_backtest_artifact_schema.py`
+8. **[PR8]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
+9. **[PR9]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
+10. **[PR10A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
+11. **[PR10B]** Implementation: terminal liquidation in `backtesting/replay.py`
+12. **[PR11]** Replay validation gates implementation (ADR-0005 → Accepted)
+13. **[PR12A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
+14. **[PR12B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
 
 ## Open Questions
 

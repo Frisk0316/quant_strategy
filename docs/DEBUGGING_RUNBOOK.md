@@ -27,10 +27,30 @@ Do not ask Codex or Claude to "just fix it" without first:
 6. Check `/api/backtest/runs` returns valid JSON (not 500 or empty)
 7. Check `frontend/app.js` import graph — a single broken import silently breaks the whole module tree
 
+If legacy `.jsx` modules still exist, also check:
+
+```bash
+curl -I http://localhost:8080/app.jsx
+```
+
+Expected `Content-Type`: `application/javascript` or `text/javascript`. Any of the following is invalid for ES modules: `application/octet-stream`, `text/plain`, `text/html`.
+
 **Evidence to collect before filing bug:**
+
 - Full console error text
 - Network tab screenshot showing failed requests and their status + MIME type
 - Output of `curl -I http://localhost:8080/app.js`
+
+---
+
+## Before Filing a Bug
+
+- [ ] Console error copied verbatim (not paraphrased)
+- [ ] Network response status and `Content-Type` checked
+- [ ] Exact command used to reproduce recorded
+- [ ] Suspected layer selected from the layer checklist
+- [ ] Relevant files listed
+- [ ] Out-of-scope constraints written (what must not be changed)
 
 ---
 

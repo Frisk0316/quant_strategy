@@ -26,19 +26,31 @@ Every task must have a GitHub issue (using the `ai_task` template) with an expli
 
 `docs/AI_HANDOFF.md` is the cross-session long-term memory. It must be updated before every session ends.
 
+## Enforcement
+
+This ADR is enforced by:
+
+- `.github/ISSUE_TEMPLATE/ai_task.md` — permitted/forbidden file lists per task
+- `.github/pull_request_template.md` — AI attribution, scope, acceptance criteria
+- `docs/AI_HANDOFF.md` — cross-session memory; updated every session
+- CI gates once `.github/workflows/ci.yml` is added (PR4)
+
 ## Consequences
 
 **Benefits:**
+
 - Reduced scope creep: Codex has a hard boundary per task
 - Reproducible decisions: every change traceable to an issue, a plan, and a reviewer
 - Safer core logic: strategies/risk/portfolio require explicit approval to touch
 - Faster onboarding of new AI sessions: read HANDOFF → ready to work
 
 **Costs:**
+
 - More overhead per task (issue creation, plan step)
 - Slower for trivial one-line fixes
 - Requires discipline to update HANDOFF at session end
 
 **Mitigations:**
+
 - For trivial fixes (typos, config values), human can skip issue creation if scope is obvious
 - HANDOFF template has a checklist to minimize forgetting

@@ -31,10 +31,17 @@ Closes #
 
 <!-- What existing behavior could this break? If none, say "none identified." -->
 
+## Acceptance Criteria
+
+<!-- Copy from the issue and check each item. Any unmet criteria must be listed explicitly. -->
+
+- [ ] All issue acceptance criteria are satisfied
+- [ ] Any unmet criteria listed here:
+
 ## Test Plan
 
 - [ ] `pytest tests/unit/ -v` — passed
-- [ ] `pytest tests/integration/ -v` — passed (or skipped with reason: )
+- [ ] `pytest tests/integration/ -v` — passed (or skipped because: )
 - [ ] Replay smoke: `python scripts/run_replay_backtest.py --strategy <name> --start ... --end ...`
 - [ ] Frontend smoke: server started, dashboard loaded, no console errors
 - [ ] Regression test added or updated for this bug/feature

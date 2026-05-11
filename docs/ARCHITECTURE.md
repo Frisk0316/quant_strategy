@@ -4,6 +4,28 @@ System architecture reference for `quant_strategy`. Updated from source read on 
 
 ---
 
+## Document Semantics
+
+This document uses three status labels:
+
+- **Current implementation** — behavior verified in the current source code.
+- **Target architecture** — intended behavior that may not be fully implemented yet.
+- **Known gap** — documented mismatch between target design and current implementation.
+
+Codex must not treat **Target architecture** or **Known gap** sections as implemented behavior. If a section carries one of those labels, open an issue before writing code that depends on it.
+
+---
+
+### Known gaps in this document
+
+| Area | Status | Reference |
+| --- | --- | --- |
+| Shadow mode (ShadowBroker vs OKX demo) | Known gap | `AI_HANDOFF.md` bug #1; PR12 |
+| Replay validation gates (terminal liquidation, fill rate, coverage) | Target architecture | ADR-0005; PR10–11 |
+| Deployment stages (enforced by policy, not code) | Target architecture | `docs/ai_collaboration.md` |
+
+---
+
 ## System Layers
 
 ```

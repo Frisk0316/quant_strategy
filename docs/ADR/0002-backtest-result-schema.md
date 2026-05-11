@@ -46,6 +46,12 @@ The following fields are **frozen** — they may not be removed, renamed, or hav
 
 `ts`, `datetime`, `equity`, `drawdown`, `return`
 
+## Implementation Status
+
+This ADR defines the target stable schema. Until schema regression tests exist, `backtesting/artifacts.py` column constants (`FILL_COLUMNS`, `TRADE_COLUMNS`, `EQUITY_COLUMNS`, etc.) remain the implementation source of truth.
+
+Any mismatch between this ADR and `backtesting/artifacts.py` must be resolved by either updating the ADR or updating the artifact writer and tests. The regression test for this is tracked as PR7 in `docs/AI_HANDOFF.md`.
+
 ## Consequences
 
 - Any PR that touches `backtesting/artifacts.py` column constants must be reviewed for schema breakage

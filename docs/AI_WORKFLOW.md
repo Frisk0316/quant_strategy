@@ -19,6 +19,23 @@ Operational companion to `docs/ai_collaboration.md`. That document is the govern
 - Expand scope beyond the current issue
 - Claim a strategy is ready for live trading unless all gates in `ai_collaboration.md` have passed
 
+### Documentation-only Exception
+
+Claude may directly edit documentation files when all of the following are true:
+
+- The issue or task is documentation-only
+- The permitted files list includes the target doc
+- No trading-core files are modified
+- `AI_HANDOFF.md` is updated after the session
+
+This exception does **not** apply to:
+
+- Strategy implementation
+- Portfolio accounting
+- Risk logic
+- Execution logic
+- Live / shadow deployment settings (`config/settings.yaml` mode field)
+
 ### Codex
 
 **Does:**

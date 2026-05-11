@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-05-11
+Proposed — 2026-05-11
 
 ## Context
 
@@ -13,9 +13,22 @@ Historical backtest results are only meaningful if the replay engine correctly m
 3. **Missed funding settlements** — replay period doesn't span a full 8h settlement window, so funding income is understated.
 4. **No fills at all** — order latency + cancel latency exceeds bar duration, so every order expires unfilled. Equity curve is flat but the run completes without error.
 
+## Implementation Status
+
+Not fully implemented. The gates below are the target design.
+
+Known gaps:
+
+- `ReplayBacktestResult` does not yet expose a dedicated `validation` field.
+- CLI does not yet expose `--liquidate-on-end` / `--no-liquidate-on-end`.
+- Terminal liquidation behavior needs source verification and regression tests.
+- Data coverage gate and funding coverage warning need explicit tests.
+
+Do not treat these gates as currently enforced. See PR10 in `docs/AI_HANDOFF.md` for implementation plan.
+
 ## Decision
 
-The following validation gates are enforced in `backtesting/replay.py` and checked by `scripts/run_replay_backtest.py`:
+The following validation gates are **proposed** for `backtesting/replay.py` and `scripts/run_replay_backtest.py`:
 
 ### Gate 1: Terminal position check
 

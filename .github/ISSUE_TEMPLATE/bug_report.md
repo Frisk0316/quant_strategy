@@ -4,6 +4,15 @@ about: Report a confirmed or suspected bug
 labels: bug
 ---
 
+## AI Attribution
+
+| Role | Who |
+| --- | --- |
+| Planning | <!-- Claude / Human / None --> |
+| Implementation | <!-- Codex / Claude / Human / None --> |
+| Review | <!-- Claude / Human / None --> |
+| Human-confirmed | <!-- yes / no --> |
+
 ## Problem
 
 <!-- What is broken? One or two sentences. -->

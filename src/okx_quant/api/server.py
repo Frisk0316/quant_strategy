@@ -22,9 +22,10 @@ from okx_quant.api.routes_live import make_live_router
 from okx_quant.api.state import EngineState
 from okx_quant.core.config import load_config
 
-# Python's mimetypes table may not know about .jsx on some platforms.
-# When frontend modules are loaded with type="module", browsers require a
-# JavaScript MIME type and will refuse application/octet-stream responses.
+# Python's mimetypes table may not know .js/.jsx on some platforms (Windows,
+# minimal Docker images). Browsers reject ES modules served with the wrong
+# MIME type and show a blank page. Register all three before StaticFiles mounts.
+mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("application/javascript", ".jsx")
 mimetypes.add_type("application/javascript", ".mjs")
 

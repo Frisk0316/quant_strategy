@@ -4,6 +4,15 @@ about: Propose a new capability or improvement
 labels: enhancement
 ---
 
+## AI Attribution
+
+| Role | Who |
+| --- | --- |
+| Planning | <!-- Claude / Human / None --> |
+| Implementation | <!-- Codex / Claude / Human / None --> |
+| Review | <!-- Claude / Human / None --> |
+| Human-confirmed | <!-- yes / no --> |
+
 ## Problem This Solves
 
 <!-- What gap or limitation does this address? -->
@@ -45,6 +54,10 @@ labels: enhancement
 - [ ] Replay smoke test (if execution/backtest path changes)
 - [ ] Claude review of diff
 - [ ] `docs/AI_HANDOFF.md` updated
+
+## First PR Scope
+
+<!-- If this feature is large, define the smallest first PR that delivers value. -->
 
 ## Additional Notes
 
