@@ -285,6 +285,11 @@ def load_config(
     system = SystemConfig(**settings_raw.get("system", {}))
     okx_endpoints = OKXEndpoints(**settings_raw.get("okx", {}))
     storage = StorageConfig(**settings_raw.get("storage", {}))
+    # Bridge DATABASE_URL env var into storage config when YAML omits timescale_dsn.
+    # This lets backtest scripts (which skip .env loading) still find the DSN via cfg.
+    env_dsn = os.environ.get("DATABASE_URL")
+    if env_dsn and not storage.timescale_dsn:
+        storage = storage.model_copy(update={"timescale_dsn": env_dsn})
     clock = ClockConfig(**settings_raw.get("clock", {}))
     strategies = StrategiesConfig(**strategies_raw)
     risk = RiskConfig(**risk_raw.get("risk", {}))

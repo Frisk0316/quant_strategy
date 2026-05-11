@@ -196,15 +196,16 @@ def _write_csv(path: Path, df: pd.DataFrame, columns: list[str]) -> None:
     df.to_csv(path, index=False)
 
 
-def _artifact_mode() -> str:
-    """Return files/db/both. With DATABASE_URL configured, default to DB-only."""
+def _artifact_mode(dsn: Optional[str] = None) -> str:
+    """Return files/db/both. Prefers explicit dsn over DATABASE_URL env var."""
+    has_dsn = bool(dsn or os.environ.get("DATABASE_URL"))
     raw = os.environ.get("BACKTEST_ARTIFACT_MODE", "").strip().lower()
     if raw in {"files", "db", "both"}:
-        if raw == "db" and not os.environ.get("DATABASE_URL"):
-            logger.warning("BACKTEST_ARTIFACT_MODE=db requested but DATABASE_URL is not set; writing files instead")
+        if raw == "db" and not has_dsn:
+            logger.warning("BACKTEST_ARTIFACT_MODE=db requested but no DATABASE_URL available; writing files instead")
             return "files"
         return raw
-    return "db" if os.environ.get("DATABASE_URL") else "files"
+    return "db" if has_dsn else "files"
 
 
 def _json_safe(value: Any) -> Any:
@@ -241,15 +242,14 @@ def _df_records(df: pd.DataFrame) -> list[dict]:
     return _json_safe(json.loads(df.to_json(orient="records", force_ascii=False, date_format="iso")))
 
 
-def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path) -> None:
+def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional[str] = None) -> None:
     """Best-effort: insert run summary into backtest_runs table. Non-fatal."""
     try:
         import asyncio
-        import os
 
         import asyncpg
 
-        dsn = os.environ.get("DATABASE_URL")
+        dsn = dsn or os.environ.get("DATABASE_URL")
         if not dsn:
             return
 
@@ -321,15 +321,15 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path) -> None:
         logger.warning("Could not upsert run {} to DB: {}", run_id, exc)
 
 
-def _upsert_artifacts_to_db(run_id: str, artifacts: dict[str, Any]) -> None:
+def _upsert_artifacts_to_db(run_id: str, artifacts: dict[str, Any], dsn: Optional[str] = None, mode: str = "files") -> None:
     """Best-effort: store full artifacts in backtest_artifacts JSONB rows."""
     try:
         import asyncio
 
         import asyncpg
 
-        dsn = os.environ.get("DATABASE_URL")
-        if not dsn or _artifact_mode() not in {"db", "both"}:
+        dsn = dsn or os.environ.get("DATABASE_URL")
+        if not dsn or mode not in {"db", "both"}:
             return
 
         async def _insert() -> None:
@@ -667,7 +667,10 @@ def save_backtest_artifacts(
     bar_s = bar or getattr(args, "bar", "1H")
     run_id_final = build_run_id(strats, start_s, end_s, bar_s, run_id)
 
-    artifact_mode = _artifact_mode()
+    # Resolve DSN: prefer cfg.storage.timescale_dsn (populated by load_config from
+    # DATABASE_URL env var when YAML omits it), fall back to env var directly.
+    dsn: Optional[str] = getattr(getattr(cfg, "storage", None), "timescale_dsn", None) or os.environ.get("DATABASE_URL")
+    artifact_mode = _artifact_mode(dsn=dsn)
     write_files = artifact_mode in {"files", "both"}
     run_dir = Path(output_dir) / run_id_final
     if write_files:
@@ -905,7 +908,7 @@ def save_backtest_artifacts(
         }
     if write_files:
         _write_json(run_dir / "result.json", result_json)
-    _upsert_run_to_db(run_id_final, result_json, run_dir)
+    _upsert_run_to_db(run_id_final, result_json, run_dir, dsn=dsn)
     _upsert_artifacts_to_db(run_id_final, {
         "result": result_json,
         "config": config_data,
@@ -924,6 +927,6 @@ def save_backtest_artifacts(
         "cancel_log": _df_records(ensure_columns(cancel_df.copy(), CANCEL_LOG_COLUMNS)),
         "execution_markers": _df_records(ensure_columns(markers_df.copy(), EXECUTION_MARKER_COLUMNS)),
         "data_coverage": coverage,
-    })
+    }, dsn=dsn, mode=artifact_mode)
 
     return run_dir
