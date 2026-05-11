@@ -47,6 +47,14 @@ Closes #
 - [ ] Regression test added or updated for this bug/feature
 - [ ] `ruff check src/ tests/` — no new errors
 
+## Branch / Version Management
+
+- [ ] Branch name follows `docs/BRANCH_VERSIONING.md`
+- [ ] PR is short-lived and scoped to one issue/task
+- [ ] Squash merge is appropriate for this PR
+- [ ] Branch should be deleted after merge
+- [ ] Tag/milestone impact noted, or not applicable
+
 ## Screenshots / Logs
 
 <!-- Paste relevant output, equity curve screenshots, or console logs. -->
@@ -55,4 +63,4 @@ Closes #
 
 <!-- What does the next AI session need to know? Update docs/AI_HANDOFF.md before merging. -->
 
-- [ ] `docs/AI_HANDOFF.md` updated (Recent Changes, Known Bugs, Next Steps)
+- [ ] `docs/AI_HANDOFF.md` updated (Current Change Context, Known Bugs, Next Steps)

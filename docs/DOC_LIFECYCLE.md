@@ -68,7 +68,7 @@ When documents conflict, use this order:
 
 1. User instruction in the current task.
 2. `research/strategy_synthesis.md` for strategy assumptions.
-3. `docs/DOC_LIFECYCLE.md`, `docs/AI_WORKFLOW.md`, and `docs/ai_collaboration.md` for AI workflow and document governance.
+3. `docs/DOC_LIFECYCLE.md`, `docs/BRANCH_VERSIONING.md`, `docs/AI_WORKFLOW.md`, and `docs/ai_collaboration.md` for AI workflow, branch/versioning, and document governance.
 4. Accepted ADRs in `docs/ADR/`.
 5. Current architecture and runbook docs.
 6. `docs/AI_HANDOFF.md` for current state, active risks, and next steps.

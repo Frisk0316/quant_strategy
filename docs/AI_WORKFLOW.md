@@ -10,7 +10,7 @@ superseded_by: null
 
 # AI Workflow
 
-Operational companion to `docs/ai_collaboration.md`. That document is the governance contract; this document is the session-by-session operating procedure.
+Operational companion to `docs/ai_collaboration.md`. That document is the governance contract; this document is the session-by-session operating procedure. Branch and version rules live in `docs/BRANCH_VERSIONING.md`.
 
 ---
 
@@ -87,7 +87,7 @@ This exception does **not** apply to:
 5. Codex runs tests → updates AI_HANDOFF.md
 6. Claude reviews diff
 7. Human merges
-8. AI_HANDOFF.md updated (Next Steps, Recent Changes, Known Bugs)
+8. AI_HANDOFF.md updated (Current Change Context, Next Steps, Known Bugs)
 ```
 
 ---
@@ -129,7 +129,7 @@ When documents conflict, use this order:
 
 1. Current user instruction and approved issue scope.
 2. `research/strategy_synthesis.md` for strategy assumptions.
-3. `docs/DOC_LIFECYCLE.md`, `docs/AI_WORKFLOW.md`, and `docs/ai_collaboration.md` for governance.
+3. `docs/DOC_LIFECYCLE.md`, `docs/BRANCH_VERSIONING.md`, `docs/AI_WORKFLOW.md`, and `docs/ai_collaboration.md` for governance.
 4. Accepted ADRs in `docs/ADR/`.
 5. Current architecture, runbook, and parity docs.
 6. `docs/AI_HANDOFF.md` for current state and next actions.
@@ -198,7 +198,7 @@ reorganize imports, or improve error messages unless they are the direct cause o
 REQUIRED ON COMPLETION:
 - List changed files
 - Run: <test command>
-- Update docs/AI_HANDOFF.md (Recent Changes, Known Bugs if resolved, Next Steps)
+- Update docs/AI_HANDOFF.md (Current Change Context, Known Bugs if resolved, Next Steps)
 - Commit with AI-Origin trailer (see commit format below)
 
 ACCEPTANCE CRITERIA:
@@ -247,14 +247,17 @@ Tested:
 
 ## Branch Naming
 
-| Purpose | Pattern |
-|---|---|
-| Claude research/plan | `claude/plan-<description>` |
-| Claude review notes | `claude/review-<description>` |
-| Codex implementation | `codex/impl-<description>` |
-| Codex bug fix | `codex/fix-<description>` |
-| Human hotfix | `hotfix/human-<description>` |
-| Governance docs | `docs/human-<description>` or `docs/claude-<description>` |
+Use `docs/BRANCH_VERSIONING.md` as the source of truth for branch naming, branch workflow, squash merge policy, and tag/milestone checkpoints.
+
+Approved branch prefixes:
+
+- `docs/`
+- `ci/`
+- `test/`
+- `fix/`
+- `feature/`
+- `design/`
+- `hotfix/`
 
 ---
 

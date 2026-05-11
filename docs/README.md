@@ -17,6 +17,7 @@ This directory contains the repository's durable documentation. See `docs/DOC_LI
 | Document | Purpose |
 |---|---|
 | `docs/DOC_LIFECYCLE.md` | Markdown lifecycle, authority, archive, and deprecation rules. |
+| `docs/BRANCH_VERSIONING.md` | Branch naming, trunk-based workflow, merge policy, and tag/milestone checkpoints. |
 | `docs/ai_collaboration.md` | Shared collaboration contract between human, Claude, and Codex. |
 | `docs/AI_WORKFLOW.md` | Session-level AI workflow and documentation authority rules. |
 | `docs/AI_HANDOFF.md` | Current repository state and next actions. Current state only, not a changelog. |
