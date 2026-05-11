@@ -18,6 +18,8 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _run_jobs: dict[str, dict[str, Any]] = {}
 
@@ -29,6 +31,7 @@ class RunBacktestRequest(BaseModel):
     symbol_y: str | None = None
     perp_symbol: str | None = None
     spot_symbol: str | None = None
+    min_apr_threshold: float | None = None
     bar: str = "1H"
     periods: int | None = None
     start: str | None = None
@@ -44,6 +47,7 @@ def _run_backtest_job(
     results_dir: Path,
 ) -> None:
     try:
+        req = _normalize_backtest_request(req)
         script = PROJECT_ROOT / "scripts" / "run_replay_backtest.py"
         cmd = [
             sys.executable,
@@ -76,6 +80,8 @@ def _run_backtest_job(
             cmd.extend(["--perp-symbol", req.perp_symbol])
         if req.spot_symbol:
             cmd.extend(["--spot-symbol", req.spot_symbol])
+        if req.min_apr_threshold is not None:
+            cmd.extend(["--min-apr-threshold", str(req.min_apr_threshold)])
 
         _run_jobs[job_id].update({
             "status": "running",
@@ -129,7 +135,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     def _read_json(path: Path) -> dict:
         if not path.exists():
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
-        return json.loads(path.read_text(encoding="utf-8"))
+        import re
+        text = path.read_text(encoding="utf-8")
+        # Replace bare Infinity / -Infinity / NaN (not quoted) → null
+        text = re.sub(r'(?<!["\w])(-?Infinity|NaN)(?!["\w])', 'null', text)
+        return json.loads(text)
 
     def _read_csv(path: Path) -> list[dict]:
         if not path.exists():
@@ -473,3 +483,21 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         return _read_json(_run_dir(run_id) / "data_coverage.json")
 
     return router
+
+
+def _normalize_backtest_request(req: RunBacktestRequest) -> RunBacktestRequest:
+    normalized = req.model_copy(deep=True)
+    normalized.symbols = [
+        normalize_swap_symbol(symbol)
+        for symbol in normalized.symbols
+        if symbol
+    ]
+    if normalized.symbol_x:
+        normalized.symbol_x = normalize_swap_symbol(normalized.symbol_x)
+    if normalized.symbol_y:
+        normalized.symbol_y = normalize_swap_symbol(normalized.symbol_y)
+    if normalized.perp_symbol:
+        normalized.perp_symbol = normalize_swap_symbol(normalized.perp_symbol)
+    if normalized.spot_symbol:
+        normalized.spot_symbol = normalize_spot_symbol(normalized.spot_symbol)
+    return normalized

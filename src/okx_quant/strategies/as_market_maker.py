@@ -12,7 +12,6 @@ Reference: Avellaneda-Stoikov (2008), GLFT ergodic limit (2013)
 """
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import deque
 from typing import Optional
@@ -32,6 +31,15 @@ from okx_quant.signals.obi_ofi import (
 )
 from okx_quant.signals.vpin import compute_vpin, vpin_spread_multiplier, vpin_toxicity_controls
 from okx_quant.strategies.base import Strategy
+
+
+def _bounded_fair_value(mid: float, raw_shift: float, max_shift_pct: float = 0.03) -> float:
+    """Keep alpha-adjusted fair value inside a conservative quote band."""
+    if mid <= 0:
+        return mid
+    max_shift = mid * max_shift_pct
+    fair = mid + float(np.clip(raw_shift, -max_shift, max_shift))
+    return max(fair, mid * 0.01)
 
 
 def as_quote(
@@ -69,16 +77,23 @@ def as_quote(
     Returns:
         (bid, ask) rounded to tick size.
     """
-    fair = mid + c_alpha * alpha_signal
+    fair = _bounded_fair_value(mid, c_alpha * alpha_signal)
     reservation = fair - inventory * gamma * sigma ** 2 * T_minus_t
-    spread_AS = gamma * sigma ** 2 * T_minus_t + (2 / gamma) * np.log(1 + gamma / kappa)
+    safe_gamma = max(float(gamma), 1e-9)
+    safe_kappa = max(float(kappa), 1e-9)
+    spread_AS = safe_gamma * sigma ** 2 * T_minus_t + (
+        2 / safe_gamma
+    ) * np.log(1 + safe_gamma / safe_kappa)
 
     # VPIN widens spread in toxic flow — does NOT change direction
     spread = spread_AS * vpin_spread_multiplier(vpin, beta_vpin)
+    spread = min(spread, max(mid * 0.02, tick * 2))
     half = 0.5 * spread
 
     bid = reservation - half
     ask = reservation + half
+    bid = max(bid, tick)
+    ask = max(ask, bid + tick)
 
     # Cancel side if inventory limit reached
     if inventory >= max_pos:

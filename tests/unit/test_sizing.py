@@ -119,3 +119,26 @@ def test_size_in_contracts_rejects_invalid_ct_val(ct_val):
             lot_sz=1.0,
             min_sz=1.0,
         )
+
+
+def test_vol_target_single_return_zero():
+    assert vol_target_size(pd.Series([0.01]), equity=10_000.0) == 0.0
+
+
+def test_vol_target_all_zero_returns_finite():
+    size = vol_target_size(pd.Series([0.0] * 30), equity=10_000.0)
+    assert np.isfinite(size)
+
+
+def test_size_in_contracts_below_min_sz():
+    assert size_in_contracts(
+        notional_usd=10.0,
+        ct_val=0.01,
+        price=50_000.0,
+        lot_sz=1.0,
+        min_sz=1.0,
+    ) == ""
+
+
+def test_quarter_kelly_negative_mu_clamps_to_zero():
+    assert quarter_kelly(mu=-0.01, sigma=0.05, equity=10_000.0) == 0.0

@@ -32,10 +32,8 @@ function NavGlyph({ kind }) {
 
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [view, setView] = useAppState("overview");
-  const [selectedRunId, setSelectedRunId] = useAppState(
-    () => localStorage.getItem("selectedRunId") || null
-  );
+  const [view, setView] = useAppState("backtest");
+  const [selectedRunId, setSelectedRunId] = useAppState(null);
   const [allRuns, setAllRuns] = useAppState([]);
   const [mode, setMode] = useAppState("mock");
   const [liveData, setLiveData] = useAppState(null);
@@ -49,10 +47,6 @@ function App() {
   useAppEffect(() => {
     refreshRuns();
   }, []);
-
-  useAppEffect(() => {
-    if (selectedRunId) localStorage.setItem("selectedRunId", selectedRunId);
-  }, [selectedRunId]);
 
   useAppEffect(() => {
     let ws;
@@ -92,7 +86,6 @@ function App() {
   const NAV = [
     { id: "config", label: "Run Backtest", group: "Setup", glyph: "config" },
     { id: "backtest", label: "Backtest Runs", group: "Backtest", glyph: "backtest" },
-    { id: "overview", label: "Overview", group: "Backtest", glyph: "overview" },
     { id: "wf", label: "Walk-Forward", group: "Backtest", glyph: "wf" },
     { id: "cpcv", label: "CPCV / DSR", group: "Backtest", glyph: "cpcv" },
     { id: "trades", label: "Trades / Orders", group: "Backtest", glyph: "trades" },
@@ -103,7 +96,6 @@ function App() {
   const titleMap = {
     config: ["Run Backtest", "Configure and launch strategy backtest"],
     backtest: ["Backtest Runs", "Real results saved by --save-artifacts"],
-    overview: ["Overview", "Equity, drawdown, and headline KPIs"],
     wf: ["Walk-Forward", "Out-of-sample validation windows"],
     cpcv: ["CPCV / DSR", "Combinatorial Purged CV and promotion gates"],
     trades: ["Trades / Orders", "Filterable order and trade ledger"],
@@ -176,7 +168,6 @@ function App() {
       <main class="app-main">
         ${view === "config" && html`<${window.RunConfigView} tweaks=${tweaks} setTweak=${setTweak} />`}
         ${view === "backtest" && html`<${window.BacktestView} selectedRunId=${selectedRunId} setSelectedRunId=${setSelectedRunId} onRunsChanged=${refreshRuns} />`}
-        ${view === "overview" && html`<${window.OverviewView} tweaks=${tweaks} selectedRunId=${selectedRunId} setSelectedRunId=${setSelectedRunId} />`}
         ${view === "wf" && html`<${window.WalkForwardView} selectedRunId=${selectedRunId} />`}
         ${view === "cpcv" && html`<${window.CPCVView} selectedRunId=${selectedRunId} />`}
         ${view === "trades" && html`<${window.TradesView} selectedRunId=${selectedRunId} />`}

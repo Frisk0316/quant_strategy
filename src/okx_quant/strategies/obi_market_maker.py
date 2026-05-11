@@ -13,7 +13,6 @@ from collections import deque
 from typing import Optional
 
 import numpy as np
-from loguru import logger
 
 from okx_quant.core.events import Event, SignalPayload
 from okx_quant.data.okx_book import OkxBook
@@ -25,6 +24,7 @@ from okx_quant.signals.obi_ofi import (
     ewma_ofi,
 )
 from okx_quant.strategies.base import Strategy
+from okx_quant.strategies.as_market_maker import _bounded_fair_value
 
 
 class OBIMarketMaker(Strategy):
@@ -120,8 +120,8 @@ class OBIMarketMaker(Strategy):
         if abs(obi_l1) < self.obi_threshold and abs(alpha_signal) < 1e-6:
             return None
 
-        # Fair value = mid + c_alpha * ewma_ofi
-        fair = mid + self.c_alpha * alpha_signal
+        # Fair value = mid + c_alpha * alpha, bounded to prevent stale extreme quotes.
+        fair = _bounded_fair_value(mid, self.c_alpha * alpha_signal)
 
         # Minimum half-spread of 1 tick
         half_spread = max(tick * self.min_half_spread_ticks, spread * 0.3)

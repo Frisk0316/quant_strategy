@@ -25,7 +25,7 @@ storage:
   # parquet | timescaledb
   backend: parquet
   parquet_dir: ./data/ticks
-  timescale_dsn: "postgresql://quant:changeme@localhost:5432/okx_quant"
+  timescale_dsn: "postgresql://quant:changeme@localhost:5432/quant"
   redis_url: redis://localhost:6379
   # Switch to 'postgres' after running init_db.py and backfill
   candle_backend: postgres

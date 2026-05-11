@@ -170,8 +170,20 @@ def build_run_id(
 # Individual writers
 # ---------------------------------------------------------------------------
 
+def _sanitize_floats(obj):
+    """Recursively replace inf/nan with None so the output is valid JSON."""
+    if isinstance(obj, float):
+        import math
+        return None if (math.isinf(obj) or math.isnan(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
 def _write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+    path.write_text(json.dumps(_sanitize_floats(data), indent=2, ensure_ascii=False, default=str), encoding="utf-8")
 
 
 def _write_csv(path: Path, df: pd.DataFrame, columns: list[str]) -> None:
@@ -196,14 +208,16 @@ def _artifact_mode() -> str:
 
 
 def _json_safe(value: Any) -> Any:
+    import math
     if value is None:
         return None
-    if isinstance(value, float) and np.isnan(value):
+    if isinstance(value, float) and (np.isnan(value) or math.isinf(value)):
         return None
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):
-        return None if np.isnan(float(value)) else float(value)
+        f = float(value)
+        return None if (np.isnan(f) or math.isinf(f)) else f
     if isinstance(value, (np.bool_,)):
         return bool(value)
     if isinstance(value, (datetime, pd.Timestamp)):

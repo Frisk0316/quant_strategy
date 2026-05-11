@@ -80,6 +80,8 @@ def quarter_kelly(
         return 0.0
     full_kelly = mu / (sigma ** 2)
     quarter_k = full_kelly / 4.0
+    if quarter_k <= 0:
+        return 0.0
     # Clamp to [clip_min, clip_max] fraction of equity
     fraction = float(np.clip(quarter_k, clip_min, clip_max))
     return equity * fraction

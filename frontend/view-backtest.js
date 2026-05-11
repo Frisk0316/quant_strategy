@@ -12,6 +12,28 @@ function n(v, d = 2) { return v == null || isNaN(+v) ? "—" : (+v).toFixed(d); 
 function pct(v) { return v == null || isNaN(+v) ? "—" : ((+v) * 100).toFixed(2) + "%"; }
 function usd(v, d = 2) { return v == null || isNaN(+v) ? "—" : "$" + Math.abs(+v).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 function fmtDt(s) { if (!s) return "—"; try { return new Date(s).toISOString().slice(0, 19).replace("T", " "); } catch { return s; } }
+function signedUsd(v, d = 2) {
+  if (v == null || isNaN(+v)) return "—";
+  const sign = +v < 0 ? "-" : "";
+  return sign + "$" + Math.abs(+v).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function chartTimestamp(row) {
+  return row?.datetime || row?.ts || "";
+}
+function parseChartDate(value) {
+  if (value == null || value === "") return null;
+  const raw = typeof value === "string" && /^\d+$/.test(value) ? +value : value;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+function chartDateTick(value) {
+  const d = parseChartDate(value);
+  return d ? d.toISOString().slice(0, 10) : String(value || "—");
+}
+function chartDateTooltip(value) {
+  const d = parseChartDate(value);
+  return d ? d.toISOString().slice(0, 19).replace("T", " ") + " UTC" : String(value || "—");
+}
 
 // ---------------------------------------------------------------------------
 // Metric descriptions for tooltip (title) on hover
@@ -206,8 +228,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const start = result.start ? result.start.slice(0, 10) : "—";
   const end = result.end ? result.end.slice(0, 10) : "—";
 
-  const eqValues = equity.filter(r => r.equity != null).map(r => +r.equity);
-  const ddValues = equity.filter(r => r.drawdown != null).map(r => +r.drawdown);
+  const equityChartRows = equity.filter(r => r.equity != null);
+  const drawdownChartRows = equity.filter(r => r.drawdown != null);
+  const eqValues = equityChartRows.map(r => +r.equity);
+  const eqDates = equityChartRows.map(chartTimestamp);
+  const ddValues = drawdownChartRows.map(r => +r.drawdown);
+  const ddDates = drawdownChartRows.map(chartTimestamp);
 
   const realFills = fills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
 
@@ -280,7 +306,15 @@ function RunDetailView({ runId, onBack, onDelete }) {
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
             : eqValues.length > 1
-              ? html`<${LineChart} series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)" }]} height=${220} mode="area" />`
+              ? html`<${LineChart}
+                  series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
+                  height=${220}
+                  mode="area"
+                  xLabels=${eqDates}
+                  xTickFormatter=${chartDateTick}
+                  tooltipLabelFormatter=${chartDateTooltip}
+                  tooltipValueFormatter=${(v) => signedUsd(v)}
+                />`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
       </div>
@@ -296,7 +330,15 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
-            ? html`<${LineChart} series=${[{ values: ddValues, color: "var(--loss)" }]} height=${140} mode="area" />`
+            ? html`<${LineChart}
+                series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
+                height=${140}
+                mode="area"
+                xLabels=${ddDates}
+                xTickFormatter=${chartDateTick}
+                tooltipLabelFormatter=${chartDateTooltip}
+                tooltipValueFormatter=${(v) => pct(v)}
+              />`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }
       </div>

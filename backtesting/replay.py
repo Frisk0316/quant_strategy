@@ -122,7 +122,6 @@ class ReplayRecorder:
 
     def record_signal(self, signal, ts: int) -> None:
         from okx_quant.core.events import SignalPayload
-        import json
         if not isinstance(signal, SignalPayload):
             return
         self.signal_log.append({
@@ -280,6 +279,26 @@ def _to_ms_int(val) -> int:
         return int(float(val))
     except (TypeError, ValueError, OSError):
         return 0
+
+
+def _bar_to_seconds(bar: str) -> int:
+    text = str(bar or "1H").strip()
+    if len(text) < 2:
+        return 3600
+    try:
+        qty = int(text[:-1])
+    except ValueError:
+        return 3600
+    unit = text[-1]
+    multipliers = {
+        "s": 1,
+        "m": 60,
+        "H": 3600,
+        "h": 3600,
+        "D": 86400,
+        "d": 86400,
+    }
+    return max(qty * multipliers.get(unit, 3600), 1)
 
 
 def _load_parquet_frames(paths: Iterable[Path]) -> pd.DataFrame:
@@ -501,11 +520,13 @@ class ReplayBacktestEngine:
         strategy_names: Optional[list[str]] = None,
         instrument_specs: Optional[dict] = None,
         periods: int = 365 * 24,
+        bar_seconds: int = 3600,
     ) -> None:
         self._cfg = cfg
         self._strategy_names = strategy_names
         self._instrument_specs = instrument_specs or self._default_instrument_specs()
         self._periods = periods
+        self._bar_seconds = bar_seconds
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
@@ -550,7 +571,13 @@ class ReplayBacktestEngine:
             ("obi_market_maker", OBIMarketMaker(strat_cfg.obi_market_maker.model_dump())),
             ("as_market_maker", ASMarketMaker(strat_cfg.as_market_maker.model_dump())),
             ("funding_carry", FundingCarryStrategy(strat_cfg.funding_carry.model_dump())),
-            ("pairs_trading", PairsTradingStrategy(strat_cfg.pairs_trading.model_dump())),
+            (
+                "pairs_trading",
+                PairsTradingStrategy({
+                    **strat_cfg.pairs_trading.model_dump(),
+                    "bar_seconds": self._bar_seconds,
+                }),
+            ),
         ]
         enabled = {
             "obi_market_maker": strat_cfg.obi_market_maker.enabled,
@@ -579,6 +606,9 @@ class ReplayBacktestEngine:
                 book.asks[float(px)] = (px, sz)
 
     async def run(self, feed: HistoricalEventFeed) -> ReplayBacktestResult:
+        if feed.market_events.empty and feed.funding_events.empty:
+            raise ValueError("ReplayBacktestEngine received an empty historical feed")
+
         bus = EventBus()
         strategies = self._build_strategies()
         positions = PositionLedger(initial_equity=self._cfg.system.equity_usd)
@@ -602,18 +632,18 @@ class ReplayBacktestEngine:
         for strategy in strategies:
             risk_guard.register_strategy(strategy.name)
 
+        execution_model = ReplayExecutionModel(
+            instrument_specs=self._instrument_specs,
+            order_latency_ms=self._cfg.backtest.order_latency_ms,
+            cancel_latency_ms=self._cfg.backtest.cancel_latency_ms,
+            queue_fill_fraction=self._cfg.backtest.queue_fill_fraction,
+        )
         portfolio_mgr = PortfolioManager(
             bus=bus,
             positions=positions,
             risk_guard=risk_guard,
             target_ann_vol=0.20,
             instrument_specs=self._instrument_specs,
-        )
-        execution_model = ReplayExecutionModel(
-            instrument_specs=self._instrument_specs,
-            order_latency_ms=self._cfg.backtest.order_latency_ms,
-            cancel_latency_ms=self._cfg.backtest.cancel_latency_ms,
-            queue_fill_fraction=self._cfg.backtest.queue_fill_fraction,
         )
         order_manager = OrderManager(
             SimBroker(
@@ -626,11 +656,50 @@ class ReplayBacktestEngine:
         )
         exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=self._cfg.risk.stale_quote_pct)
         recorder = ReplayRecorder(initial_equity=self._cfg.system.equity_usd)
+        original_risk_check = risk_guard.check
+
+        def recording_risk_check(
+            order: OrderPayload,
+            current_pos_notional: float = 0.0,
+            current_mid: float = 0.0,
+        ) -> bool:
+            allowed = original_risk_check(order, current_pos_notional, current_mid)
+            if allowed:
+                return True
+            ts = execution_model.current_ts(order.inst_id)
+            execution_model.rejected_log.append({
+                "ts": ts,
+                "cl_ord_id": order.cl_ord_id,
+                "inst_id": order.inst_id,
+                "side": order.side,
+                "px": float(order.px),
+                "reason": "risk_guard_block",
+            })
+            recorder.record_risk_event(
+                ts=ts,
+                strategy=order.strategy,
+                inst_id=order.inst_id,
+                side=order.side,
+                px=float(order.px),
+                sz=float(order.sz),
+                notional_usd=order.notional_usd,
+                reason="risk_guard_block",
+                current_position=current_pos_notional,
+                position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
+                current_equity=positions.get_equity(),
+            )
+            return False
+
+        risk_guard.check = recording_risk_check  # type: ignore[method-assign]
 
         book_symbols = {
             getattr(strategy, "perp_symbol", None) for strategy in strategies
         } | {
             getattr(strategy, "spot_symbol", None) for strategy in strategies
+        } | {
+            getattr(strategy, "symbol_y", None) for strategy in strategies
+        } | {
+            getattr(strategy, "symbol_x", None) for strategy in strategies
         } | set(self._cfg.system.symbols) | set(self._cfg.system.spot_symbols)
         books = {symbol: OkxBook(symbol) for symbol in book_symbols if symbol}
 
@@ -719,7 +788,10 @@ class ReplayBacktestEngine:
             return
 
         specs = self._instrument_specs.get(payload.inst_id, {})
-        ct_val = validate_ct_val(float(specs.get("ctVal", 1.0)), payload.inst_id)
+        ct_val_raw = specs.get("ctVal")
+        if ct_val_raw is None:
+            raise ValueError(f"Missing ctVal for {payload.inst_id}")
+        ct_val = validate_ct_val(float(ct_val_raw), payload.inst_id)
         mark_price = pos.last_price
         if mark_price <= 0:
             if pos.avg_entry > 0:
@@ -1205,5 +1277,10 @@ def run_replay_backtest(
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
     feed = build_feed_for_strategies(cfg, strategy_names=strategy_names, data_dir=data_dir, start=start, end=end, bar=bar)
-    engine = ReplayBacktestEngine(cfg, strategy_names=strategy_names, periods=periods)
+    engine = ReplayBacktestEngine(
+        cfg,
+        strategy_names=strategy_names,
+        periods=periods,
+        bar_seconds=_bar_to_seconds(bar),
+    )
     return engine.run_sync(feed)

@@ -12,7 +12,6 @@ Uses post_only limit orders. Both legs placed simultaneously.
 """
 from __future__ import annotations
 
-import time
 from collections import deque
 from typing import Optional
 
@@ -31,7 +30,7 @@ def estimate_ou(spread: pd.Series) -> dict:
     From §1.6 of Crypto_Quant_Plan_v1.md.
 
     Returns:
-        dict with theta, mu, sigma, half_life
+        dict with theta, mu, sigma, half_life in observed bars
     """
     lag = spread.shift(1).dropna()
     dlt = spread.diff().dropna()
@@ -40,17 +39,30 @@ def estimate_ou(spread: pd.Series) -> dict:
     lag = lag.loc[idx]
     dlt = dlt.loc[idx]
     if len(lag) < 10:
-        return {"theta": 0.1, "mu": 0.0, "sigma": 0.01, "half_life": 6.93}
+        return {"theta": 0.0, "mu": float(spread.mean()), "sigma": float(spread.std()), "half_life": np.inf}
     X = sm.add_constant(lag)
     res = sm.OLS(dlt, X).fit()
     a, b = res.params
     if b >= 0:
-        return {"theta": 0.01, "mu": float(spread.mean()), "sigma": float(spread.std()), "half_life": 69.3}
+        return {"theta": 0.0, "mu": float(spread.mean()), "sigma": float(spread.std()), "half_life": np.inf}
     theta = -b
     mu = -a / b
     sigma = float(np.std(res.resid)) * np.sqrt(-2 * b / (1 - np.exp(2 * b)))
     half_life = np.log(2) / theta
     return dict(theta=theta, mu=mu, sigma=sigma, half_life=half_life)
+
+
+def _payload_ts_ms(payload: object, event: Event) -> int:
+    raw = getattr(payload, "ts", None)
+    if raw is None:
+        raw = event.ts
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0
+    if 0 < value < 1e11:
+        value *= 1000
+    return int(value)
 
 
 class PairsTradingStrategy(Strategy):
@@ -63,7 +75,12 @@ class PairsTradingStrategy(Strategy):
         self.exit_z: float = params.get("exit_z", 0.3)
         self.stop_z: float = params.get("stop_z", 4.0)
         self.lookback_hours: int = params.get("lookback_hours", 168)
-        self.max_half_life: float = params.get("max_half_life", 48.0)
+        self.bar_seconds: int = int(params.get("bar_seconds", 3600))
+        # Unit: hours. OU estimates half-life in bars; the quality gate converts.
+        self.max_half_life_hours: float = params.get(
+            "max_half_life_hours",
+            params.get("max_half_life", 48.0),
+        )
         self.max_hedge_uncertainty: float = params.get("max_hedge_uncertainty", 10.0)
 
         # Kalman filter state: beta (hedge ratio)
@@ -77,20 +94,27 @@ class PairsTradingStrategy(Strategy):
             self.symbol_y: deque(maxlen=self.lookback_hours * 60),
             self.symbol_x: deque(maxlen=self.lookback_hours * 60),
         }
+        self._price_ts_ms: dict[str, int] = {}
         self._spread_history: deque = deque(maxlen=self.lookback_hours * 60)
-        self._ou_params: dict = {"theta": 0.1, "mu": 0.0, "sigma": 0.01, "half_life": 6.93}
+        self._spread_interval_ms: deque = deque(maxlen=self.lookback_hours * 60)
+        self._ou_params: dict = {"theta": 0.0, "mu": np.nan, "sigma": np.nan, "half_life": np.inf}
+        self._ou_calibrated: bool = False
         self._z_score: float = 0.0
         self._in_position: bool = False
         self._position_side: str = ""  # 'long_y' or 'short_y'
-        self._last_ou_update: float = 0.0
+        self._last_ou_update_ms: int = 0
+        self._last_spread_ts_ms: int = 0
 
     def _quality_gate_passed(self) -> tuple[bool, str]:
         """Return whether current spread parameters are tradeable."""
-        half_life = float(self._ou_params.get("half_life", np.inf))
+        if not self._ou_calibrated:
+            return False, "not_calibrated"
+        half_life_bars = float(self._ou_params.get("half_life", np.inf))
+        half_life_hours = half_life_bars * max(self.bar_seconds, 1) / 3600.0
         sigma = float(self._ou_params.get("sigma", 0.0))
-        if not np.isfinite(half_life) or half_life <= 0:
+        if not np.isfinite(half_life_bars) or half_life_bars <= 0:
             return False, "invalid_half_life"
-        if half_life > self.max_half_life:
+        if half_life_hours > self.max_half_life_hours:
             return False, "half_life_too_slow"
         if sigma <= 0 or not np.isfinite(sigma):
             return False, "invalid_spread_sigma"
@@ -139,10 +163,18 @@ class PairsTradingStrategy(Strategy):
             return None
 
         mid = book.mid()
+        current_ts_ms = _payload_ts_ms(payload, event)
         self._prices[inst_id].append(mid)
+        self._price_ts_ms[inst_id] = current_ts_ms
 
         # Need prices for both symbols
-        if (len(self._prices[self.symbol_y]) < 2 or len(self._prices[self.symbol_x]) < 2):
+        if (not self._prices[self.symbol_y] or not self._prices[self.symbol_x]):
+            return None
+        if self.symbol_y not in self._price_ts_ms or self.symbol_x not in self._price_ts_ms:
+            return None
+
+        pair_ts_ms = min(self._price_ts_ms[self.symbol_y], self._price_ts_ms[self.symbol_x])
+        if pair_ts_ms <= self._last_spread_ts_ms:
             return None
 
         price_y = self._prices[self.symbol_y][-1]
@@ -153,19 +185,24 @@ class PairsTradingStrategy(Strategy):
         log_x = np.log(price_x)
         spread = self._kalman_update(log_y, log_x)
         self._spread_history.append(spread)
+        if self._last_spread_ts_ms > 0:
+            interval_ms = pair_ts_ms - self._last_spread_ts_ms
+            if interval_ms > 0:
+                self._spread_interval_ms.append(interval_ms)
+        self._last_spread_ts_ms = pair_ts_ms
 
-        # Recalibrate OU parameters every hour
-        now = time.time()
-        if now - self._last_ou_update > 3600 and len(self._spread_history) > 100:
+        # Recalibrate OU parameters every simulated hour.
+        if current_ts_ms - self._last_ou_update_ms > 3_600_000 and len(self._spread_history) > 100:
             spread_series = pd.Series(list(self._spread_history))
             self._ou_params = estimate_ou(spread_series)
-            self._last_ou_update = now
+            self._ou_calibrated = True
+            self._last_ou_update_ms = current_ts_ms
             logger.debug("OU recalibrated", **self._ou_params)
 
         # Compute z-score
-        mu = self._ou_params["mu"]
-        sigma = self._ou_params["sigma"]
-        if sigma > 0:
+        mu = float(self._ou_params["mu"])
+        sigma = float(self._ou_params["sigma"])
+        if sigma > 0 and np.isfinite(sigma) and np.isfinite(mu):
             self._z_score = (spread - mu) / sigma
         else:
             return None
@@ -205,8 +242,9 @@ class PairsTradingStrategy(Strategy):
             side_y = "sell" if z > 0 else "buy"  # sell ETH when spread too high
             self._position_side = "short_y" if z > 0 else "long_y"
             logger.info("Pairs entry", z=z, side_y=side_y)
-            half_life = float(self._ou_params["half_life"])
-            half_life_quality = max(0.0, 1.0 - half_life / self.max_half_life)
+            half_life_bars = float(self._ou_params["half_life"])
+            half_life_hours = half_life_bars * max(self.bar_seconds, 1) / 3600.0
+            half_life_quality = max(0.0, 1.0 - half_life_hours / self.max_half_life_hours)
             return SignalPayload(
                 strategy=self.name,
                 inst_id=self.symbol_y,
@@ -217,7 +255,9 @@ class PairsTradingStrategy(Strategy):
                     "action": "entry",
                     "z_score": z,
                     "beta": self._beta,
-                    "half_life": half_life,
+                    "half_life": half_life_hours,
+                    "half_life_bars": half_life_bars,
+                    "half_life_hours": half_life_hours,
                     "hedge_uncertainty": self._P,
                     "hedge_inst_id": self.symbol_x,
                     "hedge_side": "buy" if side_y == "sell" else "sell",

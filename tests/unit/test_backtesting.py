@@ -52,7 +52,7 @@ def test_strategy_config_preserves_yaml_parameters_used_by_strategies():
             "max_crowding": 0.75,
         },
         "pairs_trading": {
-            "max_half_life": 36.0,
+            "max_half_life_hours": 36.0,
             "max_hedge_uncertainty": 5.0,
         },
     })
@@ -65,8 +65,67 @@ def test_strategy_config_preserves_yaml_parameters_used_by_strategies():
     assert cfg.as_market_maker.toxic_size_multiplier == 0.2
     assert cfg.funding_carry.max_abs_basis_z == 1.8
     assert cfg.funding_carry.max_crowding == 0.75
-    assert cfg.pairs_trading.max_half_life == 36.0
+    assert cfg.pairs_trading.max_half_life_hours == 36.0
     assert cfg.pairs_trading.max_hedge_uncertainty == 5.0
+
+
+def test_strategy_config_normalizes_compact_symbols():
+    cfg = StrategiesConfig(**{
+        "funding_carry": {
+            "perp_symbol": "BTCUSDT",
+            "spot_symbol": "BTCUSDT",
+        },
+        "pairs_trading": {
+            "symbol_y": "ETHUSDT",
+            "symbol_x": "BTCUSDT",
+        },
+    })
+
+    assert cfg.funding_carry.perp_symbol == "BTC-USDT-SWAP"
+    assert cfg.funding_carry.spot_symbol == "BTC-USDT"
+    assert cfg.pairs_trading.symbol_y == "ETH-USDT-SWAP"
+    assert cfg.pairs_trading.symbol_x == "BTC-USDT-SWAP"
+
+
+def test_strategy_config_accepts_legacy_max_half_life_key():
+    cfg = StrategiesConfig(**{
+        "pairs_trading": {
+            "max_half_life": 24.0,
+        },
+    })
+
+    assert cfg.pairs_trading.max_half_life_hours == 24.0
+    assert cfg.pairs_trading.max_half_life == 24.0
+
+
+def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "SOL-USDT-SWAP",
+            "symbol_x": "ADA-USDT-SWAP",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Missing ctVal for non-BTC/ETH swap"):
+        ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
+
+
+def test_replay_default_specs_allow_btc_eth_swaps(minimal_cfg):
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "ETH-USDT-SWAP",
+            "symbol_x": "BTC-USDT-SWAP",
+        }
+    )
+
+    engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
+
+    assert engine._instrument_specs["ETH-USDT-SWAP"]["ctVal"] == pytest.approx(0.01)
+    assert engine._instrument_specs["BTC-USDT-SWAP"]["ctVal"] == pytest.approx(0.01)
 
 
 def test_load_config_reads_backtest_execution_defaults():

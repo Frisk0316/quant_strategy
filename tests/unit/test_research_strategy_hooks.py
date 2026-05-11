@@ -52,7 +52,8 @@ def test_funding_carry_entry_gate_allows_clean_high_apr():
 
 
 def test_pairs_quality_gate_blocks_slow_half_life():
-    strategy = PairsTradingStrategy({"max_half_life": 48.0})
+    strategy = PairsTradingStrategy({"max_half_life_hours": 48.0})
+    strategy._ou_calibrated = True
     strategy._ou_params = {"theta": 0.01, "mu": 0.0, "sigma": 0.01, "half_life": 72.0}
 
     ok, reason = strategy._quality_gate_passed()
@@ -62,7 +63,8 @@ def test_pairs_quality_gate_blocks_slow_half_life():
 
 
 def test_pairs_quality_gate_allows_stable_spread():
-    strategy = PairsTradingStrategy({"max_half_life": 48.0})
+    strategy = PairsTradingStrategy({"max_half_life_hours": 48.0})
+    strategy._ou_calibrated = True
     strategy._ou_params = {"theta": 0.10, "mu": 0.0, "sigma": 0.01, "half_life": 12.0}
     strategy._P = 1.0
 

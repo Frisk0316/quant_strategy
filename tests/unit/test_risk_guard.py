@@ -114,3 +114,57 @@ def test_reset_clears_kill():
     assert rg.kill is True
     rg.reset()
     assert rg.kill is False
+
+
+def test_check_blocks_when_equity_zero():
+    rg = make_risk_guard(equity=0.0)
+    assert rg.check(make_order()) is False
+
+
+def test_check_blocks_when_equity_negative():
+    rg = make_risk_guard(equity=-1.0)
+    assert rg.check(make_order()) is False
+
+
+def test_size_multiplier_unregistered_strategy_returns_1():
+    rg = make_risk_guard()
+    assert rg.get_size_multiplier("not_registered") == 1.0
+
+
+def test_trigger_soft_stop_is_idempotent():
+    rg = make_risk_guard()
+    rg.register_strategy("test_strat")
+    rg.trigger_soft_stop()
+    rg.trigger_soft_stop()
+    assert rg.get_size_multiplier("test_strat") == 0.5
+
+
+def test_reset_daily_clears_soft_stop_but_preserves_peak():
+    dd = DrawdownTracker(soft_drawdown_pct=0.10, hard_drawdown_pct=0.15)
+    dd.set_initial_equity(10_000.0)
+    dd.update(8_900.0)
+    rg = RiskGuard(equity_fn=lambda: 8_900.0, drawdown_tracker=dd)
+    rg.register_strategy("test_strat")
+    rg.trigger_soft_stop()
+
+    rg.reset_daily()
+
+    assert rg.soft_stop is False
+    assert rg.get_size_multiplier("test_strat") == 1.0
+    assert dd.stats()["peak_equity"] == pytest.approx(10_000.0)
+
+
+def test_daily_loss_kill_independent_of_drawdown():
+    dd = DrawdownTracker(soft_drawdown_pct=0.10, hard_drawdown_pct=0.15, max_daily_loss_pct=0.05)
+    dd.set_initial_equity(10_000.0)
+    dd.update(9_400.0)
+    rg = RiskGuard(equity_fn=lambda: 9_400.0, drawdown_tracker=dd, max_daily_loss_pct=0.05)
+
+    assert dd.current_drawdown() == pytest.approx(-0.06)
+    assert rg.check(make_order()) is False
+    assert rg.kill is True
+
+
+def test_check_with_unparseable_sz_px():
+    rg = make_risk_guard(equity=10_000.0)
+    assert rg.check(make_order(sz="bad", px="100")) is False

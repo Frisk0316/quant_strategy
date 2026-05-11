@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting.replay import run_replay_backtest, run_replay_validations
 from okx_quant.core.config import load_config
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 BAR_PERIODS = {
     "1m": 525600, "3m": 175200, "5m": 105120, "15m": 35040,
@@ -38,6 +39,8 @@ def main() -> None:
                         help="Perpetual symbol for funding_carry")
     parser.add_argument("--spot-symbol", default=None,
                         help="Spot symbol for funding_carry")
+    parser.add_argument("--min-apr-threshold", type=float, default=None,
+                        help="Override funding_carry min APR threshold for this replay")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
     parser.add_argument("--save-artifacts", action="store_true",
                         help="Save all backtest artifacts to --output-dir/<run_id>/")
@@ -53,6 +56,7 @@ def main() -> None:
 
     cfg = load_config(require_secrets=False)
     if args.symbol:
+        args.symbol = [normalize_swap_symbol(symbol) for symbol in args.symbol]
         if "obi_market_maker" in args.strategy:
             cfg.strategies.obi_market_maker.symbols = args.symbol
         if "as_market_maker" in args.strategy:
@@ -60,20 +64,22 @@ def main() -> None:
         cfg.system.symbols = args.symbol
     if "pairs_trading" in args.strategy:
         if args.symbol_x:
-            cfg.strategies.pairs_trading.symbol_x = args.symbol_x
+            cfg.strategies.pairs_trading.symbol_x = normalize_swap_symbol(args.symbol_x)
         if args.symbol_y:
-            cfg.strategies.pairs_trading.symbol_y = args.symbol_y
+            cfg.strategies.pairs_trading.symbol_y = normalize_swap_symbol(args.symbol_y)
         cfg.system.symbols = [
             cfg.strategies.pairs_trading.symbol_y,
             cfg.strategies.pairs_trading.symbol_x,
         ]
     if "funding_carry" in args.strategy:
         if args.perp_symbol:
-            cfg.strategies.funding_carry.perp_symbol = args.perp_symbol
-            cfg.system.symbols = [args.perp_symbol]
+            cfg.strategies.funding_carry.perp_symbol = normalize_swap_symbol(args.perp_symbol)
+            cfg.system.symbols = [cfg.strategies.funding_carry.perp_symbol]
         if args.spot_symbol:
-            cfg.strategies.funding_carry.spot_symbol = args.spot_symbol
-            cfg.system.spot_symbols = [args.spot_symbol]
+            cfg.strategies.funding_carry.spot_symbol = normalize_spot_symbol(args.spot_symbol)
+            cfg.system.spot_symbols = [cfg.strategies.funding_carry.spot_symbol]
+        if args.min_apr_threshold is not None:
+            cfg.strategies.funding_carry.min_apr_threshold = args.min_apr_threshold
 
     result = run_replay_backtest(
         strategy_names=args.strategy,

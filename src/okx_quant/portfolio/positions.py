@@ -18,6 +18,7 @@ class Position:
     inst_id: str
     size: float = 0.0          # positive = long, negative = short
     avg_entry: float = 0.0
+    ct_val: float = 1.0
     realized_pnl: float = 0.0
     last_price: float = 0.0
     strategy: str = ""
@@ -27,11 +28,11 @@ class Position:
     def unrealized_pnl(self) -> float:
         if self.size == 0 or self.avg_entry == 0:
             return 0.0
-        return self.size * (self.last_price - self.avg_entry)
+        return self.size * (self.last_price - self.avg_entry) * self.ct_val
 
     @property
     def notional(self) -> float:
-        return abs(self.size) * self.last_price
+        return abs(self.size) * self.last_price * self.ct_val
 
 
 class PositionLedger:
@@ -139,6 +140,8 @@ class PositionLedger:
 
         size_before = pos.size
         avg_entry_before = pos.avg_entry
+        ct_val = _fill_ct_val(metadata, pos.ct_val)
+        ct_val_before = pos.ct_val
         cash_before = self._cash_equity
 
         signed_size = fill_sz if side == "buy" else -fill_sz
@@ -158,7 +161,7 @@ class PositionLedger:
                 pos.avg_entry = weighted_notional / abs(new_size)
         else:
             closed = min(abs(pos.size), abs(signed_size))
-            realized_pnl = closed * (fill_px - pos.avg_entry) * (1 if pos.size > 0 else -1)
+            realized_pnl = closed * (fill_px - pos.avg_entry) * (1 if pos.size > 0 else -1) * ct_val
             logger.info("Trade closed", inst_id=inst_id, pnl=realized_pnl - fee, side=side)
 
             if abs(new_size) < 1e-9:
@@ -172,6 +175,7 @@ class PositionLedger:
         self._cash_equity += net_realized
 
         pos.size = new_size
+        pos.ct_val = ct_val
         pos.last_price = fill_px
         pos.strategy = strategy or pos.strategy
         pos.updated_at = time.time()
@@ -200,8 +204,10 @@ class PositionLedger:
             "size_after": new_size,
             "avg_entry_before": avg_entry_before,
             "avg_entry_after": avg_entry_after,
-            "position_notional_before": abs(size_before) * avg_entry_before,
-            "position_notional_after": abs(new_size) * avg_entry_after,
+            "ct_val_before": ct_val_before,
+            "ct_val_after": ct_val,
+            "position_notional_before": abs(size_before) * avg_entry_before * ct_val_before,
+            "position_notional_after": abs(new_size) * avg_entry_after * ct_val,
             "realized_pnl": realized_pnl,
             "net_realized_pnl": net_realized,
             "unrealized_pnl_after": unrealized_pnl_after,
@@ -269,3 +275,12 @@ class PositionLedger:
 
     def set_initial_equity(self, equity: float) -> None:
         self._cash_equity = equity
+
+
+def _fill_ct_val(metadata: dict | None, fallback: float = 1.0) -> float:
+    raw = (metadata or {}).get("ct_val", fallback)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return float(fallback or 1.0)
+    return value if value > 0 else float(fallback or 1.0)

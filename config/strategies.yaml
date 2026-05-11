@@ -85,8 +85,9 @@ pairs_trading:
   stop_z: 4.0
   # Lookback for OU parameter estimation in hours
   lookback_hours: 168
-  # Block entries if OU half-life is slower than this many observations
-  max_half_life: 48.0
+  # Block entries if OU half-life is slower than this many hours.
+  # Strategy converts bar observations into hours before comparing.
+  max_half_life_hours: 48.0
   # Block entries if Kalman hedge-ratio covariance is too large
   max_hedge_uncertainty: 10.0
   td_mode: cross

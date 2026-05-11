@@ -1,5 +1,6 @@
 // Tiny SVG chart primitives — no third-party libs.
 import { h } from 'preact';
+import { useState } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 function lineFromPoints(pts) {
@@ -33,24 +34,69 @@ function downsample(arr, target) {
   return out;
 }
 
-function LineChart({ series, height = 220, mode = "line", color = "var(--accent)", showAxes = true, yDomain }) {
+function compactDateLabel(value) {
+  if (value == null || value === "") return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultTooltipValue(v) {
+  if (v == null || isNaN(+v)) return "--";
+  return Math.abs(+v) > 100 ? (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) : (+v).toFixed(4);
+}
+
+function uniqueTicks(count, maxTicks) {
+  if (count <= 0) return [];
+  if (count === 1) return [0];
+  const ticks = [];
+  for (let i = 0; i < maxTicks; i++) {
+    ticks.push(Math.round((i / (maxTicks - 1)) * (count - 1)));
+  }
+  return [...new Set(ticks)];
+}
+
+function LineChart({
+  series,
+  height = 220,
+  mode = "line",
+  color = "var(--accent)",
+  showAxes = true,
+  yDomain,
+  xLabels,
+  xTickFormatter = compactDateLabel,
+  tooltipLabelFormatter = compactDateLabel,
+  tooltipValueFormatter = defaultTooltipValue,
+}) {
   // series: [{ values: number[], color, label }]
+  const [hover, setHover] = useState(null);
   const w = 1000, h = height;
-  const padL = 44, padR = 12, padT = 12, padB = 24;
+  const hasXLabels = Array.isArray(xLabels) && xLabels.length > 0;
+  const padL = 44, padR = 12, padT = 12, padB = hasXLabels ? 36 : 24;
   const innerW = w - padL - padR, innerH = h - padT - padB;
 
-  const all = series.flatMap((s) => s.values);
+  const cleanSeries = series.map((s) => ({ ...s, values: (s.values || []).map((v) => +v) }));
+  const all = cleanSeries.flatMap((s) => s.values).filter((v) => Number.isFinite(v));
+  if (!all.length) return null;
   const yMin = yDomain ? yDomain[0] : Math.min(...all);
   const yMax = yDomain ? yDomain[1] : Math.max(...all);
   const yPad = (yMax - yMin) * 0.05 || 0.01;
   const y0 = yMin - yPad, y1 = yMax + yPad;
 
-  const xN = series[0]?.values.length || 1;
+  const xN = cleanSeries[0]?.values.length || 1;
   const xScale = (i) => padL + (i / Math.max(xN - 1, 1)) * innerW;
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
 
   const ticks = 4;
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => y0 + (i / ticks) * (y1 - y0));
+  const xTicks = hasXLabels ? uniqueTicks(xN, Math.min(5, xN)) : [];
+
+  function handlePointerMove(e) {
+    const box = e.currentTarget.getBoundingClientRect();
+    const viewX = ((e.clientX - box.left) / Math.max(box.width, 1)) * w;
+    const idx = Math.round(((viewX - padL) / Math.max(innerW, 1)) * Math.max(xN - 1, 0));
+    setHover(Math.max(0, Math.min(xN - 1, idx)));
+  }
 
   return html`
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
@@ -62,7 +108,15 @@ function LineChart({ series, height = 220, mode = "line", color = "var(--accent)
           </text>
         </g>
       `)}
-      ${series.map((s, si) => {
+      ${showAxes && xTicks.map((idx) => html`
+        <g key=${`x-${idx}`}>
+          <line x1=${xScale(idx)} x2=${xScale(idx)} y1=${padT} y2=${h - padB} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+          <text x=${xScale(idx)} y=${h - 10} font-size="10" text-anchor=${idx === 0 ? "start" : idx === xN - 1 ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">
+            ${xTickFormatter(xLabels[idx], idx)}
+          </text>
+        </g>
+      `)}
+      ${cleanSeries.map((s, si) => {
         const ds = downsample(s.values, 240);
         const pts = ds.map(([i, v]) => [xScale(i), yScale(v)]);
         const stroke = s.color || color;
@@ -74,6 +128,43 @@ function LineChart({ series, height = 220, mode = "line", color = "var(--accent)
           </g>
         `;
       })}
+      ${hover != null && html`
+        <g>
+          <line x1=${xScale(hover)} x2=${xScale(hover)} y1=${padT} y2=${h - padB} stroke="var(--text-muted)" stroke-dasharray="3 4" />
+          ${cleanSeries.map((s, si) => {
+            const value = s.values[hover];
+            if (!Number.isFinite(value)) return null;
+            return html`<circle key=${si} cx=${xScale(hover)} cy=${yScale(value)} r="3.5" fill=${s.color || color} stroke="var(--surface)" stroke-width="1.5" />`;
+          })}
+          <g transform=${`translate(${Math.min(xScale(hover) + 12, w - 214)}, ${padT + 8})`}>
+            <rect width="202" height=${32 + cleanSeries.length * 16} rx="6" fill="var(--surface)" stroke="var(--border-strong)" />
+            <text x="10" y="18" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">
+              ${tooltipLabelFormatter(hasXLabels ? xLabels[hover] : hover, hover)}
+            </text>
+            ${cleanSeries.map((s, si) => {
+              const value = s.values[hover];
+              if (!Number.isFinite(value)) return null;
+              return html`
+                <g key=${si} transform=${`translate(10, ${36 + si * 16})`}>
+                  <circle cx="0" cy="-4" r="3" fill=${s.color || color} />
+                  <text x="10" y="0" font-size="11" fill="var(--text)" font-family="var(--font-mono)">
+                    ${(s.label || "Value") + ": " + tooltipValueFormatter(value, s, hover)}
+                  </text>
+                </g>
+              `;
+            })}
+          </g>
+        </g>
+      `}
+      <rect
+        x=${padL}
+        y=${padT}
+        width=${innerW}
+        height=${innerH}
+        fill="transparent"
+        onMouseMove=${handlePointerMove}
+        onMouseLeave=${() => setHover(null)}
+      />
     </svg>
   `;
 }

@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +156,16 @@ class FundingCarryParams(BaseModel):
     funding_check_interval_secs: int = 300
     td_mode: str = "cross"
 
+    @field_validator("perp_symbol")
+    @classmethod
+    def normalize_perp_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
+
+    @field_validator("spot_symbol")
+    @classmethod
+    def normalize_spot_symbol(cls, value: str) -> str:
+        return normalize_spot_symbol(value)
+
 
 class PairsTradingParams(BaseModel):
     enabled: bool = False
@@ -164,9 +176,26 @@ class PairsTradingParams(BaseModel):
     exit_z: float = 0.3
     stop_z: float = 4.0
     lookback_hours: int = 168
-    max_half_life: float = 48.0
+    max_half_life_hours: float = Field(default=48.0, gt=0, description="Maximum OU half-life in hours")
     max_hedge_uncertainty: float = 10.0
     td_mode: str = "cross"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_max_half_life(cls, values):
+        if isinstance(values, dict) and "max_half_life" in values and "max_half_life_hours" not in values:
+            values = dict(values)
+            values["max_half_life_hours"] = values["max_half_life"]
+        return values
+
+    @property
+    def max_half_life(self) -> float:
+        return self.max_half_life_hours
+
+    @field_validator("symbol_y", "symbol_x")
+    @classmethod
+    def normalize_pair_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
 
 
 class StrategiesConfig(BaseModel):

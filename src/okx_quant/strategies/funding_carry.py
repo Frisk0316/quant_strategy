@@ -18,6 +18,7 @@ from typing import Optional
 from loguru import logger
 
 from okx_quant.core.events import Event, SignalPayload
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 from okx_quant.strategies.base import Strategy
 
 # Funding rate settlement interval in seconds (8h default, some contracts 1/2/4h)
@@ -51,8 +52,8 @@ def evaluate_funding_carry_entry(
 class FundingCarryStrategy(Strategy):
     def __init__(self, params: dict) -> None:
         super().__init__("funding_carry", params)
-        self.perp_symbol: str = params.get("perp_symbol", "BTC-USDT-SWAP")
-        self.spot_symbol: str = params.get("spot_symbol", "BTC-USDT")
+        self.perp_symbol: str = normalize_swap_symbol(params.get("perp_symbol", "BTC-USDT-SWAP"))
+        self.spot_symbol: str = normalize_spot_symbol(params.get("spot_symbol", "BTC-USDT"))
         self.min_apr: float = params.get("min_apr_threshold", 0.12)
         self.rebalance_drift: float = params.get("rebalance_drift_threshold", 0.02)
         self.max_abs_basis_z: float = params.get("max_abs_basis_z", 2.5)

@@ -330,6 +330,39 @@ async def test_sim_broker_uses_contract_value_for_fee_and_notional_metadata():
     assert fill.fee == pytest.approx(0.0004)
 
 
+@pytest.mark.asyncio
+async def test_sim_broker_rejects_missing_ct_val():
+    broker = SimBroker(slippage_bps=0.0, fill_probability=1.0, instrument_specs={})
+
+    with pytest.raises(ValueError, match="Missing ctVal for SOL-USDT-SWAP"):
+        await broker.submit({
+            "cl_ord_id": "sim-missing-ctval",
+            "inst_id": "SOL-USDT-SWAP",
+            "side": "buy",
+            "sz": "2",
+            "px": "100.0",
+            "strategy": "test",
+            "metadata": {},
+        })
+
+
+def test_replay_execution_model_rejects_missing_ct_val_on_fill():
+    model = ReplayExecutionModel(instrument_specs={})
+    model.on_market(make_market_payload(ts=1, bid_px=99.0, ask_px=101.0))
+    model.submit({
+        "cl_ord_id": "replay-missing-ctval",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "buy",
+        "sz": "1",
+        "px": "100.0",
+        "strategy": "test",
+        "metadata": {},
+    })
+
+    with pytest.raises(ValueError, match="Missing ctVal for BTC-USDT-SWAP"):
+        model.on_market(make_market_payload(ts=2, ask_px=99.5, ask_sz=1.0))
+
+
 def test_portfolio_manager_refuses_unknown_swap_ct_val_fallback():
     pm = PortfolioManager(
         bus=EventBus(),

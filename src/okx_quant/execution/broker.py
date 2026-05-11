@@ -199,11 +199,14 @@ class SimBroker(Broker):
             fill_px = price - slippage
 
         fill_sz = float(order["sz"])
-        ct_val = validate_ct_val(float(self._specs.get(order["inst_id"], {}).get("ctVal", 1.0)), order["inst_id"])
+        inst_id = order["inst_id"]
+        ct_val_raw = self._specs.get(inst_id, {}).get("ctVal")
+        if ct_val_raw is None:
+            raise ValueError(f"Missing ctVal for {inst_id}")
+        ct_val = validate_ct_val(float(ct_val_raw), inst_id)
         notional_usd = fill_px * fill_sz * ct_val
         fee = notional_usd * self._maker_fee_rate
 
-        inst_id = order["inst_id"]
         signed_size = fill_sz if order["side"] == "buy" else -fill_sz
         self._positions[inst_id] = self._positions.get(inst_id, 0) + signed_size
 

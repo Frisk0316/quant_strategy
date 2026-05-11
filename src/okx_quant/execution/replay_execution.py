@@ -187,7 +187,10 @@ class ReplayExecutionModel:
 
         resting.remaining_sz -= fill_sz
         state = "filled" if resting.remaining_sz <= 1e-12 else "partially_filled"
-        ct_val = validate_ct_val(float(self.instrument_specs.get(order["inst_id"], {}).get("ctVal", 1.0)), order["inst_id"])
+        ct_val_raw = self.instrument_specs.get(order["inst_id"], {}).get("ctVal")
+        if ct_val_raw is None:
+            raise ValueError(f"Missing ctVal for {order['inst_id']}")
+        ct_val = validate_ct_val(float(ct_val_raw), order["inst_id"])
         notional_usd = px * fill_sz * ct_val
         fee = notional_usd * self.maker_fee_rate
         metadata = dict(order.get("metadata", {}))

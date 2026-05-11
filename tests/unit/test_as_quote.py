@@ -7,6 +7,7 @@ import math
 import pytest
 
 from okx_quant.strategies.as_market_maker import as_quote
+from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 
 
 def test_bid_below_ask():
@@ -83,3 +84,35 @@ def test_tick_rounding():
         assert abs(bid % tick) < 1e-9 or abs(bid % tick - tick) < 1e-9
     if ask != math.inf:
         assert abs(ask % tick) < 1e-9 or abs(ask % tick - tick) < 1e-9
+
+
+def test_large_alpha_bid_still_below_ask():
+    bid, ask = as_quote(mid=100.0, inventory=0, alpha_signal=0.1, vpin=0.1, c_alpha=100.0)
+    assert bid < ask
+    assert ask < 105.0
+
+
+def test_extreme_negative_alpha_no_negative_price():
+    bid, ask = as_quote(mid=100.0, inventory=0, alpha_signal=-10.0, vpin=0.1, c_alpha=100.0)
+    assert bid > 0
+    assert ask > bid
+
+
+def test_zero_kappa_no_crash():
+    bid, ask = as_quote(mid=100.0, inventory=0, alpha_signal=0.0, vpin=0.1, kappa=0.0)
+    assert bid < ask
+
+
+def test_pairs_half_life_gate_respects_bar_resolution():
+    one_min = PairsTradingStrategy({"bar_seconds": 60, "max_half_life_hours": 48.0})
+    one_min._ou_calibrated = True
+    one_min._ou_params = {"theta": 0.01, "mu": 0.0, "sigma": 0.01, "half_life": 100.0}
+    one_min._P = 1.0
+
+    one_hour = PairsTradingStrategy({"bar_seconds": 3600, "max_half_life_hours": 48.0})
+    one_hour._ou_calibrated = True
+    one_hour._ou_params = {"theta": 0.01, "mu": 0.0, "sigma": 0.01, "half_life": 100.0}
+    one_hour._P = 1.0
+
+    assert one_min._quality_gate_passed() == (True, "passed")
+    assert one_hour._quality_gate_passed() == (False, "half_life_too_slow")

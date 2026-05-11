@@ -7,6 +7,7 @@ creating a new one, which would conflict with the engine's asyncio.run().
 """
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 import uvicorn
@@ -21,11 +22,22 @@ from okx_quant.api.routes_live import make_live_router
 from okx_quant.api.state import EngineState
 from okx_quant.core.config import load_config
 
+# Python's mimetypes table may not know about .jsx on some platforms.
+# When frontend modules are loaded with type="module", browsers require a
+# JavaScript MIME type and will refuse application/octet-stream responses.
+mimetypes.add_type("application/javascript", ".jsx")
+mimetypes.add_type("application/javascript", ".mjs")
 
 def _db_dsn() -> str | None:
     try:
+        import os
+        if os.environ.get("DATABASE_URL"):
+            return os.environ["DATABASE_URL"]
         cfg = load_config(require_secrets=False)
-        return cfg.storage.timescale_dsn
+        dsn = cfg.storage.timescale_dsn
+        if dsn:
+            os.environ.setdefault("DATABASE_URL", dsn)
+        return dsn
     except Exception:
         return None
 
