@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-05-11
+last_reviewed: 2026-05-11
+expires: none
+superseded_by: null
+---
+
 # AI Handoff
 
 Cross-session memory for Claude and Codex. **Read this before starting any task. Update this before ending any session.**
@@ -6,7 +16,7 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Establish AI governance infrastructure: workflow docs, issue templates, CI skeleton, and regression tests for highest-risk PnL and execution logic.
+Establish AI governance infrastructure: documentation lifecycle rules, CI skeleton, and regression tests for highest-risk PnL and execution logic.
 
 ## Current Branch
 
@@ -32,15 +42,12 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 | Data | TimescaleDB — OHLCV, funding rates, canonical candles |
 | Config | `config/settings.yaml`, `config/strategies.yaml`, `config/risk.yaml` |
 
-## Recent Changes (last 5 sessions)
+## Current Change Context
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| PR3 `(current)` | Fix PR1/PR2 doc consistency: funding sign, ADR-0005 status, MIME `.js`, templates | Docs only + one-line server.py fix |
-| `389939a` fix | Route `DATABASE_URL` through `cfg` so local backtest scripts write to DB | `config.py` + `artifacts.py` only |
-| PR2 `b58ad3e` | Add `ARCHITECTURE.md` and `ADR/0001–0005` | Some ADRs describe target behavior not yet fully implemented |
-| PR1 `55b9d67` | Add AI workflow, handoff, debugging runbook, PR/issue templates, `.gitignore` fixes | Governance docs only |
-| `cb022c5` | Add TradesView, CompareView, RiskView to frontend | Frontend regression risk if component imports break |
+| PR4 `(current)` | Add documentation lifecycle policy, docs index, archive/deprecated rules, and documentation authority rules | Governance docs only |
+| PR3 | Immediate predecessor: fixed PR1/PR2 doc consistency and marked ADR-0005 as proposed | No current action unless docs conflict is found |
 
 ## Known Bugs / Open Issues
 
@@ -49,7 +56,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 3. **Replay bar-level approximation** (P1): `scripts/run_backtest.py` uses per-bar approximation formulas, not the true `Strategy → Signal → Order → Fill → Ledger` path.
 4. **No CI gate**: No `.github/workflows/` — no automated test enforcement on PRs.
 5. **Missing regression tests**: No tests for ct_val PnL, funding carry dual leg alignment, pairs trading hedge close, or replay terminal liquidation.
-6. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR10–11).
+6. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR11–12).
 
 ## Do Not Touch (without explicit issue + user approval)
 
@@ -62,20 +69,22 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[Done]** PR1 — AI governance docs, GitHub templates, `.gitignore` fixes
-2. **[Done]** PR2 — `ARCHITECTURE.md`, `ADR/0001–0005`
-3. **[Done]** PR3 — Fix PR1/PR2 doc consistency (funding sign, ADR-0005 status, MIME `.js`, templates)
-4. **[PR4]** CI skeleton: `.github/workflows/ci.yml` with ruff + pytest unit gate
-5. **[PR5]** Regression test: SWAP `ct_val` PnL — `tests/unit/test_position_pnl_accounting.py`
-6. **[PR6]** Regression test: frontend MIME smoke — `tests/unit/test_frontend_static_mime.py`
-7. **[PR7]** Regression test: backtest artifact schema — `tests/unit/test_backtest_artifact_schema.py`
-8. **[PR8]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
-9. **[PR9]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
-10. **[PR10A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
-11. **[PR10B]** Implementation: terminal liquidation in `backtesting/replay.py`
-12. **[PR11]** Replay validation gates implementation (ADR-0005 → Accepted)
-13. **[PR12A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
-14. **[PR12B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+1. **[PR4]** Documentation lifecycle policy — `docs/DOC_LIFECYCLE.md`, docs index, archive/deprecated rules
+2. **[PR5]** CI skeleton: `.github/workflows/ci.yml` with ruff + pytest unit gate
+3. **[PR6]** Regression test: SWAP `ct_val` PnL — `tests/unit/test_position_pnl_accounting.py`
+4. **[PR7]** Regression test: frontend MIME smoke — `tests/unit/test_frontend_static_mime.py`
+5. **[PR8]** Regression test: backtest artifact schema — `tests/unit/test_backtest_artifact_schema.py`
+6. **[PR9]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
+7. **[PR10]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
+8. **[PR11A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
+9. **[PR11B]** Implementation: terminal liquidation in `backtesting/replay.py`
+10. **[PR12]** Replay validation gates implementation (ADR-0005 → Accepted)
+11. **[PR13A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
+12. **[PR13B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+
+## Documentation Cleanup Next Step
+
+After PR4 is merged, classify existing Markdown files with lifecycle metadata in a dedicated docs-only cleanup PR. Do not change strategy assumptions or implementation behavior during that cleanup.
 
 ## Open Questions
 
@@ -89,6 +98,6 @@ Before ending a session, confirm:
 
 - [ ] Changed files listed
 - [ ] Tests run (or reason stated why not)
-- [ ] `AI_HANDOFF.md` updated (Known Bugs, Next Steps, Recent Changes)
+- [ ] `AI_HANDOFF.md` updated (Known Bugs, Next Steps, Current Change Context)
 - [ ] Commit has `AI-Origin:` trailer
 - [ ] Issue acceptance criteria met or partial progress noted

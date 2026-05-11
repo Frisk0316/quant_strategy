@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>quant_strategy Repository Architecture Map</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --panel-2: #1f2937;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --line: #334155;
+  --accent: #38bdf8;
+  --accent-2: #a78bfa;
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --red: #fb7185;
+  --blue: #60a5fa;
+  --chip: #0b1220;
+  --white: #ffffff;
+  --shadow: 0 22px 60px rgba(0,0,0,.32);
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(56,189,248,.20), transparent 32%),
+    radial-gradient(circle at 80% 10%, rgba(167,139,250,.18), transparent 30%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container {
+  width: min(1280px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+header {
+  padding: 56px 0 28px;
+}
+
+.hero {
+  background: rgba(15,23,42,.74);
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  padding: 34px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero:before {
+  content: "";
+  position: absolute;
+  inset: -80px -120px auto auto;
+  width: 340px;
+  height: 340px;
+  border-radius: 999px;
+  background: rgba(56,189,248,.16);
+  filter: blur(4px);
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 62px);
+  line-height: 1.04;
+  letter-spacing: -.04em;
+  max-width: 960px;
+}
+
+.hero p {
+  max-width: 920px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.badge {
+  border: 1px solid rgba(148,163,184,.22);
+  background: rgba(2,6,23,.42);
+  color: #dbeafe;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(2,6,23,.78);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(148,163,184,.12);
+  border-bottom: 1px solid rgba(148,163,184,.12);
+}
+
+.nav-inner {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 12px 0;
+}
+
+.nav-inner a {
+  color: #cbd5e1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.nav-inner a:hover {
+  background: rgba(56,189,248,.10);
+  border-color: rgba(56,189,248,.28);
+  text-decoration: none;
+}
+
+section {
+  padding: 34px 0;
+}
+
+.section-title {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.section-title h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -.02em;
+}
+
+.section-title p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  max-width: 860px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.card {
+  background: linear-gradient(180deg, rgba(30,41,59,.78), rgba(15,23,42,.82));
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.18);
+}
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.card p, .card li {
+  color: #cbd5e1;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 13px; color: var(--muted); }
+
+.kpi {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.kpi .num {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--white);
+  letter-spacing: -.03em;
+}
+
+.kpi .label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.flow-node {
+  min-height: 112px;
+  border: 1px solid rgba(148,163,184,.20);
+  background: rgba(15,23,42,.72);
+  border-radius: 16px;
+  padding: 14px;
+  position: relative;
+}
+
+.flow-node h4 {
+  margin: 0 0 8px;
+  color: #eff6ff;
+}
+
+.flow-node p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.flow-node:not(:last-child):after {
+  content: "→";
+  position: absolute;
+  right: -14px;
+  top: 42%;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 22px;
+  z-index: 1;
+}
+
+.layer-map {
+  display: grid;
+  grid-template-columns: 1.1fr .9fr 1.1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.stack-item {
+  background: rgba(2,6,23,.42);
+  border: 1px solid rgba(148,163,184,.18);
+  border-left: 4px solid var(--accent);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.stack-item.purple { border-left-color: var(--accent-2); }
+.stack-item.green { border-left-color: var(--green); }
+.stack-item.yellow { border-left-color: var(--yellow); }
+.stack-item.red { border-left-color: var(--red); }
+.stack-item.blue { border-left-color: var(--blue); }
+
+.stack-item b { display: block; margin-bottom: 3px; }
+.stack-item span { color: var(--muted); font-size: 13px; }
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  background: rgba(15,23,42,.70);
+}
+
+th, td {
+  border-bottom: 1px solid rgba(148,163,184,.12);
+  padding: 12px 14px;
+  vertical-align: top;
+  text-align: left;
+}
+
+th {
+  color: #bfdbfe;
+  font-size: 13px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  background: rgba(30,41,59,.86);
+}
+
+td {
+  color: #dbeafe;
+  font-size: 14px;
+}
+
+tr:last-child td { border-bottom: 0; }
+
+code, pre {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+code {
+  color: #bae6fd;
+  background: rgba(2,6,23,.58);
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: .92em;
+}
+
+pre {
+  background: rgba(2,6,23,.72);
+  border: 1px solid rgba(148,163,184,.14);
+  color: #dbeafe;
+  padding: 16px;
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.tree {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: rgba(2,6,23,.70);
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 18px;
+  padding: 18px;
+  overflow-x: auto;
+  color: #dbeafe;
+  white-space: pre;
+  font-size: 14px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(56,189,248,.12);
+  color: #bae6fd;
+  border: 1px solid rgba(56,189,248,.28);
+}
+
+.pill.green { background: rgba(52,211,153,.12); color: #bbf7d0; border-color: rgba(52,211,153,.28); }
+.pill.yellow { background: rgba(251,191,36,.12); color: #fde68a; border-color: rgba(251,191,36,.28); }
+.pill.red { background: rgba(251,113,133,.12); color: #fecdd3; border-color: rgba(251,113,133,.28); }
+.pill.purple { background: rgba(167,139,250,.12); color: #ddd6fe; border-color: rgba(167,139,250,.28); }
+
+.timeline {
+  display: grid;
+  gap: 12px;
+  position: relative;
+}
+
+.timeline:before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: rgba(148,163,184,.18);
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 12px;
+  align-items: start;
+  position: relative;
+}
+
+.dot {
+  width: 32px;
+  height: 32px;
+  background: #0f172a;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-weight: 800;
+  z-index: 1;
+}
+
+.timeline-body {
+  background: rgba(15,23,42,.72);
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.timeline-body h4 {
+  margin: 0 0 4px;
+}
+
+.timeline-body p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tab-btn {
+  border: 1px solid rgba(148,163,184,.18);
+  background: rgba(2,6,23,.48);
+  color: #cbd5e1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: rgba(56,189,248,.15);
+  border-color: rgba(56,189,248,.35);
+  color: #e0f2fe;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.callout {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(251,191,36,.25);
+  background: rgba(251,191,36,.10);
+  color: #fde68a;
+}
+
+.callout.blue {
+  border-color: rgba(56,189,248,.25);
+  background: rgba(56,189,248,.10);
+  color: #bae6fd;
+}
+
+.callout.red {
+  border-color: rgba(251,113,133,.25);
+  background: rgba(251,113,133,.10);
+  color: #fecdd3;
+}
+
+footer {
+  color: var(--muted);
+  border-top: 1px solid rgba(148,163,184,.12);
+  padding: 26px 0 44px;
+  margin-top: 20px;
+}
+
+@media (max-width: 980px) {
+  .grid.cols-2, .grid.cols-3, .grid.cols-4, .layer-map {
+    grid-template-columns: 1fr;
+  }
+  .flow {
+    grid-template-columns: 1fr;
+  }
+  .flow-node:not(:last-child):after {
+    content: "↓";
+    right: 50%;
+    top: auto;
+    bottom: -18px;
+  }
+}
+
+@media print {
+  body { background: white; color: #111827; }
+  nav { display: none; }
+  .hero, .card, .stack-item, .timeline-body, .tree, pre, table {
+    background: white !important;
+    color: #111827 !important;
+    box-shadow: none;
+  }
+  .container { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <div class="hero">
+      <h1>quant_strategy Repository Architecture Map</h1>
+      <p>
+        這份文件用直觀方式整理 <code>Frisk0316/quant_strategy</code> 的系統架構、事件流程、策略參數、風控、DB、回測、測試與錯誤處理。
+        它可以作為新 AI session、Codex / Claude Code、或人工 review 前的架構入口。
+      </p>
+      <div class="badges">
+        <span class="badge">Event-driven trading engine</span>
+        <span class="badge">OKX demo / shadow / live</span>
+        <span class="badge">Replay backtesting</span>
+        <span class="badge">TimescaleDB / Parquet data layer</span>
+        <span class="badge">FastAPI + frontend dashboard</span>
+        <span class="badge">AI governance workflow</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <div class="container nav-inner">
+    <a href="#overview">總覽</a>
+    <a href="#tree">Repo Tree</a>
+    <a href="#event-flow">事件流程</a>
+    <a href="#runtime">Runtime</a>
+    <a href="#strategies">策略</a>
+    <a href="#parameters">參數</a>
+    <a href="#portfolio">Portfolio / PnL</a>
+    <a href="#risk">風控</a>
+    <a href="#data-db">DB / Data</a>
+    <a href="#backtest">Backtest</a>
+    <a href="#frontend">Frontend / API</a>
+    <a href="#tests">測試</a>
+    <a href="#errors">錯誤處理</a>
+    <a href="#ai">AI 協作</a>
+  </div>
+</nav>
+
+<main class="container">
+
+<section id="overview">
+  <div class="section-title">
+    <div>
+      <h2>1. 系統總覽</h2>
+      <p>這個 repo 不是單純策略 notebook，而是一套完整量化交易系統：資料、策略、投組、執行、風控、回測、API、前端與 AI 協作治理都有自己的模組。</p>
+    </div>
+  </div>
+
+  <div class="grid cols-4">
+    <div class="card">
+      <div class="kpi"><div class="num">4</div><div class="label">主要策略<br/>OBI / AS / Funding / Pairs</div></div>
+    </div>
+    <div class="card">
+      <div class="kpi"><div class="num">3</div><div class="label">交易模式<br/>demo / shadow / live</div></div>
+    </div>
+    <div class="card">
+      <div class="kpi"><div class="num">2</div><div class="label">資料後端<br/>Parquet / PostgreSQL</div></div>
+    </div>
+    <div class="card">
+      <div class="kpi"><div class="num">7+</div><div class="label">核心層<br/>data / signal / strategy / portfolio / execution / risk / API</div></div>
+    </div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px;">
+    <div class="card">
+      <h3>核心設計理念</h3>
+      <ul>
+        <li>所有交易邏輯透過 <code>EventBus</code> 串接，避免策略直接呼叫 execution。</li>
+        <li>所有 order 進交易所前必須通過 <code>RiskGuard</code>。</li>
+        <li><code>PositionLedger</code> 是 PnL 與持倉的 single source of truth。</li>
+        <li>回測 replay 使用與 live 類似的 Strategy → Signal → Order → Fill → Ledger 路徑。</li>
+        <li>前端 dashboard 由 FastAPI 靜態服務與 REST / WebSocket API 支援。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>目前最重要的工程注意事項</h3>
+      <ul>
+        <li><span class="pill red">PnL 高風險</span> SWAP PnL 必須乘上 <code>ct_val</code>。</li>
+        <li><span class="pill yellow">文件一致性</span> ADR 不能把目標架構寫成已實作行為。</li>
+        <li><span class="pill yellow">Replay</span> terminal liquidation / validation gates 需要測試確認。</li>
+        <li><span class="pill blue">Frontend</span> ES module MIME type 必須是 JavaScript。</li>
+        <li><span class="pill green">AI workflow</span> Codex 只能依 issue scope 修改。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="tree">
+  <div class="section-title">
+    <div>
+      <h2>2. Repository Tree：檔案職責圖</h2>
+      <p>以下是依目前架構整理的高階目錄圖，用於快速定位錯誤在哪一層。</p>
+    </div>
+  </div>
+
+  <div class="tree">quant_strategy/
+├── src/okx_quant/
+│   ├── core/                  # config, events, EventBus, logging, symbols
+│   ├── data/                  # OKX REST / WS data, order book, FeedStore, market data
+│   ├── signals/               # OBI, OFI, VPIN, regime features
+│   ├── strategies/            # OBI MM, AS MM, funding carry, pairs trading
+│   ├── portfolio/             # PortfolioManager, PositionLedger, sizing
+│   ├── execution/             # Broker, OrderManager, ExecutionHandler, ReplayExecutionModel
+│   ├── risk/                  # RiskGuard, DrawdownTracker, CircuitBreaker
+│   ├── monitoring/            # CalibrationLogger, Telegram alert
+│   ├── analytics/             # Sharpe, Sortino, DSR / PSR
+│   ├── api/                   # FastAPI server, live/backtest/config/data routes, EngineState
+│   └── engine.py              # Main async orchestrator
+│
+├── backtesting/
+│   ├── replay.py              # event-driven replay backtest
+│   ├── artifacts.py           # result writer: CSV / JSON / DB artifacts
+│   ├── data_loader.py         # Parquet / PostgreSQL candle and funding loaders
+│   ├── cpcv.py                # combinatorial purged cross-validation
+│   ├── walk_forward.py        # rolling IS/OOS validation
+│   └── result_utils.py
+│
+├── scripts/
+│   ├── run_replay_backtest.py # CLI for replay backtest
+│   ├── run_replay_validation.py
+│   ├── run_calibration_apply.py
+│   └── market_data/           # DB init, ingest, canonicalize, repair, validate
+│
+├── config/
+│   ├── settings.yaml          # mode, symbols, storage, OKX URLs, market data settings
+│   ├── strategies.yaml        # strategy parameters
+│   └── risk.yaml              # risk limits + replay execution params
+│
+├── frontend/
+│   ├── index.html             # module entrypoint
+│   ├── app.js                 # main frontend app
+│   ├── charts.js              # chart rendering helpers
+│   ├── view-*.js              # dashboard views
+│   └── styles.css
+│
+├── docs/
+│   ├── AI_WORKFLOW.md         # Claude / Codex / Human workflow
+│   ├── AI_HANDOFF.md          # cross-session memory
+│   ├── DEBUGGING_RUNBOOK.md   # diagnostic playbook
+│   ├── ARCHITECTURE.md        # architecture reference
+│   └── ADR/                   # architecture decision records
+│
+├── .github/
+│   ├── pull_request_template.md
+│   └── ISSUE_TEMPLATE/
+└── pyproject.toml             # dependencies, pytest config, ruff config</div>
+</section>
+
+<section id="event-flow">
+  <div class="section-title">
+    <div>
+      <h2>3. 事件流程：Live / Demo / Shadow 的主路徑</h2>
+      <p>系統的核心是 event-driven flow。策略不直接下單；策略只產生 signal，PortfolioManager 轉 order，RiskGuard 檢查，ExecutionHandler 下單，Fill 再回寫 PositionLedger。</p>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-node"><h4>Market Data</h4><p>OKX WebSocket / REST，books、trades、funding-rate。</p></div>
+    <div class="flow-node"><h4>EventBus</h4><p><code>MARKET</code> / <code>FUNDING</code> 事件分發。</p></div>
+    <div class="flow-node"><h4>Strategy</h4><p>OBI / AS / Funding / Pairs 產生 <code>SignalPayload</code>。</p></div>
+    <div class="flow-node"><h4>Portfolio</h4><p>根據 signal strength、vol target、risk multiplier 產生 <code>OrderPayload</code>。</p></div>
+    <div class="flow-node"><h4>RiskGuard</h4><p>fat-finger、position limit、drawdown、daily loss、stale quote。</p></div>
+    <div class="flow-node"><h4>Execution</h4><p>OrderManager + Broker，OKX / Sim / Shadow / Replay。</p></div>
+    <div class="flow-node"><h4>Fill / Ledger</h4><p>Fill 回寫 PositionLedger，更新 PnL、equity、risk snapshot。</p></div>
+  </div>
+
+  <div class="callout blue" style="margin-top:18px;">
+    <b>重要：</b>錯誤排查時請先判斷是哪一層出錯：Data → Strategy → Portfolio → Risk → Execution → Ledger → API → Frontend。
+  </div>
+</section>
+
+<section id="runtime">
+  <div class="section-title">
+    <div>
+      <h2>4. Runtime 組裝流程：engine.py 啟動順序</h2>
+      <p><code>src/okx_quant/engine.py</code> 是 live/demo/shadow 的 orchestrator。啟動時會建立 REST、instrument specs、PositionLedger、RiskGuard、Execution、Strategies、API server 與背景任務。</p>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <div class="timeline-item"><div class="dot">1</div><div class="timeline-body"><h4>Load config + setup logging</h4><p>讀取 <code>settings.yaml</code>、<code>strategies.yaml</code>、<code>risk.yaml</code>，設定 log 與交易模式。</p></div></div>
+    <div class="timeline-item"><div class="dot">2</div><div class="timeline-body"><h4>OKX REST + clock sync</h4><p>避免 OKX 50102 timestamp errors，並抓取 instrument specs。</p></div></div>
+    <div class="timeline-item"><div class="dot">3</div><div class="timeline-body"><h4>Instrument specs</h4><p>取得 <code>ctVal</code>、<code>minSz</code>、<code>lotSz</code>、<code>tickSz</code>，供 sizing / PnL 使用。</p></div></div>
+    <div class="timeline-item"><div class="dot">4</div><div class="timeline-body"><h4>Core components</h4><p>建立 <code>EventBus</code>、<code>PositionLedger</code>、<code>DrawdownTracker</code>、<code>RiskGuard</code>、<code>CircuitBreaker</code>。</p></div></div>
+    <div class="timeline-item"><div class="dot">5</div><div class="timeline-body"><h4>Execution mode</h4><p><code>OKXBroker</code> for demo/live；<code>ShadowBroker</code> for shadow；<code>SimBroker</code> for simulation。</p></div></div>
+    <div class="timeline-item"><div class="dot">6</div><div class="timeline-body"><h4>Strategies</h4><p>依 <code>strategies.yaml</code> 的 <code>enabled</code> 載入 OBI / AS / funding carry / pairs trading。</p></div></div>
+    <div class="timeline-item"><div class="dot">7</div><div class="timeline-body"><h4>API + frontend</h4><p>FastAPI 啟動於 8080，掛載 <code>frontend/</code>，提供 REST / WebSocket。</p></div></div>
+    <div class="timeline-item"><div class="dot">8</div><div class="timeline-body"><h4>Background tasks</h4><p>WS public/private、feed_store flush、clock sync、daily reset、risk snapshot、Telegram optional。</p></div></div>
+  </div>
+</section>
+
+<section id="strategies">
+  <div class="section-title">
+    <div>
+      <h2>5. Strategy Layer：策略責任與資料需求</h2>
+      <p>策略層只負責判斷與產生 signal，不應直接碰 broker、position ledger 或 DB。</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Strategy</th><th>檔案</th><th>核心邏輯</th><th>主要資料</th><th>主要風險</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>OBI Market Maker</b></td>
+          <td><code>strategies/obi_market_maker.py</code></td>
+          <td>根據 order book imbalance / OFI 調整 fair value 與 quote。</td>
+          <td>L2 book、best bid/ask、OFI EWMA。</td>
+          <td>quote stale、inventory accumulation、maker fill 模型不準。</td>
+        </tr>
+        <tr>
+          <td><b>AS Market Maker</b></td>
+          <td><code>strategies/as_market_maker.py</code></td>
+          <td>Avellaneda-Stoikov quote + VPIN spread multiplier + OBI/OFI skew。</td>
+          <td>order book、realized vol、VPIN、OFI。</td>
+          <td>gamma/kappa calibration、VPIN 只應改 spread/size，不應作方向。</td>
+        </tr>
+        <tr>
+          <td><b>Funding Carry</b></td>
+          <td><code>strategies/funding_carry.py</code></td>
+          <td>正 funding 時建立 long spot + short perp，賺取 funding。</td>
+          <td>funding rate、perp book、spot book、basis z-score。</td>
+          <td>雙腿 notional 不匹配、funding sign 錯、spot/perp 價格 fallback。</td>
+        </tr>
+        <tr>
+          <td><b>Pairs Trading</b></td>
+          <td><code>strategies/pairs_trading.py</code></td>
+          <td>Kalman hedge ratio + OU spread z-score，entry / exit / stop。</td>
+          <td>BTC/ETH SWAP price series、spread、z-score。</td>
+          <td>hedge leg 未關、half-life 過長、lookahead / data leakage。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="parameters">
+  <div class="section-title">
+    <div>
+      <h2>6. Config Parameters：設定檔總覽</h2>
+      <p>所有策略、風控與資料後端都應以 <code>config/</code> 為準，不應藏在 prompt 或 notebook。</p>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="settings">settings.yaml</button>
+    <button class="tab-btn" data-tab="strategies">strategies.yaml</button>
+    <button class="tab-btn" data-tab="riskcfg">risk.yaml</button>
+  </div>
+
+  <div id="settings" class="tab-panel active">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>區塊</th><th>參數</th><th>目前值 / 意義</th><th>注意事項</th></tr></thead>
+        <tbody>
+          <tr><td>system</td><td><code>mode</code></td><td><code>demo</code>；可為 demo / shadow / live。</td><td>切換 live 必須人工批准。</td></tr>
+          <tr><td>system</td><td><code>symbols</code></td><td><code>BTC-USDT-SWAP</code>, <code>ETH-USDT-SWAP</code></td><td>SWAP instruments 需要正確 ctVal。</td></tr>
+          <tr><td>system</td><td><code>spot_symbols</code></td><td><code>BTC-USDT</code>, <code>ETH-USDT</code></td><td>Funding carry 雙腿需要 spot symbols。</td></tr>
+          <tr><td>system</td><td><code>equity_usd</code></td><td><code>5000.0</code></td><td>live/demo 啟動時可被 OKX balance 覆蓋。</td></tr>
+          <tr><td>okx</td><td><code>ws_public/private/business</code></td><td>OKX WebSocket endpoints。</td><td>demo / shadow 需使用 demo 設定。</td></tr>
+          <tr><td>storage</td><td><code>backend</code></td><td><code>parquet</code></td><td>feed store backend。</td></tr>
+          <tr><td>storage</td><td><code>candle_backend</code></td><td><code>postgres</code></td><td>backtest candle source。</td></tr>
+          <tr><td>market_data</td><td><code>canonical.base_bar</code></td><td><code>1m</code></td><td>derived bars: 5m, 15m, 1H。</td></tr>
+          <tr><td>market_data.validation</td><td><code>sigma_threshold</code></td><td><code>3.0</code></td><td>cross-exchange outlier validation。</td></tr>
+          <tr><td>clock</td><td><code>sync_interval_secs</code></td><td><code>300</code></td><td>避免 OKX timestamp drift。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="strategies" class="tab-panel">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>策略</th><th>重要參數</th><th>目前值</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td>OBI MM</td><td><code>enabled</code>, <code>depth</code>, <code>obi_threshold</code>, <code>refresh_interval_ms</code>, <code>max_inventory</code></td><td>true, 5, 0.15, 500ms, 50</td><td>控制 OBI signal 與 quote refresh。</td></tr>
+          <tr><td>AS MM</td><td><code>gamma</code>, <code>kappa</code>, <code>beta_vpin</code>, <code>vpin_window</code>, <code>max_pos_contracts</code></td><td>0.1, 1.5, 2.0, 50, 50</td><td>控制風險厭惡、quote spread 與 VPIN 風險縮放。</td></tr>
+          <tr><td>Funding Carry</td><td><code>min_apr_threshold</code>, <code>rebalance_drift_threshold</code>, <code>max_abs_basis_z</code>, <code>max_crowding</code></td><td>12%, 2%, 2.5, 0.85</td><td>控制何時進場、是否再平衡、是否阻擋 crowded trade。</td></tr>
+          <tr><td>Pairs Trading</td><td><code>entry_z</code>, <code>exit_z</code>, <code>stop_z</code>, <code>lookback_hours</code>, <code>max_half_life_hours</code></td><td>2.0, 0.3, 4.0, 168, 48</td><td>控制 spread mean-reversion entry / exit / stop。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="riskcfg" class="tab-panel">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>類別</th><th>參數</th><th>目前值</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td>Order</td><td><code>max_order_notional_usd</code></td><td>500</td><td>單筆 fat-finger guard。</td></tr>
+          <tr><td>Position</td><td><code>max_pos_pct_equity</code></td><td>30%</td><td>單一 instrument 最大部位比例。</td></tr>
+          <tr><td>Leverage</td><td><code>max_leverage</code></td><td>3x</td><td>整體 leverage 上限。</td></tr>
+          <tr><td>Loss</td><td><code>max_daily_loss_pct</code></td><td>5%</td><td>每日虧損停止交易。</td></tr>
+          <tr><td>Drawdown</td><td><code>soft_drawdown_pct</code>, <code>hard_drawdown_pct</code></td><td>10%, 15%</td><td>soft stop 降低 size；hard stop kill switch。</td></tr>
+          <tr><td>Quote</td><td><code>stale_quote_pct</code></td><td>2%</td><td>price 偏離 mid 太多則拒單。</td></tr>
+          <tr><td>Replay</td><td><code>order_latency_ms</code>, <code>cancel_latency_ms</code>, <code>queue_fill_fraction</code></td><td>0, 200, 20%</td><td>回測 execution 模型。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="portfolio">
+  <div class="section-title">
+    <div>
+      <h2>7. Portfolio / PnL Accounting</h2>
+      <p><code>PositionLedger</code> 是持倉與 PnL 的 single source of truth。這一層錯了，策略績效與前端圖表都會失真。</p>
+    </div>
+  </div>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Position</h3>
+      <p><code>size</code> 為 signed quantity：正數 long、負數 short。SWAP 的 size 是 contracts，不是 coin units。</p>
+      <p><code>ct_val</code> 是合約乘數，例如 BTC-USDT-SWAP 常見為 0.01。</p>
+    </div>
+    <div class="card">
+      <h3>Unrealized PnL</h3>
+      <pre>SWAP:
+size × (last_price - avg_entry) × ct_val
+
+SPOT:
+size × (last_price - avg_entry)</pre>
+    </div>
+    <div class="card">
+      <h3>Equity</h3>
+      <pre>equity =
+cash_equity
++ Σ position.unrealized_pnl</pre>
+      <p>Fees 與 realized PnL 會更新 cash equity。</p>
+    </div>
+  </div>
+
+  <div class="callout red" style="margin-top:16px;">
+    <b>高風險錯誤：</b>如果 SWAP PnL 忘記乘 <code>ct_val</code>，BTC-USDT-SWAP 可能出現約 100 倍 PnL / drawdown 錯誤。
+  </div>
+</section>
+
+<section id="risk">
+  <div class="section-title">
+    <div>
+      <h2>8. Risk Layer：每張單必經的風控關卡</h2>
+      <p><code>RiskGuard.check()</code> 是同步 gate。任何 order 被送出前都應檢查 fat-finger、position limit、stale quote、drawdown、daily loss。</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>檢查項目</th><th>條件</th><th>動作</th><th>設定來源</th></tr></thead>
+      <tbody>
+        <tr><td>Kill switch</td><td><code>kill == true</code></td><td>拒單</td><td>RiskGuard state</td></tr>
+        <tr><td>Equity</td><td><code>equity <= 0</code></td><td>拒單</td><td>PositionLedger</td></tr>
+        <tr><td>Fat-finger</td><td>單筆 notional &gt; 500 USDT</td><td>拒單</td><td><code>risk.yaml</code></td></tr>
+        <tr><td>Position limit</td><td>部位 + 新單 &gt; 30% equity</td><td>拒單</td><td><code>risk.yaml</code></td></tr>
+        <tr><td>Stale quote</td><td>order price 偏離 mid &gt; 2%</td><td>拒單</td><td><code>risk.yaml</code></td></tr>
+        <tr><td>Soft drawdown</td><td>DD &gt;= 10%</td><td>size multiplier → 0.5</td><td><code>risk.yaml</code></td></tr>
+        <tr><td>Hard drawdown</td><td>DD &gt;= 15%</td><td>kill switch</td><td><code>risk.yaml</code></td></tr>
+        <tr><td>Daily loss</td><td>daily loss &gt;= 5%</td><td>kill switch</td><td><code>risk.yaml</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="data-db">
+  <div class="section-title">
+    <div>
+      <h2>9. Data / DB Layer：資料流與 TimescaleDB</h2>
+      <p>資料層同時支援 Parquet 與 PostgreSQL/TimescaleDB。多交易所資料會先進 market_* tables，再 canonicalize 成策略可讀的 canonical_candles。</p>
+    </div>
+  </div>
+
+  <div class="layer-map">
+    <div class="stack">
+      <div class="stack-item blue"><b>Exchange APIs</b><span>OKX / Binance / Bybit public endpoints，下載 candles 與 funding rates。</span></div>
+      <div class="stack-item blue"><b>Raw ingestion</b><span><code>scripts/market_data/ingest.py</code>，可 resumable，寫入 market_* tables。</span></div>
+      <div class="stack-item yellow"><b>Validation</b><span>cross-exchange sigma threshold，manual-only replacement。</span></div>
+    </div>
+    <div class="stack">
+      <div class="stack-item green"><b>market_klines</b><span>多交易所原始 OHLCV。</span></div>
+      <div class="stack-item green"><b>market_funding_rates</b><span>多交易所 funding history。</span></div>
+      <div class="stack-item green"><b>market_instruments</b><span>exchange native symbol + canonical bridge。</span></div>
+    </div>
+    <div class="stack">
+      <div class="stack-item purple"><b>canonical_candles</b><span>策略與 backtest 使用的統一 candles。</span></div>
+      <div class="stack-item purple"><b>funding_rates</b><span>funding carry replay 使用的 settlement data。</span></div>
+      <div class="stack-item purple"><b>backtest_runs / artifacts</b><span>前端 dashboard 讀取回測結果。</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>典型資料流程</h3>
+    <pre>1. init_db.py
+2. ingest.py / backfill.py
+3. validate.py / validate_funding.py
+4. canonicalize.py
+5. run_replay_backtest.py
+6. save_backtest_artifacts()
+7. FastAPI / frontend dashboard reads runs + artifacts</pre>
+  </div>
+</section>
+
+<section id="backtest">
+  <div class="section-title">
+    <div>
+      <h2>10. Backtesting / Replay Layer</h2>
+      <p>Replay backtest 不是單純 vectorized return，而是盡量走 Strategy → Signal → Portfolio → Order → Execution → Fill → Ledger 的事件路徑。</p>
+    </div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Replay Engine Flow</h3>
+      <pre>HistoricalEventFeed
+  → MARKET / FUNDING events
+  → EventBus
+  → Strategy.on_market()
+  → SIGNAL
+  → PortfolioManager.on_signal()
+  → ORDER
+  → ExecutionHandler / ReplayExecutionModel
+  → FILL
+  → PositionLedger.on_fill()
+  → ReplayRecorder
+  → ReplayBacktestResult</pre>
+    </div>
+    <div class="card">
+      <h3>輸出 artifacts</h3>
+      <ul>
+        <li><code>metrics.json</code>：total_return、sharpe、max_drawdown、fill_rate 等。</li>
+        <li><code>orders.csv</code>：所有 order event。</li>
+        <li><code>fills.csv</code>：所有 fill event。</li>
+        <li><code>trades.csv</code>：position ledger trade log。</li>
+        <li><code>equity_curve.csv</code>：equity / drawdown / return。</li>
+        <li><code>funding.csv</code>：funding settlement cashflow。</li>
+        <li><code>signals.csv</code>、<code>risk_events.csv</code>、<code>rejected_orders.csv</code>。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top:16px;">
+    <b>注意：</b>ADR-0005 中的 terminal liquidation / validation gates 目前應視為目標設計，需以 source code 與 regression tests 確認，不應直接假設已完整 enforce。
+  </div>
+</section>
+
+<section id="frontend">
+  <div class="section-title">
+    <div>
+      <h2>11. API / Frontend Dashboard</h2>
+      <p>FastAPI 服務同時提供 REST、WebSocket 與靜態 frontend。前端以 ES module 載入，因此 <code>.js</code> / <code>.jsx</code> MIME type 必須正確。</p>
+    </div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>API Routes</h3>
+      <ul>
+        <li><code>/api/live/*</code>：engine status、positions、risk、trades。</li>
+        <li><code>/api/backtest/*</code>：runs、result、equity、fills、trades、funding。</li>
+        <li><code>/api/config/*</code>：config inspection。</li>
+        <li><code>/api/data/*</code>：data coverage / instruments / ingestion status。</li>
+        <li><code>/api/ws</code>：FILL / RISK / RISK_SNAPSHOT live push。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Frontend Modules</h3>
+      <ul>
+        <li><code>index.html</code>：import map + module scripts。</li>
+        <li><code>app.js</code>：frontend app entry。</li>
+        <li><code>view-backtest.js</code>：回測檢視。</li>
+        <li><code>view-trades.js</code>：fills / trades table。</li>
+        <li><code>charts.js</code>：charts rendering。</li>
+        <li><code>styles.css</code>：dashboard style。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout blue" style="margin-top:16px;">
+    <b>Frontend smoke check：</b><code>curl -I http://localhost:8080/app.js</code> 必須回傳 <code>application/javascript</code> 或 <code>text/javascript</code>。若回傳 <code>application/octet-stream</code>，瀏覽器會拒絕執行 module。
+  </div>
+</section>
+
+<section id="tests">
+  <div class="section-title">
+    <div>
+      <h2>12. Testing / CI：建議測試矩陣</h2>
+      <p>目前最重要的工作不是繼續加策略，而是用 regression tests 保護高風險邏輯。</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>測試</th><th>目的</th><th>建議檔案</th><th>優先級</th></tr></thead>
+      <tbody>
+        <tr><td>SWAP ct_val PnL</td><td>防止 PnL / notional 放大 100 倍。</td><td><code>tests/unit/test_position_pnl_accounting.py</code></td><td><span class="pill red">P0</span></td></tr>
+        <tr><td>Frontend MIME</td><td>避免 dashboard 空白頁。</td><td><code>tests/unit/test_frontend_static_mime.py</code></td><td><span class="pill yellow">P1</span></td></tr>
+        <tr><td>Artifact schema</td><td>保護 frontend/API 依賴欄位。</td><td><code>tests/unit/test_backtest_artifact_schema.py</code></td><td><span class="pill yellow">P1</span></td></tr>
+        <tr><td>Pairs hedge close</td><td>避免 orphan hedge positions。</td><td><code>tests/unit/test_pairs_trading_hedge_close.py</code></td><td><span class="pill red">P0</span></td></tr>
+        <tr><td>Funding carry dual leg</td><td>確保 perp / spot 方向與 notional 對齊。</td><td><code>tests/unit/test_funding_carry_dual_leg.py</code></td><td><span class="pill red">P0</span></td></tr>
+        <tr><td>Replay terminal liquidation</td><td>確認回測結束部位是否按設定清倉。</td><td><code>tests/integration/test_replay_terminal_liquidation.py</code></td><td><span class="pill yellow">P1</span></td></tr>
+        <tr><td>Replay smoke</td><td>確保核心 CLI 可跑。</td><td><code>scripts/run_replay_backtest.py</code></td><td><span class="pill green">P2</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>建議 CI 最小版本</h3>
+    <pre>python -m pip install -e ".[dev]"
+ruff check src tests
+pytest tests/unit -v
+
+# later:
+python scripts/run_replay_backtest.py \
+  --strategy funding_carry \
+  --start 2024-01-01 \
+  --end 2024-01-03 \
+  --bar 1H</pre>
+  </div>
+</section>
+
+<section id="errors">
+  <div class="section-title">
+    <div>
+      <h2>13. 錯誤處理與 Debug Runbook</h2>
+      <p>系統出錯時，不應直接要求 AI「幫我修」。應先收集 evidence、定位 layer、建立 issue，再讓 Claude plan / Codex implement。</p>
+    </div>
+  </div>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Frontend Blank Page</h3>
+      <ol>
+        <li>打開 DevTools Console。</li>
+        <li>檢查 module import / MIME error。</li>
+        <li><code>curl -I /app.js</code>。</li>
+        <li>檢查 <code>/api/backtest/runs</code> 是否 500。</li>
+        <li>確認 <code>index.html</code> script src。</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Replay Result Weird</h3>
+      <ol>
+        <li>看 <code>fills.csv</code>。</li>
+        <li>看 <code>trades.csv</code>。</li>
+        <li>確認 SWAP <code>ct_val</code>。</li>
+        <li>確認 funding sign。</li>
+        <li>檢查 open positions at end。</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Pairs Hedge Issue</h3>
+      <ol>
+        <li>entry metadata 是否有 hedge。</li>
+        <li>exit / stop 是否同時關 hedge。</li>
+        <li>PositionLedger 是否有 orphan position。</li>
+        <li>若測到 bug，獨立開 fix PR。</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="callout red" style="margin-top:16px;">
+    <b>AI debug 原則：</b>先 bug report，再 plan，再 implementation。不要把整個錯誤直接丟給 Codex 自由修。
+  </div>
+</section>
+
+<section id="ai">
+  <div class="section-title">
+    <div>
+      <h2>14. AI 協作治理：Codex / Claude Code 如何遵守架構</h2>
+      <p>repo 的長期記憶不應是聊天紀錄，而是 docs、issues、PR template、CI 與 tests。</p>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-node"><h4>Issue</h4><p>定義 Problem、Scope、Out of Scope、Acceptance Criteria。</p></div>
+    <div class="flow-node"><h4>Claude Plan</h4><p>診斷、風險、檔案範圍、測試計畫。</p></div>
+    <div class="flow-node"><h4>Human Approval</h4><p>確認 permitted / forbidden files。</p></div>
+    <div class="flow-node"><h4>Codex Implement</h4><p>只修改 issue 允許的檔案。</p></div>
+    <div class="flow-node"><h4>Tests / CI</h4><p>pytest、ruff、replay smoke、frontend smoke。</p></div>
+    <div class="flow-node"><h4>Claude Review</h4><p>scope、PnL、schema、risk、tests。</p></div>
+    <div class="flow-node"><h4>Human Merge</h4><p>決定是否合併，更新 handoff。</p></div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px;">
+    <div class="card">
+      <h3>每次新 session 必讀</h3>
+      <ol>
+        <li><code>AGENTS.md</code> / <code>CLAUDE.md</code> / <code>CODEX.md</code></li>
+        <li><code>docs/AI_HANDOFF.md</code></li>
+        <li><code>docs/AI_WORKFLOW.md</code></li>
+        <li>相關 GitHub issue</li>
+        <li>相關 ADR</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>禁止事項</h3>
+      <ul>
+        <li>沒有 issue 就大改。</li>
+        <li>修改非 permitted files。</li>
+        <li>順手 refactor unrelated code。</li>
+        <li>未測試就修改 PnL / risk / execution。</li>
+        <li>把 target architecture 當作 current implementation。</li>
+        <li>未更新 <code>AI_HANDOFF.md</code> 就結束 session。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="source-notes">
+  <div class="section-title">
+    <div>
+      <h2>15. Source Notes</h2>
+      <p>此 HTML 是根據 repo 目前主要文件與程式碼整理；若未來程式碼與文件不一致，請以 source code、tests 與最新 ADR / AI_HANDOFF 為準。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>主要參考檔案</h3>
+    <ul>
+      <li><code>src/okx_quant/engine.py</code></li>
+      <li><code>src/okx_quant/portfolio/positions.py</code></li>
+      <li><code>src/okx_quant/risk/risk_guard.py</code></li>
+      <li><code>backtesting/replay.py</code></li>
+      <li><code>backtesting/artifacts.py</code></li>
+      <li><code>config/settings.yaml</code></li>
+      <li><code>config/strategies.yaml</code></li>
+      <li><code>config/risk.yaml</code></li>
+      <li><code>docs/AI_WORKFLOW.md</code> / <code>docs/AI_HANDOFF.md</code> / <code>docs/ARCHITECTURE.md</code> / <code>docs/ADR/*</code></li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>Generated architecture map for <code>Frisk0316/quant_strategy</code>. 建議隨 PR3 / PR4 後續更新，並放入 <code>docs/repository_architecture_map.html</code> 或 <code>docs/architecture_map.html</code>。</p>
+  </div>
+</footer>
+
+<script>
+const buttons = document.querySelectorAll(".tab-btn");
+const panels = document.querySelectorAll(".tab-panel");
+buttons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    buttons.forEach(b => b.classList.remove("active"));
+    panels.forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+</script>
+</body>
+</html>

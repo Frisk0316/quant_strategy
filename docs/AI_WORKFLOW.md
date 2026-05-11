@@ -1,3 +1,13 @@
+---
+status: current
+type: governance
+owner: human
+created: 2026-05-11
+last_reviewed: 2026-05-11
+expires: none
+superseded_by: null
+---
+
 # AI Workflow
 
 Operational companion to `docs/ai_collaboration.md`. That document is the governance contract; this document is the session-by-session operating procedure.
@@ -90,6 +100,48 @@ Every AI session (Claude or Codex) must begin by reading:
 2. `docs/ai_collaboration.md` — governance contract
 3. The specific issue or task being addressed
 4. Any PR diff already in progress
+
+---
+
+## Documentation Authority Rules
+
+AI agents must apply `docs/DOC_LIFECYCLE.md` when reading or changing Markdown files.
+
+### Source of Truth
+
+Only documents with one of these statuses may be used as implementation authority:
+
+- `status: current`
+- `status: accepted`
+
+Documents with these statuses are context only and must not drive implementation:
+
+- `status: draft`
+- `status: proposed`
+- `status: deprecated`
+- `status: archived`
+
+If a Markdown file has no lifecycle metadata, treat it as `draft` until reviewed.
+
+### Authority Order
+
+When documents conflict, use this order:
+
+1. Current user instruction and approved issue scope.
+2. `research/strategy_synthesis.md` for strategy assumptions.
+3. `docs/DOC_LIFECYCLE.md`, `docs/AI_WORKFLOW.md`, and `docs/ai_collaboration.md` for governance.
+4. Accepted ADRs in `docs/ADR/`.
+5. Current architecture, runbook, and parity docs.
+6. `docs/AI_HANDOFF.md` for current state and next actions.
+7. Draft, proposed, deprecated, archived, plan, and review docs only as historical context.
+
+### Lifecycle Rules
+
+- ADRs are not deleted. Superseded ADRs must be marked with a replacement in status text and metadata when practical.
+- Completed plans in `docs/plans/` must be consolidated into durable docs or moved to `docs/archive/`.
+- Completed reviews in `docs/reviews/` may be retained briefly while findings are active, then archived.
+- `docs/AI_HANDOFF.md` must contain current state only. Completed historical detail should be moved, archived, or removed.
+- New Markdown files should include lifecycle metadata before merge.
 
 ---
 
