@@ -322,13 +322,23 @@ function MarketDataCard() {
   const [instruments, setInstruments] = useConfigState([]);
   const [fetchJob, setFetchJob] = useConfigState(null);
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
-  const [fetchForm, setFetchForm] = useConfigState({ symbols: ["BTC-USDT-SWAP"], bar: "1m", start: "2024-01-01", end: yesterday });
+  const [showExportPanel, setShowExportPanel] = useConfigState(false);
+  const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
+  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
     .map((s) => listingMap[s])
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+  const coverageSymbols = [...new Set((coverage || [])
+    .filter((r) => r.bar === exportForm.bar)
+    .map((r) => r.inst_id)
+    .filter(Boolean))]
+    .sort();
+  const exportSymbols = coverageSymbols.length
+    ? coverageSymbols
+    : (instruments.length ? instruments.map((i) => i.inst_id) : MOCK.SYMBOLS.filter((s) => s.includes("SWAP"))).sort();
 
   function refreshCoverage() {
     window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
@@ -365,6 +375,27 @@ function MarketDataCard() {
     });
   }
 
+  function toggleExportSymbol(symbol) {
+    setExportForm((f) => {
+      const symbols = f.symbols || [];
+      const next = symbols.includes(symbol)
+        ? symbols.filter((s) => s !== symbol)
+        : [...symbols, symbol];
+      return { ...f, symbols: next };
+    });
+  }
+
+  function triggerExport() {
+    const symbols = (exportForm.symbols || []).join(",");
+    if (!symbols) return;
+    window.location.assign(window.API.dataExportUrl({
+      symbols,
+      bar: exportForm.bar,
+      start: exportForm.start,
+      end: exportForm.end,
+    }));
+  }
+
   return html`
     <div class="card">
       <div class="card-h">
@@ -372,8 +403,63 @@ function MarketDataCard() {
           <div class="card-title">Market Data Coverage</div>
           <div class="card-sub">OHLCV and funding rates stored in TimescaleDB</div>
         </div>
-        <button class="btn sm" onClick=${() => setShowFetchPanel((v) => !v)}>+ Fetch from Exchange</button>
+        <div class="row" style=${{ gap: 8 }}>
+          <button class="btn sm" onClick=${() => setShowExportPanel((v) => !v)}>Export CSV</button>
+          <button class="btn sm" onClick=${() => setShowFetchPanel((v) => !v)}>+ Fetch from Exchange</button>
+        </div>
       </div>
+
+      ${showExportPanel && html`
+        <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Export 1m OHLCV CSV</div>
+          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
+            <div class="field">
+              <div class="field-label">Perpetual symbols</div>
+              <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
+                <table class="tbl" style=${{ fontSize: 12 }}>
+                  <tbody>
+                    ${exportSymbols.map((symbol) => html`
+                      <tr key=${symbol}>
+                        <td style=${{ width: 28 }}>
+                          <input
+                            type="checkbox"
+                            checked=${(exportForm.symbols || []).includes(symbol)}
+                            onChange=${() => toggleExportSymbol(symbol)}
+                          />
+                        </td>
+                        <td class="mono">${symbol}</td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+              <div class="field-hint">${(exportForm.symbols || []).length} selected - exported from canonical_candles</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Bar</div>
+              <select class="select mono" value=${exportForm.bar}
+                onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
+                ${["1m", "5m", "15m", "1H"].map((b) => html`<option key=${b}>${b}</option>`)}
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Start</div>
+              <input class="input mono" type="date" value=${exportForm.start}
+                onChange=${(e) => setExportForm((f) => ({ ...f, start: e.target.value }))} />
+            </div>
+            <div class="field">
+              <div class="field-label">End</div>
+              <input class="input mono" type="date" value=${exportForm.end}
+                onChange=${(e) => setExportForm((f) => ({ ...f, end: e.target.value }))} />
+            </div>
+          </div>
+          <button class="btn primary sm" style=${{ marginTop: 12 }}
+            disabled=${!(exportForm.symbols || []).length || exportForm.start >= exportForm.end}
+            onClick=${triggerExport}>
+            Download CSV
+          </button>
+        </div>
+      `}
 
       ${showFetchPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>

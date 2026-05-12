@@ -326,6 +326,7 @@ window.API = (function () {
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
     fetchDataCoverage:        ()        => _get("/api/data/coverage"),
     fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
+    dataExportUrl:            (body)    => "/api/data/export?" + new URLSearchParams(body).toString(),
     triggerDataFetch:         (body)    => _post("/api/data/fetch", body),
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),

@@ -8,11 +8,14 @@ GET  /api/data/fetch/status/{job_id}
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 _jobs: dict[str, dict] = {}
@@ -93,6 +96,28 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
         finally:
             await conn.close()
 
+    @router.get("/export")
+    async def export_ohlcv(symbols: str, bar: str = "1m", start: str = "", end: str = ""):
+        if not db_dsn:
+            raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+        inst_ids = [s.strip() for s in symbols.split(",") if s.strip()]
+        if not inst_ids:
+            raise HTTPException(status_code=400, detail="At least one symbol is required")
+        if not start or not end:
+            raise HTTPException(status_code=400, detail="start and end are required")
+        start_dt = _parse_utc(start)
+        end_dt = _parse_utc(end)
+        if start_dt >= end_dt:
+            raise HTTPException(status_code=400, detail="start must be earlier than end")
+
+        filename = _export_filename(inst_ids, bar, start_dt, end_dt)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(
+            _stream_ohlcv_csv(db_dsn, inst_ids, bar, start_dt, end_dt),
+            media_type="text/csv",
+            headers=headers,
+        )
+
     @router.post("/fetch")
     async def trigger_fetch(req: FetchRequest, bg: BackgroundTasks):
         if not db_dsn:
@@ -131,6 +156,113 @@ def _ms_to_date(value: int | None) -> str | None:
     if value is None:
         return None
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc).date().isoformat()
+
+
+def _parse_utc(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime: {value}") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _export_filename(inst_ids: list[str], bar: str, start: datetime, end: datetime) -> str:
+    symbol_part = inst_ids[0].replace("-", "")
+    if len(inst_ids) > 1:
+        symbol_part = f"{symbol_part}_plus{len(inst_ids) - 1}"
+    return f"ohlcv_{symbol_part}_{bar}_{start.date()}_{end.date()}.csv"
+
+
+async def _stream_ohlcv_csv(
+    db_dsn: str,
+    inst_ids: list[str],
+    bar: str,
+    start: datetime,
+    end: datetime,
+):
+    import asyncpg
+
+    conn = await asyncpg.connect(db_dsn)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    columns = [
+        "ts",
+        "inst_id",
+        "bar",
+        "open",
+        "high",
+        "low",
+        "close",
+        "vol_contract",
+        "vol_base",
+        "vol_quote",
+        "source_primary",
+        "quality_status",
+    ]
+    try:
+        writer.writerow(columns)
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+
+        async with conn.transaction():
+            pending = 0
+            async for row in conn.cursor(
+                """
+                SELECT
+                    ts,
+                    inst_id,
+                    bar,
+                    open,
+                    high,
+                    low,
+                    close,
+                    vol_contract,
+                    vol_base,
+                    vol_quote,
+                    source_primary,
+                    quality_status
+                FROM canonical_candles
+                WHERE inst_id = ANY($1::text[])
+                  AND bar = $2
+                  AND ts >= $3
+                  AND ts < $4
+                ORDER BY inst_id, ts
+                """,
+                inst_ids,
+                bar,
+                start,
+                end,
+                prefetch=10_000,
+            ):
+                writer.writerow([
+                    row["ts"].isoformat(),
+                    row["inst_id"],
+                    row["bar"],
+                    row["open"],
+                    row["high"],
+                    row["low"],
+                    row["close"],
+                    row["vol_contract"],
+                    row["vol_base"],
+                    row["vol_quote"],
+                    row["source_primary"],
+                    row["quality_status"],
+                ])
+                pending += 1
+                if pending >= 10_000:
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate(0)
+                    pending = 0
+            if pending:
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+    finally:
+        await conn.close()
 
 
 def _request_symbols(req: FetchRequest) -> list[str]:

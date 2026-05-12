@@ -17,6 +17,7 @@ _FUTURES_BASE = "https://fapi.binance.com"
 _SPOT_KLINES_PATH = "/api/v3/klines"
 _FUTURES_KLINES_PATH = "/fapi/v1/klines"
 _FUTURES_FUNDING_PATH = "/fapi/v1/fundingRate"
+_FUTURES_EXCHANGE_INFO_PATH = "/fapi/v1/exchangeInfo"
 
 # Binance public rate limit: 1200 weight/min; klines = 1 weight/request
 _RATE_SLEEP = 0.1
@@ -152,6 +153,19 @@ class BinancePublicClient:
             })
         rows.sort(key=lambda x: x["ts_ms"])
         return rows
+
+    def get_futures_exchange_info(self) -> dict:
+        """Fetch Binance USD-M futures exchange metadata."""
+        qs = urlencode({})
+        url = f"{_FUTURES_BASE}{_FUTURES_EXCHANGE_INFO_PATH}?{qs}"
+        try:
+            resp = self._client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.warning("Binance exchangeInfo fetch error", url=url, error=str(exc))
+            return {}
 
     def get_klines_range(
         self,
