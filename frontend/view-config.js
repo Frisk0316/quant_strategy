@@ -324,15 +324,16 @@ function MarketDataCard() {
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
   const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
-  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
+  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1H", start: "2024-01-01", end: yesterday });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
     .map((s) => listingMap[s])
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+  const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
   const coverageSymbols = [...new Set((coverage || [])
-    .filter((r) => r.bar === exportForm.bar)
+    .filter((r) => r.bar === exportCoverageBar)
     .map((r) => r.inst_id)
     .filter(Boolean))]
     .sort();
@@ -411,7 +412,7 @@ function MarketDataCard() {
 
       ${showExportPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Export 1m OHLCV CSV</div>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Export 1H OHLCV CSV</div>
           <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
               <div class="field-label">Perpetual symbols</div>
@@ -433,13 +434,13 @@ function MarketDataCard() {
                   </tbody>
                 </table>
               </div>
-              <div class="field-hint">${(exportForm.symbols || []).length} selected - exported from canonical_candles</div>
+              <div class="field-hint">${(exportForm.symbols || []).length} selected - 1H exports are aggregated from 1m candles</div>
             </div>
             <div class="field">
               <div class="field-label">Bar</div>
               <select class="select mono" value=${exportForm.bar}
                 onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
-                ${["1m", "5m", "15m", "1H"].map((b) => html`<option key=${b}>${b}</option>`)}
+                ${["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
             </div>
             <div class="field">

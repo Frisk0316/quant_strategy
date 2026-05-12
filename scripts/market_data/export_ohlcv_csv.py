@@ -3,6 +3,7 @@
 Examples:
     python scripts/market_data/export_ohlcv_csv.py --inst BTC-USDT-SWAP --start 2024-01-01 --end 2024-01-02 --out btc.csv
     python scripts/market_data/export_ohlcv_csv.py --inst BTC-USDT-SWAP --inst ETH-USDT-SWAP --start 2024-01-01 --end 2024-02-01 --out ohlcv.csv
+    python scripts/market_data/export_ohlcv_csv.py --inst BTC-USDT-SWAP --bar 1H --start 2024-01-01 --end 2026-05-11 --out btc_1h.csv
     python scripts/market_data/export_ohlcv_csv.py --inst BTC-USDT-SWAP --inst ETH-USDT-SWAP --start 2024-01-01 --end 2026-05-11 --split-dir results/market_data/excel_chunks --split-by-inst
 """
 from __future__ import annotations
@@ -47,6 +48,83 @@ def _parse_time(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _is_hourly_aggregate(bar: str) -> bool:
+    return bar.lower() in {"1h", "1hr", "1hour"}
+
+
+def _normalize_output_bar(bar: str) -> str:
+    return "1H" if _is_hourly_aggregate(bar) else bar
+
+
+def _export_select_sql(*, one_inst: bool, hourly: bool) -> str:
+    inst_filter = "inst_id = $1" if one_inst else "inst_id = ANY($1::text[])"
+    if hourly:
+        return f"""
+            WITH hourly AS (
+                SELECT
+                    date_trunc('hour', ts) AS ts,
+                    inst_id,
+                    (array_agg(open ORDER BY ts))[1] AS open,
+                    MAX(high) AS high,
+                    MIN(low) AS low,
+                    (array_agg(close ORDER BY ts DESC))[1] AS close,
+                    SUM(vol_contract) AS vol_contract,
+                    SUM(vol_base) AS vol_base,
+                    SUM(vol_quote) AS vol_quote,
+                    CASE
+                        WHEN COUNT(DISTINCT source_primary) = 1 THEN MIN(source_primary)
+                        ELSE 'mixed'
+                    END AS source_primary,
+                    CASE
+                        WHEN BOOL_OR(quality_status = 'suspect') THEN 'suspect'
+                        ELSE 'raw'
+                    END AS quality_status
+                FROM canonical_candles
+                WHERE {inst_filter}
+                  AND bar = '1m'
+                  AND ts >= $3
+                  AND ts < $4
+                GROUP BY inst_id, date_trunc('hour', ts)
+            )
+            SELECT
+                ts,
+                inst_id,
+                $2::text AS bar,
+                open,
+                high,
+                low,
+                close,
+                vol_contract,
+                vol_base,
+                vol_quote,
+                source_primary,
+                quality_status
+            FROM hourly
+            ORDER BY inst_id, ts
+        """
+    return f"""
+        SELECT
+            ts,
+            inst_id,
+            bar,
+            open,
+            high,
+            low,
+            close,
+            vol_contract,
+            vol_base,
+            vol_quote,
+            source_primary,
+            quality_status
+        FROM canonical_candles
+        WHERE {inst_filter}
+          AND bar = $2
+          AND ts >= $3
+          AND ts < $4
+        ORDER BY inst_id, ts
+    """
+
+
 async def _export(
     *,
     dsn: str,
@@ -60,35 +138,17 @@ async def _export(
     out.parent.mkdir(parents=True, exist_ok=True)
     conn = await asyncpg.connect(dsn)
     rows_written = 0
+    output_bar = _normalize_output_bar(bar)
+    hourly = _is_hourly_aggregate(bar)
     try:
         with open(out, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(CSV_COLUMNS)
             async with conn.transaction():
                 async for row in conn.cursor(
-                    """
-                    SELECT
-                        ts,
-                        inst_id,
-                        bar,
-                        open,
-                        high,
-                        low,
-                        close,
-                        vol_contract,
-                        vol_base,
-                        vol_quote,
-                        source_primary,
-                        quality_status
-                    FROM canonical_candles
-                    WHERE inst_id = ANY($1::text[])
-                      AND bar = $2
-                      AND ts >= $3
-                      AND ts < $4
-                    ORDER BY inst_id, ts
-                    """,
+                    _export_select_sql(one_inst=False, hourly=hourly),
                     inst_ids,
-                    bar,
+                    output_bar,
                     start,
                     end,
                     prefetch=batch_size,
@@ -131,6 +191,8 @@ async def _export_split_by_inst(
     split_dir.mkdir(parents=True, exist_ok=True)
     conn = await asyncpg.connect(dsn)
     rows_written = 0
+    output_bar = _normalize_output_bar(bar)
+    hourly = _is_hourly_aggregate(bar)
     try:
         for inst_id in inst_ids:
             part = 1
@@ -143,7 +205,7 @@ async def _export_split_by_inst(
                 if current_file:
                     current_file.close()
                 filename = (
-                    f"{_safe_name(inst_id)}_{_safe_name(bar)}_"
+                    f"{_safe_name(inst_id)}_{_safe_name(output_bar)}_"
                     f"{start.date()}_{end.date()}_part{part:03d}.csv"
                 )
                 current_file = open(split_dir / filename, "w", newline="", encoding="utf-8")
@@ -155,29 +217,9 @@ async def _export_split_by_inst(
             open_part()
             async with conn.transaction():
                 async for row in conn.cursor(
-                    """
-                    SELECT
-                        ts,
-                        inst_id,
-                        bar,
-                        open,
-                        high,
-                        low,
-                        close,
-                        vol_contract,
-                        vol_base,
-                        vol_quote,
-                        source_primary,
-                        quality_status
-                    FROM canonical_candles
-                    WHERE inst_id = $1
-                      AND bar = $2
-                      AND ts >= $3
-                      AND ts < $4
-                    ORDER BY ts
-                    """,
+                    _export_select_sql(one_inst=True, hourly=hourly),
                     inst_id,
-                    bar,
+                    output_bar,
                     start,
                     end,
                     prefetch=batch_size,

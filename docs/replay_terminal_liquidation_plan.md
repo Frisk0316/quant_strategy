@@ -243,3 +243,69 @@ Out of scope:
 - `--no-liquidate-on-end` deliberately preserves terminal open positions and reports them.
 - Existing unit tests and ruff pass.
 - ADR-0005 remains proposed until PR13 implements the rest of the validation gates.
+
+## Implementation Specification Addendum
+
+These notes must be applied before handing PR12B to Codex for implementation.
+
+### Price source correction
+
+Terminal liquidation price comes from the `books` dict inside `ReplayBacktestEngine.run()`, not from `execution_model.books`.
+
+Pass `books` to the terminal phase via argument or closure. This avoids depending on the execution model's internal book cache, which may not represent the same object shape as `OkxBook`.
+
+### SWAP notional formula
+
+`terminal_liquidation_notional_usd` must use contract value for swaps and raw quantity for spot:
+
+```python
+terminal_liquidation_notional_usd = (
+    sum(abs(pos.size) * ct_val * liquidation_price for SWAP)
+    + sum(abs(pos.size) * liquidation_price for spot)
+)
+```
+
+`ct_val` comes from `self._instrument_specs[inst_id]["ctVal"]` for SWAP instruments.
+
+### List element schemas
+
+`terminal_liquidation_missing_prices` elements:
+
+```python
+{"inst_id": str, "reason": str}
+```
+
+`terminal_liquidation_price_fallbacks` elements:
+
+```python
+{"inst_id": str, "source": str, "price": float}
+```
+
+### Bankrupt field in all runs
+
+`bankrupt` must be present in metrics for every run:
+
+```python
+bankrupt = (
+    len(terminal_liquidation_missing_prices) > 0
+    or terminal_positions_after != {}
+)
+```
+
+When `liquidate_on_end=False`, `bankrupt=False` because no terminal close was attempted.
+
+### Test coverage notes
+
+| Test | Covered gap | Status |
+|---|---|---|
+| T1: SWAP position closes flat and PnL uses `ct_val` | Gap 1, partially | Must also assert the `terminal_liquidation_notional_usd` formula. |
+| T2: disabled mode keeps open position in validation | Gap 4 | Covered by required tests. |
+| T3: missing price sets `bankrupt=True` | Gap 4 | Covered by required tests. |
+| T4: multi-leg liquidation closes all positions flat | Orphan position risk | Covered by required tests. |
+| T5: CLI smoke test | CLI contract | Covered by required tests. |
+
+Additional assertions required in PR12B:
+
+- `terminal_positions_before` and `terminal_positions_after` use stable dict schemas.
+- `terminal_liquidation_missing_prices` and `terminal_liquidation_price_fallbacks` use the list element schemas above.
+- `metrics["bankrupt"]` exists on every replay result, including runs with no open terminal positions.

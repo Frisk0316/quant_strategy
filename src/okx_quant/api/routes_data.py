@@ -169,10 +169,87 @@ def _parse_utc(value: str) -> datetime:
 
 
 def _export_filename(inst_ids: list[str], bar: str, start: datetime, end: datetime) -> str:
+    bar = _normalize_output_bar(bar)
     symbol_part = inst_ids[0].replace("-", "")
     if len(inst_ids) > 1:
         symbol_part = f"{symbol_part}_plus{len(inst_ids) - 1}"
     return f"ohlcv_{symbol_part}_{bar}_{start.date()}_{end.date()}.csv"
+
+
+def _is_hourly_aggregate(bar: str) -> bool:
+    return bar.lower() in {"1h", "1hr", "1hour"}
+
+
+def _normalize_output_bar(bar: str) -> str:
+    return "1H" if _is_hourly_aggregate(bar) else bar
+
+
+def _export_select_sql(hourly: bool) -> str:
+    if hourly:
+        return """
+            WITH hourly AS (
+                SELECT
+                    date_trunc('hour', ts) AS ts,
+                    inst_id,
+                    (array_agg(open ORDER BY ts))[1] AS open,
+                    MAX(high) AS high,
+                    MIN(low) AS low,
+                    (array_agg(close ORDER BY ts DESC))[1] AS close,
+                    SUM(vol_contract) AS vol_contract,
+                    SUM(vol_base) AS vol_base,
+                    SUM(vol_quote) AS vol_quote,
+                    CASE
+                        WHEN COUNT(DISTINCT source_primary) = 1 THEN MIN(source_primary)
+                        ELSE 'mixed'
+                    END AS source_primary,
+                    CASE
+                        WHEN BOOL_OR(quality_status = 'suspect') THEN 'suspect'
+                        ELSE 'raw'
+                    END AS quality_status
+                FROM canonical_candles
+                WHERE inst_id = ANY($1::text[])
+                  AND bar = '1m'
+                  AND ts >= $3
+                  AND ts < $4
+                GROUP BY inst_id, date_trunc('hour', ts)
+            )
+            SELECT
+                ts,
+                inst_id,
+                $2::text AS bar,
+                open,
+                high,
+                low,
+                close,
+                vol_contract,
+                vol_base,
+                vol_quote,
+                source_primary,
+                quality_status
+            FROM hourly
+            ORDER BY inst_id, ts
+        """
+    return """
+        SELECT
+            ts,
+            inst_id,
+            bar,
+            open,
+            high,
+            low,
+            close,
+            vol_contract,
+            vol_base,
+            vol_quote,
+            source_primary,
+            quality_status
+        FROM canonical_candles
+        WHERE inst_id = ANY($1::text[])
+          AND bar = $2
+          AND ts >= $3
+          AND ts < $4
+        ORDER BY inst_id, ts
+    """
 
 
 async def _stream_ohlcv_csv(
@@ -187,6 +264,8 @@ async def _stream_ohlcv_csv(
     conn = await asyncpg.connect(db_dsn)
     output = io.StringIO()
     writer = csv.writer(output)
+    output_bar = _normalize_output_bar(bar)
+    hourly = _is_hourly_aggregate(bar)
     columns = [
         "ts",
         "inst_id",
@@ -210,29 +289,9 @@ async def _stream_ohlcv_csv(
         async with conn.transaction():
             pending = 0
             async for row in conn.cursor(
-                """
-                SELECT
-                    ts,
-                    inst_id,
-                    bar,
-                    open,
-                    high,
-                    low,
-                    close,
-                    vol_contract,
-                    vol_base,
-                    vol_quote,
-                    source_primary,
-                    quality_status
-                FROM canonical_candles
-                WHERE inst_id = ANY($1::text[])
-                  AND bar = $2
-                  AND ts >= $3
-                  AND ts < $4
-                ORDER BY inst_id, ts
-                """,
+                _export_select_sql(hourly),
                 inst_ids,
-                bar,
+                output_bar,
                 start,
                 end,
                 prefetch=10_000,
