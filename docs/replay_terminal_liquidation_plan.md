@@ -267,6 +267,18 @@ terminal_liquidation_notional_usd = (
 
 `ct_val` comes from `self._instrument_specs[inst_id]["ctVal"]` for SWAP instruments.
 
+### Terminal fill metadata must include notional_usd
+
+`ReplayRecorder.record_fill()` uses `fill.metadata.get("notional_usd", fill_px * fill_sz)` as its fallback. The fallback omits `ct_val` and is wrong for SWAP terminal fills.
+
+Every terminal fill metadata dict must include the pre-computed notional:
+
+```python
+"notional_usd": abs(pos.size) * ct_val * liquidation_price
+```
+
+This applies to all SWAP terminal fills. Spot terminal fills may omit it because the fallback is correct for spot where `ct_val = 1.0`.
+
 ### List element schemas
 
 `terminal_liquidation_missing_prices` elements:
