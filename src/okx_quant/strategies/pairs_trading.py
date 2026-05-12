@@ -212,25 +212,39 @@ class PairsTradingStrategy(Strategy):
         # Emergency stop
         if abs(z) > self.stop_z and self._in_position:
             logger.warning("Pairs stop-loss triggered", z=z, inst_id=inst_id)
+            hedge_side = "sell" if self._position_side == "short_y" else "buy"
             return SignalPayload(
                 strategy=self.name,
                 inst_id=self.symbol_y,
                 side="buy" if self._position_side == "short_y" else "sell",
                 strength=1.0,
                 fair_value=price_y,
-                metadata={"action": "stop", "z_score": z, "beta": self._beta},
+                metadata={
+                    "action": "stop",
+                    "z_score": z,
+                    "beta": self._beta,
+                    "hedge_inst_id": self.symbol_x,
+                    "hedge_side": hedge_side,
+                },
             )
 
         # Exit
         if self._in_position and abs(z) < self.exit_z:
             logger.info("Pairs exit", z=z)
+            hedge_side = "sell" if self._position_side == "short_y" else "buy"
             return SignalPayload(
                 strategy=self.name,
                 inst_id=self.symbol_y,
                 side="buy" if self._position_side == "short_y" else "sell",
                 strength=1.0 - abs(z) / self.exit_z,
                 fair_value=price_y,
-                metadata={"action": "exit", "z_score": z, "beta": self._beta},
+                metadata={
+                    "action": "exit",
+                    "z_score": z,
+                    "beta": self._beta,
+                    "hedge_inst_id": self.symbol_x,
+                    "hedge_side": hedge_side,
+                },
             )
 
         # Entry

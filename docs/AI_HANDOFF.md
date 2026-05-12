@@ -46,7 +46,9 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| PR9 `(current)` | Add backtest artifact schema regression tests for ADR-0002 frozen fields | Test-only coverage for artifact contract |
+| PR10B `(current)` | Add pairs exit/stop hedge close metadata and remove hedge metadata xfail | Strategy metadata only; sizing remains unchanged |
+| PR10 | Add pairs trading hedge-close regression coverage | Test-only coverage for linked hedge close behavior |
+| PR9 | Add backtest artifact schema regression tests for ADR-0002 frozen fields | Test-only coverage for artifact contract |
 | PR8 | Add frontend MIME smoke tests for `.js` and legacy `.jsx` ES modules | Test-only coverage for FastAPI StaticFiles MIME behavior |
 | PR7 | Add branch/version management policy and PR template checklist | Governance docs only |
 
@@ -59,8 +61,10 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 5. **Missing regression tests**:
    - Frontend MIME smoke test exists.
    - Backtest artifact schema regression test exists.
-   - Still missing tests for funding carry dual leg alignment, pairs trading hedge close, and replay terminal liquidation.
-6. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR12–13).
+   - Pairs trading hedge-close regression exists; exit/stop hedge metadata implemented.
+   - Still missing tests for funding carry dual leg alignment and replay terminal liquidation.
+6. **Pairs close sizing gap** (P2): Exit/stop order size is still driven by signal sizing rather than current ledger position. Position-aware close sizing needs a separate design and implementation PR.
+7. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet enforced by replay engine. Terminal liquidation, fill-rate warning, and data coverage gate need implementation (PR12–13).
 
 ## Do Not Touch (without explicit issue + user approval)
 
@@ -73,13 +77,13 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[PR10]** Regression test: pairs trading hedge close — `tests/unit/test_pairs_trading_hedge_close.py`
-2. **[PR11]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
-3. **[PR12A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
-4. **[PR12B]** Implementation: terminal liquidation in `backtesting/replay.py`
-5. **[PR13]** Replay validation gates implementation (ADR-0005 → Accepted)
-6. **[PR14A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
-7. **[PR14B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+1. **[PR11]** Regression test: funding carry dual leg — `tests/unit/test_funding_carry_dual_leg.py`
+2. **[PR12A]** Design: terminal liquidation plan — `docs/replay_terminal_liquidation_plan.md`
+3. **[PR12B]** Implementation: terminal liquidation in `backtesting/replay.py`
+4. **[PR13]** Replay validation gates implementation (ADR-0005 → Accepted)
+5. **[PR14A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
+6. **[PR14B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+7. **[P2]** Design position-aware close sizing for exit/stop flows
 
 ## Documentation Cleanup Next Step
 
