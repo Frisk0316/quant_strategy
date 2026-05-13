@@ -70,6 +70,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
    - Pairs trading hedge-close regression exists; exit/stop hedge metadata implemented.
    - Funding carry dual-leg regression exists.
    - Replay terminal liquidation regression tests exist.
+   - Shadow mirror fill positive routing to `CalibrationLogger.record_fill()` still needs a focused unit test; current PR14B tests cover mirror isolation and broker parity, but not this positive calibration path.
 6. **Pairs close sizing gap** (P2): Exit/stop order size is still driven by signal sizing rather than current ledger position. Position-aware close sizing needs a separate design and implementation PR.
 7. **ADR-0005 replay validation gates**: Gates 1-4 are implemented and ADR-0005 is Accepted. Gate 1 terminal position check is implemented via `validation["terminal_positions_closed"]`; PR13 added Gate 2 fill-rate warning, Gate 3 data coverage, and Gate 4 funding coverage.
 
@@ -84,8 +85,9 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[P2]** Design position-aware close sizing for exit/stop flows
-2. **[P2]** Implement position-aware close sizing after design review
+1. **[P2]** Add unit coverage for shadow mirror fills routing to `CalibrationLogger.record_fill()`
+2. **[P2]** Design position-aware close sizing for exit/stop flows
+3. **[P2]** Implement position-aware close sizing after design review
 
 ## Documentation Cleanup Next Step
 
