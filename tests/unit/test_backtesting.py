@@ -18,9 +18,13 @@ from backtesting.artifacts import save_backtest_artifacts
 from backtesting.cpcv import CPCV
 from backtesting.data_loader import compute_returns, load_funding
 from backtesting.replay import (
+    HistoricalEventFeed,
     ReplayBacktestEngine,
     ReplayBacktestResult,
     ReplayRecorder,
+    _apply_post_run_gates,
+    _check_data_coverage_gate,
+    _compute_data_coverage,
     build_feed_for_strategies,
     make_replay_strategy_fn,
     run_replay_backtest,
@@ -354,6 +358,117 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
     assert validation["cpcv"]["n_combinations"] == 3
     assert len(validation["cpcv"]["combos"]) == 3
     assert "dsr" in validation["cpcv"]
+
+
+def _gate_result(metrics: dict) -> ReplayBacktestResult:
+    return ReplayBacktestResult(
+        returns=pd.Series(dtype=float),
+        equity_curve=pd.Series(dtype=float),
+        metrics=metrics,
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+        validation={},
+    )
+
+
+def _gate_feed() -> HistoricalEventFeed:
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=5, freq="1min")
+    market_events = pd.DataFrame({
+        "ts": (ts.view("int64") // 1_000_000).astype("int64"),
+        "inst_id": ["BTC-USDT-SWAP"] * len(ts),
+        "bid_px_0": [100.0] * len(ts),
+        "bid_sz_0": [1.0] * len(ts),
+        "ask_px_0": [101.0] * len(ts),
+        "ask_sz_0": [1.0] * len(ts),
+    })
+    return HistoricalEventFeed(market_events=market_events, funding_events=pd.DataFrame())
+
+
+def test_gate2_fill_rate_warning_triggers_when_low():
+    result = _gate_result({
+        "fill_rate": 0.02,
+        "submitted_order_count": 10,
+        "funding_settlement_count": 0,
+    })
+
+    _apply_post_run_gates(
+        result,
+        ["as_market_maker"],
+        {"coverage_pct": 1.0, "note": "no_range_specified"},
+    )
+
+    assert result.validation["gate2_fill_rate_warning"] is True
+    assert result.validation["gate2_fill_rate"] == pytest.approx(0.02)
+
+
+def test_gate2_fill_rate_warning_does_not_trigger_when_acceptable():
+    result = _gate_result({
+        "fill_rate": 0.50,
+        "submitted_order_count": 10,
+        "funding_settlement_count": 0,
+    })
+
+    _apply_post_run_gates(
+        result,
+        ["as_market_maker"],
+        {"coverage_pct": 1.0, "note": "no_range_specified"},
+    )
+
+    assert result.validation["gate2_fill_rate_warning"] is False
+
+
+def test_gate3_data_coverage_raises_when_below_threshold():
+    feed = _gate_feed()
+
+    coverage = _compute_data_coverage(feed, "2024-01-01", "2024-12-31", "1H")
+
+    assert coverage["coverage_pct"] < 0.80
+    with pytest.raises(ValueError, match="Gate 3: data coverage"):
+        _check_data_coverage_gate(coverage)
+
+
+def test_gate3_data_coverage_skips_when_range_absent():
+    feed = _gate_feed()
+
+    coverage = _compute_data_coverage(feed, None, None, "1H")
+
+    assert coverage["coverage_pct"] == pytest.approx(1.0)
+    assert coverage["note"] == "no_range_specified"
+    _check_data_coverage_gate(coverage)
+
+
+def test_gate4_funding_coverage_warning_triggers_for_funding_carry():
+    result = _gate_result({
+        "fill_rate": 0.50,
+        "submitted_order_count": 5,
+        "funding_settlement_count": 0,
+    })
+
+    _apply_post_run_gates(
+        result,
+        ["funding_carry"],
+        {"coverage_pct": 1.0, "note": "no_range_specified"},
+    )
+
+    assert result.validation["gate4_funding_coverage_warning"] is True
+
+
+def test_gate4_funding_coverage_warning_does_not_trigger_for_other_strategies():
+    result = _gate_result({
+        "fill_rate": 0.50,
+        "submitted_order_count": 5,
+        "funding_settlement_count": 0,
+    })
+
+    _apply_post_run_gates(
+        result,
+        ["as_market_maker"],
+        {"coverage_pct": 1.0, "note": "no_range_specified"},
+    )
+
+    assert result.validation["gate4_funding_coverage_warning"] is False
 
 
 def test_save_backtest_artifacts_writes_validation_to_result_json(tmp_path, monkeypatch):

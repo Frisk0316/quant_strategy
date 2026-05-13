@@ -16,7 +16,7 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Complete PR12B review/merge, then implement remaining ADR-0005 replay validation gates in PR13.
+Begin PR14A shadow mode parity design after PR13 review/merge.
 
 ## Current Branch
 
@@ -46,8 +46,9 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| PR13 `(next)` | Implement remaining ADR-0005 replay validation gates | Gate 2 fill-rate warning, Gate 3 data coverage, Gate 4 funding coverage; then move ADR-0005 to Accepted |
-| PR12B `(complete; pending review/merge)` | Implement replay terminal liquidation | Gate 1 terminal position check implemented via `validation["terminal_positions_closed"]`; replay default closes terminal positions; CLI can opt out; focused regression tests added |
+| PR14A `(next)` | Design shadow mode parity plan | Document SimBroker vs OKX demo comparison gap and implementation path |
+| PR13 `(complete; pending review/merge)` | Implement remaining ADR-0005 replay validation gates | Gate 2 fill-rate warning, Gate 3 data coverage, Gate 4 funding coverage implemented; ADR-0005 moved to Accepted |
+| PR12B | Implement replay terminal liquidation | Gate 1 terminal position check implemented via `validation["terminal_positions_closed"]`; replay default closes terminal positions; CLI can opt out; focused regression tests added |
 | PR12A | Add replay terminal liquidation design plan | Docs-only design; no replay behavior change |
 | PR11 | Add funding carry dual-leg regression tests for signal metadata and PM order alignment | Test-only coverage for long spot + short perp carry behavior |
 | PR10B | Add pairs exit/stop hedge close metadata and remove hedge metadata xfail | Strategy metadata only; sizing remains unchanged |
@@ -69,7 +70,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
    - Funding carry dual-leg regression exists.
    - Replay terminal liquidation regression tests exist.
 6. **Pairs close sizing gap** (P2): Exit/stop order size is still driven by signal sizing rather than current ledger position. Position-aware close sizing needs a separate design and implementation PR.
-7. **ADR / implementation mismatch** (P0 docs): ADR-0005 validation gates are proposed, not yet fully enforced by replay engine. Gate 1 terminal position check is implemented via `validation["terminal_positions_closed"]`. PR13 should implement Gate 2 fill-rate warning, Gate 3 data coverage, Gate 4 funding coverage, then change ADR-0005 status from Proposed to Accepted.
+7. **ADR-0005 replay validation gates**: Gates 1-4 are implemented and ADR-0005 is Accepted. Gate 1 terminal position check is implemented via `validation["terminal_positions_closed"]`; PR13 added Gate 2 fill-rate warning, Gate 3 data coverage, and Gate 4 funding coverage.
 
 ## Do Not Touch (without explicit issue + user approval)
 
@@ -82,13 +83,9 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-Before starting PR13, merge PR12B on this branch after standard review sign-off.
-PR13 scope: Gate 2 fill-rate warning, Gate 3 data coverage, Gate 4 funding coverage, then update ADR-0005 from Proposed to Accepted.
-
-1. **[PR13]** Replay validation gates implementation (ADR-0005 → Accepted)
-2. **[PR14A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
-3. **[PR14B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
-4. **[P2]** Design position-aware close sizing for exit/stop flows
+1. **[PR14A]** Design: shadow mode parity plan — `docs/shadow_mode_parity_plan.md`
+2. **[PR14B]** Implementation: shadow mode SimBroker vs OKX demo gap fix
+3. **[P2]** Design position-aware close sizing for exit/stop flows
 
 ## Documentation Cleanup Next Step
 

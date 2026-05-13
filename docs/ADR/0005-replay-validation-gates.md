@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — 2026-05-11
+Accepted — 2026-05-13
 
 ## Context
 
@@ -15,20 +15,16 @@ Historical backtest results are only meaningful if the replay engine correctly m
 
 ## Implementation Status
 
-Not fully implemented. The gates below are the target design.
+Implemented in PR12B and PR13.
 
-Known gaps:
-
-- `ReplayBacktestResult` does not yet expose a dedicated `validation` field.
-- CLI does not yet expose `--liquidate-on-end` / `--no-liquidate-on-end`.
-- Terminal liquidation behavior needs source verification and regression tests.
-- Data coverage gate and funding coverage warning need explicit tests.
-
-Do not treat these gates as currently enforced. See PR10 in `docs/AI_HANDOFF.md` for implementation plan.
+- Gate 1 terminal position check is implemented via terminal liquidation and `validation["terminal_positions_closed"]`.
+- Gate 2 fill-rate warning is implemented via `validation["gate2_fill_rate_warning"]`.
+- Gate 3 data coverage is implemented via `validation["gate3_data_coverage"]` and raises when coverage is below 80%.
+- Gate 4 funding coverage warning is implemented via `validation["gate4_funding_coverage_warning"]`.
 
 ## Decision
 
-The following validation gates are **proposed** for `backtesting/replay.py` and `scripts/run_replay_backtest.py`:
+The following validation gates are enforced for replay backtests:
 
 ### Gate 1: Terminal position check
 

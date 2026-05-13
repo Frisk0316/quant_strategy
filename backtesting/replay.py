@@ -311,6 +311,109 @@ def _bar_to_seconds(bar: str) -> int:
     return max(qty * multipliers.get(unit, 3600), 1)
 
 
+def _utc_ms(value: str) -> int:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return int(ts.timestamp() * 1000)
+
+
+def _compute_data_coverage(
+    feed: "HistoricalEventFeed",
+    start: Optional[str],
+    end: Optional[str],
+    bar: str,
+) -> dict:
+    if feed.market_events.empty or start is None or end is None:
+        return {
+            "coverage_pct": 1.0,
+            "bar": bar,
+            "start": start,
+            "end": end,
+            "symbols": [],
+            "note": "no_range_specified",
+        }
+    bar_seconds = _bar_to_seconds(bar)
+    try:
+        start_ts = _utc_ms(start)
+        end_ts = _utc_ms(end)
+    except Exception:
+        return {
+            "coverage_pct": 1.0,
+            "bar": bar,
+            "start": start,
+            "end": end,
+            "symbols": [],
+            "note": "invalid_date_range",
+        }
+    expected_bars = max(1, (end_ts - start_ts) // (bar_seconds * 1000))
+    per_symbol = []
+    for inst_id, group in feed.market_events.groupby("inst_id"):
+        actual = int(group["ts"].nunique())
+        pct = round(min(1.0, actual / expected_bars), 4)
+        per_symbol.append({
+            "inst_id": str(inst_id),
+            "actual_bars": actual,
+            "expected_bars": int(expected_bars),
+            "coverage_pct": pct,
+        })
+    overall = round(min(s["coverage_pct"] for s in per_symbol) if per_symbol else 1.0, 4)
+    return {
+        "coverage_pct": overall,
+        "bar": bar,
+        "start": start,
+        "end": end,
+        "symbols": per_symbol,
+    }
+
+
+def _check_data_coverage_gate(coverage: dict) -> None:
+    if coverage.get("note") in {"no_range_specified", "invalid_date_range"}:
+        return
+    pct = float(coverage.get("coverage_pct", 1.0))
+    if pct < 0.80:
+        raise ValueError(
+            f"Gate 3: data coverage {pct:.1%} is below the 80 % threshold "
+            f"(bar={coverage.get('bar')}, range={coverage.get('start')}..{coverage.get('end')}). "
+            "Check data_dir or reduce the date range."
+        )
+
+
+def _apply_post_run_gates(
+    result: ReplayBacktestResult,
+    strategy_names: list[str],
+    coverage: dict,
+) -> None:
+    fill_rate = float(result.metrics.get("fill_rate", 0.0))
+    submitted = int(result.metrics.get("submitted_order_count", 0))
+    gate2_warn = fill_rate < 0.05 and submitted > 0
+    if gate2_warn:
+        logger.warning(
+            "Gate 2: fill_rate={:.1%} - check order_latency_ms and cancel_latency_ms in config/risk.yaml",
+            fill_rate,
+        )
+
+    gate4_warn = False
+    if "funding_carry" in strategy_names:
+        settlements = int(result.metrics.get("funding_settlement_count", 0))
+        gate4_warn = settlements == 0
+        if gate4_warn:
+            logger.warning(
+                "Gate 4: funding_carry strategy has zero funding settlements - "
+                "strategy may have entered but never collected funding. "
+                "Check that the replay period spans at least one 8h settlement window."
+            )
+
+    result.validation.update({
+        "gate2_fill_rate_warning": gate2_warn,
+        "gate2_fill_rate": fill_rate,
+        "gate3_data_coverage": coverage,
+        "gate4_funding_coverage_warning": gate4_warn,
+    })
+
+
 def _load_parquet_frames(paths: Iterable[Path]) -> pd.DataFrame:
     frames = []
     for path in paths:
@@ -1448,6 +1551,8 @@ def run_replay_backtest(
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
     feed = build_feed_for_strategies(cfg, strategy_names=strategy_names, data_dir=data_dir, start=start, end=end, bar=bar)
+    coverage = _compute_data_coverage(feed, start, end, bar)
+    _check_data_coverage_gate(coverage)
     engine = ReplayBacktestEngine(
         cfg,
         strategy_names=strategy_names,
@@ -1455,4 +1560,6 @@ def run_replay_backtest(
         bar_seconds=_bar_to_seconds(bar),
         liquidate_on_end=liquidate_on_end,
     )
-    return engine.run_sync(feed)
+    result = engine.run_sync(feed)
+    _apply_post_run_gates(result, strategy_names, coverage)
+    return result
