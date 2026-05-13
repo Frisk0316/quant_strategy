@@ -130,6 +130,11 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
         risk_event_log=[],
         rejected_log=[],
         cancel_log=[],
+        validation={
+            "liquidate_on_end": True,
+            "terminal_liquidation_fill_count": 0,
+            "terminal_positions_closed": True,
+        },
     )
     cfg = SimpleNamespace(
         storage=SimpleNamespace(timescale_dsn=None, candle_backend="parquet"),
@@ -155,6 +160,8 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
 
     assert REQUIRED_RESULT_KEYS <= set(result_payload)
     assert REQUIRED_METRIC_KEYS <= set(result_payload["metrics"])
+    assert result_payload["validation"]["liquidate_on_end"] is True
+    assert result_payload["validation"]["terminal_positions_closed"] is True
     assert REQUIRED_FILL_COLUMNS <= set(fills.columns)
     assert REQUIRED_TRADE_COLUMNS <= set(trades.columns)
     assert REQUIRED_EQUITY_COLUMNS <= set(equity.columns)

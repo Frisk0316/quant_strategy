@@ -52,6 +52,11 @@ def main() -> None:
                         help="Output format for tabular artifacts (default: csv)")
     parser.add_argument("--validate", choices=["wf", "cpcv", "both"], default=None,
                         help="Run replay-backed Walk-Forward, CPCV, or both and write them into result.json")
+    liquidation_group = parser.add_mutually_exclusive_group()
+    liquidation_group.add_argument("--liquidate-on-end", dest="liquidate_on_end", action="store_true", default=None,
+                                   help="Close open replay positions at the final available mid price")
+    liquidation_group.add_argument("--no-liquidate-on-end", dest="liquidate_on_end", action="store_false",
+                                   help="Leave terminal replay positions open and report them in validation")
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
@@ -89,6 +94,7 @@ def main() -> None:
         end=args.end,
         bar=args.bar,
         periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
+        liquidate_on_end=args.liquidate_on_end,
     )
 
     print("=" * 72)
@@ -118,6 +124,7 @@ def main() -> None:
                 bar=args.bar,
                 periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
                 mode=args.validate,
+                liquidate_on_end=args.liquidate_on_end,
             )
         run_dir = save_backtest_artifacts(
             result=result,

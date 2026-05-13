@@ -621,6 +621,204 @@ def test_replay_funding_falls_back_to_avg_entry_when_mark_price_missing(monkeypa
     assert recorder.funding_log[0]["cashflow"] > 0
 
 
+def _terminal_book(engine: ReplayBacktestEngine, inst_id: str, bid: float, ask: float):
+    from okx_quant.data.okx_book import OkxBook
+
+    book = OkxBook(inst_id)
+    engine._apply_book_snapshot(
+        book,
+        MarketPayload(
+            inst_id=inst_id,
+            ts=1_704_067_200_000,
+            bids=[[str(bid), "10"]],
+            asks=[[str(ask), "10"]],
+            seq_id=0,
+            channel="books",
+        ),
+    )
+    return book
+
+
+def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
+    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    positions = PositionLedger(initial_equity=10_000.0)
+    positions.on_fill(
+        "BTC-USDT-SWAP",
+        "buy",
+        fill_px=100.0,
+        fill_sz=10.0,
+        fee=0.0,
+        strategy="unit",
+        ts=1,
+        metadata={"ct_val": 0.01},
+    )
+    recorder = ReplayRecorder(initial_equity=10_000.0)
+
+    validation, metrics = engine._liquidate_terminal_positions(
+        positions=positions,
+        recorder=recorder,
+        books={"BTC-USDT-SWAP": _terminal_book(engine, "BTC-USDT-SWAP", 109.0, 111.0)},
+        ts=2,
+        liquidate_on_end=True,
+    )
+
+    assert positions.get_all_positions() == {}
+    assert validation["terminal_positions_before"]["BTC-USDT-SWAP"]["size"] == pytest.approx(10.0)
+    assert validation["terminal_positions_after"] == {}
+    assert validation["terminal_liquidation_fill_count"] == 1
+    assert validation["terminal_liquidation_notional_usd"] == pytest.approx(11.0)
+    assert metrics["terminal_liquidation_notional_usd"] == pytest.approx(11.0)
+    assert metrics["bankrupt"] is False
+    terminal_fill = recorder.fill_log[-1]
+    assert terminal_fill["metadata"]["action"] == "terminal_liquidation"
+    assert terminal_fill["metadata"]["terminal_price_source"] == "last_mid"
+    assert terminal_fill["metadata"]["notional_usd"] == pytest.approx(11.0)
+    terminal_trade = positions.get_trade_log()[-1]
+    assert terminal_trade["realized_pnl"] == pytest.approx(1.0)
+    assert terminal_trade["metadata"]["ct_val"] == pytest.approx(0.01)
+
+
+def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
+    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    positions = PositionLedger(initial_equity=10_000.0)
+    positions.on_fill(
+        "BTC-USDT-SWAP",
+        "buy",
+        fill_px=100.0,
+        fill_sz=10.0,
+        fee=0.0,
+        strategy="unit",
+        ts=1,
+        metadata={"ct_val": 0.01},
+    )
+    recorder = ReplayRecorder(initial_equity=10_000.0)
+
+    validation, metrics = engine._liquidate_terminal_positions(
+        positions=positions,
+        recorder=recorder,
+        books={"BTC-USDT-SWAP": _terminal_book(engine, "BTC-USDT-SWAP", 109.0, 111.0)},
+        ts=2,
+        liquidate_on_end=False,
+    )
+
+    assert "BTC-USDT-SWAP" in positions.get_all_positions()
+    assert recorder.fill_log == []
+    assert validation["liquidate_on_end"] is False
+    assert validation["terminal_positions_after"]["BTC-USDT-SWAP"]["size"] == pytest.approx(10.0)
+    assert validation["terminal_positions_closed"] is False
+    assert metrics["terminal_open_position_count"] == 1
+    assert metrics["terminal_liquidation_fill_count"] == 0
+    assert metrics["bankrupt"] is False
+
+
+def test_replay_terminal_liquidation_flags_missing_price(minimal_cfg):
+    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    positions = PositionLedger(initial_equity=10_000.0)
+    positions.on_fill(
+        "BTC-USDT-SWAP",
+        "buy",
+        fill_px=100.0,
+        fill_sz=10.0,
+        fee=0.0,
+        strategy="unit",
+        ts=1,
+        metadata={"ct_val": 0.01},
+    )
+    positions.get_position("BTC-USDT-SWAP").last_price = 0.0
+    recorder = ReplayRecorder(initial_equity=10_000.0)
+
+    validation, metrics = engine._liquidate_terminal_positions(
+        positions=positions,
+        recorder=recorder,
+        books={},
+        ts=2,
+        liquidate_on_end=True,
+    )
+
+    assert recorder.fill_log == []
+    assert "BTC-USDT-SWAP" in positions.get_all_positions()
+    assert validation["terminal_liquidation_missing_prices"] == [
+        {"inst_id": "BTC-USDT-SWAP", "reason": "missing_last_mid_and_last_price"}
+    ]
+    assert validation["terminal_positions_after"]["BTC-USDT-SWAP"]["size"] == pytest.approx(10.0)
+    assert metrics["bankrupt"] is True
+
+
+def test_replay_terminal_liquidation_closes_multiple_legs(minimal_cfg):
+    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    positions = PositionLedger(initial_equity=10_000.0)
+    positions.on_fill(
+        "BTC-USDT-SWAP",
+        "sell",
+        fill_px=100.0,
+        fill_sz=10.0,
+        fee=0.0,
+        strategy="funding_carry",
+        ts=1,
+        metadata={"ct_val": 0.01},
+    )
+    positions.on_fill(
+        "BTC-USDT",
+        "buy",
+        fill_px=100.0,
+        fill_sz=1.0,
+        fee=0.0,
+        strategy="funding_carry",
+        ts=1,
+        metadata={"ct_val": 1.0},
+    )
+    recorder = ReplayRecorder(initial_equity=10_000.0)
+
+    validation, metrics = engine._liquidate_terminal_positions(
+        positions=positions,
+        recorder=recorder,
+        books={
+            "BTC-USDT-SWAP": _terminal_book(engine, "BTC-USDT-SWAP", 99.0, 101.0),
+            "BTC-USDT": _terminal_book(engine, "BTC-USDT", 100.0, 102.0),
+        },
+        ts=2,
+        liquidate_on_end=True,
+    )
+
+    assert positions.get_all_positions() == {}
+    assert set(validation["terminal_positions_before"]) == {"BTC-USDT-SWAP", "BTC-USDT"}
+    assert validation["terminal_positions_after"] == {}
+    assert validation["terminal_liquidation_fill_count"] == 2
+    assert validation["terminal_liquidation_notional_usd"] == pytest.approx(10.0 + 101.0)
+    assert metrics["terminal_open_position_count"] == 0
+    assert metrics["bankrupt"] is False
+
+
+def test_run_replay_backtest_cli_passes_no_liquidate_on_end(monkeypatch, minimal_cfg):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"bankrupt": False, "fill_rate": 0.0},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_replay_backtest.py", "--strategy", "as_market_maker", "--no-liquidate-on-end"],
+    )
+
+    cli.main()
+
+    assert calls["liquidate_on_end"] is False
+
+
 def test_replay_feed_builder_tolerates_empty_requested_data(tmp_path):
     cfg = AppConfig(
         system=SystemConfig(

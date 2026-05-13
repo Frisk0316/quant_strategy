@@ -236,6 +236,7 @@ class BacktestConfig(BaseModel):
     order_latency_ms: int = Field(default=0, ge=0)
     cancel_latency_ms: int = Field(default=200, ge=0)
     queue_fill_fraction: float = Field(default=0.20, ge=0.0, le=1.0)
+    liquidate_on_end: bool = True
 
 
 # ---------------------------------------------------------------------------

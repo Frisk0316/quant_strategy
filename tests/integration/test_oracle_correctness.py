@@ -99,6 +99,7 @@ def _run_oracle_replay(
     market: pd.DataFrame,
     funding: pd.DataFrame | None = None,
     instrument_specs: dict | None = None,
+    liquidate_on_end: bool = False,
 ) -> ReplayBacktestResult:
     feed = HistoricalEventFeed(
         market_events=market.drop(columns=["mark"], errors="ignore"),
@@ -113,7 +114,13 @@ def _run_oracle_replay(
             "tdMode": "cross",
         }
     }
-    engine = OracleReplayBacktestEngine(cfg, [strategy], instrument_specs=specs, periods=365 * 24 * 60)
+    engine = OracleReplayBacktestEngine(
+        cfg,
+        [strategy],
+        instrument_specs=specs,
+        periods=365 * 24 * 60,
+        liquidate_on_end=liquidate_on_end,
+    )
     return engine.run_sync(feed)
 
 

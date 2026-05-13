@@ -689,6 +689,7 @@ def save_backtest_artifacts(
     risk_event_log: list[dict] = getattr(result, "risk_event_log", [])
     rejected_log: list[dict] = getattr(result, "rejected_log", [])
     cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
+    result_validation: dict[str, Any] = dict(getattr(result, "validation", {}) or {})
 
     # -------------------------------------------------------------------
     # config.json
@@ -896,16 +897,19 @@ def save_backtest_artifacts(
         "metrics": metrics,
         "artifacts": artifact_refs,
     }
+    validation_payload = dict(result_validation)
     if validation_results:
         if "walk_forward" in validation_results:
             result_json["walk_forward"] = validation_results["walk_forward"]
         if "cpcv" in validation_results:
             result_json["cpcv"] = validation_results["cpcv"]
-        result_json["validation"] = {
+        validation_payload.update({
             key: value
             for key, value in validation_results.items()
             if key not in {"walk_forward", "cpcv"}
-        }
+        })
+    if validation_payload:
+        result_json["validation"] = validation_payload
     if write_files:
         _write_json(run_dir / "result.json", result_json)
     _upsert_run_to_db(run_id_final, result_json, run_dir, dsn=dsn)

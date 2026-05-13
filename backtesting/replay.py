@@ -7,6 +7,7 @@ Strategy -> Signal -> Order -> Fill -> Position path used elsewhere.
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from itertools import combinations
@@ -41,6 +42,9 @@ from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 
 
+TERMINAL_TAKER_FEE_RATE = 0.0005
+
+
 @dataclass
 class ReplayBacktestResult:
     returns: pd.Series
@@ -54,6 +58,7 @@ class ReplayBacktestResult:
     risk_event_log: list[dict] = field(default_factory=list)
     rejected_log: list[dict] = field(default_factory=list)
     cancel_log: list[dict] = field(default_factory=list)
+    validation: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -172,6 +177,8 @@ class ReplayRecorder:
         positions: PositionLedger,
         periods: int,
         execution_model: Optional["ReplayExecutionModel"] = None,
+        validation: Optional[dict[str, Any]] = None,
+        metric_overrides: Optional[dict[str, Any]] = None,
     ) -> ReplayBacktestResult:
         if not self.equity_samples:
             self.record_equity(0, self.initial_equity)
@@ -183,6 +190,8 @@ class ReplayRecorder:
 
         metrics = summary(returns, periods=periods)
         metrics.update(self._execution_metrics(returns))
+        if metric_overrides:
+            metrics.update(metric_overrides)
 
         rejected_log = list(execution_model.rejected_log) if execution_model else []
         cancel_log = list(execution_model.cancel_log) if execution_model else []
@@ -199,6 +208,7 @@ class ReplayRecorder:
             risk_event_log=list(self.risk_event_log),
             rejected_log=rejected_log,
             cancel_log=cancel_log,
+            validation=dict(validation or {}),
         )
 
     def _execution_metrics(self, returns: pd.Series) -> dict:
@@ -521,12 +531,14 @@ class ReplayBacktestEngine:
         instrument_specs: Optional[dict] = None,
         periods: int = 365 * 24,
         bar_seconds: int = 3600,
+        liquidate_on_end: Optional[bool] = None,
     ) -> None:
         self._cfg = cfg
         self._strategy_names = strategy_names
         self._instrument_specs = instrument_specs or self._default_instrument_specs()
         self._periods = periods
         self._bar_seconds = bar_seconds
+        self._liquidate_on_end = cfg.backtest.liquidate_on_end if liquidate_on_end is None else liquidate_on_end
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
@@ -758,8 +770,10 @@ class ReplayBacktestEngine:
         bus.subscribe(EvtType.FILL, on_fill_event)
 
         dispatch_task = asyncio.create_task(bus.dispatch_loop())
+        last_event_ts = 0
         try:
             for event in feed.iter_events():
+                last_event_ts = int(getattr(event.payload, "ts", last_event_ts) or last_event_ts)
                 await bus.put(event)
                 # Drain each historical timestamp through downstream
                 # signal/order/fill handlers before advancing replay time.
@@ -768,7 +782,161 @@ class ReplayBacktestEngine:
             dispatch_task.cancel()
             await asyncio.gather(dispatch_task, return_exceptions=True)
 
-        return recorder.build_result(positions, periods=self._periods, execution_model=execution_model)
+        execution_model.close_all()
+        terminal_validation, terminal_metrics = self._liquidate_terminal_positions(
+            positions=positions,
+            recorder=recorder,
+            books=books,
+            ts=last_event_ts,
+            liquidate_on_end=self._liquidate_on_end,
+        )
+
+        return recorder.build_result(
+            positions,
+            periods=self._periods,
+            execution_model=execution_model,
+            validation=terminal_validation,
+            metric_overrides=terminal_metrics,
+        )
+
+    def _liquidate_terminal_positions(
+        self,
+        *,
+        positions: PositionLedger,
+        recorder: ReplayRecorder,
+        books: dict[str, OkxBook],
+        ts: int,
+        liquidate_on_end: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        terminal_positions_before = self._position_snapshot(positions.get_all_positions())
+        missing_prices: list[dict[str, str]] = []
+        price_fallbacks: list[dict[str, Any]] = []
+        fill_count = 0
+        liquidation_notional = 0.0
+
+        if liquidate_on_end:
+            for inst_id, pos in list(positions.get_all_positions().items()):
+                if abs(pos.size) < 1e-9:
+                    continue
+                price, source = self._terminal_liquidation_price(inst_id, pos, books)
+                if price <= 0:
+                    missing_prices.append({"inst_id": inst_id, "reason": source})
+                    continue
+                if source != "last_mid":
+                    price_fallbacks.append({"inst_id": inst_id, "source": source, "price": price})
+
+                ct_val = self._terminal_ct_val(inst_id, pos.ct_val)
+                notional_usd = self._terminal_notional_usd(inst_id, pos.size, price, ct_val)
+                fee = notional_usd * TERMINAL_TAKER_FEE_RATE
+                side = "sell" if pos.size > 0 else "buy"
+                strategy = pos.strategy or "terminal_liquidation"
+                metadata = {
+                    "action": "terminal_liquidation",
+                    "liquidate_on_end": True,
+                    "execution_model": "terminal_liquidation",
+                    "terminal_price_source": source,
+                    "ct_val": ct_val,
+                    "fee_rate": TERMINAL_TAKER_FEE_RATE,
+                    "notional_usd": notional_usd,
+                }
+                fill = FillPayload(
+                    cl_ord_id=f"terminal-{inst_id.replace('-', '')}-{fill_count + 1}",
+                    ord_id=f"terminal-liquidation-{fill_count + 1}",
+                    inst_id=inst_id,
+                    fill_px=price,
+                    fill_sz=abs(pos.size),
+                    fee=fee,
+                    fee_ccy="USDT",
+                    side=side,
+                    ts=int(ts),
+                    strategy=strategy,
+                    state="filled",
+                    metadata=metadata,
+                )
+                recorder.record_fill(fill)
+                positions.on_fill(
+                    inst_id=fill.inst_id,
+                    side=fill.side,
+                    fill_px=fill.fill_px,
+                    fill_sz=fill.fill_sz,
+                    fee=abs(fill.fee),
+                    strategy=fill.strategy,
+                    ts=fill.ts,
+                    metadata=dict(fill.metadata),
+                )
+                fill_count += 1
+                liquidation_notional += notional_usd
+
+        terminal_positions_after = self._position_snapshot(positions.get_all_positions())
+        if fill_count > 0:
+            recorder.record_equity(int(ts), positions.get_equity())
+
+        terminal_bankrupt = False
+        if liquidate_on_end:
+            terminal_bankrupt = bool(missing_prices or terminal_positions_after)
+
+        validation = {
+            "liquidate_on_end": liquidate_on_end,
+            "terminal_positions_before": terminal_positions_before,
+            "terminal_positions_after": terminal_positions_after,
+            "terminal_liquidation_fill_count": fill_count,
+            "terminal_liquidation_notional_usd": liquidation_notional,
+            "terminal_liquidation_missing_prices": missing_prices,
+            "terminal_liquidation_price_fallbacks": price_fallbacks,
+            "terminal_positions_closed": not terminal_positions_after,
+        }
+        metrics = {
+            "bankrupt": terminal_bankrupt,
+            "terminal_open_position_count": len(terminal_positions_after),
+            "terminal_liquidation_fill_count": fill_count,
+            "terminal_liquidation_notional_usd": liquidation_notional,
+        }
+        return validation, metrics
+
+    def _terminal_liquidation_price(
+        self,
+        inst_id: str,
+        pos,
+        books: dict[str, OkxBook],
+    ) -> tuple[float, str]:
+        book = books.get(inst_id)
+        if book is not None:
+            bid, _ = book.best_bid()
+            ask, _ = book.best_ask()
+            if bid > 0 and math.isfinite(ask) and ask > 0:
+                return 0.5 * (bid + ask), "last_mid"
+        if pos.last_price > 0:
+            return float(pos.last_price), "last_price"
+        return 0.0, "missing_last_mid_and_last_price"
+
+    def _terminal_ct_val(self, inst_id: str, fallback: float = 1.0) -> float:
+        specs = self._instrument_specs.get(inst_id, {})
+        raw = specs.get("ctVal", fallback)
+        return validate_ct_val(float(raw), inst_id)
+
+    @staticmethod
+    def _terminal_notional_usd(inst_id: str, size: float, price: float, ct_val: float) -> float:
+        if "SWAP" in inst_id:
+            return abs(size) * ct_val * price
+        return abs(size) * price
+
+    @staticmethod
+    def _position_snapshot(positions: dict) -> dict[str, dict[str, Any]]:
+        snapshot: dict[str, dict[str, Any]] = {}
+        for inst_id, pos in sorted(positions.items()):
+            if abs(pos.size) < 1e-9:
+                continue
+            snapshot[inst_id] = {
+                "inst_id": pos.inst_id,
+                "size": float(pos.size),
+                "avg_entry": float(pos.avg_entry),
+                "ct_val": float(pos.ct_val),
+                "last_price": float(pos.last_price),
+                "strategy": pos.strategy,
+                "unrealized_pnl": float(pos.unrealized_pnl),
+                "notional": float(pos.notional),
+            }
+        return snapshot
 
     def run_sync(self, feed: HistoricalEventFeed) -> ReplayBacktestResult:
         return asyncio.run(self.run(feed))
@@ -1053,6 +1221,7 @@ def make_replay_strategy_fn(
     bar: str = "1H",
     periods: int = 365 * 24,
     include_train_metrics: bool = False,
+    liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
 ) -> Callable[[pd.DataFrame, pd.DataFrame], dict[str, Any]]:
     """
@@ -1063,31 +1232,29 @@ def make_replay_strategy_fn(
     """
     replay_runner = runner or run_replay_backtest
 
+    def _run_window(start: str, end: str) -> ReplayBacktestResult:
+        kwargs = {
+            "strategy_names": strategy_names,
+            "cfg": cfg,
+            "data_dir": data_dir,
+            "start": start,
+            "end": end,
+            "bar": bar,
+            "periods": periods,
+        }
+        if liquidate_on_end is not None:
+            kwargs["liquidate_on_end"] = liquidate_on_end
+        return replay_runner(**kwargs)
+
     def strategy_fn(train_data: pd.DataFrame, test_data: pd.DataFrame) -> dict[str, Any]:
         is_metrics: dict[str, Any] | None = None
         if include_train_metrics and not train_data.empty:
             is_start, is_end = _window_bounds(train_data)
-            is_result = replay_runner(
-                strategy_names=strategy_names,
-                cfg=cfg,
-                data_dir=data_dir,
-                start=is_start,
-                end=is_end,
-                bar=bar,
-                periods=periods,
-            )
+            is_result = _run_window(is_start, is_end)
             is_metrics = dict(is_result.metrics)
 
         oos_start, oos_end = _window_bounds(test_data)
-        oos_result = replay_runner(
-            strategy_names=strategy_names,
-            cfg=cfg,
-            data_dir=data_dir,
-            start=oos_start,
-            end=oos_end,
-            bar=bar,
-            periods=periods,
-        )
+        oos_result = _run_window(oos_start, oos_end)
         return {
             "returns": _align_replay_returns(oos_result.returns, test_data.index),
             "is_metrics": is_metrics or {},
@@ -1195,6 +1362,7 @@ def run_replay_validations(
     cpcv_embargo_pct: float = 0.02,
     cpcv_purge_size: int = 1,
     n_trials: int = 1,
+    liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
 ) -> dict[str, Any]:
     """Run replay-backed WF/CPCV validation and return result.json-ready data."""
@@ -1234,6 +1402,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=True,
+                liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
             periods=periods,
@@ -1256,6 +1425,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=False,
+                liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
             periods=periods,
@@ -1274,6 +1444,7 @@ def run_replay_backtest(
     end: Optional[str] = None,
     bar: str = "1H",
     periods: int = 365 * 24,
+    liquidate_on_end: Optional[bool] = None,
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
     feed = build_feed_for_strategies(cfg, strategy_names=strategy_names, data_dir=data_dir, start=start, end=end, bar=bar)
@@ -1282,5 +1453,6 @@ def run_replay_backtest(
         strategy_names=strategy_names,
         periods=periods,
         bar_seconds=_bar_to_seconds(bar),
+        liquidate_on_end=liquidate_on_end,
     )
     return engine.run_sync(feed)
