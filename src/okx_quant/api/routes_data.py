@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -97,7 +97,7 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
             await conn.close()
 
     @router.get("/export")
-    async def export_ohlcv(symbols: str, bar: str = "1m", start: str = "", end: str = ""):
+    async def export_ohlcv(symbols: str, bar: str = "1m", start: str = "", end: str = "", format: str = "xlsx"):
         if not db_dsn:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
         inst_ids = [s.strip() for s in symbols.split(",") if s.strip()]
@@ -110,8 +110,15 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
         if start_dt >= end_dt:
             raise HTTPException(status_code=400, detail="start must be earlier than end")
 
-        filename = _export_filename(inst_ids, bar, start_dt, end_dt)
+        filename = _export_filename(inst_ids, bar, start_dt, end_dt, fmt=format)
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        if format == "xlsx":
+            content = await _build_ohlcv_xlsx(db_dsn, inst_ids, bar, start_dt, end_dt)
+            return Response(
+                content,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers=headers,
+            )
         return StreamingResponse(
             _stream_ohlcv_csv(db_dsn, inst_ids, bar, start_dt, end_dt),
             media_type="text/csv",
@@ -168,12 +175,10 @@ def _parse_utc(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _export_filename(inst_ids: list[str], bar: str, start: datetime, end: datetime) -> str:
+def _export_filename(inst_ids: list[str], bar: str, start: datetime, end: datetime, fmt: str = "xlsx") -> str:
     bar = _normalize_output_bar(bar)
-    symbol_part = inst_ids[0].replace("-", "")
-    if len(inst_ids) > 1:
-        symbol_part = f"{symbol_part}_plus{len(inst_ids) - 1}"
-    return f"ohlcv_{symbol_part}_{bar}_{start.date()}_{end.date()}.csv"
+    ext = "xlsx" if fmt == "xlsx" else "csv"
+    return f"ohlcv_export_{bar}_{start.date()}_{end.date()}.{ext}"
 
 
 def _is_hourly_aggregate(bar: str) -> bool:
@@ -322,6 +327,63 @@ async def _stream_ohlcv_csv(
                 output.truncate(0)
     finally:
         await conn.close()
+
+
+async def _build_ohlcv_xlsx(
+    db_dsn: str,
+    inst_ids: list[str],
+    bar: str,
+    start: datetime,
+    end: datetime,
+) -> bytes:
+    import asyncpg
+    import openpyxl
+
+    conn = await asyncpg.connect(db_dsn)
+    output_bar = _normalize_output_bar(bar)
+    hourly = _is_hourly_aggregate(bar)
+    columns = [
+        "ts", "inst_id", "bar", "open", "high", "low", "close",
+        "vol_contract", "vol_base", "vol_quote", "source_primary", "quality_status",
+    ]
+
+    wb = openpyxl.Workbook(write_only=True)
+    sheets: dict[str, Any] = {}
+    for inst_id in inst_ids:
+        ws = wb.create_sheet(title=inst_id[:31])
+        ws.append(columns)
+        sheets[inst_id] = ws
+
+    try:
+        async with conn.transaction():
+            async for row in conn.cursor(
+                _export_select_sql(hourly),
+                inst_ids,
+                output_bar,
+                start,
+                end,
+                prefetch=10_000,
+            ):
+                sheets[row["inst_id"]].append([
+                    row["ts"].isoformat(),
+                    row["inst_id"],
+                    row["bar"],
+                    row["open"],
+                    row["high"],
+                    row["low"],
+                    row["close"],
+                    row["vol_contract"],
+                    row["vol_base"],
+                    row["vol_quote"],
+                    row["source_primary"],
+                    row["quality_status"],
+                ])
+    finally:
+        await conn.close()
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def _request_symbols(req: FetchRequest) -> list[str]:

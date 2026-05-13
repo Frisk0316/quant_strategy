@@ -324,7 +324,7 @@ function MarketDataCard() {
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
   const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
-  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1H", start: "2024-01-01", end: yesterday });
+  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
     .map((s) => listingMap[s])
@@ -332,6 +332,16 @@ function MarketDataCard() {
     .sort()
     .at(-1) || "";
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
+  const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96 };
+  const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
+  const estRows = (exportForm.symbols || []).length * estDays * (ROWS_PER_DAY[exportForm.bar] || 24);
+  const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
+  function fmtBytes(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1_048_576) return (b / 1024).toFixed(1) + " KB";
+    if (b < 1_073_741_824) return (b / 1_048_576).toFixed(1) + " MB";
+    return (b / 1_073_741_824).toFixed(1) + " GB";
+  }
   const coverageSymbols = [...new Set((coverage || [])
     .filter((r) => r.bar === exportCoverageBar)
     .map((r) => r.inst_id)
@@ -394,6 +404,7 @@ function MarketDataCard() {
       bar: exportForm.bar,
       start: exportForm.start,
       end: exportForm.end,
+      format: exportForm.format,
     }));
   }
 
@@ -412,20 +423,27 @@ function MarketDataCard() {
 
       ${showExportPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Export 1H OHLCV CSV</div>
-          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Export OHLCV Data</div>
+          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
               <div class="field-label">Perpetual symbols</div>
+              <button class="btn sm" style=${{ marginBottom: 4 }}
+                onClick=${() => {
+                  const allSelected = exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length;
+                  setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
+                }}>
+                ${exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length ? "Deselect All" : "Select All"}
+              </button>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
                   <tbody>
                     ${exportSymbols.map((symbol) => html`
-                      <tr key=${symbol}>
+                      <tr key=${symbol} style=${{ cursor: "pointer" }} onClick=${() => toggleExportSymbol(symbol)}>
                         <td style=${{ width: 28 }}>
                           <input
                             type="checkbox"
                             checked=${(exportForm.symbols || []).includes(symbol)}
-                            onChange=${() => toggleExportSymbol(symbol)}
+                            onChange=${() => {}}
                           />
                         </td>
                         <td class="mono">${symbol}</td>
@@ -434,7 +452,10 @@ function MarketDataCard() {
                   </tbody>
                 </table>
               </div>
-              <div class="field-hint">${(exportForm.symbols || []).length} selected - 1H exports are aggregated from 1m candles</div>
+              <div class="field-hint">
+                ${(exportForm.symbols || []).length} selected${exportForm.bar === "1H" ? " - 1H exports are aggregated from 1m candles" : ""}
+              </div>
+              ${estRows > 0 && html`<div class="field-hint">Est. size: ~${fmtBytes(estBytes)}</div>`}
             </div>
             <div class="field">
               <div class="field-label">Bar</div>
@@ -453,11 +474,19 @@ function MarketDataCard() {
               <input class="input mono" type="date" value=${exportForm.end}
                 onChange=${(e) => setExportForm((f) => ({ ...f, end: e.target.value }))} />
             </div>
+            <div class="field">
+              <div class="field-label">Format</div>
+              <select class="select mono" value=${exportForm.format}
+                onChange=${(e) => setExportForm((f) => ({ ...f, format: e.target.value }))}>
+                <option value="xlsx">xlsx (multi-sheet)</option>
+                <option value="csv">csv (single file)</option>
+              </select>
+            </div>
           </div>
           <button class="btn primary sm" style=${{ marginTop: 12 }}
             disabled=${!(exportForm.symbols || []).length || exportForm.start >= exportForm.end}
             onClick=${triggerExport}>
-            Download CSV
+            Download Data
           </button>
         </div>
       `}

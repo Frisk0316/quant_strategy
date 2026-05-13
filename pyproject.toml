@@ -30,6 +30,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "asyncpg>=0.29",
     "click>=8.1",
+    "openpyxl>=3.0",
 ]
 
 [project.optional-dependencies]
