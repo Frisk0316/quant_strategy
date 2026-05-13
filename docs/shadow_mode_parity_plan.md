@@ -114,8 +114,9 @@ or live trading behavior.
 1. Tighten `scripts/run_shadow.py`:
    - require `cfg.system.mode == "shadow"`;
    - update comments so they describe the actual `ShadowBroker` path;
-   - keep `asyncio.run(main(cfg, sim_broker=True))` only if tests confirm
-     `mode=shadow` takes precedence over the `sim_broker` override.
+   - keep `asyncio.run(main(cfg, sim_broker=True))`; `_build_broker()` checks
+     `mode == "shadow"` before the `sim_broker` override, so shadow mode always
+     takes precedence.
 
 2. Update `engine._build_broker()`:
    - accept `instrument_specs: dict | None = None`;

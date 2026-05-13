@@ -18,12 +18,12 @@ from okx_quant.engine import main
 
 def run() -> None:
     cfg = load_config()
-    assert cfg.system.mode in ("shadow", "demo"), (
+    assert cfg.system.mode == "shadow", (
         f"settings.yaml mode is '{cfg.system.mode}'. "
         "Set mode: shadow for shadow trading."
     )
     print(f"Starting SHADOW mode | equity=${cfg.system.equity_usd}")
-    # sim_broker=True routes to SimBroker; engine also runs OKX demo in parallel
+    # mode=shadow takes precedence over sim_broker=True and routes to ShadowBroker.
     asyncio.run(main(cfg, sim_broker=True))
 
 

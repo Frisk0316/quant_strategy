@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload
-from okx_quant.engine import _should_use_demo_environment
+from okx_quant.engine import _build_broker, _should_use_demo_environment
 from okx_quant.execution.broker import (
     Broker,
     SimBroker,
@@ -86,7 +86,16 @@ class DummyRisk:
 
 class DummyCfg:
     def __init__(self, mode: str) -> None:
-        self.system = type("System", (), {"mode": mode})()
+        self.system = type("System", (), {"mode": mode, "equity_usd": 10_000.0})()
+        self.secrets = type(
+            "Secrets",
+            (),
+            {
+                "okx_api_key": "test-key",
+                "okx_secret": "test-secret",
+                "okx_passphrase": "test-passphrase",
+            },
+        )()
 
     def is_demo(self) -> bool:
         return self.system.mode == "demo"
@@ -417,3 +426,56 @@ def test_shadow_mode_uses_demo_environment():
     assert _should_use_demo_environment(DummyCfg("shadow")) is True
     assert _should_use_demo_environment(DummyCfg("demo")) is True
     assert _should_use_demo_environment(DummyCfg("live")) is False
+
+
+def test_build_broker_shadow_mode_uses_shadow_broker(monkeypatch):
+    monkeypatch.setattr("okx_quant.engine.OKXBroker", lambda **_: PendingBroker())
+
+    broker = _build_broker(
+        DummyCfg("shadow"),
+        sim_broker=True,
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01}},
+    )
+
+    assert isinstance(broker, ShadowBroker)
+
+
+def test_build_broker_demo_sim_override_uses_plain_sim_broker():
+    broker = _build_broker(DummyCfg("demo"), sim_broker=True)
+
+    assert isinstance(broker, SimBroker)
+    assert not isinstance(broker, ShadowBroker)
+
+
+@pytest.mark.asyncio
+async def test_shadow_broker_primary_receives_instrument_specs(monkeypatch):
+    monkeypatch.setattr("okx_quant.engine.OKXBroker", lambda **_: PendingBroker())
+    broker = _build_broker(
+        DummyCfg("shadow"),
+        sim_broker=True,
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01}},
+    )
+
+    fill = await broker.submit({
+        "cl_ord_id": "shadow-specs",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "buy",
+        "sz": "2",
+        "px": "100.0",
+        "strategy": "test",
+        "metadata": {},
+    })
+    await asyncio.sleep(0)
+
+    assert fill is not None
+    assert fill.metadata["ct_val"] == pytest.approx(0.01)
+    assert fill.metadata["notional_usd"] == pytest.approx(2.0004)
+
+
+def test_run_shadow_requires_shadow_mode(monkeypatch):
+    from scripts import run_shadow
+
+    monkeypatch.setattr(run_shadow, "load_config", lambda: DummyCfg("demo"))
+
+    with pytest.raises(AssertionError, match="Set mode: shadow"):
+        run_shadow.run()

@@ -53,10 +53,15 @@ def _should_use_demo_environment(cfg: AppConfig) -> bool:
     return cfg.is_demo() or cfg.system.mode == "shadow"
 
 
-def _build_broker(cfg: AppConfig, sim_broker: bool = False, calibration_log: Optional[CalibrationLogger] = None):
+def _build_broker(
+    cfg: AppConfig,
+    sim_broker: bool = False,
+    calibration_log: Optional[CalibrationLogger] = None,
+    instrument_specs: dict | None = None,
+):
     if cfg.system.mode == "shadow":
         return ShadowBroker(
-            primary=SimBroker(slippage_bps=2.0),
+            primary=SimBroker(slippage_bps=2.0, instrument_specs=instrument_specs or {}),
             mirror=OKXBroker(
                 api_key=cfg.secrets.okx_api_key,
                 secret=cfg.secrets.okx_secret,
@@ -201,7 +206,12 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # ------------------------------------------------------------------
     rate_limiter = RateLimiter()
 
-    broker = _build_broker(cfg, sim_broker=sim_broker, calibration_log=calib_log)
+    broker = _build_broker(
+        cfg,
+        sim_broker=sim_broker,
+        calibration_log=calib_log,
+        instrument_specs=instrument_specs,
+    )
 
     order_manager = OrderManager(broker=broker, rate_limiter=rate_limiter)
     exec_handler = ExecutionHandler(

@@ -16,7 +16,7 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Implement PR14B shadow mode parity fixes after PR14A design review.
+Design position-aware close sizing for exit/stop flows after PR14B shadow parity implementation.
 
 ## Current Branch
 
@@ -46,7 +46,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| PR14B `(next)` | Implement shadow mode parity fixes | Require `mode=shadow`, pass instrument specs into shadow SimBroker, and test broker routing |
+| PR14B `(complete; pending review/merge)` | Implement shadow mode parity fixes | `run_shadow.py` now requires `mode=shadow`; shadow primary SimBroker receives instrument specs; broker routing tests added |
 | PR14A `(complete; pending review/merge)` | Design shadow mode parity plan | `docs/shadow_mode_parity_plan.md` documents current ShadowBroker path, remaining gaps, and PR14B scope |
 | PR13 `(complete; pending review/merge)` | Implement remaining ADR-0005 replay validation gates | Gate 2 fill-rate warning, Gate 3 data coverage, Gate 4 funding coverage implemented; ADR-0005 moved to Accepted |
 | PR12B | Implement replay terminal liquidation | Gate 1 terminal position check implemented via `validation["terminal_positions_closed"]`; replay default closes terminal positions; CLI can opt out; focused regression tests added |
@@ -60,7 +60,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Known Bugs / Open Issues
 
-1. **Shadow mode parity gap** (P0): `engine.py` has `ShadowBroker`, but `scripts/run_shadow.py` still allows `mode=demo`, which routes to plain `SimBroker` and produces no OKX demo mirror comparison. Shadow primary `SimBroker` also needs instrument specs for correct notional/fee accounting.
+1. **Shadow mode parity gap** (resolved in PR14B; pending review/merge): `run_shadow.py` requires `mode=shadow`, and shadow primary `SimBroker` receives instrument specs for notional/fee accounting.
 2. **SimBroker fill event gap** (P0): `ExecutionHandler.on_order()` expects WebSocket fill, but `SimBroker.submit()` does not emit a simulated fill event — blocks unified backtest/live engine path.
 3. **Replay bar-level approximation** (P1): `scripts/run_backtest.py` uses per-bar approximation formulas, not the true `Strategy → Signal → Order → Fill → Ledger` path.
 4. **CI gate is minimal**: `.github/workflows/ci.yml` runs ruff fatal-only baseline and unit tests only. This is a temporary baseline until existing lint debt is cleaned up; integration tests still require TimescaleDB planning.
@@ -84,8 +84,8 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[PR14B]** Implementation: shadow mode parity fixes from `docs/shadow_mode_parity_plan.md`
-2. **[P2]** Design position-aware close sizing for exit/stop flows
+1. **[P2]** Design position-aware close sizing for exit/stop flows
+2. **[P2]** Implement position-aware close sizing after design review
 
 ## Documentation Cleanup Next Step
 
