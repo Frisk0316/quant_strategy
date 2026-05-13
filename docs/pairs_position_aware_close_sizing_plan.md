@@ -48,7 +48,8 @@ intent: entry, exit, stop, side, fair value, and linked hedge metadata.
 
 ## Required Behavior
 
-When `sig.metadata["action"]` is `exit` or `stop`:
+When `sig.strategy == "pairs_trading"` and `sig.metadata["action"]` is `exit`
+or `stop`:
 
 1. The main leg order size is derived from the current ledger position for
    `sig.inst_id`.
@@ -64,8 +65,20 @@ When `sig.metadata["action"]` is `exit` or `stop`:
    warning.
 7. Linked hedge closes use the hedge leg's own current ledger position size.
    Do not multiply the main close size by beta for exit/stop.
-8. Entry behavior remains unchanged: entry signals still use risk and signal
+8. If the hedge leg has no current position, no hedge close order is emitted.
+9. Entry behavior remains unchanged: entry signals still use risk and signal
    sizing.
+
+## Cross-Strategy Guard
+
+`FundingCarryStrategy._exit_signal()` also emits `metadata["action"] == "exit"`
+and `metadata["leg"] == "dual"`. The first implementation PR must therefore
+guard the close-sizing branch with `sig.strategy == "pairs_trading"`.
+
+Funding carry dual-leg exit semantics are intentionally left unchanged by this
+design. Extending position-aware close sizing to funding carry may be valid, but
+that should be a separate decision because its `leg == "dual"` handling already
+has strategy-specific spot/perp behavior.
 
 ## Metadata Contract
 
@@ -90,7 +103,7 @@ Add PM helpers:
 
 ```python
 def _is_close_action(sig: SignalPayload) -> bool:
-    return (sig.metadata or {}).get("action") in {"exit", "stop"}
+    return sig.strategy == "pairs_trading" and (sig.metadata or {}).get("action") in {"exit", "stop"}
 
 def _is_reducing_side(pos_size: float, side: str) -> bool:
     return (pos_size > 0 and side == "sell") or (pos_size < 0 and side == "buy")
@@ -101,9 +114,14 @@ def _position_close_quantity(inst_id: str, side: str, price: float) -> tuple[str
         return "", 0.0
     ct_val = validate_ct_val(...)
     lot_sz = ...
-    qty = abs(pos.size)
+    qty = _normalize_close_qty(abs(pos.size), lot_sz)
     return self._format_size(qty, lot_sz), qty * price * ct_val
 ```
+
+For `lotSz >= 1`, `_normalize_close_qty()` must handle floating-point drift
+before integer formatting. For example, a ledger size of `2.999999999` should
+close `3` contracts, not `2`. Use `round()` or a small tolerance such as
+`1e-9` before converting to an integer lot count.
 
 Then update `_place_directional()`:
 
@@ -146,11 +164,25 @@ I/O.
    - emit exit/stop with hedge metadata;
    - assert main and hedge orders use their own ledger sizes.
 
-6. Entry behavior unchanged:
+6. Hedge zero-position emits no hedge close:
+   - main leg has a position but hedge leg is flat;
+   - emit exit/stop with hedge metadata;
+   - assert only the main close order is emitted.
+
+7. Funding carry exit remains unchanged:
+   - emit a `funding_carry` signal with `metadata["action"] == "exit"` and
+     `metadata["leg"] == "dual"`;
+   - assert it does not use the pairs-only position-aware close branch.
+
+8. Floating-point close quantity drift:
+   - set ledger position size to a value such as `2.999999999`;
+   - assert the close order size is `"3"` for `lotSz == 1`.
+
+9. Entry behavior unchanged:
    - emit entry with hedge metadata;
    - assert existing beta-scaled hedge notional path still applies.
 
-7. Existing regression coverage remains:
+10. Existing regression coverage remains:
    - pairs hedge metadata tests;
    - funding carry dual-leg tests;
    - replay terminal liquidation tests.
@@ -167,11 +199,15 @@ I/O.
 ## Acceptance Criteria
 
 - Exit/stop orders close current ledger quantities for both pairs legs.
+- Close sizing is guarded to `strategy == "pairs_trading"` so funding carry
+  `action == "exit"` dual-leg behavior is unchanged.
 - Entry sizing is unchanged.
 - Linked hedge exits/stops close the hedge leg by hedge ledger size, not beta
   notional.
-- No order is emitted for absent or non-reducing positions.
+- No order is emitted for absent or non-reducing main or hedge positions.
+- Integer lot close sizing handles floating-point drift without truncating
+  near-whole ledger quantities.
 - Regression tests cover main leg, hedge leg, no-position, wrong-side, and
-  entry unchanged cases.
+  entry unchanged cases, plus funding carry non-regression.
 - `docs/AI_HANDOFF.md` moves this design to complete and lists implementation as
   the next PR.
