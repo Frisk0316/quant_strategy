@@ -2,6 +2,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -146,6 +147,46 @@ async def test_execution_handler_ignores_shadow_mirror_ws_fills():
         }]
     })
 
+    assert bus._queue.empty()
+
+
+@pytest.mark.parametrize("state", ["filled", "partially_filled"])
+@pytest.mark.asyncio
+async def test_execution_handler_routes_mirror_fill_to_calibration_log(state):
+    bus = EventBus()
+    order_manager = OrderManager(PendingBroker(), RateLimiter())
+    calibration_log = Mock()
+    handler = ExecutionHandler(
+        bus=bus,
+        order_manager=order_manager,
+        calibration_log=calibration_log,
+    )
+    mirror_cl_ord_id = to_shadow_mirror_cl_ord_id("c" * 32)
+
+    await handler.on_fill_ws({
+        "data": [{
+            "clOrdId": mirror_cl_ord_id,
+            "ordId": "mirror-1",
+            "instId": "BTC-USDT-SWAP",
+            "fillPx": "100.5",
+            "fillSz": "2",
+            "fee": "0.1",
+            "feeCcy": "USDT",
+            "side": "buy",
+            "uTime": "123456789",
+            "state": state,
+        }]
+    })
+
+    calibration_log.record_fill.assert_called_once_with(
+        cl_ord_id=mirror_cl_ord_id,
+        inst_id="BTC-USDT-SWAP",
+        fill_px=100.5,
+        fill_sz=2.0,
+        fill_ts=123456789,
+        state=state,
+    )
+    calibration_log.record_cancel_ack.assert_not_called()
     assert bus._queue.empty()
 
 
