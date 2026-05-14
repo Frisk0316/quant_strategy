@@ -523,7 +523,7 @@ footer {
       <h1>quant_strategy Repository Architecture Map</h1>
       <p>
         這份文件用直觀方式整理 <code>Frisk0316/quant_strategy</code> 的系統架構、事件流程、策略參數、風控、DB、回測、測試與錯誤處理。
-        它可以作為新 AI session、Codex / Claude Code、或人工 review 前的架構入口。本版新增 PR7 branch/versioning 進度、剩餘 PR roadmap，修正 Backtest Metrics 章節雙欄卡片表格溢出問題，並保留完整 backtest metrics 字典與 funding_carry 截圖數據。
+        它可以作為新 AI session、Codex / Claude Code、或人工 review 前的架構入口。本版更新 PR 進度至 PR14B（2026-05-14）：PR8–PR14B 全部已合併，Section 16 改為完成記錄表 + 剩餘 P0/P1/P2 工作清單。
       </p>
       <div class="badges">
         <span class="badge">Event-driven trading engine</span>
@@ -1436,24 +1436,24 @@ python scripts/run_replay_backtest.py \
 
   <div class="grid cols-4">
     <div class="card">
-      <h3>PR5</h3>
+      <h3>PR5–PR7</h3>
       <p><span class="pill green">完成</span></p>
-      <p>新增 GitHub Actions CI skeleton：<code>ruff check src tests</code> + <code>pytest tests/unit -v</code>。</p>
+      <p>CI skeleton、SWAP ct_val PnL regression tests、branch/versioning policy 納入 AI workflow。</p>
     </div>
     <div class="card">
-      <h3>PR6</h3>
+      <h3>PR8–PR11</h3>
       <p><span class="pill green">完成</span></p>
-      <p>新增 SWAP <code>ct_val</code> PnL regression tests，覆蓋 unrealized、notional、realized PnL。</p>
+      <p>Frontend MIME smoke、backtest artifact schema、pairs hedge-close、funding carry dual-leg 回歸測試全數合併。</p>
     </div>
     <div class="card">
-      <h3>PR7</h3>
-      <p><span class="pill yellow">目前 / 已更新</span></p>
-      <p>新增 <code>docs/BRANCH_VERSIONING.md</code>，並把 branch / PR / squash merge / tag policy 納入 AI workflow。</p>
+      <h3>PR12A–PR13</h3>
+      <p><span class="pill green">完成</span></p>
+      <p>Replay terminal liquidation（設計 + 實作），ADR-0005 Gate 1–4 全部實作並 Accepted。</p>
     </div>
-    <div class="card">
-      <h3>Next</h3>
-      <p><span class="pill blue">PR8</span></p>
-      <p>下一步建議做 frontend MIME smoke test，防止 ES module MIME 錯誤導致 dashboard 空白。</p>
+    <div class="card" style="border-color:#16a34a;background:rgba(22,163,74,0.07)">
+      <h3>PR14B <span style="font-size:13px;color:#16a34a">✓ 最新</span></h3>
+      <p><span class="pill green">完成 / 最新合併</span></p>
+      <p>Shadow mode parity fixes：<code>run_shadow.py</code> 強制 <code>mode=shadow</code>；shadow SimBroker 取得 instrument specs；broker routing tests 新增。</p>
     </div>
   </div>
 
@@ -1484,8 +1484,8 @@ python scripts/run_replay_backtest.py \
 
   <div class="section-title" style="margin-top:24px;">
     <div>
-      <h3 style="margin:0;font-size:24px;">剩餘 PR Roadmap</h3>
-      <p>以下順序根據目前 <code>docs/AI_HANDOFF.md</code>：先補低風險 regression tests，再處理 terminal liquidation、replay validation gates 與 shadow mode。</p>
+      <h3 style="margin:0;font-size:24px;">PR 完成紀錄（PR8–PR14B 全部已合併）</h3>
+      <p>以下為 PR7 governance policy 納入後，所有已完成的 PR 詳細記錄。</p>
     </div>
   </div>
 
@@ -1494,93 +1494,162 @@ python scripts/run_replay_backtest.py \
       <thead>
         <tr>
           <th>PR</th>
+          <th>狀態</th>
           <th>類型</th>
-          <th>目標</th>
-          <th>建議 Branch</th>
-          <th>主要檔案 / 範圍</th>
-          <th>風險</th>
+          <th>完成內容</th>
+          <th>主要檔案</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><b>PR8</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>test</td>
-          <td>Frontend MIME smoke test</td>
-          <td><code>test/frontend-mime-smoke</code></td>
-          <td><code>tests/unit/test_frontend_static_mime.py</code>；必要時 <code>src/okx_quant/api/server.py</code></td>
-          <td><span class="pill green">低</span></td>
+          <td>Frontend MIME smoke test（.js / .jsx ES modules）</td>
+          <td><code>tests/unit/test_frontend_static_mime.py</code></td>
         </tr>
         <tr>
           <td><b>PR9</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>test</td>
-          <td>Backtest artifact schema regression</td>
-          <td><code>test/backtest-artifact-schema</code></td>
-          <td><code>tests/unit/test_backtest_artifact_schema.py</code>；保護 fills/trades/equity schema</td>
-          <td><span class="pill green">低</span></td>
+          <td>ADR-0002 凍結欄位 backtest artifact schema regression</td>
+          <td><code>tests/unit/test_backtest_artifact_schema.py</code></td>
         </tr>
         <tr>
           <td><b>PR10</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>test</td>
-          <td>Pairs trading hedge close regression</td>
-          <td><code>test/pairs-hedge-close</code></td>
+          <td>Pairs trading hedge-close regression coverage</td>
           <td><code>tests/unit/test_pairs_trading_hedge_close.py</code></td>
-          <td><span class="pill yellow">中</span></td>
+        </tr>
+        <tr>
+          <td><b>PR10B</b></td>
+          <td><span class="pill green">完成</span></td>
+          <td>test</td>
+          <td>Pairs exit/stop hedge close metadata；移除 xfail 標記</td>
+          <td>同 PR10 測試檔</td>
         </tr>
         <tr>
           <td><b>PR11</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>test</td>
-          <td>Funding carry dual leg regression</td>
-          <td><code>test/funding-carry-dual-leg</code></td>
+          <td>Funding carry dual-leg regression（signal metadata + PM order alignment）</td>
           <td><code>tests/unit/test_funding_carry_dual_leg.py</code></td>
-          <td><span class="pill yellow">中</span></td>
         </tr>
         <tr>
           <td><b>PR12A</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>design</td>
-          <td>Terminal liquidation design</td>
-          <td><code>design/replay-terminal-liquidation-plan</code></td>
-          <td><code>docs/replay_terminal_liquidation_plan.md</code>；可更新 ADR-0005</td>
-          <td><span class="pill green">低</span></td>
+          <td>Replay terminal liquidation 設計文件（docs-only）</td>
+          <td><code>docs/replay_terminal_liquidation_plan.md</code></td>
         </tr>
         <tr>
           <td><b>PR12B</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>implementation</td>
-          <td>Terminal liquidation implementation</td>
-          <td><code>fix/replay-terminal-liquidation</code></td>
-          <td><code>backtesting/replay.py</code>、<code>scripts/run_replay_backtest.py</code>、artifacts/config/tests</td>
-          <td><span class="pill red">高</span></td>
+          <td>實作 ADR-0005 Gate 1：回測結束時清算所有倉位；CLI <code>--no-liquidate</code> opt-out</td>
+          <td><code>backtesting/replay.py</code>、<code>scripts/run_replay_backtest.py</code></td>
         </tr>
         <tr>
           <td><b>PR13</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>implementation</td>
-          <td>Replay validation gates</td>
-          <td><code>feature/replay-validation-gates</code></td>
-          <td>validation object、fill-rate warning、data coverage gate、funding coverage warning</td>
-          <td><span class="pill red">高</span></td>
+          <td>實作 ADR-0005 Gate 2–4：fill-rate warning、data coverage ≥ 80%、funding coverage；ADR-0005 → Accepted</td>
+          <td>replay validation object、gates 2/3/4</td>
         </tr>
         <tr>
           <td><b>PR14A</b></td>
+          <td><span class="pill green">完成</span></td>
           <td>design</td>
-          <td>Shadow mode parity plan</td>
-          <td><code>design/shadow-mode-parity-plan</code></td>
+          <td>Shadow mode parity 設計計劃文件</td>
           <td><code>docs/shadow_mode_parity_plan.md</code></td>
-          <td><span class="pill yellow">中</span></td>
+        </tr>
+        <tr style="background:rgba(22,163,74,0.07)">
+          <td><b>PR14B</b></td>
+          <td><span class="pill green">完成 ✓ 最新</span></td>
+          <td>implementation</td>
+          <td><b>Shadow mode parity fixes：</b><code>run_shadow.py</code> 強制 <code>mode=shadow</code>；shadow primary SimBroker 取得 instrument specs；broker routing tests 新增</td>
+          <td><code>execution/broker.py</code>、<code>run_shadow.py</code>、tests</td>
+        </tr>
+        <tr style="background:rgba(99,102,241,0.06)">
+          <td colspan="5" style="font-size:12px;color:#555;padding:6px 12px">
+            ▼ PR14B 後已 commit 至 main（尚未正式建 PR）
+          </td>
         </tr>
         <tr>
-          <td><b>PR14B</b></td>
-          <td>implementation</td>
-          <td>Shadow mode SimBroker vs OKX demo gap fix</td>
-          <td><code>fix/shadow-mode-parity</code></td>
-          <td><code>execution/broker.py</code>、<code>engine.py</code>、calibration logs、tests</td>
-          <td><span class="pill red">高</span></td>
+          <td><b>fca239f</b></td>
+          <td><span class="pill green">committed</span></td>
+          <td>security</td>
+          <td>P0 Web 安全強化：API key auth、WebSocket auth、Swagger UI 關閉、CORS allowlist、Docker port binding</td>
+          <td><code>src/okx_quant/api/server.py</code></td>
+        </tr>
+        <tr>
+          <td><b>ed283d7<br>6d1fd41</b></td>
+          <td><span class="pill green">committed</span></td>
+          <td>fix</td>
+          <td>OHLCV rotation 回測 UI 修正（exit code、equity scale、drawdown、進度條、warmup 透明度）</td>
+          <td>frontend + backtest scripts</td>
+        </tr>
+        <tr>
+          <td><b>9389c8f</b></td>
+          <td><span class="pill green">committed</span></td>
+          <td>feat</td>
+          <td>Daily winner + OHLCV rotation 前端接線；routes artifact fallback 修正；新策略接入規範；本專案架構文件 HTML</td>
+          <td><code>frontend/</code>、<code>routes_backtest.py</code>、<code>docs/</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">
+    <div>
+      <h3 style="margin:0;font-size:24px;">剩餘待完成工作（PR14B 後）</h3>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>優先級</th><th>項目</th><th>狀態</th><th>說明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="pill red">P0</span></td>
+          <td>API / CORS / WS auth 部署 smoke test</td>
+          <td><span class="pill yellow">待執行</span></td>
+          <td>AWS 上線前必須完成；確認 API_KEY、ALLOWED_ORIGINS、WebSocket handshake 在 Docker 環境全部正常</td>
+        </tr>
+        <tr>
+          <td><span class="pill yellow">P1</span></td>
+          <td>下載 1m K 線資料</td>
+          <td><span class="pill yellow">待執行</span></td>
+          <td>BTC / ETH / SOL 1m candles 缺失；執行 <code>scripts/download_okx_data.py --bar 1m</code> 後才能跑 1m OHLCV rotation 回測</td>
+        </tr>
+        <tr>
+          <td><span class="pill blue">P2</span></td>
+          <td>審查 pairs position-aware close sizing 設計</td>
+          <td><span class="pill yellow">pending review</span></td>
+          <td>設計文件：<code>docs/pairs_position_aware_close_sizing_plan.md</code>；Claude 審查後交 Codex 實作</td>
+        </tr>
+        <tr>
+          <td><span class="pill blue">P2</span></td>
+          <td>實作 pairs position-aware close sizing</td>
+          <td><span class="pill yellow">設計完成，待實作</span></td>
+          <td>出場/停損訂單大小改由 PositionLedger 現有倉位決定，而非 signal sizing</td>
+        </tr>
+        <tr>
+          <td><span class="pill blue">P2</span></td>
+          <td>SimBroker fill event gap</td>
+          <td><span class="pill yellow">known bug</span></td>
+          <td><code>SimBroker.submit()</code> 未發送模擬 fill event；阻礙統一 backtest/live 引擎路徑</td>
         </tr>
       </tbody>
     </table>
   </div>
 
   <div class="callout blue" style="margin-top:16px;">
-    <b>建議下一步：</b>Codex session limit 後，下一個 session 請先做 PR8：frontend MIME smoke test。
-    這是低風險、高保護力的 regression test，且不應觸碰 strategies / portfolio / risk / replay。
+    <b>目前狀態（2026-05-14）：</b>PR14B 已合併，main branch 整合完畢，228/228 tests pass。
+    建議下一步：① 執行 P0 部署 smoke test（AWS 上線前必做）；② 下載 1m K 線資料；③ 審查並實作 pairs position-aware close sizing。
   </div>
 
   <div class="section-title" style="margin-top:24px;">
