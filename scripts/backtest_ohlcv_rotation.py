@@ -29,6 +29,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
@@ -61,12 +63,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ema-window", type=int, default=60)
     parser.add_argument("--benchmark-ema-window", type=int, default=240)
     parser.add_argument("--atr-window", type=int, default=60)
-    parser.add_argument("--min-volume-z", type=float, default=1.0)
+    parser.add_argument(
+        "--min-volume-z",
+        type=float,
+        default=1.0,
+        help=(
+            "Diagnostic volume-z threshold reported in backtest metrics. "
+            "Not a hard entry filter; volume affects selection via composite score weight."
+        ),
+    )
     parser.add_argument("--atr-stop-multiple", type=float, default=2.0)
     parser.add_argument("--max-holding-minutes", type=int, default=480)
     parser.add_argument("--max-position-weight", type=float, default=0.35)
     parser.add_argument("--fee-bps", type=float, default=2.0)
     parser.add_argument("--slippage-bps", type=float, default=2.0)
+    parser.add_argument("--initial-equity", type=float, default=5000.0)
     parser.add_argument("--output-dir", default="results/ohlcv_rotation")
 
     return parser.parse_args()
@@ -134,7 +145,33 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    result.equity_curve.to_csv(out_dir / "equity_curve.csv", header=["equity"])
+    import pandas as _pd
+
+    equity_usd = result.equity_curve * args.initial_equity
+    returns = equity_usd.pct_change().fillna(0.0)
+    rolling_max = equity_usd.cummax()
+    denominator = rolling_max.where(rolling_max != 0)
+    drawdown = (equity_usd - rolling_max) / denominator
+    drawdown = drawdown.fillna(0.0)
+
+    equity_df = _pd.DataFrame({"equity": equity_usd, "drawdown": drawdown})
+    equity_df.index.name = "ts"
+    equity_df.to_csv(out_dir / "equity_curve.csv")
+
+    returns_df = _pd.DataFrame({"return": returns})
+    returns_df["log_return"] = np.log1p(returns)
+    returns_df.index.name = "ts"
+    returns_df.to_csv(out_dir / "returns.csv")
+
+    drawdown_df = _pd.DataFrame({
+        "equity": equity_usd,
+        "running_max_equity": rolling_max,
+        "drawdown": drawdown,
+        "drawdown_pct": drawdown,
+    })
+    drawdown_df.index.name = "ts"
+    drawdown_df.to_csv(out_dir / "drawdown.csv")
+
     result.target_weights.to_csv(out_dir / "target_weights.csv")
     result.positions.to_csv(out_dir / "positions.csv")
     result.trades.to_csv(out_dir / "trades.csv", index=False)

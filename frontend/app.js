@@ -30,6 +30,41 @@ function NavGlyph({ kind }) {
   }
 }
 
+function BacktestNotifications({ notifications, onDismiss, onView }) {
+  if (!notifications.length) return null;
+  return html`
+    <div style=${{ position: "fixed", top: 16, right: 16, zIndex: 1000, display: "flex", flexDirection: "column", gap: 8 }}>
+      ${notifications.map((n) => html`
+        <div key=${n.job_id} style=${{
+          background: "var(--surface)",
+          border: `1px solid ${n.status === "error" ? "var(--loss)" : "var(--accent)"}`,
+          borderRadius: "var(--radius)",
+          padding: "14px 16px",
+          minWidth: 280,
+          maxWidth: 380,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
+        }}>
+          <div class="row" style=${{ alignItems: "flex-start", gap: 8 }}>
+            <div style=${{ flex: 1 }}>
+              <div style=${{ fontWeight: 600, fontSize: 13, color: n.status === "error" ? "var(--loss)" : "var(--text)" }}>
+                ${n.status === "error" ? "Backtest failed" : "Backtest complete"}
+              </div>
+              <div class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)", marginTop: 2 }}>${n.run_id}</div>
+              ${n.message && html`<div style=${{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>${n.message}</div>`}
+            </div>
+            <button class="btn ghost sm" style=${{ padding: "2px 6px", fontSize: 14, lineHeight: 1 }} onClick=${() => onDismiss(n.job_id)}>×</button>
+          </div>
+          ${n.status === "done" && n.run_id && html`
+            <button class="btn primary sm" style=${{ marginTop: 10, width: "100%" }} onClick=${() => onView(n.run_id)}>
+              View Result
+            </button>
+          `}
+        </div>
+      `)}
+    </div>
+  `;
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [view, setView] = useAppState("backtest");
@@ -37,6 +72,9 @@ function App() {
   const [allRuns, setAllRuns] = useAppState([]);
   const [mode, setMode] = useAppState("mock");
   const [liveData, setLiveData] = useAppState(null);
+  // Notifications for completed/failed background backtests
+  const [backtestNotifs, setBacktestNotifs] = useAppState([]);
+  const seenJobStates = useAppEffect(() => {}, []); // use ref via closure
 
   const refreshRuns = () => {
     window.API.fetchRuns()
@@ -46,6 +84,45 @@ function App() {
 
   useAppEffect(() => {
     refreshRuns();
+  }, []);
+
+  // Poll background jobs so notifications survive page refresh
+  useAppEffect(() => {
+    const seen = {};
+    let iv = null;
+    function poll() {
+      if (!window.API.fetchBacktestJobs) return;
+      window.API.fetchBacktestJobs().then((jobs) => {
+        const hasRunning = (jobs || []).some((j) => j.status === "running");
+        for (const job of (jobs || [])) {
+          const prev = seen[job.job_id];
+          if (!prev && job.status === "running") {
+            seen[job.job_id] = job.status;
+            continue;
+          }
+          if (prev === "running" && (job.status === "done" || job.status === "error")) {
+            seen[job.job_id] = job.status;
+            setBacktestNotifs((ns) => {
+              if (ns.find((n) => n.job_id === job.job_id)) return ns;
+              return [...ns, { job_id: job.job_id, run_id: job.run_id, status: job.status, message: job.message }];
+            });
+            refreshRuns();
+          }
+          if (!prev) seen[job.job_id] = job.status;
+        }
+        // If nothing running, slow down polling; if running, keep 3s
+        if (!hasRunning && iv) {
+          clearInterval(iv);
+          iv = setInterval(poll, 15000);
+        } else if (hasRunning && iv) {
+          clearInterval(iv);
+          iv = setInterval(poll, 3000);
+        }
+      }).catch(() => {});
+    }
+    iv = setInterval(poll, 5000);
+    poll();
+    return () => { if (iv) clearInterval(iv); };
   }, []);
 
   useAppEffect(() => {
@@ -104,7 +181,19 @@ function App() {
   };
   const selectedRunSummary = allRuns.find((r) => r.run_id === selectedRunId);
 
+  const dismissNotif = (jobId) => setBacktestNotifs((ns) => ns.filter((n) => n.job_id !== jobId));
+  const viewResult = (runId) => {
+    setSelectedRunId(runId);
+    setView("backtest");
+    dismissNotif(backtestNotifs.find((n) => n.run_id === runId)?.job_id);
+  };
+
   return html`
+    <${BacktestNotifications}
+      notifications=${backtestNotifs}
+      onDismiss=${dismissNotif}
+      onView=${viewResult}
+    />
     <div class="app">
       <aside class="app-side">
         <div class="brand">

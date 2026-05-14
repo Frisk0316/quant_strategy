@@ -58,11 +58,27 @@ def _load_candles_parquet(
     start: Optional[str],
     end: Optional[str],
 ) -> pd.DataFrame:
-    path = Path(data_dir) / inst_id.replace("-", "_") / f"candles_{bar}.parquet"
+    inst_dir = Path(data_dir) / inst_id.replace("-", "_")
+    path = inst_dir / f"candles_{bar}.parquet"
     if not path.exists():
+        # If the requested bar can be derived by aggregating 1m data, try that first.
+        base_path = inst_dir / "candles_1m.parquet"
+        if _can_derive_from_1m(bar) and base_path.exists():
+            df_1m = pq.read_table(base_path).to_pandas()
+            df_1m["ts"] = pd.to_datetime(df_1m["ts"])
+            df_1m = df_1m.set_index("ts").sort_index()
+            if start:
+                df_1m = df_1m[df_1m.index >= pd.Timestamp(start)]
+            if end:
+                df_1m = df_1m[df_1m.index < pd.Timestamp(end)]
+            return _aggregate_1m_to_bar(df_1m, bar)
+        available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
+        hint = (
+            f"Available bar files: {available}" if available
+            else f"Run: python scripts/download_okx_data.py --inst {inst_id} --bar {bar}"
+        )
         raise FileNotFoundError(
-            f"Candle data not found: {path}\n"
-            f"Run: python scripts/download_okx_data.py --inst {inst_id} --bar {bar}"
+            f"Candle data not found: {path}\n{hint}"
         )
     df = pq.read_table(path).to_pandas()
     df["ts"] = pd.to_datetime(df["ts"])

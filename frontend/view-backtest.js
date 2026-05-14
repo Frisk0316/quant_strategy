@@ -306,7 +306,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
             : eqValues.length > 1
-              ? html`<${LineChart}
+              ? html`<div class="chart-wrap"><${LineChart}
                   series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
                   height=${220}
                   mode="area"
@@ -314,7 +314,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                   xTickFormatter=${chartDateTick}
                   tooltipLabelFormatter=${chartDateTooltip}
                   tooltipValueFormatter=${(v) => signedUsd(v)}
-                />`
+                /></div>`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
       </div>
@@ -330,7 +330,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
-            ? html`<${LineChart}
+            ? html`<div class="chart-wrap"><${LineChart}
                 series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
                 height=${140}
                 mode="area"
@@ -338,7 +338,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 xTickFormatter=${chartDateTick}
                 tooltipLabelFormatter=${chartDateTooltip}
                 tooltipValueFormatter=${(v) => pct(v)}
-              />`
+              /></div>`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }
       </div>

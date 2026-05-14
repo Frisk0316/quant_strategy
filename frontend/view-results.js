@@ -210,7 +210,7 @@ function OverviewView({ tweaks, selectedRunId, setSelectedRunId }) {
             <span class="chip">N = ${equity.length.toLocaleString()}</span>
           </div>
         </div>
-        <${LineChart} series=${[{ values: equityValues.length ? equityValues : [0], color: "var(--accent)" }]} height=${260} mode=${equityMode} />
+        <div class="chart-wrap"><${LineChart} series=${[{ values: equityValues.length ? equityValues : [0], color: "var(--accent)" }]} height=${260} mode=${equityMode} /></div>
       </div>
 
       <div class="row" style=${{ gap: "var(--gap-lg)", alignItems: "flex-start" }}>
@@ -222,7 +222,7 @@ function OverviewView({ tweaks, selectedRunId, setSelectedRunId }) {
             </div>
             <span class="chip loss">Max ${fmt.pct(metrics.max_drawdown)}</span>
           </div>
-          <${LineChart} series=${[{ values: ddValues.length ? ddValues : [0], color: "var(--loss)" }]} height=${180} mode="area" />
+          <div class="chart-wrap"><${LineChart} series=${[{ values: ddValues.length ? ddValues : [0], color: "var(--loss)" }]} height=${180} mode="area" /></div>
         </div>
         <div class="card" style=${{ flex: 1 }}>
           <div class="card-h">
@@ -309,10 +309,10 @@ function WalkForwardView({ selectedRunId }) {
             <div class="card-sub">per validation window</div>
           </div>
         </div>
-        <${LineChart} series=${[
+        <div class="chart-wrap"><${LineChart} series=${[
           { values: isS, color: "var(--text-subtle)" },
           { values: oos, color: "var(--accent)" },
-        ]} height=${200} />
+        ]} height=${200} /></div>
       </div>
 
       <div class="card">
@@ -441,7 +441,7 @@ function CPCVView({ selectedRunId }) {
               <div class="card-sub">over CPCV combinations</div>
             </div>
           </div>
-          <${HistogramChart} values=${allS} bins=${12} height=${200} color="var(--accent)" />
+          <div class="chart-wrap"><${HistogramChart} values=${allS} bins=${12} height=${200} color="var(--accent)" /></div>
           <div class="field-hint" style=${{ marginTop: 8 }}>mean = ${fmt.num(cpcv.mean_oos_sharpe, 2)} · std = ${fmt.num(cpcv.std_oos_sharpe, 2)}</div>
         </div>
       </div>

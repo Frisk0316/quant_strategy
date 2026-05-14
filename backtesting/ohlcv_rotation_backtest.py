@@ -94,6 +94,37 @@ BARS_PER_YEAR = {
 }
 
 
+def _safe_mean_bool(mask: pd.Series | pd.DataFrame) -> float:
+    if mask.empty:
+        return 0.0
+    value = mask.astype(bool).mean()
+    if isinstance(value, pd.Series):
+        value = value.mean()
+    return float(value) if pd.notna(value) else 0.0
+
+
+def _pct_true(mask: pd.Series | pd.DataFrame, denominator: pd.Series | pd.DataFrame) -> float:
+    if mask.empty or denominator.empty:
+        return 0.0
+    aligned_mask, aligned_denominator = mask.align(denominator, join="inner", axis=None)
+    denom = int(aligned_denominator.astype(bool).sum().sum())
+    if denom <= 0:
+        return 0.0
+    numerator = int((aligned_mask.astype(bool) & aligned_denominator.astype(bool)).sum().sum())
+    return float(numerator / denom)
+
+
+def _bar_any_pct(mask: pd.DataFrame, denominator: pd.Series) -> float:
+    if mask.empty or denominator.empty:
+        return 0.0
+    aligned_mask = mask.reindex(denominator.index).fillna(False)
+    active = denominator.astype(bool)
+    denom = int(active.sum())
+    if denom <= 0:
+        return 0.0
+    return float((aligned_mask.any(axis=1) & active).sum() / denom)
+
+
 def _annualization_inputs(returns: pd.Series, bar: str | None = None) -> tuple[float, float]:
     """Return (ann_factor_for_total_return, bars_per_year) from timestamps when possible."""
     if len(returns) > 1 and isinstance(returns.index, pd.DatetimeIndex):
@@ -173,68 +204,51 @@ def extract_trades_from_weights(
     Entry: weight transitions 0 → positive
     Exit:  weight transitions positive → 0
     """
-    records = []
+    _cols = ["inst_id", "entry_ts", "exit_ts", "entry_price", "exit_price", "pnl", "holding_minutes"]
+    if target_weights.empty:
+        return pd.DataFrame(columns=_cols)
+
+    # Pre-align close prices to the rebalance index to avoid per-row .loc lookups.
+    aligned = close_panel.reindex(target_weights.index, method="ffill")
+
     prev = pd.Series(0.0, index=target_weights.columns)
+    open_entries: dict[str, tuple] = {}  # inst_id → (entry_ts, entry_price)
+    records: list[dict] = []
 
-    open_entries: dict[str, dict] = {}  # inst_id → {entry_ts, entry_price}
+    columns = list(target_weights.columns)
+    for ts, curr in target_weights.iterrows():
+        closes_at_ts = aligned.loc[ts] if ts in aligned.index else pd.Series(np.nan, index=target_weights.columns)
+        for col_idx, inst in enumerate(columns):
+            p, c = prev.iat[col_idx], curr.iat[col_idx]
+            ep = closes_at_ts.get(inst, np.nan)
 
-    all_ts = target_weights.index
-    for ts in all_ts:
-        curr = target_weights.loc[ts]
-
-        for inst in target_weights.columns:
-            p = prev.get(inst, 0.0)
-            c = curr.get(inst, 0.0)
-
-            # Entry
             if p == 0.0 and c > 0.0:
-                ep = close_panel.loc[ts, inst] if ts in close_panel.index else np.nan
-                open_entries[inst] = {"entry_ts": ts, "entry_price": ep}
-
-            # Exit
+                open_entries[inst] = (ts, ep)
             elif p > 0.0 and c == 0.0 and inst in open_entries:
-                ep_data = open_entries.pop(inst)
-                xp = close_panel.loc[ts, inst] if ts in close_panel.index else np.nan
-                entry_p = ep_data["entry_price"]
-                pnl = (xp - entry_p) / entry_p if (not np.isnan(xp) and not np.isnan(entry_p) and entry_p != 0) else np.nan
-                hold_min = int((ts - ep_data["entry_ts"]).total_seconds() / 60)
-                records.append(
-                    {
-                        "inst_id": inst,
-                        "entry_ts": ep_data["entry_ts"],
-                        "exit_ts": ts,
-                        "entry_price": entry_p,
-                        "exit_price": xp,
-                        "pnl": pnl,
-                        "holding_minutes": hold_min,
-                    }
-                )
-
-        prev = curr.copy()
+                ets, epr = open_entries.pop(inst)
+                pnl = (ep - epr) / epr if (np.isfinite(ep) and np.isfinite(epr) and epr != 0) else np.nan
+                records.append({
+                    "inst_id": inst, "entry_ts": ets, "exit_ts": ts,
+                    "entry_price": epr, "exit_price": ep, "pnl": pnl,
+                    "holding_minutes": int((ts - ets).total_seconds() / 60),
+                })
+        prev = curr
 
     # Close any still-open positions at end
-    for inst, ep_data in open_entries.items():
-        last_ts = all_ts[-1]
-        xp = close_panel.loc[last_ts, inst] if last_ts in close_panel.index else np.nan
-        entry_p = ep_data["entry_price"]
-        pnl = (xp - entry_p) / entry_p if (not np.isnan(xp) and not np.isnan(entry_p) and entry_p != 0) else np.nan
-        hold_min = int((last_ts - ep_data["entry_ts"]).total_seconds() / 60)
-        records.append(
-            {
-                "inst_id": inst,
-                "entry_ts": ep_data["entry_ts"],
-                "exit_ts": last_ts,
-                "entry_price": entry_p,
-                "exit_price": xp,
-                "pnl": pnl,
-                "holding_minutes": hold_min,
-            }
-        )
+    if open_entries:
+        last_ts = target_weights.index[-1]
+        last_closes = aligned.loc[last_ts] if last_ts in aligned.index else pd.Series(np.nan, index=target_weights.columns)
+        for inst, (ets, epr) in open_entries.items():
+            ep = last_closes.get(inst, np.nan)
+            pnl = (ep - epr) / epr if (np.isfinite(ep) and np.isfinite(epr) and epr != 0) else np.nan
+            records.append({
+                "inst_id": inst, "entry_ts": ets, "exit_ts": last_ts,
+                "entry_price": epr, "exit_price": ep, "pnl": pnl,
+                "holding_minutes": int((last_ts - ets).total_seconds() / 60),
+            })
 
     if not records:
-        return pd.DataFrame(
-            columns=["inst_id", "entry_ts", "exit_ts", "entry_price", "exit_price", "pnl", "holding_minutes"]
-        )
+        return pd.DataFrame(columns=_cols)
     return pd.DataFrame(records)
 
 
@@ -315,6 +329,128 @@ def run_ohlcv_rotation_backtest(
 
     # --- metrics ---
     metrics = compute_metrics(equity_curve, portfolio_returns, target_weights_1m, trades, params.bar)
+
+    # Warm-up bars: bars before first non-NaN composite score
+    composite_score = scores.mean(axis=1) if not scores.empty else pd.Series(dtype=float)
+    first_valid = composite_score.first_valid_index()
+    warmup_bars = int(close.index.get_loc(first_valid)) if first_valid is not None and first_valid in close.index else len(close)
+    data_coverage_pct = float(close.notna().all(axis=1).mean())
+    metrics["warmup_bars"] = warmup_bars
+    metrics["data_coverage_pct"] = data_coverage_pct
+    metrics["total_bars"] = len(close)
+
+    scores_at_reb = scores.reindex(reb_ts) if len(reb_ts) else pd.DataFrame(columns=scores.columns)
+    score_available_all = scores.notna().any(axis=1) if not scores.empty else pd.Series(dtype=bool)
+    score_available_reb = (
+        scores_at_reb.notna().any(axis=1) if not scores_at_reb.empty else pd.Series(dtype=bool)
+    )
+    raw_active = raw_weights.abs().sum(axis=1) > 0 if not raw_weights.empty else pd.Series(dtype=bool)
+    target_active = (
+        target_weights_reb.abs().sum(axis=1) > 0
+        if not target_weights_reb.empty else pd.Series(dtype=bool)
+    )
+    position_active = (
+        target_weights_1m.abs().sum(axis=1) > 0
+        if not target_weights_1m.empty else pd.Series(dtype=bool)
+    )
+    regime_reb = regime.reindex(reb_ts).fillna(False) if len(reb_ts) else pd.Series(dtype=bool)
+
+    valid_score = scores_at_reb.notna()
+    regime_active_reb = regime_reb.reindex(scores_at_reb.index).fillna(False).astype(bool)
+    opportunity = valid_score & pd.DataFrame(
+        np.repeat(regime_active_reb.to_numpy()[:, None], len(scores_at_reb.columns), axis=1),
+        index=scores_at_reb.index,
+        columns=scores_at_reb.columns,
+    )
+    row_score = scores_at_reb.copy()
+    ranks = row_score.rank(axis=1, ascending=False, method="min")
+    top_k_pass = ranks <= params.top_k
+    rf_pass = features["return_fast"].reindex(reb_ts) > 0 if len(reb_ts) else pd.DataFrame()
+    rs_pass = features["return_slow"].reindex(reb_ts) > 0 if len(reb_ts) else pd.DataFrame()
+    vol_threshold_pass = (
+        features["volume_z"].reindex(reb_ts) > params.min_volume_z
+        if len(reb_ts) else pd.DataFrame()
+    )
+    close_reb = features["close"].reindex(reb_ts) if len(reb_ts) else pd.DataFrame()
+    rh_reb = features["rolling_high"].reindex(reb_ts) if len(reb_ts) else pd.DataFrame()
+    ema_reb = features["ema"].reindex(reb_ts) if len(reb_ts) else pd.DataFrame()
+    breakout_pass = (close_reb > rh_reb) & (close_reb > ema_reb)
+    all_entry_filters = top_k_pass & rf_pass & rs_pass & breakout_pass
+
+    opportunity_bars = regime_reb.astype(bool) & score_available_reb.reindex(regime_reb.index).fillna(False)
+    active_rebalance_count = int(regime_reb.sum()) if len(regime_reb) else 0
+    n_trades = int(metrics.get("number_of_trades", 0) or 0)
+    expected_min_trades = int(max(5, math.ceil(active_rebalance_count * 0.01))) if active_rebalance_count >= 100 else 0
+    low_trade_warning = bool(active_rebalance_count >= 100 and n_trades < expected_min_trades)
+
+    bottleneck_candidates = {
+        "regime_active_pct": _safe_mean_bool(regime_reb),
+        "score_coverage_at_reb_pct": _safe_mean_bool(score_available_reb),
+        "fast_return_filter_bar_pct": _bar_any_pct(rf_pass, opportunity_bars),
+        "slow_return_filter_bar_pct": _bar_any_pct(rs_pass, opportunity_bars),
+        "breakout_filter_bar_pct": _bar_any_pct(breakout_pass, opportunity_bars),
+        "all_entry_filters_bar_pct": _bar_any_pct(all_entry_filters, opportunity_bars),
+    }
+    volume_threshold_bar_pct = _bar_any_pct(vol_threshold_pass, opportunity_bars)
+    primary_bottleneck = min(bottleneck_candidates, key=bottleneck_candidates.get)
+
+    metrics["rebalance_count"] = int(len(target_weights_reb))
+    metrics["score_coverage_all_bars_pct"] = _safe_mean_bool(score_available_all)
+    metrics["score_coverage_at_reb_pct"] = _safe_mean_bool(score_available_reb)
+    metrics["score_coverage_pct"] = metrics["score_coverage_at_reb_pct"]
+    metrics["score_valid_instruments_mean_at_reb"] = (
+        float(valid_score.sum(axis=1).mean()) if not valid_score.empty else 0.0
+    )
+    metrics["score_valid_instrument_opportunity_pct"] = (
+        float(valid_score.sum().sum() / valid_score.size) if valid_score.size else 0.0
+    )
+    metrics["regime_active_bars"] = active_rebalance_count
+    metrics["regime_active_pct"] = bottleneck_candidates["regime_active_pct"]
+    metrics["top_k_rank_pass_pct"] = _pct_true(top_k_pass, opportunity)
+    metrics["fast_return_filter_pass_pct"] = _pct_true(rf_pass, opportunity)
+    metrics["slow_return_filter_pass_pct"] = _pct_true(rs_pass, opportunity)
+    metrics["volume_hard_filter_enabled"] = False
+    metrics["vol_threshold_pass_pct"] = _pct_true(vol_threshold_pass, opportunity)
+    metrics["vol_filter_pass_pct"] = metrics["vol_threshold_pass_pct"]
+    metrics["breakout_filter_pass_pct"] = _pct_true(breakout_pass, opportunity)
+    metrics["all_entry_filters_pass_pct"] = _pct_true(all_entry_filters, opportunity)
+    metrics["fast_return_filter_bar_pct"] = bottleneck_candidates["fast_return_filter_bar_pct"]
+    metrics["slow_return_filter_bar_pct"] = bottleneck_candidates["slow_return_filter_bar_pct"]
+    metrics["vol_threshold_bar_pct"] = volume_threshold_bar_pct
+    metrics["vol_filter_bar_pct"] = metrics["vol_threshold_bar_pct"]
+    metrics["breakout_filter_bar_pct"] = bottleneck_candidates["breakout_filter_bar_pct"]
+    metrics["all_entry_filters_bar_pct"] = bottleneck_candidates["all_entry_filters_bar_pct"]
+    metrics["entry_diagnostic_primary_bottleneck"] = primary_bottleneck
+    metrics["raw_entry_signal_bars"] = int(raw_active.sum()) if len(raw_active) else 0
+    metrics["raw_entry_signal_pct"] = float(raw_active.mean()) if len(raw_active) else 0.0
+    metrics["target_active_rebalance_bars"] = int(target_active.sum()) if len(target_active) else 0
+    metrics["target_active_rebalance_pct"] = float(target_active.mean()) if len(target_active) else 0.0
+    metrics["position_active_bars"] = int(position_active.sum()) if len(position_active) else 0
+    metrics["position_active_pct"] = float(position_active.mean()) if len(position_active) else 0.0
+    metrics["trades_per_100_active_rebalances"] = (
+        float(n_trades / active_rebalance_count * 100) if active_rebalance_count else 0.0
+    )
+    metrics["low_trade_warning"] = low_trade_warning
+    metrics["low_trade_threshold_trades"] = expected_min_trades
+    if low_trade_warning:
+        metrics["low_trade_warning_reason"] = (
+            f"{n_trades} trades below diagnostic threshold "
+            f"{expected_min_trades} across {active_rebalance_count} active rebalances"
+        )
+        metrics["low_trade_primary_bottleneck"] = primary_bottleneck
+    if not trades.empty:
+        metrics["first_trade_ts"] = str(trades["entry_ts"].min())
+        metrics["last_trade_ts"] = str(trades["exit_ts"].max())
+    elif metrics["regime_active_bars"] == 0:
+        metrics["no_trade_reason"] = "benchmark_regime_filter_blocked_all_rebalances"
+    elif metrics["score_coverage_at_reb_pct"] == 0.0:
+        metrics["no_trade_reason"] = "insufficient_feature_score_coverage"
+    elif metrics["raw_entry_signal_bars"] == 0:
+        metrics["no_trade_reason"] = "entry_filters_blocked_all_rebalances"
+    elif metrics["target_active_rebalance_bars"] == 0:
+        metrics["no_trade_reason"] = "exit_rules_removed_all_raw_entries"
+    else:
+        metrics["no_trade_reason"] = "no_closed_round_trips_detected"
 
     return BacktestResult(
         equity_curve=equity_curve,

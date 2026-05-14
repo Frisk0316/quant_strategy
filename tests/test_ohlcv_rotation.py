@@ -326,19 +326,22 @@ class TestEntryRules:
         # During downtrend, return_fast < 0 → no entries
         assert (weights == 0).all().all(), "Negative return_fast should block entries"
 
-    def test_volume_z_filter(self) -> None:
+    def test_volume_z_threshold_is_not_a_hard_entry_filter(self) -> None:
         n = 500
         idx = _make_index(n)
         rng = np.random.default_rng(9)
-        noise = rng.normal(0, 0.001, n)
-        close_a = 100 * np.exp(np.cumsum(np.full(n, 0.003) + noise))
-        close = pd.DataFrame({"A": close_a}, index=idx)
+        noise_a = rng.normal(0, 0.0005, n)
+        noise_b = rng.normal(0, 0.0005, n)
+        close_a = 100 * np.exp(np.cumsum(np.full(n, 0.004) + noise_a))
+        close_b = 100 * np.exp(np.cumsum(np.full(n, 0.001) + noise_b))
+        close = pd.DataFrame({"A": close_a, "B": close_b}, index=idx)
         high = close * 1.002
         low = close * 0.998
         vol = pd.DataFrame({"A": 100.0}, index=idx)  # constant → z-score = 0
-        params = _minimal_params(["A"])
+        vol = pd.DataFrame({"A": 100.0, "B": 100.0}, index=idx)  # constant z-score = 0
+        params = _minimal_params(["A", "B"])
         params.top_k = 1
-        params.min_volume_z = 1.0  # strict filter
+        params.min_volume_z = 10.0
 
         features = build_feature_panel(close, high, low, vol, params)
         features["close"] = close
@@ -346,7 +349,9 @@ class TestEntryRules:
         regime = pd.Series(True, index=idx)
         reb_ts = pd.DatetimeIndex(idx[params.lookback_slow_minutes::params.rebalance_minutes])
         weights = generate_target_weights(scores, features, regime, params, reb_ts)
-        assert (weights == 0).all().all(), "Constant volume (z=0) should be blocked by min_volume_z=1.0"
+        assert (weights["A"] > 0).any(), (
+            "volume_z threshold should not hard-block entries; volume should affect ranking via score"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +585,44 @@ class TestIntegration:
         assert not np.isinf(result.equity_curve.values).any(), "equity_curve must not contain inf"
         assert "sharpe" in result.metrics
         assert "total_return" in result.metrics
+
+    def test_backtest_metrics_include_rebalance_aligned_entry_diagnostics(self) -> None:
+        idx = _make_index(800)
+        inst_ids = ["BTC", "ETH", "SOL"]
+        dfs = _make_ohlcv(idx, inst_ids)
+        params = _minimal_params(inst_ids)
+        params.min_volume_z = 0.0
+
+        result = run_ohlcv_rotation_backtest(dfs, params)
+        metrics = result.metrics
+
+        close = pd.DataFrame({inst: dfs[inst]["close"] for inst in inst_ids})
+        high = pd.DataFrame({inst: dfs[inst]["high"] for inst in inst_ids})
+        low = pd.DataFrame({inst: dfs[inst]["low"] for inst in inst_ids})
+        vol = pd.DataFrame({inst: dfs[inst]["vol"] for inst in inst_ids})
+        features = build_feature_panel(close, high, low, vol, params)
+        features["close"] = close
+        scores = compute_cross_sectional_scores(features, params)
+        reb_ts = idx[idx.minute % params.rebalance_minutes == 0]
+        expected_score_coverage = float(scores.reindex(reb_ts).notna().any(axis=1).mean())
+
+        assert metrics["score_coverage_at_reb_pct"] == pytest.approx(expected_score_coverage)
+        assert metrics["score_coverage_pct"] == pytest.approx(expected_score_coverage)
+        for key in [
+            "fast_return_filter_pass_pct",
+            "slow_return_filter_pass_pct",
+            "vol_filter_pass_pct",
+            "breakout_filter_pass_pct",
+            "all_entry_filters_pass_pct",
+            "fast_return_filter_bar_pct",
+            "slow_return_filter_bar_pct",
+            "vol_filter_bar_pct",
+            "breakout_filter_bar_pct",
+            "all_entry_filters_bar_pct",
+        ]:
+            assert 0.0 <= metrics[key] <= 1.0
+        assert "low_trade_warning" in metrics
+        assert "entry_diagnostic_primary_bottleneck" in metrics
 
     def test_missing_benchmark_raises(self) -> None:
         idx = _make_index(200)

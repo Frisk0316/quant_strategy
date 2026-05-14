@@ -95,6 +95,28 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       .catch(() => setInstruments([]));
   }, []);
 
+  // Reconnect to any in-progress job after page refresh
+  useConfigEffect(() => {
+    const savedJobId = localStorage.getItem("activeBacktestJobId");
+    if (!savedJobId) return;
+    window.API.fetchBacktestRunStatus(savedJobId).then((s) => {
+      if (s && s.status === "running") {
+        setRunJob(s);
+        const iv = setInterval(() => {
+          window.API.fetchBacktestRunStatus(savedJobId).then((st) => {
+            setRunJob(st);
+            if (st.status === "done" || st.status === "error") {
+              clearInterval(iv);
+              localStorage.removeItem("activeBacktestJobId");
+            }
+          }).catch(() => { clearInterval(iv); localStorage.removeItem("activeBacktestJobId"); });
+        }, 2000);
+      } else {
+        localStorage.removeItem("activeBacktestJobId");
+      }
+    }).catch(() => localStorage.removeItem("activeBacktestJobId"));
+  }, []);
+
   useConfigEffect(() => {
     if (startMin && start < startMin) setStart(startMin);
   }, [startMin, start]);
@@ -123,17 +145,23 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
       top_k: isRotation ? rotTopK : undefined,
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
+      initial_equity: +equity || 5000,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
       setRunJob(job);
+      localStorage.setItem("activeBacktestJobId", job.job_id);
       const iv = setInterval(() => {
         window.API.fetchBacktestRunStatus(job.job_id).then((s) => {
           setRunJob(s);
-          if (s.status === "done" || s.status === "error") clearInterval(iv);
+          if (s.status === "done" || s.status === "error") {
+            clearInterval(iv);
+            localStorage.removeItem("activeBacktestJobId");
+          }
         }).catch((err) => {
           setRunJob({ status: "error", message: err.message });
           clearInterval(iv);
+          localStorage.removeItem("activeBacktestJobId");
         });
       }, 2000);
     }).catch((err) => setRunJob({ status: "error", message: err.message }));
@@ -288,6 +316,22 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="field-label">Initial equity (USD)</div>
               <input class="input mono" value=${equity} onChange=${(e) => setEquity(+e.target.value)} />
             </div>
+            ${(() => {
+              // Warm-up clock-time per strategy (minutes)
+              const warmupMin = { funding_carry: 0, as_market_maker: 10, obi_market_maker: 10,
+                                  pairs_trading: 168 * 60, ohlcv_rotation: 240 };
+              const wm = warmupMin[strategy] || 0;
+              if (!wm || !start || !end) return null;
+              const days = (new Date(end) - new Date(start)) / 86400000;
+              const warmupDays = wm / 60 / 24;
+              if (days < warmupDays * 3) {
+                const warmupLabel = warmupDays >= 1 ? `${warmupDays.toFixed(1)} days` : `${(wm / 60).toFixed(1)} h`;
+                return html`<div class="field-hint" style=${{ color: "var(--warn, #d97706)" }}>
+                  ⚠ Warm-up: ~${warmupLabel}. Backtest window (${days.toFixed(0)} d) may have limited active trading.
+                </div>`;
+              }
+              return null;
+            })()}
             ${strategy !== "ohlcv_rotation" && html`
               <div class="field">
                 <div class="field-label">Validation</div>
@@ -317,6 +361,9 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 }}>View Results →</button>
               `}
             </div>
+            ${runJob.status === "error" && runJob.output && html`
+              <pre style=${{ marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 200, overflowY: "auto" }}>${runJob.output}</pre>
+            `}
           `}
         </div>
 
@@ -368,7 +415,7 @@ function StrategyParams({ id }) {
       ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
       ["atr_stop_multiple", "2.0", "ATR stop loss", "Close position if price drops more than N × ATR below entry price."],
       ["max_holding_minutes", "480", "max holding time (min)", "Force-exit if held longer than this and composite score ≤ 0."],
-      ["min_volume_z", "1.0", "volume z-score gate", "Entry requires volume z-score above this. Filters low-liquidity windows."],
+      ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight."],
     ],
   }[id] || [];
   return html`

@@ -86,6 +86,7 @@ def main() -> None:
         if args.min_apr_threshold is not None:
             cfg.strategies.funding_carry.min_apr_threshold = args.min_apr_threshold
 
+    print("PROGRESS:20", flush=True)
     result = run_replay_backtest(
         strategy_names=args.strategy,
         cfg=cfg,
@@ -96,6 +97,7 @@ def main() -> None:
         periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
         liquidate_on_end=args.liquidate_on_end,
     )
+    print("PROGRESS:85", flush=True)
 
     print("=" * 72)
     print("REPLAY BACKTEST SUMMARY")

@@ -199,6 +199,7 @@ input, select, textarea { font: inherit; color: inherit; }
   padding: var(--pad-card);
 }
 .card.tight { padding: var(--pad-tight); }
+.chart-wrap { max-width: 960px; width: 100%; overflow: hidden; }
 .card-h {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: 14px;

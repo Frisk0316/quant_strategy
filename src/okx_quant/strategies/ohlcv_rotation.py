@@ -217,7 +217,6 @@ def generate_target_weights(
         rh_row = row_feats["rolling_high"]
         rf_row = row_feats["return_fast"]
         rs_row = row_feats["return_slow"]
-        vz_row = row_feats["volume_z"]
 
         valid = row_score.dropna()
         if valid.empty:
@@ -234,8 +233,6 @@ def generate_target_weights(
             if rf_row.get(inst, np.nan) <= 0:
                 continue
             if rs_row.get(inst, np.nan) <= 0:
-                continue
-            if vz_row.get(inst, 0.0) <= params.min_volume_z:
                 continue
             c = close_row.get(inst, np.nan)
             rh = rh_row.get(inst, np.nan)

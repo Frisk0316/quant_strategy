@@ -332,6 +332,7 @@ window.API = (function () {
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
+    fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),
     deleteRun:                (id)      => fetch("/api/backtest/" + id, { method: "DELETE" }).then((r) => r.json()),
   };
 })();

@@ -6,7 +6,9 @@ Each result.json matches the artifacts schema produced by backtesting/artifacts.
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,9 @@ from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _run_jobs: dict[str, dict[str, Any]] = {}
+_SAFE_DATA_DIR_RE = re.compile(r"^[\w./\-]+$")
+_SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$")
+_SAFE_SYMBOL_RE = re.compile(r"^[A-Z0-9\-]+$")
 
 
 class RunBacktestRequest(BaseModel):
@@ -43,6 +48,7 @@ class RunBacktestRequest(BaseModel):
     rebalance_minutes: int = 60
     top_k: int = 3
     rank_exit_buffer: int = 6
+    initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
 
 
@@ -57,6 +63,29 @@ def _run_ohlcv_rotation_job(
         out_dir = results_dir / run_id
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
+
+        # Pre-validate parquet availability for benchmark + universe.
+        data_dir = _resolve_data_dir(req.data_dir)
+        _BAR_RESAMPLE = {"1H", "2H", "4H", "6H", "12H", "1D"}
+        missing: list[str] = []
+        for inst in list(req.universe or []) + [req.benchmark or "BTC-USDT-SWAP"]:
+            inst_dir = data_dir / inst.replace("-", "_")
+            has_bar = (inst_dir / f"candles_{bar}.parquet").exists()
+            has_1m = (inst_dir / "candles_1m.parquet").exists()
+            can_derive = bar in _BAR_RESAMPLE and has_1m
+            if not has_bar and not can_derive:
+                available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
+                missing.append(f"{inst}: no candles_{bar}.parquet — available: {available or 'none'}")
+        benchmark = req.benchmark or "BTC-USDT-SWAP"
+        if any(benchmark in m for m in missing):
+            _run_jobs[job_id].update({
+                "status": "error",
+                "progress": 100,
+                "message": f"Data not available for benchmark '{benchmark}' at bar='{bar}'",
+                "output": "\n".join(missing),
+            })
+            return
+
         cmd = [
             sys.executable,
             str(script),
@@ -67,6 +96,7 @@ def _run_ohlcv_rotation_job(
             "--rebalance-minutes", str(req.rebalance_minutes or 60),
             "--top-k", str(req.top_k or 3),
             "--rank-exit-buffer", str(req.rank_exit_buffer or 6),
+            "--initial-equity", str(req.initial_equity or 5000.0),
             "--output-dir", str(out_dir),
             "--universe",
         ] + list(req.universe or [])
@@ -77,20 +107,21 @@ def _run_ohlcv_rotation_job(
 
         _run_jobs[job_id].update({
             "status": "running",
-            "progress": 10,
-            "message": "Running OHLCV rotation backtest",
+            "progress": 20,
+            "message": "Running OHLCV rotation backtest (loading data…)",
             "command": " ".join(cmd),
         })
         env = os.environ.copy()
         env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        _run_jobs[job_id]["progress"] = 30
         proc = subprocess.run(
             cmd,
             cwd=PROJECT_ROOT,
             env=env,
             text=True,
             capture_output=True,
-            timeout=60 * 60,
         )
+        _run_jobs[job_id]["progress"] = 80
         output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
         if proc.returncode != 0:
             _run_jobs[job_id].update({
@@ -100,6 +131,7 @@ def _run_ohlcv_rotation_job(
                 "output": output[-4000:],
             })
             return
+        _run_jobs[job_id].update({"progress": 90, "message": "Post-processing results…"})
         _post_process_ohlcv_rotation(out_dir, run_id, req)
         _run_jobs[job_id].update({
             "status": "done",
@@ -120,7 +152,7 @@ def _post_process_ohlcv_rotation(
     run_id: str,
     req: "RunBacktestRequest",
 ) -> None:
-    """Convert ohlcv_rotation script outputs into ADR-0002 result.json + returns.csv."""
+    """Convert ohlcv_rotation script outputs into ADR-0002 result.json + derived CSVs."""
     summary_path = out_dir / "summary.json"
     equity_path = out_dir / "equity_curve.csv"
     if not summary_path.exists():
@@ -130,12 +162,57 @@ def _post_process_ohlcv_rotation(
     trade_count = metrics.get("number_of_trades", 0)
     metrics.setdefault("order_count", trade_count)
     metrics.setdefault("fill_count", trade_count)
+    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    metrics.setdefault("bankrupt", False)
 
     if equity_path.exists():
         eq_df = pd.read_csv(equity_path, index_col=0, parse_dates=True)
         if "equity" in eq_df.columns:
             eq_df["return"] = eq_df["equity"].pct_change().fillna(0.0)
-            eq_df[["return"]].to_csv(out_dir / "returns.csv")
+            returns_df = pd.DataFrame(index=eq_df.index)
+            returns_df["datetime"] = eq_df.index.astype(str)
+            returns_df["return"] = eq_df["return"]
+            returns_df["log_return"] = pd.Series(
+                pd.NA,
+                index=eq_df.index,
+                dtype="Float64",
+            )
+            positive = returns_df["return"] > -1
+            returns_df.loc[positive, "log_return"] = (1 + returns_df.loc[positive, "return"]).map(
+                lambda v: pd.NA if pd.isna(v) else math.log(v)
+            )
+            returns_df.index.name = "ts"
+            returns_df.to_csv(out_dir / "returns.csv")
+
+            if "drawdown" not in eq_df.columns:
+                running_max = eq_df["equity"].cummax()
+                denominator = running_max.where(running_max != 0)
+                eq_df["drawdown"] = ((eq_df["equity"] - running_max) / denominator).fillna(0.0)
+            else:
+                running_max = eq_df["equity"].cummax()
+
+            drawdown_df = pd.DataFrame(index=eq_df.index)
+            drawdown_df["datetime"] = eq_df.index.astype(str)
+            drawdown_df["equity"] = eq_df["equity"]
+            drawdown_df["running_max_equity"] = running_max
+            drawdown_df["drawdown"] = eq_df["drawdown"].fillna(0.0)
+            drawdown_df["drawdown_pct"] = drawdown_df["drawdown"]
+            drawdown_df.index.name = "ts"
+            drawdown_df.to_csv(out_dir / "drawdown.csv")
+
+    artifact_refs = {
+        key: filename
+        for key, filename in {
+            "equity": "equity_curve.csv",
+            "returns": "returns.csv",
+            "drawdown": "drawdown.csv",
+            "trades": "trades.csv",
+            "positions": "positions.csv",
+            "target_weights": "target_weights.csv",
+            "summary": "summary.json",
+        }.items()
+        if (out_dir / filename).exists()
+    }
 
     result = {
         "run_id": run_id,
@@ -146,6 +223,7 @@ def _post_process_ohlcv_rotation(
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
+        "artifacts": artifact_refs,
     }
     (out_dir / "result.json").write_text(
         json.dumps(result, allow_nan=False, indent=2),
@@ -199,20 +277,46 @@ def _run_backtest_job(
         _run_jobs[job_id].update({
             "status": "running",
             "progress": 10,
-            "message": "Running replay backtest",
+            "message": "Running replay backtest (loading data…)",
             "command": " ".join(cmd),
         })
         env = os.environ.copy()
         env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-        proc = subprocess.run(
+        import threading
+        lines: list[str] = []
+        stderr_lines: list[str] = []
+
+        proc = subprocess.Popen(
             cmd,
             cwd=PROJECT_ROOT,
             env=env,
             text=True,
-            capture_output=True,
-            timeout=60 * 60,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+
+        def _drain_stderr():
+            for line in (proc.stderr or []):
+                stderr_lines.append(line)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        try:
+            for line in proc.stdout or []:
+                lines.append(line)
+                stripped = line.strip()
+                if stripped.startswith("PROGRESS:"):
+                    try:
+                        pct = int(stripped.split(":")[1])
+                        _run_jobs[job_id]["progress"] = pct
+                    except (ValueError, IndexError):
+                        pass
+        finally:
+            proc.wait()
+            stderr_thread.join(timeout=5)
+
+        output = ("".join(lines) + "\n" + "".join(stderr_lines)).strip()
         if proc.returncode != 0:
             _run_jobs[job_id].update({
                 "status": "error",
@@ -378,6 +482,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
         allowed = {"obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading", "ohlcv_rotation"}
         validate_allowed = {None, "wf", "cpcv", "both"}
+        _validate_backtest_request(req)
         if req.strategy not in allowed:
             raise HTTPException(status_code=400, detail="Unsupported strategy")
         if req.strategy != "ohlcv_rotation" and req.validation not in validate_allowed:
@@ -406,6 +511,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if job_id not in _run_jobs:
             raise HTTPException(status_code=404, detail="Job not found")
         return _run_jobs[job_id]
+
+    @router.get("/run/jobs")
+    async def list_run_jobs():
+        """Return all in-memory job states so the frontend can reconnect after page refresh."""
+        return list(_run_jobs.values())
 
     @router.delete("/{run_id}")
     async def delete_run(run_id: str):
@@ -537,7 +647,27 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/{run_id}/drawdown")
     async def get_drawdown(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "drawdown")
-        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "drawdown.csv")
+        if payload is not None:
+            records = payload
+        else:
+            d = _run_dir(run_id)
+            drawdown_path = d / "drawdown.csv"
+            if drawdown_path.exists():
+                records = _read_csv(drawdown_path)
+            else:
+                equity_path = d / "equity_curve.csv"
+                if not equity_path.exists():
+                    raise HTTPException(status_code=404, detail="drawdown.csv not found")
+                eq_df = pd.read_csv(equity_path)
+                if "equity" not in eq_df.columns:
+                    raise HTTPException(status_code=404, detail="drawdown data not found")
+                running_max = eq_df["equity"].cummax()
+                denominator = running_max.where(running_max != 0)
+                if "drawdown" not in eq_df.columns:
+                    eq_df["drawdown"] = ((eq_df["equity"] - running_max) / denominator).fillna(0.0)
+                eq_df["running_max_equity"] = running_max
+                eq_df["drawdown_pct"] = eq_df["drawdown"]
+                records = json.loads(eq_df.to_json(orient="records", force_ascii=False))
         return _downsample_records(records, n)
 
     # ------------------------------------------------------------------
@@ -620,3 +750,30 @@ def _normalize_backtest_request(req: RunBacktestRequest) -> RunBacktestRequest:
     if normalized.spot_symbol:
         normalized.spot_symbol = normalize_spot_symbol(normalized.spot_symbol)
     return normalized
+
+
+def _resolve_data_dir(data_dir: str | None) -> Path:
+    raw = data_dir or "data/ticks"
+    if not _SAFE_DATA_DIR_RE.match(raw):
+        raise HTTPException(status_code=400, detail="Invalid data_dir")
+    resolved = (PROJECT_ROOT / raw).resolve()
+    try:
+        resolved.relative_to(PROJECT_ROOT.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="data_dir path traversal not allowed") from exc
+    return resolved
+
+
+def _validate_backtest_request(req: RunBacktestRequest) -> None:
+    _resolve_data_dir(req.data_dir)
+    if req.start and not _SAFE_DATE_RE.match(req.start):
+        raise HTTPException(status_code=400, detail="Invalid start date format")
+    if req.end and not _SAFE_DATE_RE.match(req.end):
+        raise HTTPException(status_code=400, detail="Invalid end date format")
+    if len(req.universe) > 50:
+        raise HTTPException(status_code=400, detail="Universe too large (max 50 symbols)")
+    if req.benchmark and not _SAFE_SYMBOL_RE.match(req.benchmark):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol: {req.benchmark}")
+    for sym in req.universe:
+        if not _SAFE_SYMBOL_RE.match(sym):
+            raise HTTPException(status_code=400, detail=f"Invalid symbol: {sym}")

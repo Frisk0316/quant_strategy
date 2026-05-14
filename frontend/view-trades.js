@@ -254,6 +254,7 @@ function CompareView({ selectedRunId }) {
           <span class="chip">${allTs.length.toLocaleString()} timestamps</span>
         </div>
         <div
+          class="chart-wrap"
           style=${{ position: "relative" }}
           onMouseLeave=${() => setHoverIdx(null)}
           onMouseMove=${(e) => {

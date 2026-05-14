@@ -99,7 +99,7 @@ function LineChart({
   }
 
   return html`
-    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%" }}>
       ${showAxes && yTicks.map((t, i) => html`
         <g key=${i}>
           <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
@@ -181,7 +181,7 @@ function Sparkline({ values, color = "var(--accent)", height = 36, mode = "line"
     padT + (1 - (v - y0) / (y1 - y0)) * (h - padT - padB),
   ]);
   return html`
-    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%" }}>
       ${mode === "area" && html`<path d=${areaFromPoints(pts, h - padB)} fill=${color} opacity="0.14" />`}
       <path d=${mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts)} fill="none" stroke=${color} stroke-width="1.4" />
     </svg>
@@ -199,7 +199,7 @@ function BarChart({ values, height = 160, color = "var(--accent)", labels, thres
   const xScale = (i) => padL + (i + 0.1) * (innerW / values.length);
   const barW = (innerW / values.length) * 0.8;
   return html`
-    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block" }}>
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%" }}>
       <line x1=${padL} x2=${w - padR} y1=${yScale(0)} y2=${yScale(0)} stroke="var(--border-strong)" />
       ${threshold != null && html`
         <line x1=${padL} x2=${w - padR} y1=${yScale(threshold)} y2=${yScale(threshold)} stroke="var(--warn)" stroke-dasharray="3 4" />
