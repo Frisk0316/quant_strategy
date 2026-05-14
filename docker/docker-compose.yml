@@ -7,10 +7,16 @@ services:
       dockerfile: docker/Dockerfile
     restart: always
     env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:-changeme}@timescaledb:5432/quant
+      API_KEY: ${API_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
       - ../config:/app/config
+    ports:
+      - "8080:8080"
     depends_on:
       - redis
     networks:
@@ -36,7 +42,7 @@ services:
     volumes:
       - timescale-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quant -d quant"]
       interval: 5s
@@ -72,7 +78,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - quant-net
 
@@ -84,7 +90,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - quant-net
 

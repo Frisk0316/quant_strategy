@@ -7,11 +7,15 @@ creating a new one, which would conflict with the engine's asyncio.run().
 """
 from __future__ import annotations
 
+import logging
 import mimetypes
+import os
+import secrets
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 
@@ -29,9 +33,36 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("application/javascript", ".jsx")
 mimetypes.add_type("application/javascript", ".mjs")
 
+logger = logging.getLogger(__name__)
+
+
+def _api_key() -> str:
+    return os.environ.get("API_KEY", "")
+
+
+async def verify_api_key(x_api_key: str = Header(default="")) -> None:
+    api_key = _api_key()
+    if not api_key:
+        logger.warning("API_KEY is not set; API authentication is disabled")
+        return
+    if not secrets.compare_digest(x_api_key, api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _is_valid_ws_api_key(value: str) -> bool:
+    api_key = _api_key()
+    if not api_key:
+        logger.warning("API_KEY is not set; WebSocket authentication is disabled")
+        return True
+    return secrets.compare_digest(value, api_key)
+
+
+def _allowed_origins() -> list[str]:
+    return [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+
+
 def _db_dsn() -> str | None:
     try:
-        import os
         if os.environ.get("DATABASE_URL"):
             return os.environ["DATABASE_URL"]
         cfg = load_config(require_secrets=False)
@@ -54,15 +85,49 @@ def create_app(
     Route registration order matters: /api routes must come before the
     static file catch-all, otherwise StaticFiles intercepts /api requests.
     """
-    app = FastAPI(title="OKX Quant API", docs_url="/api/docs", redoc_url=None)
+    app = FastAPI(title="OKX Quant API", docs_url=None, redoc_url=None)
 
-    app.include_router(make_live_router(state), prefix="/api/live", tags=["live"])
-    app.include_router(make_backtest_router(results_dir), prefix="/api/backtest", tags=["backtest"])
-    app.include_router(make_config_router(), prefix="/api", tags=["config"])
-    app.include_router(make_data_router(_db_dsn()), prefix="/api/data", tags=["data"])
+    allowed_origins = _allowed_origins()
+    if allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    api_dependencies = [Depends(verify_api_key)]
+    app.include_router(
+        make_live_router(state),
+        prefix="/api/live",
+        tags=["live"],
+        dependencies=api_dependencies,
+    )
+    app.include_router(
+        make_backtest_router(results_dir),
+        prefix="/api/backtest",
+        tags=["backtest"],
+        dependencies=api_dependencies,
+    )
+    app.include_router(
+        make_config_router(dependencies=api_dependencies),
+        prefix="/api",
+        tags=["config"],
+    )
+    app.include_router(
+        make_data_router(_db_dsn()),
+        prefix="/api/data",
+        tags=["data"],
+        dependencies=api_dependencies,
+    )
 
     @app.websocket("/api/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:
+        if not _is_valid_ws_api_key(websocket.query_params.get("api_key", "")):
+            await websocket.accept()
+            await websocket.close(code=4001)
+            return
         await websocket.accept()
         state.register_ws(websocket)
         try:

@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-def make_config_router() -> APIRouter:
-    router = APIRouter()
+def make_config_router(dependencies: list | None = None) -> APIRouter:
+    router = APIRouter(dependencies=dependencies or [])
 
     @router.get("/config/risk")
     def get_risk_config():
