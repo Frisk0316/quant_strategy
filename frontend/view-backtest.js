@@ -148,6 +148,34 @@ function MetricCard({ label, value, sub, tone }) {
   `;
 }
 
+function MetricValue({ value }) {
+  if (Array.isArray(value)) {
+    return html`
+      <div class="mono" style=${{ display: "grid", gap: 2, lineHeight: 1.35, overflowWrap: "anywhere" }}>
+        ${value.map((item, i) => html`<div key=${i}>${String(item)}</div>`)}
+      </div>
+    `;
+  }
+  if (value && typeof value === "object") {
+    return html`
+      <pre class="mono" style=${{
+        margin: 0,
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}>${JSON.stringify(value, null, 2)}</pre>
+    `;
+  }
+  if (typeof value === "boolean") {
+    return html`<span style=${{ color: value ? "var(--loss)" : "var(--profit)" }}>${String(value)}</span>`;
+  }
+  const text = typeof value === "number"
+    ? (Math.abs(value) < 1 && value !== 0 ? value.toFixed(4) : value.toFixed(2))
+    : String(value);
+  return html`<span class="mono" style=${{ overflowWrap: "anywhere" }}>${text}</span>`;
+}
+
 // ---------------------------------------------------------------------------
 // Bankruptcy / anomaly banner
 // ---------------------------------------------------------------------------
@@ -375,14 +403,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
         <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
           ${Object.entries(m).map(([k, v]) => {
             if (v == null) return null;
-            const isFlag = typeof v === "boolean";
-            const display = isFlag
-              ? html`<span style=${{ color: v ? "var(--loss)" : "var(--profit)" }}>${String(v)}</span>`
-              : html`<span class="mono">${typeof v === "number" ? (Math.abs(v) < 1 && v !== 0 ? v.toFixed(4) : v.toFixed(2)) : v}</span>`;
             return html`
               <div key=${k} title=${metricTitle(k)} style=${{ borderBottom: "1px solid var(--border)", paddingBottom: 8, cursor: "help" }}>
                 <div class="kpi-label" style=${{ fontSize: 11 }}>${k}</div>
-                <div style=${{ marginTop: 2, fontSize: 14 }}>${display}</div>
+                <div style=${{ marginTop: 2, fontSize: 14, minWidth: 0 }}>
+                  <${MetricValue} value=${v} />
+                </div>
               </div>
             `;
           })}
