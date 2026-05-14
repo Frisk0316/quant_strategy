@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 _run_jobs: dict[str, dict[str, Any]] = {}
 _SAFE_DATA_DIR_RE = re.compile(r"^[\w./\-]+$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$")
