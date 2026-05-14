@@ -68,6 +68,7 @@
     { id: "obi_market_maker", name: "OBI Market Maker", tag: "Market Making", desc: "Order book imbalance-driven market making" },
     { id: "funding_carry", name: "Funding Carry", tag: "Carry", desc: "Delta-neutral long spot / short perp, earns 8h funding" },
     { id: "pairs_trading", name: "Pairs Trading", tag: "Stat Arb", desc: "Kalman filter hedge ratio + OU spread z-score" },
+    { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
   ];
 
   const SYMBOLS = [

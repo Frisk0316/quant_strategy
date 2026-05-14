@@ -38,6 +38,119 @@ class RunBacktestRequest(BaseModel):
     end: str | None = None
     run_id: str | None = None
     validation: str | None = Field(default=None, alias="validate")
+    universe: list[str] = []
+    benchmark: str = "BTC-USDT-SWAP"
+    rebalance_minutes: int = 60
+    top_k: int = 3
+    rank_exit_buffer: int = 6
+    data_dir: str = "data/ticks"
+
+
+def _run_ohlcv_rotation_job(
+    job_id: str,
+    req: "RunBacktestRequest",
+    run_id: str,
+    results_dir: Path,
+) -> None:
+    try:
+        script = PROJECT_ROOT / "scripts" / "backtest_ohlcv_rotation.py"
+        out_dir = results_dir / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        bar = req.bar or "1H"
+        cmd = [
+            sys.executable,
+            str(script),
+            "--backend", "parquet",
+            "--data-dir", req.data_dir or "data/ticks",
+            "--bar", bar,
+            "--benchmark", req.benchmark or "BTC-USDT-SWAP",
+            "--rebalance-minutes", str(req.rebalance_minutes or 60),
+            "--top-k", str(req.top_k or 3),
+            "--rank-exit-buffer", str(req.rank_exit_buffer or 6),
+            "--output-dir", str(out_dir),
+            "--universe",
+        ] + list(req.universe or [])
+        if req.start:
+            cmd.extend(["--start", req.start])
+        if req.end:
+            cmd.extend(["--end", req.end])
+
+        _run_jobs[job_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Running OHLCV rotation backtest",
+            "command": " ".join(cmd),
+        })
+        env = os.environ.copy()
+        env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        proc = subprocess.run(
+            cmd,
+            cwd=PROJECT_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=60 * 60,
+        )
+        output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+        if proc.returncode != 0:
+            _run_jobs[job_id].update({
+                "status": "error",
+                "progress": 100,
+                "message": f"Backtest failed with exit code {proc.returncode}",
+                "output": output[-4000:],
+            })
+            return
+        _post_process_ohlcv_rotation(out_dir, run_id, req)
+        _run_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Backtest complete",
+            "output": output[-4000:],
+        })
+    except Exception as exc:
+        _run_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+        })
+
+
+def _post_process_ohlcv_rotation(
+    out_dir: Path,
+    run_id: str,
+    req: "RunBacktestRequest",
+) -> None:
+    """Convert ohlcv_rotation script outputs into ADR-0002 result.json + returns.csv."""
+    summary_path = out_dir / "summary.json"
+    equity_path = out_dir / "equity_curve.csv"
+    if not summary_path.exists():
+        return
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    metrics = {k: v for k, v in summary.items() if k != "run_id"}
+    trade_count = metrics.get("number_of_trades", 0)
+    metrics.setdefault("order_count", trade_count)
+    metrics.setdefault("fill_count", trade_count)
+
+    if equity_path.exists():
+        eq_df = pd.read_csv(equity_path, index_col=0, parse_dates=True)
+        if "equity" in eq_df.columns:
+            eq_df["return"] = eq_df["equity"].pct_change().fillna(0.0)
+            eq_df[["return"]].to_csv(out_dir / "returns.csv")
+
+    result = {
+        "run_id": run_id,
+        "created_at": pd.Timestamp.utcnow().isoformat(),
+        "strategies": ["ohlcv_rotation"],
+        "symbols": req.universe or [],
+        "bar": req.bar or "1H",
+        "start": req.start or "",
+        "end": req.end or "",
+        "metrics": metrics,
+    }
+    (out_dir / "result.json").write_text(
+        json.dumps(result, allow_nan=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _run_backtest_job(
@@ -190,6 +303,39 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/runs")
     async def list_runs():
         """Return a summary list of all saved backtest runs."""
+        # Keyed by run_id; DB rows take precedence over filesystem rows.
+        merged: dict[str, dict] = {}
+
+        # --- filesystem scan (always) ---
+        if results_dir.exists():
+            for run_dir in sorted(results_dir.iterdir(), reverse=True):
+                result_file = run_dir / "result.json"
+                if not (run_dir.is_dir() and result_file.exists()):
+                    continue
+                try:
+                    data = json.loads(result_file.read_text(encoding="utf-8"))
+                    metrics = data.get("metrics", data.get("mainStats", {}))
+                    if not (run_dir / "returns.csv").exists():
+                        continue
+                    run_id = data.get("run_id", run_dir.name)
+                    merged[run_id] = {
+                        "run_id": run_id,
+                        "created_at": data.get("created_at"),
+                        "strategies": data.get("strategies", [data.get("strategy", "")]),
+                        "symbols": data.get("symbols", [data.get("symbol", "")]),
+                        "bar": data.get("bar", ""),
+                        "start": data.get("start", data.get("start_date", "")),
+                        "end": data.get("end", data.get("end_date", "")),
+                        "total_return": metrics.get("total_return"),
+                        "sharpe": metrics.get("sharpe"),
+                        "max_drawdown": metrics.get("max_drawdown"),
+                        "order_count": metrics.get("order_count"),
+                        "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
+                    }
+                except Exception:
+                    pass
+
+        # --- DB scan (overlay; DB data overwrites filesystem entries) ---
         try:
             import asyncpg
 
@@ -219,57 +365,27 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         )
                 finally:
                     await conn.close()
-                if rows:
-                    result = []
-                    for row in rows:
-                        item = dict(row)
-                        item["start"] = item.get("start_date")
-                        item["end"] = item.get("end_date")
-                        result.append(item)
-                    return result
+                for row in rows:
+                    item = dict(row)
+                    item["start"] = item.get("start_date")
+                    item["end"] = item.get("end_date")
+                    merged[item["run_id"]] = item
         except Exception:
             pass
-
-        runs = []
-        if not results_dir.exists():
-            return runs
-        for run_dir in sorted(results_dir.iterdir(), reverse=True):
-            result_file = run_dir / "result.json"
-            if not (run_dir.is_dir() and result_file.exists()):
-                continue
-            try:
-                data = json.loads(result_file.read_text(encoding="utf-8"))
-                metrics = data.get("metrics", data.get("mainStats", {}))
-                if not (run_dir / "returns.csv").exists():
-                    continue
-                runs.append({
-                    "run_id": data.get("run_id", run_dir.name),
-                    "created_at": data.get("created_at"),
-                    "strategies": data.get("strategies", [data.get("strategy", "")]),
-                    "symbols": data.get("symbols", [data.get("symbol", "")]),
-                    "bar": data.get("bar", ""),
-                    "start": data.get("start", data.get("start_date", "")),
-                    "end": data.get("end", data.get("end_date", "")),
-                    "total_return": metrics.get("total_return"),
-                    "sharpe": metrics.get("sharpe"),
-                    "max_drawdown": metrics.get("max_drawdown"),
-                    "order_count": metrics.get("order_count"),
-                    "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
-                })
-            except Exception:
-                pass
-        return sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True)
+        return sorted(merged.values(), key=lambda r: str(r.get("created_at") or ""), reverse=True)
 
     @router.post("/run")
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
-        allowed = {"obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading"}
+        allowed = {"obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading", "ohlcv_rotation"}
         validate_allowed = {None, "wf", "cpcv", "both"}
         if req.strategy not in allowed:
             raise HTTPException(status_code=400, detail="Unsupported strategy")
-        if req.validation not in validate_allowed:
+        if req.strategy != "ohlcv_rotation" and req.validation not in validate_allowed:
             raise HTTPException(status_code=400, detail="Unsupported validation mode")
         if req.strategy == "pairs_trading" and req.symbol_x == req.symbol_y:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
+        if req.strategy == "ohlcv_rotation" and not req.universe:
+            raise HTTPException(status_code=400, detail="ohlcv_rotation requires at least one symbol in universe")
         job_id = str(uuid.uuid4())[:8]
         run_id = req.run_id or f"ui_{req.strategy}_{job_id}"
         _run_jobs[job_id] = {
@@ -279,7 +395,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "progress": 0,
             "message": "Backtest queued",
         }
-        bg.add_task(_run_backtest_job, job_id, req, run_id, results_dir)
+        if req.strategy == "ohlcv_rotation":
+            bg.add_task(_run_ohlcv_rotation_job, job_id, req, run_id, results_dir)
+        else:
+            bg.add_task(_run_backtest_job, job_id, req, run_id, results_dir)
         return _run_jobs[job_id]
 
     @router.get("/run/status/{job_id}")

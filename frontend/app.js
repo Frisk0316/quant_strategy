@@ -166,7 +166,7 @@ function App() {
       </header>
 
       <main class="app-main">
-        ${view === "config" && html`<${window.RunConfigView} tweaks=${tweaks} setTweak=${setTweak} />`}
+        ${view === "config" && html`<${window.RunConfigView} tweaks=${tweaks} setTweak=${setTweak} setView=${setView} setSelectedRunId=${setSelectedRunId} />`}
         ${view === "backtest" && html`<${window.BacktestView} selectedRunId=${selectedRunId} setSelectedRunId=${setSelectedRunId} onRunsChanged=${refreshRuns} />`}
         ${view === "wf" && html`<${window.WalkForwardView} selectedRunId=${selectedRunId} />`}
         ${view === "cpcv" && html`<${window.CPCVView} selectedRunId=${selectedRunId} />`}

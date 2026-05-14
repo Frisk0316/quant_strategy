@@ -83,21 +83,43 @@ def _rebalance_timestamps(index: pd.DatetimeIndex, rebalance_minutes: int) -> pd
 # Metrics
 # ---------------------------------------------------------------------------
 
+BARS_PER_YEAR = {
+    "1m": 365 * 24 * 60,
+    "5m": 365 * 24 * 12,
+    "15m": 365 * 24 * 4,
+    "30m": 365 * 24 * 2,
+    "1H": 365 * 24,
+    "4H": 365 * 6,
+    "1D": 365,
+}
+
+
+def _annualization_inputs(returns: pd.Series, bar: str | None = None) -> tuple[float, float]:
+    """Return (ann_factor_for_total_return, bars_per_year) from timestamps when possible."""
+    if len(returns) > 1 and isinstance(returns.index, pd.DatetimeIndex):
+        elapsed_seconds = (returns.index[-1] - returns.index[0]).total_seconds()
+        elapsed_years = elapsed_seconds / (365.25 * 24 * 60 * 60)
+        if elapsed_years > 0:
+            return 1.0 / elapsed_years, len(returns) / elapsed_years
+
+    bars_per_year = float(BARS_PER_YEAR.get(bar or "1m", BARS_PER_YEAR["1m"]))
+    ann_factor = bars_per_year / len(returns) if len(returns) > 0 else 1.0
+    return ann_factor, bars_per_year
+
+
 def compute_metrics(
     equity_curve: pd.Series,
     portfolio_returns: pd.Series,
     target_weights: pd.DataFrame,
     trades: pd.DataFrame,
+    bar: str | None = None,
 ) -> dict:
-    n_minutes = len(portfolio_returns)
-    minutes_per_year = 365 * 24 * 60
-
     total_return = float(equity_curve.iloc[-1] - 1) if not equity_curve.empty else 0.0
 
-    ann_factor = minutes_per_year / n_minutes if n_minutes > 0 else 1.0
+    ann_factor, bars_per_year = _annualization_inputs(portfolio_returns, bar)
     annualized_return = (1 + total_return) ** ann_factor - 1
 
-    ann_vol = float(portfolio_returns.std() * math.sqrt(minutes_per_year))
+    ann_vol = float(portfolio_returns.std() * math.sqrt(bars_per_year))
     sharpe = (annualized_return / ann_vol) if ann_vol > 0 else 0.0
 
     drawdown = (equity_curve / equity_curve.cummax() - 1)
@@ -292,7 +314,7 @@ def run_ohlcv_rotation_backtest(
     trades = extract_trades_from_weights(target_weights_reb, close)
 
     # --- metrics ---
-    metrics = compute_metrics(equity_curve, portfolio_returns, target_weights_1m, trades)
+    metrics = compute_metrics(equity_curve, portfolio_returns, target_weights_1m, trades, params.bar)
 
     return BacktestResult(
         equity_curve=equity_curve,

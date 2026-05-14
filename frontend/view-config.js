@@ -50,7 +50,7 @@ function KPI({ label, value, sub, tone, spark, sparkMode = "area", hint }) {
   `;
 }
 
-function RunBacktestView() {
+function RunBacktestView({ setView, setSelectedRunId }) {
   const [instruments, setInstruments] = useConfigState([]);
   const [strategy, setStrategy] = useConfigState("funding_carry");
   const [symbol, setSymbol] = useConfigState("BTC-USDT-SWAP");
@@ -64,11 +64,18 @@ function RunBacktestView() {
   const [equity, setEquity] = useConfigState(5000);
   const [validation, setValidation] = useConfigState("both");
   const [runJob, setRunJob] = useConfigState(null);
+  const [rotUniverse, setRotUniverse] = useConfigState(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]);
+  const [rotBenchmark, setRotBenchmark] = useConfigState("BTC-USDT-SWAP");
+  const [rotRebalanceMin, setRotRebalanceMin] = useConfigState(60);
+  const [rotTopK, setRotTopK] = useConfigState(3);
+  const [rotRankExitBuffer, setRotRankExitBuffer] = useConfigState(6);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
+    : strategy === "ohlcv_rotation"
+    ? rotUniverse
     : [symbol].filter((s) => s && s.includes("SWAP"));
   const startMin = selectedSwapSymbols
     .map((s) => listingMap[s])
@@ -98,18 +105,24 @@ function RunBacktestView() {
   }
 
   function triggerBacktest() {
+    const isRotation = strategy === "ohlcv_rotation";
     const body = {
       strategy,
-      bar,
+      bar: bar,
       periods,
       start: startMin && start < startMin ? startMin : start,
       end,
-      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : [symbol],
+      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isRotation ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
-      validate: validation === "none" ? null : validation,
+      validate: isRotation ? null : (validation === "none" ? null : validation),
+      universe: isRotation ? rotUniverse : [],
+      benchmark: isRotation ? rotBenchmark : undefined,
+      rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
+      top_k: isRotation ? rotTopK : undefined,
+      rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -149,7 +162,51 @@ function RunBacktestView() {
               </select>
               <div class="field-hint">${strat.desc}</div>
             </div>
-            ${strategy === "pairs_trading" ? html`
+            ${strategy === "ohlcv_rotation" ? html`
+              <${Fragment}>
+                <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
+                    <table class="tbl" style=${{ fontSize: 12 }}>
+                      <tbody>
+                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                          <tr key=${s} style=${{ cursor: "pointer" }}
+                              onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
+                            <td style=${{ width: 28 }}>
+                              <input type="checkbox" checked=${rotUniverse.includes(s)} onChange=${() => {}} />
+                            </td>
+                            <td class="mono">${s}</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="field-hint">${rotUniverse.length} instruments selected — re-ranked every ${rotRebalanceMin} bars, top-${rotTopK} held</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Benchmark</div>
+                  <select class="select mono" value=${rotBenchmark} onChange=${(e) => setRotBenchmark(e.target.value)}>
+                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                  </select>
+                  <div class="field-hint">Regime filter: go flat when benchmark is below its 240-min EMA.</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Rebalance interval (min)</div>
+                  <input class="input mono" value=${rotRebalanceMin} onChange=${(e) => setRotRebalanceMin(+e.target.value)} />
+                  <div class="field-hint">Re-rank universe every N minutes. Default: 60.</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Top-k positions</div>
+                  <input class="input mono" value=${rotTopK} onChange=${(e) => setRotTopK(+e.target.value)} />
+                  <div class="field-hint">Max simultaneous positions. Equal weight, capped at 35%.</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Exit rank buffer</div>
+                  <input class="input mono" value=${rotRankExitBuffer} onChange=${(e) => setRotRankExitBuffer(+e.target.value)} />
+                  <div class="field-hint">Exit when rank falls below this threshold.</div>
+                </div>
+              <//>
+            ` : strategy === "pairs_trading" ? html`
               <${Fragment}>
                 <div class="field">
                   <div class="field-label">Reference symbol (X)</div>
@@ -231,15 +288,17 @@ function RunBacktestView() {
               <div class="field-label">Initial equity (USD)</div>
               <input class="input mono" value=${equity} onChange=${(e) => setEquity(+e.target.value)} />
             </div>
-            <div class="field">
-              <div class="field-label">Validation</div>
-              <select class="select" value=${validation} onChange=${(e) => setValidation(e.target.value)}>
-                <option value="both">Both (WF + CPCV)</option>
-                <option value="wf">Walk-Forward</option>
-                <option value="cpcv">CPCV</option>
-                <option value="none">None</option>
-              </select>
-            </div>
+            ${strategy !== "ohlcv_rotation" && html`
+              <div class="field">
+                <div class="field-label">Validation</div>
+                <select class="select" value=${validation} onChange=${(e) => setValidation(e.target.value)}>
+                  <option value="both">Both (WF + CPCV)</option>
+                  <option value="wf">Walk-Forward</option>
+                  <option value="cpcv">CPCV</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            `}
           </div>
           ${runJob && html`
             <div class="row" style=${{ gap: 12, marginTop: 16, alignItems: "center" }}>
@@ -250,6 +309,12 @@ function RunBacktestView() {
                 <div class="bar" style=${{ flex: 1, height: 6 }}>
                   <i style=${{ width: `${runJob.progress}%`, background: "var(--accent)" }}></i>
                 </div>
+              `}
+              ${runJob.status === "done" && runJob.run_id && setView && html`
+                <button class="btn primary sm" onClick=${() => {
+                  setSelectedRunId?.(runJob.run_id);
+                  setView("backtest");
+                }}>View Results →</button>
               `}
             </div>
           `}
@@ -297,6 +362,13 @@ function StrategyParams({ id }) {
       ["exit_z", "0.3", "exit z-score", "Close the position when z-score reverts to +/-exit_z. Lower = exit close to mean, capturing full reversion."],
       ["stop_z", "4.0", "stop-loss z-score", "Force-close if z-score reaches +/-stop_z. Protects against spread divergence and non-stationary regimes."],
       ["lookback_hours", "168", "OU estimator window (h)", "Rolling window for estimating Ornstein-Uhlenbeck parameters. 168 h = 1 week. Shorter = adapts faster, noisier estimates."],
+    ],
+    ohlcv_rotation: [
+      ["top_k", "3", "max simultaneous positions", "Max instruments held at once. Each gets equal weight (1/n), capped at max_position_weight=0.35."],
+      ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
+      ["atr_stop_multiple", "2.0", "ATR stop loss", "Close position if price drops more than N × ATR below entry price."],
+      ["max_holding_minutes", "480", "max holding time (min)", "Force-exit if held longer than this and composite score ≤ 0."],
+      ["min_volume_z", "1.0", "volume z-score gate", "Entry requires volume z-score above this. Filters low-liquidity windows."],
     ],
   }[id] || [];
   return html`

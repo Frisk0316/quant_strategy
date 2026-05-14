@@ -74,6 +74,27 @@ def _load_candles_parquet(
     return df
 
 
+_BAR_RESAMPLE_RULES: dict[str, str] = {
+    "1H": "1h", "2H": "2h", "4H": "4h", "6H": "6h", "12H": "12h", "1D": "1D",
+}
+
+
+def _can_derive_from_1m(bar: str) -> bool:
+    return bar in _BAR_RESAMPLE_RULES
+
+
+def _aggregate_1m_to_bar(df: pd.DataFrame, bar: str) -> pd.DataFrame:
+    rule = _BAR_RESAMPLE_RULES.get(bar)
+    if rule is None or df.empty:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+    resampled = df.resample(rule, label="left", closed="left").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "vol": "sum"}
+    )
+    return resampled.dropna(subset=["open", "close"])
+
+
 def _load_candles_pg(
     inst_id: str,
     bar: str,
@@ -107,13 +128,21 @@ def _load_candles_pg(
     start_dt = _to_utc_dt(start)
     end_dt = _to_utc_dt(end)
 
-    async def _fetch() -> pd.DataFrame:
+    async def _fetch() -> tuple[pd.DataFrame, bool]:
         async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
-            return await store.get_canonical_candles(
+            df = await store.get_canonical_candles(
                 inst_id=inst_id, bar=bar,
                 start=start_dt, end=end_dt,
                 include_suspect=include_suspect,
             )
+            if df.empty and _can_derive_from_1m(bar):
+                df_1m = await store.get_canonical_candles(
+                    inst_id=inst_id, bar="1m",
+                    start=start_dt, end=end_dt,
+                    include_suspect=include_suspect,
+                )
+                return df_1m, not df_1m.empty
+            return df, False
 
     # Handle already-running event loops (e.g. Jupyter)
     try:
@@ -121,9 +150,9 @@ def _load_candles_pg(
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(asyncio.run, _fetch())
-            df = future.result()
+            df, is_1m_fallback = future.result()
     except RuntimeError:
-        df = asyncio.run(_fetch())
+        df, is_1m_fallback = asyncio.run(_fetch())
 
     if df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
@@ -141,6 +170,9 @@ def _load_candles_pg(
         df["vol"] = df["vol_contract"]
     else:
         df["vol"] = float("nan")
+
+    if is_1m_fallback:
+        df = _aggregate_1m_to_bar(df[["open", "high", "low", "close", "vol"]], bar)
 
     return df[["open", "high", "low", "close", "vol"]]
 
@@ -209,6 +241,43 @@ def _load_candles_market(
         df["vol"] = float("nan")
 
     return df[["open", "high", "low", "close", "vol"]]
+
+
+def write_candles_parquet(
+    inst_id: str,
+    bar: str,
+    df: pd.DataFrame,
+    data_dir: str = "data/ticks",
+) -> Path:
+    """
+    Upsert OHLCV candles into the canonical parquet file for inst_id/bar.
+
+    df must have a DatetimeIndex (tz-naive UTC) and columns including
+    [open, high, low, close, vol].  Rows whose timestamp already exists in the
+    parquet are overwritten; rows outside the new range are preserved.
+
+    Returns the path written.
+    """
+    path = Path(data_dir) / inst_id.replace("-", "_") / f"candles_{bar}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    cols = ["open", "high", "low", "close", "vol"]
+    new = df[cols].copy()
+    if getattr(new.index, "tz", None) is not None:
+        new.index = new.index.tz_convert("UTC").tz_localize(None)
+    new.index.name = "ts"
+
+    if path.exists():
+        existing = pq.read_table(path).to_pandas()
+        existing["ts"] = pd.to_datetime(existing["ts"])
+        existing = existing.set_index("ts")
+        merged = pd.concat([existing[cols], new])
+        merged = merged[~merged.index.duplicated(keep="last")].sort_index()
+    else:
+        merged = new.sort_index()
+
+    merged.reset_index().to_parquet(path, index=False, compression="snappy")
+    return path
 
 
 def load_funding(

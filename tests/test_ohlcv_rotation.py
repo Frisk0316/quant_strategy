@@ -27,6 +27,7 @@ from okx_quant.strategies.ohlcv_rotation import (
 from ohlcv_rotation_backtest import (
     BacktestResult,
     compute_cost,
+    compute_metrics,
     compute_turnover,
     run_ohlcv_rotation_backtest,
 )
@@ -538,6 +539,25 @@ class TestCostDeducted:
         actual_cost = compute_cost(target_weights, params)
 
         pd.testing.assert_series_equal(actual_cost, expected_cost, check_names=False)
+
+
+class TestMetrics:
+    def test_compute_metrics_annualizes_hourly_returns_from_elapsed_time(self) -> None:
+        idx = pd.date_range("2024-01-01", periods=24 * 30 + 1, freq="1h")
+        returns = pd.Series(np.linspace(-0.001, 0.0015, len(idx)), index=idx)
+        equity_curve = (1 + returns).cumprod()
+        target_weights = pd.DataFrame({"BTC": 1.0}, index=idx)
+        trades = pd.DataFrame(columns=["pnl", "holding_minutes"])
+
+        metrics = compute_metrics(equity_curve, returns, target_weights, trades, bar="1H")
+
+        elapsed_years = (idx[-1] - idx[0]).total_seconds() / (365.25 * 24 * 60 * 60)
+        expected_bars_per_year = len(returns) / elapsed_years
+        expected_ann_vol = float(returns.std() * math.sqrt(expected_bars_per_year))
+        old_1m_ann_vol = float(returns.std() * math.sqrt(365 * 24 * 60))
+
+        assert metrics["annualized_volatility"] == pytest.approx(expected_ann_vol)
+        assert metrics["annualized_volatility"] < old_1m_ann_vol / 2
 
 
 # ---------------------------------------------------------------------------

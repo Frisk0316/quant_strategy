@@ -386,6 +386,58 @@ async def _build_ohlcv_xlsx(
     return buf.getvalue()
 
 
+async def _write_fetched_to_parquet(
+    db_dsn: str,
+    inst_id: str,
+    bar: str,
+    start_dt: datetime,
+    end_dt: datetime,
+) -> int:
+    """
+    Read freshly-canonicalized candles from DB and upsert into the local parquet file.
+    Returns the number of rows written.  Non-fatal — caller should catch exceptions.
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    import asyncpg
+    import pandas as _pd
+
+    _project_root = _Path(__file__).resolve().parents[3]
+    _bt_path = str(_project_root / "backtesting")
+    if _bt_path not in sys.path:
+        sys.path.insert(0, _bt_path)
+    from data_loader import write_candles_parquet  # type: ignore[import]
+
+    conn = await asyncpg.connect(db_dsn)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT ts,
+                   open, high, low, close,
+                   COALESCE(vol_quote, vol_base, vol_contract, 0.0) AS vol
+            FROM canonical_candles
+            WHERE inst_id = $1 AND bar = $2
+              AND ts >= $3 AND ts < $4
+            ORDER BY ts
+            """,
+            inst_id, bar, start_dt, end_dt,
+        )
+    finally:
+        await conn.close()
+
+    if not rows:
+        return 0
+
+    df = _pd.DataFrame([dict(r) for r in rows])
+    df["ts"] = _pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
+    df = df.set_index("ts")
+
+    data_dir = str(_project_root / "data" / "ticks")
+    write_candles_parquet(inst_id, bar, df, data_dir)
+    return len(rows)
+
+
 def _request_symbols(req: FetchRequest) -> list[str]:
     symbols = list(req.symbols or [])
     if req.symbol:
@@ -466,20 +518,38 @@ async def _run_fetch(job_id: str, req: FetchRequest, db_dsn: str) -> None:
                 finally:
                     await pool.close()
 
+                parquet_rows = 0
+                parquet_error = None
+                try:
+                    parquet_rows = await _write_fetched_to_parquet(
+                        db_dsn, symbol, req.bar, start_dt, end_dt
+                    )
+                except Exception as exc:
+                    parquet_error = str(exc)
+
                 fetched.append({
                     "symbol": symbol,
                     "status": "done",
                     "rows": len(candles),
+                    "parquet_rows": parquet_rows,
+                    "parquet_error": parquet_error,
                     "list_date": _ms_to_date(list_time_ms),
                     "effective_start": start_dt.date().isoformat(),
                 })
         finally:
             client.close()
 
+        parquet_total = sum(int(r.get("parquet_rows") or 0) for r in fetched)
+        parquet_errors = [r for r in fetched if r.get("parquet_error")]
+        parquet_summary = (
+            f"parquet FAILED for {len(parquet_errors)} symbol(s): {parquet_errors[0]['parquet_error']}"
+            if parquet_errors
+            else f"parquet: {parquet_total} rows"
+        )
         _jobs[job_id].update({
             "status": "done",
             "progress": 100,
-            "message": f"Fetched {len(fetched)} symbol(s) for {req.bar}",
+            "message": f"Fetched {len(fetched)} symbol(s) for {req.bar} ({parquet_summary})",
             "results": fetched,
         })
     except Exception as exc:
