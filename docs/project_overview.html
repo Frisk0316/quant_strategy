@@ -357,6 +357,7 @@ details > *:not(summary) { padding: 0 14px 14px; }
   <h2>導覽</h2>
   <a href="#page-header"><span class="sec-num">▲</span>頁首</a>
   <a href="#s0"><span class="sec-num">0.</span>AI 協作規範</a>
+  <a href="#s0" style="padding-left:28px;font-size:12px">↳ PR7–PR14B 進度</a>
   <a href="#s1"><span class="sec-num">1.</span>資料庫儲存格式</a>
   <a href="#s2"><span class="sec-num">2.</span>OHLCV 完整性驗證</a>
   <a href="#s3"><span class="sec-num">3.</span>回測系統邏輯與參數</a>
@@ -484,6 +485,154 @@ Tested: &lt;test command&gt;</pre>
   <div class="flow-box">5. Demo 模式（4 週，無真實資金）</div>
   <div class="flow-box">6. Shadow 模式（2 週，影子下單）</div>
   <div class="flow-box green">7. 人工核准 → Live（先半倉，再全倉）</div>
+</div>
+
+<h3>Branch / PR 治理規則</h3>
+<p>自 PR7 起，branch/version management 已納入 AI collaboration framework。Claude 與 Codex 除遵守 issue scope 外，還需遵守以下規則：</p>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>規則</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="cn">Branch 命名</td><td class="desc"><code>fix/</code>、<code>feat/</code>、<code>docs/</code>、<code>test/</code>、<code>ci/</code>、<code>design/</code>、<code>hotfix/</code> 前綴必填</td></tr>
+<tr><td class="cn">Short-lived PR</td><td class="desc">PR 應專注單一 issue，不累積跨 issue 的變更</td></tr>
+<tr><td class="cn">Squash merge</td><td class="desc">合併至 main 使用 squash，保持 commit 線性可讀</td></tr>
+<tr><td class="cn">Branch cleanup</td><td class="desc">PR 合併後立即刪除 feature branch</td></tr>
+<tr><td class="cn">Tag / Milestone</td><td class="desc">每個 PR 合併後標記對應 milestone，用於進度追蹤</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>PR 進度（PR7 → 現在）</h3>
+<div class="callout success">最新完成：<strong>PR14B</strong>（shadow mode parity fixes），目前 main branch 已整合所有 PR7–PR14B。</div>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>PR</th><th>狀態</th><th>內容摘要</th><th>類型</th></tr></thead>
+<tbody>
+<tr>
+  <td class="mono">PR7</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 branch/version management 政策與 PR template checklist</td>
+  <td><span class="badge badge-gray">Governance</span></td>
+</tr>
+<tr>
+  <td class="mono">PR8</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 frontend MIME smoke tests（.js / .jsx ES modules）</td>
+  <td><span class="badge badge-gray">Test</span></td>
+</tr>
+<tr>
+  <td class="mono">PR9</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 ADR-0002 凍結欄位回歸測試（backtest artifact schema）</td>
+  <td><span class="badge badge-gray">Test</span></td>
+</tr>
+<tr>
+  <td class="mono">PR10</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 pairs trading hedge-close 回歸測試覆蓋</td>
+  <td><span class="badge badge-gray">Test</span></td>
+</tr>
+<tr>
+  <td class="mono">PR10B</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 pairs exit/stop hedge close metadata；移除 xfail 標記</td>
+  <td><span class="badge badge-gray">Test</span></td>
+</tr>
+<tr>
+  <td class="mono">PR11</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">新增 funding carry dual-leg 回歸測試（signal metadata + PM order alignment）</td>
+  <td><span class="badge badge-gray">Test</span></td>
+</tr>
+<tr>
+  <td class="mono">PR12A</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">Replay terminal liquidation 設計文件（docs-only，無行為變更）</td>
+  <td><span class="badge badge-gray">Design</span></td>
+</tr>
+<tr>
+  <td class="mono">PR12B</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">實作 Replay terminal liquidation（ADR-0005 Gate 1）；回測結束時清算所有倉位</td>
+  <td><span class="badge badge-blue">Feat</span></td>
+</tr>
+<tr>
+  <td class="mono">PR13</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">實作 ADR-0005 Gate 2-4（fill-rate warning、data coverage ≥ 80%、funding coverage）</td>
+  <td><span class="badge badge-blue">Feat</span></td>
+</tr>
+<tr>
+  <td class="mono">PR14A</td>
+  <td><span class="badge badge-green">merged</span></td>
+  <td class="cn">Shadow mode parity 設計計劃（<code>docs/shadow_mode_parity_plan.md</code>）</td>
+  <td><span class="badge badge-gray">Design</span></td>
+</tr>
+<tr style="background:var(--accent-lo)">
+  <td class="mono"><strong>PR14B</strong></td>
+  <td><span class="badge badge-green">merged ✓ 最新</span></td>
+  <td class="cn"><strong>實作 shadow mode parity fixes</strong>：<code>run_shadow.py</code> 強制要求 <code>mode=shadow</code>；shadow primary SimBroker 接收 instrument specs（notional/fee accounting）；新增 broker routing tests</td>
+  <td><span class="badge badge-blue">Feat</span></td>
+</tr>
+<tr>
+  <td colspan="4" style="background:var(--surface2);font-size:12px;color:var(--text2);padding:6px 12px">
+    ▼ PR14B 後已提交但尚未正式建立 PR 的工作項目
+  </td>
+</tr>
+<tr>
+  <td class="mono">fca239f</td>
+  <td><span class="badge badge-green">committed</span></td>
+  <td class="cn">P0 Web 安全強化：API key auth、WebSocket auth、Swagger UI 關閉、CORS allowlist、Docker port binding</td>
+  <td><span class="badge badge-red">Security</span></td>
+</tr>
+<tr>
+  <td class="mono">ed283d7<br>6d1fd41</td>
+  <td><span class="badge badge-green">committed</span></td>
+  <td class="cn">OHLCV rotation 回測 UI 修正（exit code、equity scale、drawdown、進度條、warmup 透明度）</td>
+  <td><span class="badge badge-blue">Fix</span></td>
+</tr>
+<tr>
+  <td class="mono">9389c8f</td>
+  <td><span class="badge badge-green">committed</span></td>
+  <td class="cn">Daily winner 前端接線 + OHLCV rotation 前端接線；routes artifact fallback 修正；新策略接入規範文件；本專案架構文件 HTML</td>
+  <td><span class="badge badge-blue">Feat</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h3>剩餘待完成工作</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>優先級</th><th>項目</th><th>狀態</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="badge badge-red">P0</span></td>
+  <td class="cn">API key auth / CORS / WebSocket auth / Docker port binding <strong>部署 smoke test</strong>（確認 AWS 部署前）</td>
+  <td><span class="badge badge-yellow">pending smoke test</span></td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">P1</span></td>
+  <td class="cn">下載 1m K 線資料（BTC / ETH / SOL）以啟用 1m OHLCV rotation 回測</td>
+  <td><span class="badge badge-yellow">待執行</span></td>
+</tr>
+<tr>
+  <td><span class="badge badge-gray">P2</span></td>
+  <td class="cn">審查 <code>docs/pairs_position_aware_close_sizing_plan.md</code></td>
+  <td><span class="badge badge-yellow">pending review</span></td>
+</tr>
+<tr>
+  <td><span class="badge badge-gray">P2</span></td>
+  <td class="cn">實作 pairs trading position-aware close sizing</td>
+  <td><span class="badge badge-yellow">設計完成，待實作</span></td>
+</tr>
+<tr>
+  <td><span class="badge badge-gray">P2</span></td>
+  <td class="cn">SimBroker fill event gap：<code>submit()</code> 未發送模擬 fill event</td>
+  <td><span class="badge badge-yellow">known bug</span></td>
+</tr>
+</tbody>
+</table>
 </div>
 </section>
 
