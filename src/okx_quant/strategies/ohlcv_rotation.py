@@ -50,7 +50,7 @@ class OHLCVRotationParams:
     weight_volume_z: float = 0.20
     weight_realized_vol: float = -0.10
 
-    min_volume_z: float = 1.0
+    min_volume_z: float = 1.0  # diagnostic only; drives vol_filter_pass_pct, not entry gating
     atr_stop_multiple: float = 2.0
     max_holding_minutes: int = 480
 

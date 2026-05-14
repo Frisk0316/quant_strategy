@@ -69,7 +69,8 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help=(
             "Diagnostic volume-z threshold reported in backtest metrics. "
-            "Not a hard entry filter; volume affects selection via composite score weight."
+            "Not a hard entry filter; volume affects selection via composite score weight. "
+            "Controls the vol_filter_pass_pct diagnostic metric."
         ),
     )
     parser.add_argument("--atr-stop-multiple", type=float, default=2.0)

@@ -415,7 +415,7 @@ function StrategyParams({ id }) {
       ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
       ["atr_stop_multiple", "2.0", "ATR stop loss", "Close position if price drops more than N × ATR below entry price."],
       ["max_holding_minutes", "480", "max holding time (min)", "Force-exit if held longer than this and composite score ≤ 0."],
-      ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight."],
+      ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight. Controls the vol_filter_pass_pct diagnostic metric."],
     ],
   }[id] || [];
   return html`
