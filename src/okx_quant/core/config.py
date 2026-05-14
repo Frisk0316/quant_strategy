@@ -198,11 +198,72 @@ class PairsTradingParams(BaseModel):
         return normalize_swap_symbol(value)
 
 
+class MACrossoverParams(BaseModel):
+    enabled: bool = True
+    symbols: list[str] = ["BTC-USDT-SWAP"]
+    fast_window: int = Field(default=20, gt=0)
+    slow_window: int = Field(default=50, gt=0)
+    td_mode: str = "cross"
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, value: list[str]) -> list[str]:
+        return [normalize_swap_symbol(symbol) for symbol in value]
+
+    @model_validator(mode="after")
+    def validate_windows(self) -> "MACrossoverParams":
+        if self.fast_window >= self.slow_window:
+            raise ValueError("ma_crossover fast_window must be smaller than slow_window")
+        return self
+
+
+class EMACrossoverParams(BaseModel):
+    enabled: bool = True
+    symbols: list[str] = ["BTC-USDT-SWAP"]
+    fast_span: int = Field(default=20, gt=0)
+    slow_span: int = Field(default=50, gt=0)
+    td_mode: str = "cross"
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, value: list[str]) -> list[str]:
+        return [normalize_swap_symbol(symbol) for symbol in value]
+
+    @model_validator(mode="after")
+    def validate_spans(self) -> "EMACrossoverParams":
+        if self.fast_span >= self.slow_span:
+            raise ValueError("ema_crossover fast_span must be smaller than slow_span")
+        return self
+
+
+class MACDCrossoverParams(BaseModel):
+    enabled: bool = True
+    symbols: list[str] = ["BTC-USDT-SWAP"]
+    fast_span: int = Field(default=12, gt=0)
+    slow_span: int = Field(default=26, gt=0)
+    signal_span: int = Field(default=9, gt=0)
+    td_mode: str = "cross"
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, value: list[str]) -> list[str]:
+        return [normalize_swap_symbol(symbol) for symbol in value]
+
+    @model_validator(mode="after")
+    def validate_spans(self) -> "MACDCrossoverParams":
+        if self.fast_span >= self.slow_span:
+            raise ValueError("macd_crossover fast_span must be smaller than slow_span")
+        return self
+
+
 class StrategiesConfig(BaseModel):
     obi_market_maker: OBIMarketMakerParams = OBIMarketMakerParams()
     as_market_maker: ASMarketMakerParams = ASMarketMakerParams()
     funding_carry: FundingCarryParams = FundingCarryParams()
     pairs_trading: PairsTradingParams = PairsTradingParams()
+    ma_crossover: MACrossoverParams = MACrossoverParams()
+    ema_crossover: EMACrossoverParams = EMACrossoverParams()
+    macd_crossover: MACDCrossoverParams = MACDCrossoverParams()
 
 
 # ---------------------------------------------------------------------------

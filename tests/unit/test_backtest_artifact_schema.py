@@ -8,6 +8,7 @@ import pandas as pd
 from backtesting.artifacts import (
     EQUITY_COLUMNS,
     FILL_COLUMNS,
+    PRICE_SERIES_COLUMNS,
     TRADE_COLUMNS,
     save_backtest_artifacts,
 )
@@ -70,11 +71,23 @@ REQUIRED_EQUITY_COLUMNS = {
     "return",
 }
 
+REQUIRED_PRICE_COLUMNS = {
+    "ts",
+    "datetime",
+    "inst_id",
+    "open",
+    "high",
+    "low",
+    "close",
+    "vol",
+}
+
 
 def test_backtest_artifact_column_constants_include_adr_required_fields():
     assert REQUIRED_FILL_COLUMNS <= set(FILL_COLUMNS)
     assert REQUIRED_TRADE_COLUMNS <= set(TRADE_COLUMNS)
     assert REQUIRED_EQUITY_COLUMNS <= set(EQUITY_COLUMNS)
+    assert REQUIRED_PRICE_COLUMNS <= set(PRICE_SERIES_COLUMNS)
 
 
 def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, monkeypatch):
@@ -126,6 +139,17 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
                 "metadata": {"ct_val": 0.01},
             }
         ]),
+        price_log=pd.DataFrame([
+            {
+                "ts": 1_704_067_200_000,
+                "inst_id": "BTC-USDT-SWAP",
+                "open": 40_000.0,
+                "high": 40_000.0,
+                "low": 40_000.0,
+                "close": 40_000.0,
+                "vol": 100.0,
+            }
+        ]),
         signal_log=[],
         risk_event_log=[],
         rejected_log=[],
@@ -157,6 +181,8 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
     fills = pd.read_csv(run_dir / "fills.csv")
     trades = pd.read_csv(run_dir / "trades.csv")
     equity = pd.read_csv(run_dir / "equity_curve.csv")
+    price_series = pd.read_csv(run_dir / "price_series.csv")
+    markers = pd.read_csv(run_dir / "execution_markers.csv")
 
     assert REQUIRED_RESULT_KEYS <= set(result_payload)
     assert REQUIRED_METRIC_KEYS <= set(result_payload["metrics"])
@@ -165,3 +191,6 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
     assert REQUIRED_FILL_COLUMNS <= set(fills.columns)
     assert REQUIRED_TRADE_COLUMNS <= set(trades.columns)
     assert REQUIRED_EQUITY_COLUMNS <= set(equity.columns)
+    assert REQUIRED_PRICE_COLUMNS <= set(price_series.columns)
+    assert "day_pnl" in markers.columns
+    assert result_payload["artifacts"]["price_series"] == "price_series.csv"

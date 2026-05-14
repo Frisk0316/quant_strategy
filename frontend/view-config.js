@@ -10,6 +10,12 @@ const BAR_PERIODS = {
   "1m": 525600, "3m": 175200, "5m": 105120, "15m": 35040,
   "30m": 17520, "1H": 8760, "2H": 4380, "4H": 2190, "1D": 365,
 };
+const TECHNICAL_STRATEGIES = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
+const STRATEGY_PARAM_DEFAULTS = {
+  ma_crossover: { fast_window: 20, slow_window: 50 },
+  ema_crossover: { fast_span: 20, slow_span: 50 },
+  macd_crossover: { fast_span: 12, slow_span: 26, signal_span: 9 },
+};
 
 const todayUtc = new Date();
 todayUtc.setUTCHours(0, 0, 0, 0);
@@ -65,18 +71,23 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [validation, setValidation] = useConfigState("both");
   const [runJob, setRunJob] = useConfigState(null);
   const [rotUniverse, setRotUniverse] = useConfigState(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]);
+  const [technicalSymbols, setTechnicalSymbols] = useConfigState(["BTC-USDT-SWAP"]);
   const [rotBenchmark, setRotBenchmark] = useConfigState("BTC-USDT-SWAP");
   const [rotRebalanceMin, setRotRebalanceMin] = useConfigState(60);
   const [rotTopK, setRotTopK] = useConfigState(3);
   const [rotRankExitBuffer, setRotRankExitBuffer] = useConfigState(6);
+  const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const isRotation = strategy === "ohlcv_rotation";
   const isDailyWinner = strategy === "daily_winner";
-  const isBasketStrategy = isRotation || isDailyWinner;
+  const isTechnical = TECHNICAL_STRATEGIES.has(strategy);
+  const isBasketStrategy = isRotation || isDailyWinner || isTechnical;
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
+    : isTechnical
+    ? technicalSymbols
     : isBasketStrategy
     ? rotUniverse
     : [symbol].filter((s) => s && s.includes("SWAP"));
@@ -143,18 +154,19 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
       start: startMin && start < startMin ? startMin : start,
       end,
-      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isBasketStrategy ? [] : [symbol],
+      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isTechnical ? technicalSymbols : isBasketStrategy ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
       validate: isRotation ? null : (validation === "none" ? null : validation),
-      universe: isBasketStrategy ? rotUniverse : [],
+      universe: (isRotation || isDailyWinner) ? rotUniverse : [],
       benchmark: isRotation ? rotBenchmark : undefined,
       rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
       top_k: isRotation ? rotTopK : undefined,
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
       initial_equity: +equity || 5000,
+      strategy_params: isTechnical ? (strategyParams[strategy] || {}) : {},
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -187,7 +199,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY) || (isBasketStrategy && rotUniverse.length < 2)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -263,6 +275,36 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                   <div class="field-label">Exit rank buffer</div>
                   <input class="input mono" value=${rotRankExitBuffer} onChange=${(e) => setRotRankExitBuffer(+e.target.value)} />
                   <div class="field-hint">Exit when rank falls below this threshold.</div>
+                </div>
+              <//>
+            ` : isTechnical ? html`
+              <${Fragment}>
+                <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                  <div class="field-label">Symbols (perpetual swaps)</div>
+                  <button class="btn sm" style=${{ marginBottom: 4 }}
+                    onClick=${() => {
+                      const all = MOCK.SYMBOLS.filter((s) => s.includes("SWAP"));
+                      const allSelected = all.length > 0 && technicalSymbols.length === all.length;
+                      setTechnicalSymbols(allSelected ? [] : [...all]);
+                    }}>
+                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length > 0 && technicalSymbols.length === MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length ? "Deselect All" : "Select All"}
+                  </button>
+                  <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
+                    <table class="tbl" style=${{ fontSize: 12 }}>
+                      <tbody>
+                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                          <tr key=${s} style=${{ cursor: "pointer" }}
+                              onClick=${() => setTechnicalSymbols((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
+                            <td style=${{ width: 28 }}>
+                              <input type="checkbox" checked=${technicalSymbols.includes(s)} onChange=${() => {}} />
+                            </td>
+                            <td class="mono">${s}</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="field-hint">${technicalSymbols.length} instruments selected - long/flat crossover backtest.</div>
                 </div>
               <//>
             ` : strategy === "pairs_trading" ? html`
@@ -406,7 +448,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
         </div>
       </div>
 
@@ -415,8 +457,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id }) {
-  const params = {
+function StrategyParams({ id, params: activeParams = {}, setParams = () => {} }) {
+  const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
       ["rebalance_drift_threshold", "0.02", "spot/perp drift", "Max allowed deviation between spot and perp position sizes before rebalancing. Keeps delta-neutral exposure."],
@@ -442,6 +484,19 @@ function StrategyParams({ id }) {
       ["stop_z", "4.0", "stop-loss z-score", "Force-close if z-score reaches +/-stop_z. Protects against spread divergence and non-stationary regimes."],
       ["lookback_hours", "168", "OU estimator window (h)", "Rolling window for estimating Ornstein-Uhlenbeck parameters. 168 h = 1 week. Shorter = adapts faster, noisier estimates."],
     ],
+    ma_crossover: [
+      ["fast_window", "20", "fast MA window", "Number of selected-bar closes used for the fast simple moving average. Must be smaller than slow_window."],
+      ["slow_window", "50", "slow MA window", "Number of selected-bar closes used for the slow simple moving average. Default: 50."],
+    ],
+    ema_crossover: [
+      ["fast_span", "20", "fast EMA span", "Exponential moving average span for the fast trend line. Must be smaller than slow_span."],
+      ["slow_span", "50", "slow EMA span", "Exponential moving average span for the slow trend line. Default: 50."],
+    ],
+    macd_crossover: [
+      ["fast_span", "12", "MACD fast EMA", "Fast EMA span used in MACD. Must be smaller than slow_span."],
+      ["slow_span", "26", "MACD slow EMA", "Slow EMA span used in MACD. Default: 26."],
+      ["signal_span", "9", "signal EMA", "EMA span applied to the MACD line. Default: 9."],
+    ],
     ohlcv_rotation: [
       ["top_k", "3", "max simultaneous positions", "Max instruments held at once. Each gets equal weight (1/n), capped at max_position_weight=0.35."],
       ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
@@ -455,20 +510,26 @@ function StrategyParams({ id }) {
       ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
   }[id] || [];
+  const editable = TECHNICAL_STRATEGIES.has(id);
+  function parseParam(value) {
+    const num = Number(value);
+    return value !== "" && Number.isFinite(num) ? num : value;
+  }
   return html`
     <div class="col" style=${{ gap: 12 }}>
-      ${params.map(([k, v, short, full]) => html`
+      ${specs.map(([k, v, short, full]) => html`
         <div key=${k} class="col" style=${{ gap: 4 }}>
           <div class="row" style=${{ alignItems: "center", gap: 10 }}>
             <div style=${{ flex: 1, fontSize: 12 }} class="mono" title=${short}>${k}</div>
-            <input class="input mono" defaultValue=${v}
+            <input class="input mono" value=${editable ? (activeParams[k] ?? v) : v} disabled=${!editable}
+              onChange=${(e) => setParams({ ...activeParams, [k]: parseParam(e.target.value) })}
               style=${{ width: 100, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
           </div>
           <div class="field-hint" style=${{ fontSize: 11 }}>${full}</div>
         </div>
       `)}
       <div class="sep"></div>
-      <div class="field-hint">td_mode: cross - post_only: true - max_order_notional: $500</div>
+      <div class="field-hint">td_mode: cross - post_only: true - max_order_notional: $500${editable ? " - parameters are sent with this run" : ""}</div>
     </div>
   `;
 }

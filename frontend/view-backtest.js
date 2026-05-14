@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
-const { LineChart } = window.Charts;
+const { LineChart, TradePriceChart } = window.Charts;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -208,11 +208,14 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [walkForward, setWalkForward] = useState([]);
   const [cpcv, setCpcv] = useState(null);
   const [riskEvents, setRiskEvents] = useState([]);
+  const [priceSeries, setPriceSeries] = useState([]);
+  const [executionMarkers, setExecutionMarkers] = useState([]);
   const [phase2Loading, setPhase2Loading] = useState(true);
   const [phase2Error, setPhase2Error] = useState(null);
 
   const [activeTab, setActiveTab] = useState("fills");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chartSymbol, setChartSymbol] = useState("__all__");
 
   // Phase 1: load result.json (fast — small payload)
   useEffect(() => {
@@ -235,6 +238,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setWalkForward([]);
     setCpcv(null);
     setRiskEvents([]);
+    setPriceSeries([]);
+    setExecutionMarkers([]);
     Promise.all([
       window.API.fetchBacktestEquity(runId).catch(() => []),
       window.API.fetchBacktestFills(runId).catch(() => []),
@@ -242,13 +247,17 @@ function RunDetailView({ runId, onBack, onDelete }) {
       window.API.fetchWalkForward(runId).catch(() => []),
       window.API.fetchCPCV(runId).catch(() => null),
       window.API.fetchBacktestRiskEvents(runId).catch(() => []),
-    ]).then(([eq, fl, tr, wf, cv, re]) => {
+      window.API.fetchBacktestPriceSeries(runId).catch(() => []),
+      window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
+    ]).then(([eq, fl, tr, wf, cv, re, ps, em]) => {
       setEquity(eq || []);
       setFills(fl || []);
       setTrades(tr || []);
       setWalkForward(wf || []);
       setCpcv(cv || null);
       setRiskEvents(re || []);
+      setPriceSeries(ps || []);
+      setExecutionMarkers(em || []);
     }).catch((e) => setPhase2Error(e.message))
       .finally(() => setPhase2Loading(false));
   }, [runId]);
@@ -270,6 +279,17 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const eqDates = equityChartRows.map(chartTimestamp);
   const ddValues = drawdownChartRows.map(r => +r.drawdown);
   const ddDates = drawdownChartRows.map(chartTimestamp);
+  const chartSymbols = [...new Set([
+    ...(result.symbols || []),
+    ...priceSeries.map((r) => r.inst_id).filter(Boolean),
+    ...executionMarkers.map((r) => r.inst_id).filter(Boolean),
+  ])].sort();
+  const filteredPriceSeries = chartSymbol === "__all__"
+    ? priceSeries
+    : priceSeries.filter((r) => r.inst_id === chartSymbol);
+  const filteredMarkers = chartSymbol === "__all__"
+    ? executionMarkers
+    : executionMarkers.filter((r) => r.inst_id === chartSymbol);
 
   const realFills = fills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
 
@@ -340,6 +360,32 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading trades and orders...</div>`
           : html`<${TradesOrdersTable} trades=${trades} fills=${fills} />`
+        }
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="card-title">Price + Trade Markers</div>
+            <div class="card-sub">
+              ${phase2Loading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
+            </div>
+          </div>
+          <select class="select mono" value=${chartSymbol} onChange=${(e) => setChartSymbol(e.target.value)} style=${{ width: 190 }}>
+            <option value="__all__">All symbols</option>
+            ${chartSymbols.map((s) => html`<option key=${s} value=${s}>${s}</option>`)}
+          </select>
+        </div>
+        ${phase2Loading
+          ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
+          : filteredPriceSeries.length > 1
+            ? html`<div class="chart-wrap"><${TradePriceChart}
+                prices=${filteredPriceSeries}
+                markers=${filteredMarkers}
+                height=${260}
+                tooltipLabelFormatter=${chartDateTooltip}
+              /></div>`
+            : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series available for this run.</div>`
         }
       </div>
 

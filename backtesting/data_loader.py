@@ -91,12 +91,62 @@ def _load_candles_parquet(
 
 
 _BAR_RESAMPLE_RULES: dict[str, str] = {
-    "1H": "1h", "2H": "2h", "4H": "4h", "6H": "6h", "12H": "12h", "1D": "1D",
+    "3m": "3min",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "1H": "1h",
+    "2H": "2h",
+    "4H": "4h",
+    "6H": "6h",
+    "12H": "12h",
+    "1D": "1D",
+}
+
+_BAR_SECONDS: dict[str, int] = {
+    "1m": 60,
+    "3m": 180,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1H": 3600,
+    "2H": 7200,
+    "4H": 14400,
+    "6H": 21600,
+    "12H": 43200,
+    "1D": 86400,
 }
 
 
 def _can_derive_from_1m(bar: str) -> bool:
     return bar in _BAR_RESAMPLE_RULES
+
+
+def _expected_bar_count(
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    bar: str,
+) -> Optional[int]:
+    seconds = _BAR_SECONDS.get(bar)
+    if seconds is None or start_dt is None or end_dt is None or end_dt <= start_dt:
+        return None
+    return max(1, int((end_dt - start_dt).total_seconds() // seconds))
+
+
+def _has_low_bar_coverage(
+    df: pd.DataFrame,
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    bar: str,
+    threshold: float = 0.80,
+) -> bool:
+    if df.empty:
+        return True
+    expected = _expected_bar_count(start_dt, end_dt, bar)
+    if expected is None:
+        return False
+    actual = int(pd.Index(df.index).nunique())
+    return (actual / expected) < threshold
 
 
 def _aggregate_1m_to_bar(df: pd.DataFrame, bar: str) -> pd.DataFrame:
@@ -151,13 +201,14 @@ def _load_candles_pg(
                 start=start_dt, end=end_dt,
                 include_suspect=include_suspect,
             )
-            if df.empty and _can_derive_from_1m(bar):
+            if _can_derive_from_1m(bar) and _has_low_bar_coverage(df, start_dt, end_dt, bar):
                 df_1m = await store.get_canonical_candles(
                     inst_id=inst_id, bar="1m",
                     start=start_dt, end=end_dt,
                     include_suspect=include_suspect,
                 )
-                return df_1m, not df_1m.empty
+                if not df_1m.empty:
+                    return df_1m, True
             return df, False
 
     # Handle already-running event loops (e.g. Jupyter)

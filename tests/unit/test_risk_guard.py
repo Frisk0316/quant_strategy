@@ -165,6 +165,34 @@ def test_daily_loss_kill_independent_of_drawdown():
     assert rg.kill is True
 
 
+def test_reset_daily_clears_daily_loss_kill_only():
+    dd = DrawdownTracker(soft_drawdown_pct=0.10, hard_drawdown_pct=0.50, max_daily_loss_pct=0.05)
+    dd.set_initial_equity(10_000.0)
+    dd.update(9_400.0)
+    rg = RiskGuard(equity_fn=lambda: 9_400.0, drawdown_tracker=dd, max_daily_loss_pct=0.05)
+
+    assert rg.check(make_order()) is False
+    assert rg.kill is True
+
+    rg.reset_daily()
+
+    assert rg.kill is False
+
+
+def test_reset_daily_preserves_hard_drawdown_kill():
+    dd = DrawdownTracker(soft_drawdown_pct=0.10, hard_drawdown_pct=0.15)
+    dd.set_initial_equity(10_000.0)
+    dd.update(8_400.0)
+    rg = RiskGuard(equity_fn=lambda: 8_400.0, drawdown_tracker=dd)
+
+    assert rg.check(make_order()) is False
+    assert rg.kill is True
+
+    rg.reset_daily()
+
+    assert rg.kill is True
+
+
 def test_check_with_unparseable_sz_px():
     rg = make_risk_guard(equity=10_000.0)
     assert rg.check(make_order(sz="bad", px="100")) is False

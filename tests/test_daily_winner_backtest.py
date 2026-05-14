@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backtesting"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from backtesting.daily_winner_backtest import DailyWinnerParams, run_daily_winner_backtest
-from backtesting.data_loader import load_candles
+from backtesting.data_loader import _has_low_bar_coverage, load_candles
 from okx_quant.api.routes_backtest import (
     RunBacktestRequest,
     _attach_daily_winner_validation,
@@ -199,3 +199,45 @@ def test_load_candles_derives_1d_from_1m_parquet(tmp_path) -> None:
     assert loaded.iloc[0]["low"] == 99.0
     assert loaded.iloc[0]["close"] == 1539.5
     assert loaded.iloc[0]["vol"] == 1440.0
+
+
+def test_load_candles_derives_intraday_from_1m_parquet(tmp_path) -> None:
+    inst_dir = tmp_path / "BTC_USDT_SWAP"
+    inst_dir.mkdir()
+    idx = pd.date_range("2024-01-01", periods=30, freq="1min")
+    candles = pd.DataFrame(
+        {
+            "ts": idx,
+            "open": np.arange(len(idx), dtype=float) + 100.0,
+            "high": np.arange(len(idx), dtype=float) + 101.0,
+            "low": np.arange(len(idx), dtype=float) + 99.0,
+            "close": np.arange(len(idx), dtype=float) + 100.5,
+            "vol": np.ones(len(idx)),
+        }
+    )
+    pq.write_table(pa.Table.from_pandas(candles, preserve_index=False), inst_dir / "candles_1m.parquet")
+
+    loaded = load_candles("BTC-USDT-SWAP", bar="15m", data_dir=str(tmp_path))
+
+    assert len(loaded) == 2
+    assert loaded.iloc[0]["open"] == 100.0
+    assert loaded.iloc[0]["high"] == 115.0
+    assert loaded.iloc[0]["low"] == 99.0
+    assert loaded.iloc[0]["close"] == 114.5
+    assert loaded.iloc[0]["vol"] == 15.0
+
+
+def test_partial_derived_bar_coverage_is_low() -> None:
+    start = pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime()
+    end = pd.Timestamp("2024-01-02", tz="UTC").to_pydatetime()
+    partial = pd.DataFrame(
+        {"close": np.ones(4)},
+        index=pd.date_range("2024-01-01", periods=4, freq="1h"),
+    )
+    full = pd.DataFrame(
+        {"close": np.ones(24)},
+        index=pd.date_range("2024-01-01", periods=24, freq="1h"),
+    )
+
+    assert _has_low_bar_coverage(partial, start, end, "1H")
+    assert not _has_low_bar_coverage(full, start, end, "1H")

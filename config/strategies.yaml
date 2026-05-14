@@ -92,4 +92,29 @@ pairs_trading:
   max_hedge_uncertainty: 10.0
   td_mode: cross
 
+ma_crossover:
+  enabled: true
+  symbols:
+    - BTC-USDT-SWAP
+  fast_window: 20
+  slow_window: 50
+  td_mode: cross
+
+ema_crossover:
+  enabled: true
+  symbols:
+    - BTC-USDT-SWAP
+  fast_span: 20
+  slow_span: 50
+  td_mode: cross
+
+macd_crossover:
+  enabled: true
+  symbols:
+    - BTC-USDT-SWAP
+  fast_span: 12
+  slow_span: 26
+  signal_span: 9
+  td_mode: cross
+
 

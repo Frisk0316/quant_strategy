@@ -46,6 +46,61 @@ function defaultTooltipValue(v) {
   return Math.abs(+v) > 100 ? (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) : (+v).toFixed(4);
 }
 
+function signedMoney(v) {
+  if (v == null || !Number.isFinite(+v)) return "--";
+  const n = +v;
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function compactQty(v) {
+  if (v == null || !Number.isFinite(+v)) return "--";
+  return (+v).toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function weightedAverage(rows, valueKey, weightKey) {
+  let weighted = 0;
+  let weight = 0;
+  for (const row of rows) {
+    const value = +row[valueKey];
+    const qty = Math.abs(+row[weightKey]);
+    if (Number.isFinite(value) && Number.isFinite(qty) && qty > 0) {
+      weighted += value * qty;
+      weight += qty;
+    }
+  }
+  return weight > 0 ? weighted / weight : NaN;
+}
+
+function aggregateTradeMarkers(markers) {
+  const groups = new Map();
+  for (const marker of markers || []) {
+    const side = String(marker.side || "").toLowerCase() === "buy" ? "buy" : "sell";
+    const key = `${marker.idx}-${marker.inst_id || ""}-${side}`;
+    if (!groups.has(key)) {
+      groups.set(key, { idx: marker.idx, inst_id: marker.inst_id || "", side, rows: [] });
+    }
+    groups.get(key).rows.push(marker);
+  }
+  return [...groups.values()].map((group) => {
+    const qty = group.rows.reduce((sum, row) => sum + (Number.isFinite(+row.qty) ? Math.abs(+row.qty) : 0), 0);
+    const avgPrice = weightedAverage(group.rows, "price", "qty");
+    const pnlValues = group.rows.map((row) => +row.net_realized_pnl).filter(Number.isFinite);
+    const dayPnlValues = group.rows.map((row) => +row.day_pnl).filter(Number.isFinite);
+    const uniquePnl = [...new Map(pnlValues.map((v) => [v.toFixed(8), v])).values()];
+    return {
+      ...group,
+      count: group.rows.length,
+      qty,
+      avgPrice,
+      pnl: uniquePnl.reduce((sum, v) => sum + v, 0),
+      hasPnl: uniquePnl.length > 0,
+      dayPnl: dayPnlValues.length ? dayPnlValues[dayPnlValues.length - 1] : NaN,
+      price: Number.isFinite(avgPrice) ? avgPrice : +group.rows[0]?.price,
+    };
+  });
+}
+
 function uniqueTicks(count, maxTicks) {
   if (count <= 0) return [];
   if (count === 1) return [0];
@@ -228,4 +283,136 @@ function HistogramChart({ values, bins = 24, height = 140, color = "var(--accent
   return html`<${BarChart} values=${counts} height=${height} color=${color} labels=${null} />`;
 }
 
-window.Charts = { LineChart, Sparkline, BarChart, HistogramChart };
+function TradePriceChart({
+  prices,
+  markers,
+  height = 280,
+  tooltipLabelFormatter = compactDateLabel,
+}) {
+  const [hover, setHover] = useState(null);
+  const w = 1000, h = height;
+  const padL = 52, padR = 16, padT = 14, padB = 34;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+
+  const rows = (prices || [])
+    .filter((r) => r.close != null && (r.datetime || r.ts))
+    .map((r) => ({ ...r, close: +r.close, key: String(r.datetime || r.ts) }));
+  if (!rows.length) return null;
+
+  const byKey = new Map(rows.map((r, i) => [r.key, i]));
+  const yVals = rows.map((r) => r.close).filter((v) => Number.isFinite(v));
+  const markerVals = (markers || []).map((m) => +m.price).filter((v) => Number.isFinite(v));
+  const allY = [...yVals, ...markerVals];
+  const yMin = Math.min(...allY);
+  const yMax = Math.max(...allY);
+  const yPad = (yMax - yMin) * 0.06 || Math.max(Math.abs(yMax) * 0.01, 1);
+  const y0 = yMin - yPad, y1 = yMax + yPad;
+  const xScale = (i) => padL + (i / Math.max(rows.length - 1, 1)) * innerW;
+  const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
+  const pts = downsample(rows.map((r) => r.close), 360).map(([i, v]) => [xScale(i), yScale(v)]);
+  const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
+  const xTicks = uniqueTicks(rows.length, Math.min(5, rows.length));
+  const plottedMarkers = (markers || [])
+    .map((m) => {
+      const key = String(m.datetime || m.ts || "");
+      let idx = byKey.get(key);
+      if (idx == null) {
+        const t = new Date(key).getTime();
+        if (Number.isFinite(t)) {
+          let best = 0, bestDiff = Infinity;
+          rows.forEach((r, i) => {
+            const rt = new Date(r.key).getTime();
+            const diff = Math.abs(rt - t);
+            if (diff < bestDiff) {
+              best = i;
+              bestDiff = diff;
+            }
+          });
+          idx = best;
+        }
+      }
+      if (idx == null || !Number.isFinite(+m.price)) return null;
+      return { ...m, idx, price: +m.price };
+    })
+    .filter(Boolean);
+  const markerGroups = aggregateTradeMarkers(plottedMarkers);
+
+  function markerColor(m) {
+    return String(m.side || "").toLowerCase() === "buy" ? "var(--profit)" : "var(--loss)";
+  }
+
+  function handlePointerMove(e) {
+    const box = e.currentTarget.getBoundingClientRect();
+    const viewX = ((e.clientX - box.left) / Math.max(box.width, 1)) * w;
+    const idx = Math.round(((viewX - padL) / Math.max(innerW, 1)) * Math.max(rows.length - 1, 0));
+    setHover(Math.max(0, Math.min(rows.length - 1, idx)));
+  }
+
+  const hoverMarkerGroups = hover == null ? [] : markerGroups.filter((m) => Math.abs(m.idx - hover) <= 1).slice(0, 3);
+  const tooltipW = 360;
+  const tooltipX = hover == null ? 0 : Math.min(xScale(hover) + 12, w - tooltipW - 8);
+  const tooltipH = 58 + hoverMarkerGroups.length * 32;
+
+  return html`
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%" }}>
+      ${yTicks.map((t, i) => html`
+        <g key=${i}>
+          <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
+          <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">
+            ${Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}
+          </text>
+        </g>
+      `)}
+      ${xTicks.map((idx) => html`
+        <g key=${`x-${idx}`}>
+          <line x1=${xScale(idx)} x2=${xScale(idx)} y1=${padT} y2=${h - padB} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.45" />
+          <text x=${xScale(idx)} y=${h - 10} font-size="10" text-anchor=${idx === 0 ? "start" : idx === rows.length - 1 ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">
+            ${compactDateLabel(rows[idx]?.key)}
+          </text>
+        </g>
+      `)}
+      <path d=${lineFromPoints(pts)} fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+      ${plottedMarkers.map((m, i) => {
+        const buy = String(m.side || "").toLowerCase() === "buy";
+        const x = xScale(m.idx);
+        const y = yScale(m.price);
+        return html`
+          <g key=${i}>
+            <path
+              d=${buy ? `M${x},${y - 8} L${x - 5},${y + 2} L${x + 5},${y + 2} Z` : `M${x},${y + 8} L${x - 5},${y - 2} L${x + 5},${y - 2} Z`}
+              fill=${markerColor(m)}
+              stroke="var(--surface)"
+              stroke-width="1"
+            />
+          </g>
+        `;
+      })}
+      ${hover != null && html`
+        <g>
+          <line x1=${xScale(hover)} x2=${xScale(hover)} y1=${padT} y2=${h - padB} stroke="var(--text-muted)" stroke-dasharray="3 4" />
+          <circle cx=${xScale(hover)} cy=${yScale(rows[hover].close)} r="3.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5" />
+          <g transform=${`translate(${tooltipX}, ${padT + 8})`}>
+            <rect width=${tooltipW} height=${tooltipH} rx="6" fill="var(--surface)" stroke="var(--border-strong)" />
+            <text x="10" y="18" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">
+              ${tooltipLabelFormatter(rows[hover].key)}
+            </text>
+            <text x="10" y="36" font-size="11" fill="var(--text)" font-family="var(--font-mono)">
+              Price: ${defaultTooltipValue(rows[hover].close)}
+            </text>
+            ${hoverMarkerGroups.map((m, i) => html`
+              <text key=${`a-${i}`} x="10" y=${58 + i * 32} font-size="10.5" fill=${markerColor(m)} font-family="var(--font-mono)">
+                ${`${m.side === "buy" ? "BUY" : "SELL"} ${m.count > 1 ? `${m.count} fills` : "1 fill"} | Qty ${compactQty(m.qty)} | Avg ${defaultTooltipValue(m.avgPrice)}`}
+              </text>
+              <text key=${`b-${i}`} x="10" y=${72 + i * 32} font-size="10.5" fill="var(--text-muted)" font-family="var(--font-mono)">
+                ${`Trade PnL ${m.hasPnl ? signedMoney(m.pnl) : "--"} | Day PnL ${signedMoney(m.dayPnl)}`}
+              </text>
+            `)}
+          </g>
+        </g>
+      `}
+      <rect x=${padL} y=${padT} width=${innerW} height=${innerH} fill="transparent" onMouseMove=${handlePointerMove} onMouseLeave=${() => setHover(null)} />
+    </svg>
+  `;
+}
+
+window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart };

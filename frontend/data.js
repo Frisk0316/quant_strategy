@@ -68,6 +68,9 @@
     { id: "obi_market_maker", name: "OBI Market Maker", tag: "Market Making", desc: "Order book imbalance-driven market making" },
     { id: "funding_carry", name: "Funding Carry", tag: "Carry", desc: "Delta-neutral long spot / short perp, earns 8h funding" },
     { id: "pairs_trading", name: "Pairs Trading", tag: "Stat Arb", desc: "Kalman filter hedge ratio + OU spread z-score" },
+    { id: "ma_crossover", name: "MA Crossover", tag: "Trend", desc: "Long/flat moving-average crossover strategy with adjustable fast and slow windows" },
+    { id: "ema_crossover", name: "EMA Crossover", tag: "Trend", desc: "Long/flat exponential moving-average crossover strategy with adjustable spans" },
+    { id: "macd_crossover", name: "MACD Crossover", tag: "Trend", desc: "Long/flat MACD line versus signal line crossover strategy" },
     { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
     { id: "daily_winner", name: "Daily Winner", tag: "Validation", desc: "Every day buys yesterday's strongest symbol and exits at the daily close" },
   ];
@@ -321,6 +324,14 @@ window.API = (function () {
     fetchBacktestTrades:      (id)      => _getLarge("/api/backtest/" + id + "/trades"),
     /** Risk events CSV as JSON records. */
     fetchBacktestRiskEvents:  (id)      => _getLarge("/api/backtest/" + id + "/risk-events"),
+    fetchBacktestExecutionMarkers: (id) => _getLarge("/api/backtest/" + id + "/execution-markers"),
+    fetchBacktestPriceSeries: (id, symbol = null, n = 1200) => {
+      const q = new URLSearchParams();
+      if (symbol) q.set("symbol", symbol);
+      if (n) q.set("n", n);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/price-series" + (qs ? "?" + qs : ""));
+    },
     /** Data coverage JSON. */
     fetchBacktestCoverage:    (id)      => _get("/api/backtest/" + id + "/data-coverage"),
     fetchWalkForward:         (id)      => _get("/api/backtest/" + id + "/walk-forward"),

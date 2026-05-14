@@ -7,6 +7,7 @@ and CSV tables for every aspect of a replay backtest run.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -90,8 +91,10 @@ CANCEL_LOG_COLUMNS = [
 
 EXECUTION_MARKER_COLUMNS = [
     "ts", "datetime", "inst_id", "strategy", "side", "price", "qty", "fee",
-    "net_realized_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
+    "net_realized_pnl", "day_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
 ]
+
+PRICE_SERIES_COLUMNS = ["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"]
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +146,13 @@ def _safe_float(val: Any, default: float = float("nan")) -> float:
         return float(val)
     except (TypeError, ValueError):
         return default
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +305,21 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                        artifact_dir, total_return, sharpe, max_drawdown, order_count,
                        real_fill_count, fill_rate, bankrupt)
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-                    ON CONFLICT (run_id) DO NOTHING
+                    ON CONFLICT (run_id) DO UPDATE SET
+                        created_at = EXCLUDED.created_at,
+                        strategies = EXCLUDED.strategies,
+                        symbols = EXCLUDED.symbols,
+                        bar = EXCLUDED.bar,
+                        start_date = EXCLUDED.start_date,
+                        end_date = EXCLUDED.end_date,
+                        artifact_dir = EXCLUDED.artifact_dir,
+                        total_return = EXCLUDED.total_return,
+                        sharpe = EXCLUDED.sharpe,
+                        max_drawdown = EXCLUDED.max_drawdown,
+                        order_count = EXCLUDED.order_count,
+                        real_fill_count = EXCLUDED.real_fill_count,
+                        fill_rate = EXCLUDED.fill_rate,
+                        bankrupt = EXCLUDED.bankrupt
                     """,
                     run_id,
                     datetime.now(tz=timezone.utc),
@@ -538,10 +562,28 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
 
     # Join net_realized_pnl from trade_log where available
     net_pnl_map: dict = {}
+    day_pnl_map: dict = {}
     if not trade_log.empty and "net_realized_pnl" in trade_log.columns:
-        for _, row in trade_log.iterrows():
+        trade_with_dt = trade_log.copy()
+        if "datetime" not in trade_with_dt.columns and "ts" in trade_with_dt.columns:
+            trade_with_dt["datetime"] = _ts_to_datetime(trade_with_dt["ts"])
+        trade_with_dt["_day"] = pd.to_datetime(
+            trade_with_dt.get("datetime", pd.Series(dtype=object)),
+            utc=True,
+            errors="coerce",
+        ).dt.strftime("%Y-%m-%d")
+        for _, row in trade_with_dt.iterrows():
             key = (row.get("inst_id", ""), row.get("ts", 0))
             net_pnl_map[key] = row.get("net_realized_pnl", 0.0)
+        day_group = (
+            trade_with_dt.dropna(subset=["_day"])
+            .groupby(["inst_id", "_day"])["net_realized_pnl"]
+            .sum()
+        )
+        day_pnl_map = {
+            (inst_id, day): pnl
+            for (inst_id, day), pnl in day_group.items()
+        }
 
     rows = []
     for _, f in real_fills.iterrows():
@@ -553,10 +595,20 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
             net_pnl_map.get((f.get("inst_id", ""), f.get("ts", 0)), float("nan")),
             float("nan"),
         )
+        day = pd.to_datetime(f.get("datetime", ""), utc=True, errors="coerce")
+        day_key = day.strftime("%Y-%m-%d") if pd.notna(day) else ""
+        day_pnl = _safe_float(
+            day_pnl_map.get((f.get("inst_id", ""), day_key), float("nan")),
+            float("nan"),
+        )
         pnl_str = f"{pnl:.2f}" if not np.isnan(pnl) else "n/a"
+        day_pnl_str = f"{day_pnl:.2f}" if not np.isnan(day_pnl) else "n/a"
         marker_position = "belowBar" if side == "buy" else "aboveBar"
         marker_shape = "arrowUp" if side == "buy" else "arrowDown"
-        marker_text = f"{side.upper()} {qty} @ {price:.4g} | PnL: {pnl_str}"
+        marker_text = (
+            f"{side.upper()} {qty:.6g} @ {price:,.2f} | "
+            f"Trade PnL: {pnl_str} | Day PnL: {day_pnl_str}"
+        )
 
         # position_after from trade_log
         pos_after = float("nan")
@@ -578,12 +630,22 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
             "qty": qty,
             "fee": fee,
             "net_realized_pnl": pnl,
+            "day_pnl": day_pnl,
             "position_after": pos_after,
             "marker_position": marker_position,
             "marker_shape": marker_shape,
             "marker_text": marker_text,
         })
     return pd.DataFrame(rows)
+
+
+def _build_price_series_df(price_log: pd.DataFrame) -> pd.DataFrame:
+    if price_log.empty:
+        return pd.DataFrame(columns=PRICE_SERIES_COLUMNS)
+    df = price_log.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    return df
 
 
 def _build_data_coverage(
@@ -683,6 +745,7 @@ def save_backtest_artifacts(
     fill_log: pd.DataFrame = getattr(result, "fill_log", pd.DataFrame())
     trade_log: pd.DataFrame = getattr(result, "trade_log", pd.DataFrame())
     funding_log: pd.DataFrame = getattr(result, "funding_log", pd.DataFrame())
+    price_log: pd.DataFrame = getattr(result, "price_log", pd.DataFrame())
     equity_curve: pd.Series = getattr(result, "equity_curve", pd.Series(dtype=float))
     metrics: dict = dict(getattr(result, "metrics", {}))
     signal_log: list[dict] = getattr(result, "signal_log", [])
@@ -690,6 +753,12 @@ def save_backtest_artifacts(
     rejected_log: list[dict] = getattr(result, "rejected_log", [])
     cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
     result_validation: dict[str, Any] = dict(getattr(result, "validation", {}) or {})
+    if validation_results and "cpcv" in validation_results:
+        cpcv_payload = validation_results.get("cpcv") or {}
+        if _is_finite_number(cpcv_payload.get("dsr")):
+            metrics["dsr"] = cpcv_payload.get("dsr")
+        if _is_finite_number(cpcv_payload.get("psr")):
+            metrics["psr"] = cpcv_payload.get("psr")
 
     # -------------------------------------------------------------------
     # config.json
@@ -832,6 +901,13 @@ def save_backtest_artifacts(
         _write_csv(run_dir / "execution_markers.csv", markers_df, EXECUTION_MARKER_COLUMNS)
 
     # -------------------------------------------------------------------
+    # price_series.csv
+    # -------------------------------------------------------------------
+    price_df = _build_price_series_df(price_log)
+    if write_files:
+        _write_csv(run_dir / "price_series.csv", price_df, PRICE_SERIES_COLUMNS)
+
+    # -------------------------------------------------------------------
     # data_coverage.json
     # -------------------------------------------------------------------
     coverage = _build_data_coverage(
@@ -852,6 +928,10 @@ def save_backtest_artifacts(
         row.get("inst_id", "") for _, row in (
             orders_df.iterrows() if not orders_df.empty else iter([])
         )
+    } | {
+        row.get("inst_id", "") for _, row in (
+            price_df.iterrows() if not price_df.empty else iter([])
+        )
     })
     symbols = [s for s in symbols if s]
 
@@ -871,6 +951,7 @@ def save_backtest_artifacts(
         "rejected_orders": "rejected_orders.csv",
         "cancel_log": "cancel_log.csv",
         "execution_markers": "execution_markers.csv",
+        "price_series": "price_series.csv",
         "data_coverage": "data_coverage.json",
     }
     if artifact_mode == "db":
@@ -930,6 +1011,7 @@ def save_backtest_artifacts(
         "rejected_orders": _df_records(ensure_columns(rejected_df.copy(), REJECTED_ORDER_COLUMNS)),
         "cancel_log": _df_records(ensure_columns(cancel_df.copy(), CANCEL_LOG_COLUMNS)),
         "execution_markers": _df_records(ensure_columns(markers_df.copy(), EXECUTION_MARKER_COLUMNS)),
+        "price_series": _df_records(ensure_columns(price_df.copy(), PRICE_SERIES_COLUMNS)),
         "data_coverage": coverage,
     }, dsn=dsn, mode=artifact_mode)
 

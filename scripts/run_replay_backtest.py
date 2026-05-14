@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -23,7 +24,15 @@ BAR_PERIODS = {
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategy", action="append", required=True,
-                        choices=["obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading"])
+                        choices=[
+                            "obi_market_maker",
+                            "as_market_maker",
+                            "funding_carry",
+                            "pairs_trading",
+                            "ma_crossover",
+                            "ema_crossover",
+                            "macd_crossover",
+                        ])
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--bar", default="1H")
@@ -41,6 +50,8 @@ def main() -> None:
                         help="Spot symbol for funding_carry")
     parser.add_argument("--min-apr-threshold", type=float, default=None,
                         help="Override funding_carry min APR threshold for this replay")
+    parser.add_argument("--strategy-params", default=None,
+                        help="JSON object with strategy-specific parameter overrides")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
     parser.add_argument("--save-artifacts", action="store_true",
                         help="Save all backtest artifacts to --output-dir/<run_id>/")
@@ -60,12 +71,30 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
+    if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
+        cfg.storage.candle_backend = "parquet"
+    strategy_params = json.loads(args.strategy_params) if args.strategy_params else {}
+    if strategy_params and not isinstance(strategy_params, dict):
+        sys.exit("Error: --strategy-params must be a JSON object")
+
     if args.symbol:
         args.symbol = [normalize_swap_symbol(symbol) for symbol in args.symbol]
         if "obi_market_maker" in args.strategy:
             cfg.strategies.obi_market_maker.symbols = args.symbol
         if "as_market_maker" in args.strategy:
             cfg.strategies.as_market_maker.symbols = args.symbol
+        if "ma_crossover" in args.strategy:
+            cfg.strategies.ma_crossover = cfg.strategies.ma_crossover.model_copy(
+                update={"symbols": args.symbol}
+            )
+        if "ema_crossover" in args.strategy:
+            cfg.strategies.ema_crossover = cfg.strategies.ema_crossover.model_copy(
+                update={"symbols": args.symbol}
+            )
+        if "macd_crossover" in args.strategy:
+            cfg.strategies.macd_crossover = cfg.strategies.macd_crossover.model_copy(
+                update={"symbols": args.symbol}
+            )
         cfg.system.symbols = args.symbol
     if "pairs_trading" in args.strategy:
         if args.symbol_x:
@@ -85,6 +114,22 @@ def main() -> None:
             cfg.system.spot_symbols = [cfg.strategies.funding_carry.spot_symbol]
         if args.min_apr_threshold is not None:
             cfg.strategies.funding_carry.min_apr_threshold = args.min_apr_threshold
+
+    technical_names = {"ma_crossover", "ema_crossover", "macd_crossover"}
+    selected_technical = technical_names.intersection(args.strategy)
+    if strategy_params:
+        if len(args.strategy) != 1:
+            sys.exit("Error: --strategy-params is supported only for single-strategy replay runs")
+        strategy_name = args.strategy[0]
+        if not hasattr(cfg.strategies, strategy_name):
+            sys.exit(f"Error: strategy params not supported for {strategy_name}")
+        current = getattr(cfg.strategies, strategy_name)
+        updates = dict(strategy_params)
+        if args.symbol and "symbols" not in updates and strategy_name in technical_names:
+            updates["symbols"] = args.symbol
+        setattr(cfg.strategies, strategy_name, current.model_copy(update=updates))
+    elif selected_technical and args.symbol:
+        cfg.system.symbols = args.symbol
 
     print("PROGRESS:20", flush=True)
     result = run_replay_backtest(

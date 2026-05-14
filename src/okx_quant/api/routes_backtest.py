@@ -67,6 +67,7 @@ class RunBacktestRequest(BaseModel):
     rank_exit_buffer: int = 6
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
 
 
 def _run_ohlcv_rotation_job(
@@ -698,6 +699,8 @@ def _run_backtest_job(
             cmd.extend(["--spot-symbol", req.spot_symbol])
         if req.min_apr_threshold is not None:
             cmd.extend(["--min-apr-threshold", str(req.min_apr_threshold)])
+        if req.strategy_params:
+            cmd.extend(["--strategy-params", json.dumps(req.strategy_params)])
 
         _run_jobs[job_id].update({
             "status": "running",
@@ -876,7 +879,13 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     try:
                         rows = await conn.fetch(
                             """
-                            SELECT r.*
+                            SELECT
+                                r.*,
+                                COALESCE((
+                                    SELECT MAX(a.created_at)
+                                    FROM backtest_artifacts a
+                                    WHERE a.run_id = r.run_id
+                                ), r.created_at) AS sort_created_at
                             FROM backtest_runs r
                             WHERE EXISTS (
                                 SELECT 1
@@ -885,7 +894,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                                   AND a.artifact_type = 'returns'
                                   AND a.row_count > 0
                             )
-                            ORDER BY r.created_at DESC
+                            ORDER BY sort_created_at DESC
                             LIMIT 200
                             """
                         )
@@ -897,12 +906,24 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     await conn.close()
                 for row in rows:
                     item = dict(row)
+                    item["created_at"] = item.get("sort_created_at") or item.get("created_at")
+                    item.pop("sort_created_at", None)
                     item["start"] = item.get("start_date")
                     item["end"] = item.get("end_date")
                     merged[item["run_id"]] = item
         except Exception:
             pass
-        return sorted(merged.values(), key=lambda r: str(r.get("created_at") or ""), reverse=True)
+
+        def _created_at_sort_key(row: dict) -> float:
+            value = row.get("created_at")
+            if not value:
+                return 0.0
+            try:
+                return pd.Timestamp(value).timestamp()
+            except Exception:
+                return 0.0
+
+        return sorted(merged.values(), key=_created_at_sort_key, reverse=True)
 
     @router.post("/run")
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
@@ -913,6 +934,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "pairs_trading",
             "ohlcv_rotation",
             "daily_winner",
+            "ma_crossover",
+            "ema_crossover",
+            "macd_crossover",
         }
         validate_allowed = {None, "wf", "cpcv", "both"}
         _validate_backtest_request(req)
@@ -924,6 +948,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
         if req.strategy in {"ohlcv_rotation", "daily_winner"} and not req.universe:
             raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol in universe")
+        if req.strategy in {"ma_crossover", "ema_crossover", "macd_crossover"} and not req.symbols:
+            raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol")
         job_id = str(uuid.uuid4())[:8]
         run_id = req.run_id or f"ui_{req.strategy}_{job_id}"
         _run_jobs[job_id] = {
@@ -1175,6 +1201,23 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             return payload
         return _read_csv(_run_dir(run_id) / "execution_markers.csv")
 
+    @router.get("/{run_id}/price-series")
+    async def get_price_series(
+        run_id: str,
+        symbol: str | None = Query(default=None),
+        n: int = Query(default=0, ge=0),
+    ):
+        payload = await _read_db_artifact(run_id, "price_series")
+        if payload is not None:
+            records = payload
+        else:
+            records = _read_csv(_run_dir(run_id) / "price_series.csv")
+        if symbol:
+            if not _SAFE_SYMBOL_RE.match(symbol):
+                raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+            records = [row for row in records if row.get("inst_id") == symbol]
+        return _downsample_records(records, n)
+
     # ------------------------------------------------------------------
     # Data coverage
     # ------------------------------------------------------------------
@@ -1227,8 +1270,18 @@ def _validate_backtest_request(req: RunBacktestRequest) -> None:
         raise HTTPException(status_code=400, detail="Invalid end date format")
     if len(req.universe) > 50:
         raise HTTPException(status_code=400, detail="Universe too large (max 50 symbols)")
+    if len(req.symbols) > 50:
+        raise HTTPException(status_code=400, detail="Symbol list too large (max 50 symbols)")
     if req.benchmark and not _SAFE_SYMBOL_RE.match(req.benchmark):
         raise HTTPException(status_code=400, detail=f"Invalid symbol: {req.benchmark}")
     for sym in req.universe:
         if not _SAFE_SYMBOL_RE.match(sym):
             raise HTTPException(status_code=400, detail=f"Invalid symbol: {sym}")
+    for sym in req.symbols:
+        if not _SAFE_SYMBOL_RE.match(sym):
+            raise HTTPException(status_code=400, detail=f"Invalid symbol: {sym}")
+    for key, value in req.strategy_params.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(key)):
+            raise HTTPException(status_code=400, detail=f"Invalid strategy param: {key}")
+        if not isinstance(value, (int, float, str, bool)) and value is not None:
+            raise HTTPException(status_code=400, detail=f"Invalid strategy param value for: {key}")

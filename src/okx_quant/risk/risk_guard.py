@@ -42,6 +42,7 @@ class RiskGuard:
 
         # State
         self.kill: bool = False
+        self._kill_reason: str | None = None
         self.soft_stop: bool = False
         self._strategy_size_multipliers: dict[str, float] = {}
 
@@ -60,7 +61,7 @@ class RiskGuard:
         Returns False (block) if any limit is breached.
         """
         if self.kill:
-            logger.warning("Order blocked: kill switch active", inst_id=order.inst_id)
+            logger.warning("Order blocked: kill switch active", inst_id=order.inst_id, reason=self._kill_reason)
             return False
 
         eq = self._equity_fn()
@@ -112,7 +113,12 @@ class RiskGuard:
         # Daily loss check
         risk_level = self._dd_tracker.check_thresholds()
         if risk_level == RiskLevel.HARD_STOP:
-            self.trigger_hard_stop("drawdown threshold breached")
+            daily_loss_hit = self._dd_tracker.daily_pnl_pct() < -self.max_daily_loss_pct
+            hard_drawdown_hit = self._dd_tracker.current_drawdown() <= -self.hard_drawdown_pct
+            reason = "drawdown threshold breached" if hard_drawdown_hit else (
+                "daily_loss_limit" if daily_loss_hit else "drawdown threshold breached"
+            )
+            self.trigger_hard_stop(reason)
             return False
         if risk_level == RiskLevel.SOFT_STOP and not self.soft_stop:
             self.trigger_soft_stop()
@@ -125,6 +131,7 @@ class RiskGuard:
                 daily_pnl_pct=daily_pnl_pct * 100,
             )
             self.kill = True
+            self._kill_reason = "daily_loss_limit"
             return False
 
         return True
@@ -145,12 +152,14 @@ class RiskGuard:
     def trigger_hard_stop(self, reason: str = "drawdown hard threshold") -> None:
         """Kill all trading. Caller must close positions."""
         self.kill = True
+        self._kill_reason = reason
         self.soft_stop = True
         logger.error("HARD STOP triggered", reason=reason)
 
     def reset(self) -> None:
         """Manual reset after cooldown period. Requires operator confirmation."""
         self.kill = False
+        self._kill_reason = None
         self.soft_stop = False
         for k in self._strategy_size_multipliers:
             self._strategy_size_multipliers[k] = 1.0
@@ -172,6 +181,9 @@ class RiskGuard:
     def reset_daily(self) -> None:
         """Reset daily loss counter. Call at UTC midnight."""
         self._dd_tracker.reset_daily()
+        if self.kill and self._kill_reason == "daily_loss_limit":
+            self.kill = False
+            self._kill_reason = None
         if self.soft_stop and not self.kill:
             self.soft_stop = False
             for k in self._strategy_size_multipliers:

@@ -40,6 +40,11 @@ from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
 from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
+from okx_quant.strategies.technical_indicators import (
+    EMACrossoverStrategy,
+    MACDCrossoverStrategy,
+    MACrossoverStrategy,
+)
 
 
 TERMINAL_TAKER_FEE_RATE = 0.0005
@@ -54,6 +59,7 @@ class ReplayBacktestResult:
     fill_log: pd.DataFrame
     funding_log: pd.DataFrame
     trade_log: pd.DataFrame
+    price_log: pd.DataFrame = field(default_factory=pd.DataFrame)
     signal_log: list[dict] = field(default_factory=list)
     risk_event_log: list[dict] = field(default_factory=list)
     rejected_log: list[dict] = field(default_factory=list)
@@ -68,6 +74,7 @@ class ReplayRecorder:
     fill_log: list[dict] = field(default_factory=list)
     funding_log: list[dict] = field(default_factory=list)
     equity_samples: list[dict] = field(default_factory=list)
+    price_log: list[dict] = field(default_factory=list)
     signal_log: list[dict] = field(default_factory=list)
     risk_event_log: list[dict] = field(default_factory=list)
 
@@ -124,6 +131,25 @@ class ReplayRecorder:
 
     def record_equity(self, ts: int, equity: float) -> None:
         self.equity_samples.append({"ts": ts, "equity": equity})
+
+    def record_price(self, payload: MarketPayload) -> None:
+        if not payload.bids or not payload.asks:
+            return
+        try:
+            bid = float(payload.bids[0][0])
+            ask = float(payload.asks[0][0])
+        except (IndexError, TypeError, ValueError):
+            return
+        mid = 0.5 * (bid + ask)
+        self.price_log.append({
+            "ts": int(payload.ts),
+            "inst_id": payload.inst_id,
+            "open": mid,
+            "high": mid,
+            "low": mid,
+            "close": mid,
+            "vol": float(payload.bids[0][1]) + float(payload.asks[0][1]),
+        })
 
     def record_signal(self, signal, ts: int) -> None:
         from okx_quant.core.events import SignalPayload
@@ -204,6 +230,7 @@ class ReplayRecorder:
             fill_log=pd.DataFrame(self.fill_log),
             funding_log=pd.DataFrame(self.funding_log),
             trade_log=pd.DataFrame(positions.get_trade_log()),
+            price_log=pd.DataFrame(self.price_log),
             signal_log=list(self.signal_log),
             risk_event_log=list(self.risk_event_log),
             rejected_log=rejected_log,
@@ -374,10 +401,22 @@ def _check_data_coverage_gate(coverage: dict) -> None:
         return
     pct = float(coverage.get("coverage_pct", 1.0))
     if pct < 0.80:
+        symbols = coverage.get("symbols") or []
+        worst_symbols = sorted(
+            symbols,
+            key=lambda item: float(item.get("coverage_pct", 1.0)),
+        )[:5]
+        worst_msg = "; ".join(
+            f"{item.get('inst_id')}={float(item.get('coverage_pct', 0.0)):.1%} "
+            f"({item.get('actual_bars')}/{item.get('expected_bars')} bars)"
+            for item in worst_symbols
+        )
+        detail = f" Lowest coverage: {worst_msg}." if worst_msg else ""
         raise ValueError(
             f"Gate 3: data coverage {pct:.1%} is below the 80 % threshold "
             f"(bar={coverage.get('bar')}, range={coverage.get('start')}..{coverage.get('end')}). "
-            "Check data_dir or reduce the date range."
+            "Check data_dir, refresh derived candles, or reduce the date range."
+            f"{detail}"
         )
 
 
@@ -500,14 +539,31 @@ def load_l1_books(
             stored_books["inst_id"] = inst_id
             return stored_books[["ts", "inst_id", "bid_px_0", "bid_sz_0", "ask_px_0", "ask_sz_0"]]
 
-    candle_path = inst_dir / f"candles_{bar}.parquet"
-    if not candle_path.exists() and fallback_inst_id:
-        candle_path = Path(data_dir) / fallback_inst_id.replace("-", "_") / f"candles_{bar}.parquet"
-    if not candle_path.exists():
+    try:
+        candles = load_ohlcv_candles(
+            inst_id,
+            bar=bar,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            backend="parquet",
+        )
+    except FileNotFoundError:
+        candles = pd.DataFrame()
+    if candles.empty and fallback_inst_id:
+        try:
+            candles = load_ohlcv_candles(
+                fallback_inst_id,
+                bar=bar,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend="parquet",
+            )
+        except FileNotFoundError:
+            candles = pd.DataFrame()
+    if candles.empty:
         return pd.DataFrame(columns=["ts", "inst_id", "bid_px_0", "bid_sz_0", "ask_px_0", "ask_sz_0"])
-
-    candles = pq.read_table(candle_path).to_pandas()
-    candles = _normalize_time_filter(candles, ts_col="ts", start=start, end=end)
     return _synthetic_l1_from_candles(
         inst_id=inst_id,
         candles=candles,
@@ -653,6 +709,9 @@ class ReplayBacktestEngine:
             self._cfg.strategies.pairs_trading.symbol_y,
             self._cfg.strategies.pairs_trading.symbol_x,
         })
+        swap_symbols.update(self._cfg.strategies.ma_crossover.symbols)
+        swap_symbols.update(self._cfg.strategies.ema_crossover.symbols)
+        swap_symbols.update(self._cfg.strategies.macd_crossover.symbols)
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
@@ -693,12 +752,18 @@ class ReplayBacktestEngine:
                     "bar_seconds": self._bar_seconds,
                 }),
             ),
+            ("ma_crossover", MACrossoverStrategy(strat_cfg.ma_crossover.model_dump())),
+            ("ema_crossover", EMACrossoverStrategy(strat_cfg.ema_crossover.model_dump())),
+            ("macd_crossover", MACDCrossoverStrategy(strat_cfg.macd_crossover.model_dump())),
         ]
         enabled = {
             "obi_market_maker": strat_cfg.obi_market_maker.enabled,
             "as_market_maker": strat_cfg.as_market_maker.enabled,
             "funding_carry": strat_cfg.funding_carry.enabled,
             "pairs_trading": strat_cfg.pairs_trading.enabled,
+            "ma_crossover": strat_cfg.ma_crossover.enabled,
+            "ema_crossover": strat_cfg.ema_crossover.enabled,
+            "macd_crossover": strat_cfg.macd_crossover.enabled,
         }
 
         for name, strategy in candidates:
@@ -772,6 +837,17 @@ class ReplayBacktestEngine:
         exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=self._cfg.risk.stale_quote_pct)
         recorder = ReplayRecorder(initial_equity=self._cfg.system.equity_usd)
         original_risk_check = risk_guard.check
+        last_risk_day: str | None = None
+
+        def reset_daily_risk_if_needed(ts: int) -> None:
+            nonlocal last_risk_day
+            event_day = pd.Timestamp(int(ts), unit="ms", tz="UTC").date().isoformat()
+            if last_risk_day is None:
+                last_risk_day = event_day
+                return
+            if event_day != last_risk_day:
+                risk_guard.reset_daily()
+                last_risk_day = event_day
 
         def recording_risk_check(
             order: OrderPayload,
@@ -815,12 +891,17 @@ class ReplayBacktestEngine:
             getattr(strategy, "symbol_y", None) for strategy in strategies
         } | {
             getattr(strategy, "symbol_x", None) for strategy in strategies
+        } | {
+            symbol
+            for strategy in strategies
+            for symbol in getattr(strategy, "symbols", [])
         } | set(self._cfg.system.symbols) | set(self._cfg.system.spot_symbols)
         books = {symbol: OkxBook(symbol) for symbol in book_symbols if symbol}
 
         async def on_market_event(event: Event) -> None:
             payload = event.payload
             if payload.channel == "books":
+                reset_daily_risk_if_needed(payload.ts)
                 book = books.get(payload.inst_id)
                 if book is not None:
                     self._apply_book_snapshot(book, payload)
@@ -828,6 +909,7 @@ class ReplayBacktestEngine:
                 portfolio_mgr.on_market(payload)
                 dd_tracker.update(positions.get_equity())
                 recorder.record_equity(payload.ts, positions.get_equity())
+                recorder.record_price(payload)
                 for strategy in strategies:
                     if strategy.is_active:
                         signal = await strategy.on_market(event, books.get(payload.inst_id))
@@ -837,6 +919,7 @@ class ReplayBacktestEngine:
 
         async def on_funding_event(event: Event) -> None:
             payload = event.payload
+            reset_daily_risk_if_needed(payload.ts)
             self._settle_funding(payload, positions, recorder)
             recorder.record_equity(payload.ts, positions.get_equity())
             for strategy in strategies:
@@ -1191,6 +1274,24 @@ def build_feed_for_strategies(
             dsn=cfg.storage.timescale_dsn,
         ))
 
+    technical_symbols: set[str] = set()
+    if "ma_crossover" in strategy_set:
+        technical_symbols.update(cfg.strategies.ma_crossover.symbols)
+    if "ema_crossover" in strategy_set:
+        technical_symbols.update(cfg.strategies.ema_crossover.symbols)
+    if "macd_crossover" in strategy_set:
+        technical_symbols.update(cfg.strategies.macd_crossover.symbols)
+    for symbol in sorted(technical_symbols):
+        market_frames.append(load_l1_books(
+            symbol,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+
     market_df = _concat_non_empty(market_frames)
 
     # Load funding for all SWAP symbols that appear in market data,
@@ -1353,11 +1454,33 @@ def make_replay_strategy_fn(
         is_metrics: dict[str, Any] | None = None
         if include_train_metrics and not train_data.empty:
             is_start, is_end = _window_bounds(train_data)
-            is_result = _run_window(is_start, is_end)
-            is_metrics = dict(is_result.metrics)
+            try:
+                is_result = _run_window(is_start, is_end)
+                is_metrics = dict(is_result.metrics)
+            except ValueError as exc:
+                if "empty historical feed" not in str(exc):
+                    raise
+                is_metrics = {"empty_replay_window": True}
 
         oos_start, oos_end = _window_bounds(test_data)
-        oos_result = _run_window(oos_start, oos_end)
+        try:
+            oos_result = _run_window(oos_start, oos_end)
+        except ValueError as exc:
+            if "empty historical feed" not in str(exc):
+                raise
+            return {
+                "returns": pd.Series(0.0, index=_as_utc_index(test_data.index)),
+                "is_metrics": is_metrics or {},
+                "oos_metrics": {
+                    "total_return": 0.0,
+                    "sharpe": 0.0,
+                    "max_drawdown": 0.0,
+                    "empty_replay_window": True,
+                },
+                "oos_order_count": 0,
+                "oos_fill_count": 0,
+                "returns_source": "empty_replay_window",
+            }
         return {
             "returns": _align_replay_returns(oos_result.returns, test_data.index),
             "is_metrics": is_metrics or {},
