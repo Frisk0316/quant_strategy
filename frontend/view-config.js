@@ -72,9 +72,12 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
+  const isRotation = strategy === "ohlcv_rotation";
+  const isDailyWinner = strategy === "daily_winner";
+  const isBasketStrategy = isRotation || isDailyWinner;
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
-    : strategy === "ohlcv_rotation"
+    : isBasketStrategy
     ? rotUniverse
     : [symbol].filter((s) => s && s.includes("SWAP"));
   const startMin = selectedSwapSymbols
@@ -121,26 +124,32 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     if (startMin && start < startMin) setStart(startMin);
   }, [startMin, start]);
 
+  useConfigEffect(() => {
+    if (isDailyWinner && bar !== "1D") {
+      setBar("1D");
+      setPeriodsOverride(null);
+    }
+  }, [isDailyWinner, bar]);
+
   function onBarChange(newBar) {
     setBar(newBar);
     setPeriodsOverride(null);
   }
 
   function triggerBacktest() {
-    const isRotation = strategy === "ohlcv_rotation";
     const body = {
       strategy,
-      bar: bar,
-      periods,
+      bar: isDailyWinner ? "1D" : bar,
+      periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
       start: startMin && start < startMin ? startMin : start,
       end,
-      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isRotation ? [] : [symbol],
+      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isBasketStrategy ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
-      validate: isRotation ? null : (validation === "none" ? null : validation),
-      universe: isRotation ? rotUniverse : [],
+      validate: isBasketStrategy ? null : (validation === "none" ? null : validation),
+      universe: isBasketStrategy ? rotUniverse : [],
       benchmark: isRotation ? rotBenchmark : undefined,
       rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
       top_k: isRotation ? rotTopK : undefined,
@@ -178,7 +187,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY) || (isBasketStrategy && rotUniverse.length < 2)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -190,7 +199,29 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               </select>
               <div class="field-hint">${strat.desc}</div>
             </div>
-            ${strategy === "ohlcv_rotation" ? html`
+            ${isDailyWinner ? html`
+              <${Fragment}>
+                <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
+                    <table class="tbl" style=${{ fontSize: 12 }}>
+                      <tbody>
+                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                          <tr key=${s} style=${{ cursor: "pointer" }}
+                              onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
+                            <td style=${{ width: 28 }}>
+                              <input type="checkbox" checked=${rotUniverse.includes(s)} onChange=${() => {}} />
+                            </td>
+                            <td class="mono">${s}</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="field-hint">${rotUniverse.length} instruments selected - one round trip per complete day.</div>
+                </div>
+              <//>
+            ` : strategy === "ohlcv_rotation" ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
                   <div class="field-label">Universe (perpetual swaps)</div>
@@ -274,9 +305,10 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             `}
             <div class="field">
               <div class="field-label">Bar size</div>
-              <select class="select mono" value=${bar} onChange=${(e) => onBarChange(e.target.value)}>
+              <select class="select mono" value=${isDailyWinner ? "1D" : bar} disabled=${isDailyWinner} onChange=${(e) => onBarChange(e.target.value)}>
                 ${Object.keys(BAR_PERIODS).map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
+              ${isDailyWinner && html`<div class="field-hint">Daily Winner always uses 1D candles derived from DB 1m OHLCV when needed.</div>`}
             </div>
             <div class="field">
               <div class="field-label">
@@ -293,7 +325,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 onChange=${(e) => setPeriodsOverride(+e.target.value)}
               />
               <div class="field-hint">
-                auto: ${BAR_PERIODS[bar]?.toLocaleString()} - <span style=${{ color: periodsOverride ? "var(--accent)" : "var(--text-muted)" }}>${periodsOverride ? "overridden" : "synced"}</span>
+                auto: ${BAR_PERIODS[isDailyWinner ? "1D" : bar]?.toLocaleString()} - <span style=${{ color: periodsOverride ? "var(--accent)" : "var(--text-muted)" }}>${periodsOverride ? "overridden" : "synced"}</span>
               </div>
             </div>
             <div class="field">
@@ -319,7 +351,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             ${(() => {
               // Warm-up clock-time per strategy (minutes)
               const warmupMin = { funding_carry: 0, as_market_maker: 10, obi_market_maker: 10,
-                                  pairs_trading: 168 * 60, ohlcv_rotation: 240 };
+                                  pairs_trading: 168 * 60, ohlcv_rotation: 240, daily_winner: 24 * 60 };
               const wm = warmupMin[strategy] || 0;
               if (!wm || !start || !end) return null;
               const days = (new Date(end) - new Date(start)) / 86400000;
@@ -332,7 +364,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               }
               return null;
             })()}
-            ${strategy !== "ohlcv_rotation" && html`
+            ${!isBasketStrategy && html`
               <div class="field">
                 <div class="field-label">Validation</div>
                 <select class="select" value=${validation} onChange=${(e) => setValidation(e.target.value)}>
@@ -416,6 +448,11 @@ function StrategyParams({ id }) {
       ["atr_stop_multiple", "2.0", "ATR stop loss", "Close position if price drops more than N × ATR below entry price."],
       ["max_holding_minutes", "480", "max holding time (min)", "Force-exit if held longer than this and composite score ≤ 0."],
       ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight. Controls the vol_filter_pass_pct diagnostic metric."],
+    ],
+    daily_winner: [
+      ["selection", "yesterday_return", "ranking signal", "Ranks the selected universe by yesterday's daily close/open return, then trades the strongest symbol today."],
+      ["holding_period", "1 day", "forced round trip", "Buys today's open and exits at today's daily close, producing one expected trade per complete day."],
+      ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
   }[id] || [];
   return html`

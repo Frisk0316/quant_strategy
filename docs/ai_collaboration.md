@@ -197,6 +197,26 @@ Deployment readiness:
 4. 若是程式行為衝突，讓 Codex 補測試後用測試結果裁決。
 5. 使用者決定是否採納高風險變更。
 
+## 新策略接入規範
+
+撰寫新的策略時，必須同時完成下列三個接入點，才算完成：
+
+1. **後端 `routes_backtest.py`**：在 `allowed` 集合加入策略名稱，實作對應的 `_run_<strategy>_job` 函式，確保 `result.json` 符合 ADR-0002 schema（必含 `run_id`、`created_at`、`strategies`、`symbols`、`bar`、`start`、`end`、`metrics`、`artifacts`，metrics 必含 `total_return`、`sharpe`、`max_drawdown`、`order_count`、`fill_rate`、`bankrupt`）。
+2. **前端 `data.js`**：在 `STRATEGIES` 陣列加入策略描述物件（含 `id`, `name`, `tag`, `desc`）。
+3. **前端 `view-config.js`**：加入對應的 UI 控制項（universe、bar、參數欄位等），並在 `StrategyParams` 加入說明文字。
+
+不符合上述三點的策略，視為未完成，不得進入 review 或 demo/shadow 流程。
+
+### 驗證專用策略
+
+標示 `tag: "Validation"` 的策略設計目的為煙霧測試與系統驗證，**不具備 demo/shadow/live 資格**，亦不得通過部署 Gate。若需將驗證結果用於策略研究，必須在 `research/strategy_synthesis.md` 說明其限制。
+
+目前已知的驗證專用策略：
+
+| 策略 | 目的 | 已知偏差（intentional，禁止「修正」） |
+| --- | --- | --- |
+| `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；fee model 為 None；無 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
+
 ## 最小完成定義
 
 一個 AI 任務完成時，至少應留下：

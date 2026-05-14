@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OKX Quant Strategy — 專案完整文件</title>
+<style>
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  --accent:    oklch(0.55 0.18 255);
+  --accent-lo: oklch(0.55 0.18 255 / 0.12);
+  --profit:    oklch(0.58 0.14 155);
+  --loss:      oklch(0.60 0.18 25);
+  --warn:      oklch(0.72 0.14 75);
+  --surface:   #ffffff;
+  --surface2:  #f5f6f8;
+  --border:    #e2e4e9;
+  --text:      #1a1d23;
+  --text2:     #5a6070;
+  --sidebar-w: 240px;
+  --mono: "JetBrains Mono", "Fira Mono", "Consolas", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface:  #111318;
+    --surface2: #1a1d24;
+    --border:   #2c3040;
+    --text:     #e8eaf0;
+    --text2:    #8890a4;
+  }
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 14px; }
+body {
+  font-family: -apple-system, "Inter", "Segoe UI", sans-serif;
+  background: var(--surface2);
+  color: var(--text);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 20px 0 40px;
+}
+#sidebar h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text2);
+  padding: 0 16px 10px;
+}
+#sidebar a {
+  display: block;
+  padding: 7px 16px;
+  font-size: 13px;
+  color: var(--text2);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: color .15s, border-color .15s, background .15s;
+  line-height: 1.4;
+}
+#sidebar a:hover, #sidebar a.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-lo);
+}
+#sidebar .sec-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text2);
+  opacity: .6;
+  margin-right: 4px;
+}
+
+/* ── Main content ───────────────────────────────────────────────────────── */
+#content {
+  flex: 1;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 36px 80px;
+}
+
+/* ── Page header ────────────────────────────────────────────────────────── */
+#page-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid var(--accent);
+}
+#page-header h1 {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+#page-header .sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text2);
+}
+#page-header .badge-row {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  scroll-margin-top: 24px;
+}
+section > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+section > h2 .sec-label {
+  background: var(--accent-lo);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+h3 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; color: var(--text); }
+h4 { font-size: 13px; font-weight: 700; margin: 14px 0 8px; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+p { line-height: 1.7; margin-bottom: 10px; color: var(--text); font-size: 14px; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 14px 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  background: var(--surface2);
+  font-weight: 700;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.5;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+td.mono, th.mono { font-family: var(--mono); font-size: 12px; }
+td.cn { color: var(--text); }
+td.desc { color: var(--text2); }
+
+/* ── Code blocks ─────────────────────────────────────────────────────────── */
+pre, code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+pre {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+code {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+pre code { background: none; border: none; padding: 0; }
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: .03em;
+}
+.badge-blue   { background: oklch(0.55 0.18 255 / 0.15); color: var(--accent); }
+.badge-green  { background: oklch(0.58 0.14 155 / 0.15); color: var(--profit); }
+.badge-red    { background: oklch(0.60 0.18 25  / 0.15); color: var(--loss); }
+.badge-yellow { background: oklch(0.72 0.14 75  / 0.15); color: oklch(0.52 0.14 75); }
+.badge-gray   { background: var(--surface2);              color: var(--text2); border: 1px solid var(--border); }
+
+/* ── Flowchart ───────────────────────────────────────────────────────────── */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0;
+}
+.flow-box {
+  background: var(--accent-lo);
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.flow-box.gray {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text2);
+}
+.flow-box.green {
+  background: oklch(0.58 0.14 155 / 0.12);
+  border-color: var(--profit);
+  color: var(--profit);
+}
+.flow-box.red {
+  background: oklch(0.60 0.18 25 / 0.12);
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.flow-arrow { color: var(--text2); font-size: 16px; }
+
+/* ── Details/summary ─────────────────────────────────────────────────────── */
+details {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin: 12px 0;
+}
+summary {
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border-radius: 7px;
+}
+details[open] summary { border-radius: 7px 7px 0 0; }
+summary::before { content: "▶"; font-size: 10px; color: var(--accent); transition: transform .2s; }
+details[open] summary::before { transform: rotate(90deg); }
+details > *:not(summary) { padding: 0 14px 14px; }
+
+/* ── Callout boxes ───────────────────────────────────────────────────────── */
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-lo);
+  border-radius: 0 7px 7px 0;
+  padding: 12px 16px;
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.callout.warn { border-color: var(--warn); background: oklch(0.72 0.14 75 / 0.10); }
+.callout.danger { border-color: var(--loss); background: oklch(0.60 0.18 25 / 0.10); }
+.callout.success { border-color: var(--profit); background: oklch(0.58 0.14 155 / 0.10); }
+
+/* ── Step list ───────────────────────────────────────────────────────────── */
+.steps { list-style: none; counter-reset: step; }
+.steps li {
+  counter-increment: step;
+  display: flex;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+}
+.steps li::before {
+  content: counter(step);
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.steps li .step-body { flex: 1; padding-top: 3px; }
+.steps li .step-body strong { display: block; font-size: 13.5px; margin-bottom: 3px; }
+.steps li .step-body span { font-size: 13px; color: var(--text2); line-height: 1.5; }
+
+/* ── Roadmap cards ───────────────────────────────────────────────────────── */
+.roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.roadmap-card {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 18px;
+  background: var(--surface2);
+}
+.roadmap-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.roadmap-card ol {
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.8;
+}
+.roadmap-card ol li { margin-bottom: 4px; }
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+/* ── Print ───────────────────────────────────────────────────────────────── */
+@media print {
+  #sidebar { display: none; }
+  #content { max-width: 100%; padding: 20px; }
+  section { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ SIDEBAR ══════════════════ -->
+<nav id="sidebar">
+  <h2>導覽</h2>
+  <a href="#page-header"><span class="sec-num">▲</span>頁首</a>
+  <a href="#s0"><span class="sec-num">0.</span>AI 協作規範</a>
+  <a href="#s1"><span class="sec-num">1.</span>資料庫儲存格式</a>
+  <a href="#s2"><span class="sec-num">2.</span>OHLCV 完整性驗證</a>
+  <a href="#s3"><span class="sec-num">3.</span>回測系統邏輯與參數</a>
+  <a href="#s4"><span class="sec-num">4.</span>回測數據解析</a>
+  <a href="#s5"><span class="sec-num">5.</span>交易策略 I/O</a>
+  <a href="#s6"><span class="sec-num">6.</span>新增策略指南</a>
+  <a href="#s7"><span class="sec-num">7.</span>後續路線圖</a>
+</nav>
+
+<!-- ══════════════════ MAIN CONTENT ══════════════════ -->
+<div id="content">
+
+<!-- ── Page Header ── -->
+<div id="page-header">
+  <h1>OKX Quant Strategy Platform</h1>
+  <p class="sub">專案完整架構文件 · 最後更新：2026-05-14 · 版本：main branch</p>
+  <div class="badge-row">
+    <span class="badge badge-blue">FastAPI + Preact</span>
+    <span class="badge badge-blue">TimescaleDB</span>
+    <span class="badge badge-blue">Docker</span>
+    <span class="badge badge-yellow">策略研發中</span>
+    <span class="badge badge-gray">OKX 永續合約</span>
+    <span class="badge badge-gray">$1k–$10k 資金規模</span>
+  </div>
+  <div class="callout" style="margin-top:16px">
+    本文件由 Claude + Codex + 人工協作生成，整合所有原始碼、設定檔與 ADR，供任何新加入的人員或 AI 快速理解本專案的完整架構與運作方式。
+  </div>
+</div>
+
+<!-- ══════════════════ SECTION 0: AI 協作規範 ══════════════════ -->
+<section id="s0">
+<h2><span class="sec-label">§0</span>AI 協作規範</h2>
+
+<p>本專案採用三角色分工模型，所有決策以 <strong>repo 文件為唯一真相來源</strong>，chat 記憶不算數。</p>
+
+<h3>角色分工</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>角色</th><th>主要職責</th><th>不可做的事</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="badge badge-blue">Claude</span></td>
+  <td>規劃、審查、風險分析、驗收標準定義、文件撰寫</td>
+  <td>直接修改 strategies / risk / portfolio / execution 程式碼</td>
+</tr>
+<tr>
+  <td><span class="badge badge-green">Codex</span></td>
+  <td>實作、測試、除錯、PR 提交</td>
+  <td>自行擴大任務範圍、修改 config/risk.yaml</td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">Human</span></td>
+  <td>核准 PR、資金部署、最終上線決策</td>
+  <td>在未通過所有 deployment gates 前啟用 live mode</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h3>標準任務流程（8 步驟）</h3>
+<div class="flow">
+  <div class="flow-box">1. Issue 建立</div><div class="flow-arrow">→</div>
+  <div class="flow-box">2. Claude 診斷</div><div class="flow-arrow">→</div>
+  <div class="flow-box">3. Claude 計劃書</div><div class="flow-arrow">→</div>
+  <div class="flow-box">4. Human 核准</div><div class="flow-arrow">→</div>
+  <div class="flow-box">5. Codex 實作</div><div class="flow-arrow">→</div>
+  <div class="flow-box">6. Codex 測試</div><div class="flow-arrow">→</div>
+  <div class="flow-box">7. Claude 審查</div><div class="flow-arrow">→</div>
+  <div class="flow-box green">8. Human 合併</div>
+</div>
+
+<h3>權威優先序（由高至低）</h3>
+<div class="flow" style="flex-direction:column;align-items:flex-start;gap:4px">
+  <div class="flow-box">① 用戶指令</div>
+  <div class="flow-box">② research/strategy_synthesis.md</div>
+  <div class="flow-box">③ docs/ai_collaboration.md（治理合約）</div>
+  <div class="flow-box">④ docs/ADR/（架構決策紀錄）</div>
+  <div class="flow-box">⑤ docs/ARCHITECTURE.md</div>
+  <div class="flow-box gray">⑥ docs/AI_HANDOFF.md（當前狀態）</div>
+</div>
+
+<h3>Commit 格式</h3>
+<pre>type(scope): 簡短說明
+
+Body（可選）
+
+AI-Origin: Claude | Codex
+AI-Role: planning | implementation
+Reviewer: Claude | Human
+Human-Reviewed: yes | no
+Issue: #N
+Tested: &lt;test command&gt;</pre>
+
+<h3>禁止動作清單（需人工明確核准）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>禁止項目</th><th>原因</th></tr></thead>
+<tbody>
+<tr><td class="mono">修改 strategies / risk / portfolio / execution / signals/</td><td class="desc">核心交易邏輯，範圍蔓延風險</td></tr>
+<tr><td class="mono">修改 config/risk.yaml</td><td class="desc">風控參數，改錯可能爆倉</td></tr>
+<tr><td class="mono">force push to main</td><td class="desc">不可逆，覆蓋他人工作</td></tr>
+<tr><td class="mono">啟用 live mode</td><td class="desc">需通過所有 deployment gates</td></tr>
+<tr><td class="mono">修改未在 PERMITTED FILES 清單中的檔案</td><td class="desc">scope creep 防護</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>七條鐵律</h3>
+<div class="callout danger">
+  <strong>① SWAP PnL 必須含 ct_val：</strong><code>unrealized_pnl = size × ct_val × (price − avg_entry)</code><br>
+  <strong>② Funding 現金流符號：</strong><code>cashflow = −perp_size × ct_val × funding_rate × mark_price</code><br>
+  <strong>③</strong> 策略假設有任何改變，必須先更新 <code>research/strategy_synthesis.md</code><br>
+  <strong>④</strong> 所有訂單預設 post-only；error 51026 記錄後直接丟棄，不重試為 taker<br>
+  <strong>⑤</strong> PR 未更新 <code>docs/AI_HANDOFF.md</code> 不可合併<br>
+  <strong>⑥</strong> 不可宣稱策略已準備好 live，除非所有 gates 已通過且人工核准<br>
+  <strong>⑦</strong> <code>ct_val</code> 必須從 OKX REST 取得，絕不硬編碼（BTC-USDT-SWAP ct_val = 0.01）
+</div>
+
+<h3>Deployment Gates（上線前必須全部通過）</h3>
+<div class="flow" style="flex-direction:column;align-items:flex-start;gap:4px">
+  <div class="flow-box">1. 歷史回測（Bar-proxy CPCV，DSR ≥ 0.95）</div>
+  <div class="flow-box">2. Walk-Forward 驗證（OOS Sharpe 穩定）</div>
+  <div class="flow-box">3. CPCV（Combinatorial Purged CV）</div>
+  <div class="flow-box">4. Replay backtest（事件驅動，非公式近似）</div>
+  <div class="flow-box">5. Demo 模式（4 週，無真實資金）</div>
+  <div class="flow-box">6. Shadow 模式（2 週，影子下單）</div>
+  <div class="flow-box green">7. 人工核准 → Live（先半倉，再全倉）</div>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 1: DB Schema ══════════════════ -->
+<section id="s1">
+<h2><span class="sec-label">§1</span>資料庫儲存格式</h2>
+
+<p>資料庫使用 <strong>PostgreSQL 15 + TimescaleDB</strong>，以 Hypertable 儲存時間序列 K 線資料，並透過 Continuous Aggregates 自動產生多時框（5m、15m、1H）。</p>
+
+<h3>架構總覽</h3>
+<div class="flow">
+  <div class="flow-box gray">OKX API / 外部交易所</div><div class="flow-arrow">→</div>
+  <div class="flow-box">raw_candles (Hypertable)</div><div class="flow-arrow">→</div>
+  <div class="flow-box">canonical_candles (Hypertable)</div><div class="flow-arrow">→</div>
+  <div class="flow-box gray">Continuous Aggregates (5m/15m/1H)</div>
+</div>
+
+<details open>
+<summary>instruments — 交易對基本資訊</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">inst_id</td><td>TEXT PK</td><td class="cn">交易對代號，例如 <code>BTC-USDT-SWAP</code></td></tr>
+<tr><td class="mono">exchange</td><td>TEXT</td><td class="cn">交易所名稱，例如 <code>okx</code></td></tr>
+<tr><td class="mono">inst_type</td><td>TEXT</td><td class="cn">產品類型：<code>SWAP</code>（永續合約）/ <code>SPOT</code>（現貨）</td></tr>
+<tr><td class="mono">base_ccy</td><td>TEXT</td><td class="cn">基底幣種，例如 <code>BTC</code></td></tr>
+<tr><td class="mono">quote_ccy</td><td>TEXT</td><td class="cn">計價幣種，例如 <code>USDT</code></td></tr>
+<tr><td class="mono">settle_ccy</td><td>TEXT</td><td class="cn">結算幣種（USDT 本位 or 幣本位）</td></tr>
+<tr><td class="mono">contract_value</td><td>DOUBLE PRECISION</td><td class="cn">合約乘數（ct_val），BTC-USDT-SWAP = 0.01 BTC/張</td></tr>
+<tr><td class="mono">tick_size</td><td>DOUBLE PRECISION</td><td class="cn">最小報價單位（價格精度）</td></tr>
+<tr><td class="mono">lot_size</td><td>DOUBLE PRECISION</td><td class="cn">最小下單量（張數精度）</td></tr>
+<tr><td class="mono">min_size</td><td>DOUBLE PRECISION</td><td class="cn">最小交易量</td></tr>
+<tr><td class="mono">is_active</td><td>BOOLEAN</td><td class="cn">是否仍上市中</td></tr>
+<tr><td class="mono">listed_at</td><td>TIMESTAMPTZ</td><td class="cn">上市時間</td></tr>
+<tr><td class="mono">delisted_at</td><td>TIMESTAMPTZ</td><td class="cn">下市時間（NULL 表示仍在交易）</td></tr>
+<tr><td class="mono">added_at</td><td>TIMESTAMPTZ</td><td class="cn">加入本系統的時間</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>canonical_candles — 標準化 K 線（Hypertable，按月壓縮）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">ts</td><td>TIMESTAMPTZ NOT NULL</td><td class="cn">K 線開始時間（UTC），為 Hypertable 分片鍵</td></tr>
+<tr><td class="mono">inst_id</td><td>TEXT FK</td><td class="cn">交易對，關聯 instruments.inst_id</td></tr>
+<tr><td class="mono">bar</td><td>TEXT FK</td><td class="cn">時間框架：<code>1m</code>、<code>5m</code>、<code>1H</code>、<code>1D</code> 等</td></tr>
+<tr><td class="mono">open</td><td>DOUBLE PRECISION</td><td class="cn">開盤價</td></tr>
+<tr><td class="mono">high</td><td>DOUBLE PRECISION</td><td class="cn">最高價（CHECK: high ≥ open, close, low）</td></tr>
+<tr><td class="mono">low</td><td>DOUBLE PRECISION</td><td class="cn">最低價（CHECK: low ≤ open, close, high）</td></tr>
+<tr><td class="mono">close</td><td>DOUBLE PRECISION</td><td class="cn">收盤價</td></tr>
+<tr><td class="mono">vol_contract</td><td>DOUBLE PRECISION</td><td class="cn">成交量（以合約張數計）</td></tr>
+<tr><td class="mono">vol_base</td><td>DOUBLE PRECISION</td><td class="cn">成交量（以基底幣種計，e.g., BTC 數量）</td></tr>
+<tr><td class="mono">vol_quote</td><td>DOUBLE PRECISION</td><td class="cn">成交額（以計價幣種計，e.g., USDT 金額）</td></tr>
+<tr><td class="mono">source_primary</td><td>TEXT</td><td class="cn">主要資料來源，預設 <code>okx</code></td></tr>
+<tr><td class="mono">quality_status</td><td>TEXT</td><td class="cn">資料品質：<code>raw</code> / <code>validated</code> / <code>corrected</code> / <code>suspect</code></td></tr>
+<tr><td class="mono">version</td><td>INTEGER</td><td class="cn">版本號（支援多版本修正追蹤）</td></tr>
+<tr><td class="mono">ingested_at</td><td>TIMESTAMPTZ</td><td class="cn">首次寫入時間</td></tr>
+<tr><td class="mono">updated_at</td><td>TIMESTAMPTZ</td><td class="cn">最後更新時間</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout">唯一索引：<code>(inst_id, bar, ts)</code>；所有價格欄位 > 0（CHECK constraint）</div>
+</details>
+
+<details>
+<summary>raw_candles — 原始多交易所 K 線（Hypertable）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">ts</td><td>TIMESTAMPTZ</td><td class="cn">K 線時間</td></tr>
+<tr><td class="mono">source</td><td>TEXT</td><td class="cn">原始來源：<code>okx</code> / <code>binance</code> / <code>bybit</code></td></tr>
+<tr><td class="mono">inst_id</td><td>TEXT</td><td class="cn">交易對代號</td></tr>
+<tr><td class="mono">bar</td><td>TEXT</td><td class="cn">時間框架</td></tr>
+<tr><td class="mono">open/high/low/close</td><td>DOUBLE PRECISION</td><td class="cn">OHLC 四價</td></tr>
+<tr><td class="mono">vol_contract / vol_base / vol_quote</td><td>DOUBLE PRECISION</td><td class="cn">三種成交量計量</td></tr>
+<tr><td class="mono">is_closed</td><td>BOOLEAN</td><td class="cn">是否為已收盤的完整 K 線</td></tr>
+<tr><td class="mono">raw_payload</td><td>JSONB</td><td class="cn">原始 API 回傳值（方便除錯與重新解析）</td></tr>
+<tr><td class="mono">ingested_at</td><td>TIMESTAMPTZ</td><td class="cn">寫入時間</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout">唯一索引：<code>(source, inst_id, bar, ts)</code>，允許同一 inst_id 來自多個交易所</div>
+</details>
+
+<details>
+<summary>backtest_runs — 回測執行紀錄</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">run_id</td><td>TEXT PK</td><td class="cn">回測識別碼（UUID 或自訂字串）</td></tr>
+<tr><td class="mono">created_at</td><td>TIMESTAMPTZ</td><td class="cn">建立時間</td></tr>
+<tr><td class="mono">strategies</td><td>TEXT[]</td><td class="cn">使用的策略名稱陣列</td></tr>
+<tr><td class="mono">symbols</td><td>TEXT[]</td><td class="cn">回測標的清單</td></tr>
+<tr><td class="mono">bar</td><td>TEXT</td><td class="cn">K 線時間框架</td></tr>
+<tr><td class="mono">start_date / end_date</td><td>TEXT</td><td class="cn">回測日期範圍</td></tr>
+<tr><td class="mono">artifact_dir</td><td>TEXT</td><td class="cn">產出物存放目錄路徑</td></tr>
+<tr><td class="mono">total_return</td><td>DOUBLE PRECISION</td><td class="cn">總報酬率（小數，0.15 = 15%）</td></tr>
+<tr><td class="mono">sharpe</td><td>DOUBLE PRECISION</td><td class="cn">夏普比率</td></tr>
+<tr><td class="mono">max_drawdown</td><td>DOUBLE PRECISION</td><td class="cn">最大回撤（負值，-0.12 = -12%）</td></tr>
+<tr><td class="mono">order_count</td><td>INTEGER</td><td class="cn">提交訂單總數</td></tr>
+<tr><td class="mono">fill_rate</td><td>DOUBLE PRECISION</td><td class="cn">成交率（0~1）</td></tr>
+<tr><td class="mono">bankrupt</td><td>BOOLEAN</td><td class="cn">是否破產（有持倉無法清算）</td></tr>
+<tr><td class="mono">metadata</td><td>JSONB</td><td class="cn">任意擴展欄位（策略參數快照等）</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details>
+<summary>data_quality_events — 資料品質事件</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">id</td><td>BIGSERIAL PK</td><td class="cn">事件 ID</td></tr>
+<tr><td class="mono">logged_at / resolved_at</td><td>TIMESTAMPTZ</td><td class="cn">記錄時間 / 解決時間</td></tr>
+<tr><td class="mono">status</td><td>TEXT</td><td class="cn"><code>open</code> / <code>resolved</code> / <code>ignored</code></td></tr>
+<tr><td class="mono">severity</td><td>TEXT</td><td class="cn"><code>info</code> / <code>warning</code> / <code>critical</code></td></tr>
+<tr><td class="mono">issue_type</td><td>TEXT</td><td class="cn"><code>gap</code>（缺口）/ <code>outlier_flagged</code>（異常值）/ <code>fetch_failed</code>（抓取失敗）/ <code>validation_failed</code></td></tr>
+<tr><td class="mono">window_start / window_end</td><td>TIMESTAMPTZ</td><td class="cn">問題發生的時間窗口</td></tr>
+<tr><td class="mono">affected_count</td><td>INTEGER</td><td class="cn">受影響的 K 線數量</td></tr>
+<tr><td class="mono">observed_value / reference_value</td><td>DOUBLE PRECISION</td><td class="cn">觀測值 vs 參考值（用於異常值分析）</td></tr>
+<tr><td class="mono">z_score</td><td>DOUBLE PRECISION</td><td class="cn">偏差的 z-score（|z| > 3.0 視為異常）</td></tr>
+<tr><td class="mono">action_taken</td><td>TEXT</td><td class="cn">已採取的處理動作</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details>
+<summary>ingestion_jobs — 資料擷取任務追蹤</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">job_id (UUID)</td><td class="cn">任務唯一識別碼</td></tr>
+<tr><td class="mono">job_type</td><td class="cn"><code>backfill</code>（補歷史）/ <code>validate</code>（驗證）/ <code>canonicalize</code>（標準化）</td></tr>
+<tr><td class="mono">source / inst_id / bar</td><td class="cn">資料來源 / 交易對 / 時間框架</td></tr>
+<tr><td class="mono">status</td><td class="cn"><code>running</code> / <code>success</code> / <code>failed</code> / <code>partial</code></td></tr>
+<tr><td class="mono">rows_fetched / rows_inserted / rows_updated / rows_skipped</td><td class="cn">資料列統計</td></tr>
+<tr><td class="mono">gaps_found / outliers_found</td><td class="cn">發現的缺口數 / 異常值數</td></tr>
+<tr><td class="mono">started_at / finished_at</td><td class="cn">任務開始 / 結束時間</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<h3>bar_intervals — 時間框架定義</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>bar</th><th>interval_ms</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">1m</td><td>60,000</td><td>1 分鐘（基礎資料來源）</td></tr>
+<tr><td class="mono">5m</td><td>300,000</td><td>5 分鐘（Continuous Aggregate，由 1m 自動聚合）</td></tr>
+<tr><td class="mono">15m</td><td>900,000</td><td>15 分鐘（Continuous Aggregate）</td></tr>
+<tr><td class="mono">1H</td><td>3,600,000</td><td>1 小時（Continuous Aggregate 或直接抓取）</td></tr>
+<tr><td class="mono">4H</td><td>14,400,000</td><td>4 小時</td></tr>
+<tr><td class="mono">1D</td><td>86,400,000</td><td>日線</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 2: OHLCV Validation ══════════════════ -->
+<section id="s2">
+<h2><span class="sec-label">§2</span>1m OHLCV 完整性驗證</h2>
+
+<p>系統採用「偵測 → 修復 → 記錄」三階段流程確保 K 線資料完整。</p>
+
+<h3>Gap 修復管道</h3>
+<div class="flow" style="flex-wrap:wrap">
+  <div class="flow-box gray">使用者請求 / 排程任務</div><div class="flow-arrow">→</div>
+  <div class="flow-box">detect_gaps()<br><small>掃描 canonical_candles</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">對每個 gap 區間：<br>Fetch OKX REST API</div><div class="flow-arrow">→</div>
+  <div class="flow-box">upsert_raw_candles()</div><div class="flow-arrow">→</div>
+  <div class="flow-box">canonicalize_from_raw()<br><small>去重、驗證 OHLCV 不變量</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">重新偵測 gap</div><div class="flow-arrow">→</div>
+  <div class="flow-box green">gap 已修復？<br>→ resolve_quality_events()</div>
+  <div class="flow-arrow">或</div>
+  <div class="flow-box red">仍有 gap？<br>→ log_quality_event(critical)</div>
+</div>
+
+<h3>OHLCV 不變量（Invariants）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>規則</th><th>條件</th><th>違反時</th></tr></thead>
+<tbody>
+<tr><td class="cn">高價 ≥ 所有四價</td><td class="mono">high ≥ open AND high ≥ close AND high ≥ low</td><td class="cn">標記為 suspect，記錄品質事件</td></tr>
+<tr><td class="cn">低價 ≤ 所有四價</td><td class="mono">low ≤ open AND low ≤ close AND low ≤ high</td><td class="cn">標記為 suspect</td></tr>
+<tr><td class="cn">所有價格 > 0</td><td class="mono">open, high, low, close > 0</td><td class="cn">拒絕寫入</td></tr>
+<tr><td class="cn">異常值偵測</td><td class="mono">|z_score| > 3.0（與滾動均值比較）</td><td class="cn">標記 outlier_flagged，sigma_threshold 設定於 settings.yaml</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>ADR-0005：Replay 驗證四關卡</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>關卡</th><th>名稱</th><th>判斷條件</th><th>失敗處理</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="badge badge-blue">Gate 1</span></td>
+  <td class="cn">終端倉位清算</td>
+  <td class="cn">回測結束時（<code>liquidate_on_end=True</code>），所有倉位以最後中間價平倉後，PositionLedger 應顯示零倉</td>
+  <td class="cn">設定 <code>bankrupt=True</code></td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">Gate 2</span></td>
+  <td class="cn">成交率警告</td>
+  <td class="cn"><code>fill_rate &lt; 5%</code> 且 <code>submitted_order_count > 0</code></td>
+  <td class="cn">記錄 Warning，檢查 order_latency_ms 設定</td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">Gate 3</span></td>
+  <td class="cn">最低資料覆蓋率</td>
+  <td class="cn">每個標的覆蓋率 ≥ 80%</td>
+  <td class="cn">Replay 開始前拋出 <code>ValueError</code></td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">Gate 4</span></td>
+  <td class="cn">資金費率覆蓋</td>
+  <td class="cn">funding_carry 回測中 <code>funding_settlement_count > 0</code></td>
+  <td class="cn">記錄 Warning（策略可能未收到資金費）</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h3>CLI 操作</h3>
+<pre># 偵測並修復 BTC-USDT-SWAP 的 1m 資料缺口
+python scripts/market_data/repair_gaps.py \
+  --inst BTC-USDT-SWAP \
+  --bar 1m \
+  --start 2026-05-01 \
+  --end 2026-05-14
+
+# 透過前端觸發（API）
+POST /api/data/fetch
+{ "inst_id": "BTC-USDT-SWAP", "bar": "1m", "start": "2026-05-01", "end": "2026-05-14" }
+
+# 查看覆蓋率
+GET /api/data/coverage  →  [{ inst_id, bar, first_ts, last_ts, row_count, gap_count }]</pre>
+</section>
+
+<!-- ══════════════════ SECTION 3: Backtest Logic ══════════════════ -->
+<section id="s3">
+<h2><span class="sec-label">§3</span>回測系統邏輯與參數設定</h2>
+
+<h3>執行時間線（無前視偏差）</h3>
+<div class="flow">
+  <div class="flow-box gray">close[t]<br><small>收盤 K 線</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">signal[t]<br><small>計算特徵與排名</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">weight[t]<br><small>目標權重（調倉頻率）</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">ffill → 1m<br><small>前向填充至分鐘</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">shift(1)<br><small>延遲一棒執行</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box">position[t]<br><small>實際持倉</small></div><div class="flow-arrow">→</div>
+  <div class="flow-box green">return[t] = position[t] × bar_return[t]</div>
+</div>
+<div class="callout warn"><strong>關鍵：</strong><code>rolling_high</code> 使用 <code>high.shift(1)</code>，確保 t 時刻的突破判斷不包含當棒最高價，徹底避免前視偏差。</div>
+
+<h3>回測完整流程</h3>
+<ol class="steps">
+  <li><div class="step-body"><strong>載入資料</strong><span>DataLoader 從 parquet / PostgreSQL 讀取各標的 1m OHLCV，合併為寬格式 DataFrame（index = UTC timestamp，columns = inst_id）</span></div></li>
+  <li><div class="step-body"><strong>特徵工程</strong><span>計算 return_fast、return_slow、volume_z、realized_vol、rolling_high、EMA、ATR，全部使用 lagged 資料</span></div></li>
+  <li><div class="step-body"><strong>橫截面評分</strong><span>對每個調倉時間點做 row-wise z-score，加權混合為複合分數</span></div></li>
+  <li><div class="step-body"><strong>趨勢過濾</strong><span>判斷 benchmark（BTC）是否在牛市（close > EMA）；不在則全部歸零</span></div></li>
+  <li><div class="step-body"><strong>進場過濾</strong><span>排名前 top_k + return_fast > 0 + return_slow > 0 + 突破過濾（close > rolling_high AND close > EMA）</span></div></li>
+  <li><div class="step-body"><strong>出場規則（有狀態）</strong><span>逐棒掃描持倉，觸發任一出場條件即平倉（趨勢翻空 / 排名跌出緩衝 / EMA 跌破 / ATR 停損 / 超時）</span></div></li>
+  <li><div class="step-body"><strong>上採樣 + 延遲執行</strong><span>rebalance 頻率的權重 ffill 至 1m，shift(1) 確保下一棒才執行</span></div></li>
+  <li><div class="step-body"><strong>計算報酬與成本</strong><span>gross = position × bar_return；cost = turnover × (fee_bps + slippage_bps) / 10,000（只在調倉棒扣除）</span></div></li>
+  <li><div class="step-body"><strong>輸出結果</strong><span>equity_curve、daily_returns、positions、target_weights、trades、40+ metrics</span></div></li>
+</ol>
+
+<h3>OHLCVRotationParams — 完整參數表</h3>
+<details open>
+<summary>宇宙與基準（Universe &amp; Benchmark）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">universe</td><td>必填</td><td class="cn">要交易的標的清單，例如 <code>["BTC-USDT-SWAP","ETH-USDT-SWAP","SOL-USDT-SWAP"]</code></td></tr>
+<tr><td class="mono">benchmark_inst_id</td><td>"BTC-USDT-SWAP"</td><td class="cn">市場趨勢基準標的，用來計算牛熊過濾器</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>時間框架（Timeframe）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">bar</td><td>"1m"</td><td class="cn">輸入 K 線的時間框架（1m / 5m / 15m / 1H 等）</td></tr>
+<tr><td class="mono">rebalance_minutes</td><td>60</td><td class="cn">調倉評估頻率（分鐘）；60 = 每小時重新排名一次</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>進場過濾（Entry Filters）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">top_k</td><td>3</td><td class="cn">每次調倉選入排名前 N 名的標的</td></tr>
+<tr><td class="mono">rank_exit_buffer</td><td>6</td><td class="cn">持倉中的標的允許排名跌至 top_k + buffer 才出場（避免過度換手）</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>特徵回顧視窗（Feature Lookback，單位：分鐘）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">lookback_fast_minutes</td><td>60</td><td class="cn">快速動量：計算 close[t] / close[t-60] − 1</td></tr>
+<tr><td class="mono">lookback_slow_minutes</td><td>240</td><td class="cn">慢速動量：計算 close[t] / close[t-240] − 1</td></tr>
+<tr><td class="mono">volume_z_window_minutes</td><td>60</td><td class="cn">成交量 z-score 的滾動視窗大小</td></tr>
+<tr><td class="mono">realized_vol_window_minutes</td><td>240</td><td class="cn">實現波動率的滾動視窗大小（日化 = std × √1440）</td></tr>
+<tr><td class="mono">breakout_window_minutes</td><td>120</td><td class="cn">突破高點的回顧視窗（使用 high.shift(1)，無前視）</td></tr>
+<tr><td class="mono">ema_window_minutes</td><td>60</td><td class="cn">個別標的 EMA span（用於出場過濾）</td></tr>
+<tr><td class="mono">benchmark_ema_window_minutes</td><td>240</td><td class="cn">基準標的 EMA span（用於牛熊趨勢判斷）</td></tr>
+<tr><td class="mono">atr_window_minutes</td><td>60</td><td class="cn">ATR 計算視窗（用於停損計算）</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>複合評分權重（Score Weights，總和應 = 1.0）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">weight_return_slow</td><td>0.45</td><td class="cn">慢速動量權重（長期趨勢，貢獻最大）</td></tr>
+<tr><td class="mono">weight_return_fast</td><td>0.25</td><td class="cn">快速動量權重（短期強勢）</td></tr>
+<tr><td class="mono">weight_volume_z</td><td>0.20</td><td class="cn">成交量 z-score 權重（量能確認）</td></tr>
+<tr><td class="mono">weight_realized_vol</td><td>-0.10</td><td class="cn">已實現波動率權重（<strong>負值</strong>：波動越低越優先）</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>倉位管理與停損（Position &amp; Stops）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">min_volume_z</td><td>1.0</td><td class="cn">成交量 z-score 最低閾值（<strong>診斷用，非硬過濾</strong>；volume_hard_filter_enabled=False）</td></tr>
+<tr><td class="mono">atr_stop_multiple</td><td>2.0</td><td class="cn">ATR 停損倍數：停損線 = 進場價 − 2.0 × ATR</td></tr>
+<tr><td class="mono">max_holding_minutes</td><td>480</td><td class="cn">最大持倉時間（分鐘）；超過且分數 ≤ 0 則強制出場</td></tr>
+<tr><td class="mono">long_only</td><td>True</td><td class="cn">僅做多（不做空）</td></tr>
+<tr><td class="mono">equal_weight</td><td>True</td><td class="cn">選入標的等權分配（若 False 則按分數比例分配）</td></tr>
+<tr><td class="mono">max_position_weight</td><td>0.35</td><td class="cn">單一標的持倉上限（佔總資金比例）</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<details open>
+<summary>成本模型（Costs）</summary>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>參數名</th><th>預設值</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">fee_bps</td><td>2.0</td><td class="cn">手續費（基點，1 bps = 0.01%）；OKX taker 約 5 bps，maker 約 2 bps</td></tr>
+<tr><td class="mono">slippage_bps</td><td>2.0</td><td class="cn">滑點估計（基點）；合計成本 = turnover × (fee + slippage) / 10,000</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+
+<h3>六個進場條件（全部需同時滿足）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>#</th><th>條件</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td>1</td><td class="mono">benchmark_close &gt; EMA(benchmark, 240)</td><td class="cn">市場趨勢過濾：只在 BTC 牛市中交易</td></tr>
+<tr><td>2</td><td class="mono">rank ≤ top_k</td><td class="cn">排名在前 top_k 名</td></tr>
+<tr><td>3</td><td class="mono">return_fast &gt; 0</td><td class="cn">短期動量為正</td></tr>
+<tr><td>4</td><td class="mono">return_slow &gt; 0</td><td class="cn">長期動量為正</td></tr>
+<tr><td>5</td><td class="mono">close &gt; rolling_high(shifted)</td><td class="cn">突破近期高點（無前視）</td></tr>
+<tr><td>6</td><td class="mono">close &gt; EMA(instrument)</td><td class="cn">價格在均線之上</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>五個出場觸發（任一滿足即平倉）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>#</th><th>觸發條件</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td>1</td><td class="mono">benchmark_close &lt; EMA(benchmark)</td><td class="cn">市場趨勢翻熊，全部標的出場</td></tr>
+<tr><td>2</td><td class="mono">rank &gt; top_k + rank_exit_buffer</td><td class="cn">排名跌出緩衝區（排名惡化）</td></tr>
+<tr><td>3</td><td class="mono">close &lt; EMA(instrument)</td><td class="cn">個別標的跌破均線</td></tr>
+<tr><td>4</td><td class="mono">close &lt; entry_price − atr_stop × ATR</td><td class="cn">ATR 動態停損線觸發</td></tr>
+<tr><td>5</td><td class="mono">held &gt; max_holding_minutes AND score ≤ 0</td><td class="cn">持倉超時且分數不再正面</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 4: Backtest Metrics ══════════════════ -->
+<section id="s4">
+<h2><span class="sec-label">§4</span>回測數據解析</h2>
+
+<p>所有指標儲存於 <code>result.metrics</code> 字典（JSON），並顯示於前端 Dashboard。以下為完整說明。</p>
+
+<h3>績效指標（Performance Metrics）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位名</th><th>中文名稱</th><th>說明</th><th>單位/範圍</th></tr></thead>
+<tbody>
+<tr><td class="mono">total_return</td><td class="cn">總報酬率</td><td class="desc">回測期間整體資產增減，equity_curve 終值 − 1</td><td>小數（0.20 = +20%）</td></tr>
+<tr><td class="mono">annualized_return</td><td class="cn">年化報酬率</td><td class="desc">換算為年化，考慮實際回測天數（非假設整年）</td><td>小數</td></tr>
+<tr><td class="mono">annualized_volatility</td><td class="cn">年化波動率</td><td class="desc">日化報酬標準差 × √(bars_per_year)，衡量風險大小</td><td>小數（0.30 = 30% vol）</td></tr>
+<tr><td class="mono">sharpe</td><td class="cn">夏普比率</td><td class="desc">年化報酬 ÷ 年化波動率（未扣除無風險利率）；&gt;1 優，&gt;2 很好</td><td>無單位</td></tr>
+<tr><td class="mono">max_drawdown</td><td class="cn">最大回撤</td><td class="desc">從波峰到波谷的最大跌幅；負值，越接近 0 越好</td><td>負小數（-0.15 = -15%）</td></tr>
+<tr><td class="mono">calmar</td><td class="cn">卡爾瑪比率</td><td class="desc">年化報酬 ÷ |最大回撤|；衡量每單位回撤換來多少報酬</td><td>無單位</td></tr>
+<tr><td class="mono">number_of_trades</td><td class="cn">交易次數</td><td class="desc">完整來回交易筆數（進場 + 出場 = 1 筆）</td><td>整數</td></tr>
+<tr><td class="mono">average_holding_minutes</td><td class="cn">平均持倉時間</td><td class="desc">每筆交易的平均持倉分鐘數</td><td>分鐘</td></tr>
+<tr><td class="mono">average_turnover</td><td class="cn">平均換手率</td><td class="desc">每棒的平均權重變動量之和，衡量交易頻率</td><td>小數（每棒）</td></tr>
+<tr><td class="mono">win_rate</td><td class="cn">勝率</td><td class="desc">獲利交易筆數 ÷ 總交易筆數</td><td>0.0 – 1.0</td></tr>
+<tr><td class="mono">profit_factor</td><td class="cn">獲利因子</td><td class="desc">總獲利 ÷ |總虧損|；&gt;1 表示獲利大於虧損，&gt;1.5 優</td><td>正數（inf 表示無虧損）</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>資料品質指標（Data Quality）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位名</th><th>中文名稱</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">warmup_bars</td><td class="cn">暖機棒數</td><td class="desc">特徵計算所需的最少棒數（lookback 最長的視窗），此前無訊號</td></tr>
+<tr><td class="mono">data_coverage_pct</td><td class="cn">資料覆蓋率</td><td class="desc">所有標的在所有時間點都有完整資料的比例（1.0 = 完美）</td></tr>
+<tr><td class="mono">total_bars</td><td class="cn">總棒數</td><td class="desc">回測期間的總 1m K 線數量</td></tr>
+<tr><td class="mono">score_coverage_all_bars_pct</td><td class="cn">全時段評分覆蓋率</td><td class="desc">所有棒中至少有一個標的有效評分的比例</td></tr>
+<tr><td class="mono">score_coverage_at_reb_pct</td><td class="cn">調倉時評分覆蓋率</td><td class="desc">調倉時間點中有有效評分的比例（直接影響進場機會）</td></tr>
+<tr><td class="mono">score_valid_instruments_mean_at_reb</td><td class="cn">調倉時有效標的數（均值）</td><td class="desc">每次調倉時平均有多少個標的有有效評分</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>進場診斷指標（Entry Diagnostics）</h3>
+<div class="callout">這組指標用來找出「為何交易次數很少」的根本原因。值越低的過濾器代表它是最大瓶頸。</div>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位名</th><th>中文名稱</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">regime_active_pct</td><td class="cn">趨勢過濾通過率</td><td class="desc">調倉棒中，benchmark 在牛市（close &gt; EMA）的比例</td></tr>
+<tr><td class="mono">regime_active_bars</td><td class="cn">趨勢活躍調倉棒數</td><td class="desc">牛市條件下的調倉棒絕對數量</td></tr>
+<tr><td class="mono">top_k_rank_pass_pct</td><td class="cn">前N名過濾通過率</td><td class="desc">在有機會的棒中，有標的排名進入前 top_k 的比例</td></tr>
+<tr><td class="mono">fast_return_filter_pass_pct</td><td class="cn">快速動量過濾通過率</td><td class="desc">在有機會的棒中，有標的通過 return_fast &gt; 0 的比例</td></tr>
+<tr><td class="mono">slow_return_filter_pass_pct</td><td class="cn">慢速動量過濾通過率</td><td class="desc">在有機會的棒中，有標的通過 return_slow &gt; 0 的比例</td></tr>
+<tr><td class="mono">breakout_filter_pass_pct</td><td class="cn">突破過濾通過率</td><td class="desc">在有機會的棒中，有標的突破近期高點且站上均線的比例</td></tr>
+<tr><td class="mono">all_entry_filters_pass_pct</td><td class="cn">全部進場條件通過率</td><td class="desc">同時通過排名、快慢動量、突破所有條件的比例</td></tr>
+<tr><td class="mono">vol_filter_pass_pct</td><td class="cn">成交量閾值通過率</td><td class="desc">volume_z &gt; min_volume_z 的比例（診斷用，非硬過濾）</td></tr>
+<tr><td class="mono">fast_return_filter_bar_pct</td><td class="cn">快速動量（棒維度）通過率</td><td class="desc">有機會的棒中，至少一個標的通過快速動量的比例</td></tr>
+<tr><td class="mono">slow_return_filter_bar_pct</td><td class="cn">慢速動量（棒維度）通過率</td><td class="desc">有機會的棒中，至少一個標的通過慢速動量的比例</td></tr>
+<tr><td class="mono">breakout_filter_bar_pct</td><td class="cn">突破（棒維度）通過率</td><td class="desc">有機會的棒中，至少一個標的突破的比例</td></tr>
+<tr><td class="mono">all_entry_filters_bar_pct</td><td class="cn">全部條件（棒維度）通過率</td><td class="desc">有機會的棒中，至少一個標的通過所有條件的比例</td></tr>
+<tr><td class="mono">entry_diagnostic_primary_bottleneck</td><td class="cn">主要瓶頸過濾器</td><td class="desc">通過率最低的過濾器名稱（自動識別阻礙最大的條件）</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>活躍度指標（Activity Metrics）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位名</th><th>中文名稱</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">rebalance_count</td><td class="cn">調倉次數</td><td class="desc">回測期間的調倉時間點總數</td></tr>
+<tr><td class="mono">raw_entry_signal_bars</td><td class="cn">原始進場訊號棒數</td><td class="desc">未經出場規則過濾前，有進場訊號的棒數</td></tr>
+<tr><td class="mono">raw_entry_signal_pct</td><td class="cn">原始進場訊號比例</td><td class="desc">raw_entry_signal_bars ÷ total_bars</td></tr>
+<tr><td class="mono">target_active_rebalance_bars</td><td class="cn">目標活躍調倉棒數</td><td class="desc">套用出場規則後，仍有持倉目標的調倉棒數</td></tr>
+<tr><td class="mono">target_active_rebalance_pct</td><td class="cn">目標活躍調倉比例</td><td class="desc">target_active_rebalance_bars ÷ rebalance_count</td></tr>
+<tr><td class="mono">position_active_bars</td><td class="cn">持倉活躍棒數</td><td class="desc">前向填充後，實際持有部位的 1m 棒數</td></tr>
+<tr><td class="mono">position_active_pct</td><td class="cn">持倉活躍比例</td><td class="desc">position_active_bars ÷ total_bars（回測期間實際在市場中的時間比例）</td></tr>
+<tr><td class="mono">trades_per_100_active_rebalances</td><td class="cn">每百次調倉的交易次數</td><td class="desc">交易頻率指標；過低可能代表出場規則過於嚴格</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>警告指標（Warnings）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>欄位名</th><th>中文名稱</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">low_trade_warning</td><td class="cn">低交易量警告</td><td class="desc">True 表示交易次數低於診斷閾值（可能參數設定過嚴）</td></tr>
+<tr><td class="mono">low_trade_threshold_trades</td><td class="cn">低交易量閾值</td><td class="desc">預期最少交易次數 = max(5, ceil(active_rebalances × 1%))</td></tr>
+<tr><td class="mono">low_trade_warning_reason</td><td class="cn">低交易量原因說明</td><td class="desc">人類可讀的說明，包含實際次數 vs 閾值 vs 活躍調倉數</td></tr>
+<tr><td class="mono">low_trade_primary_bottleneck</td><td class="cn">低交易量主要瓶頸</td><td class="desc">當 low_trade_warning=True 時，自動識別的最嚴格過濾條件</td></tr>
+<tr><td class="mono">no_trade_reason</td><td class="cn">零交易原因</td><td class="desc">當交易次數為 0 時，自動診斷根本原因（共 5 種）</td></tr>
+<tr><td class="mono">first_trade_ts / last_trade_ts</td><td class="cn">首/末筆交易時間</td><td class="desc">回測中最早與最晚的交易時間戳記</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>ADR-0002 凍結欄位（前端顯示必備）</h3>
+<div class="callout warn">以下欄位不可更名、刪除或改型別，否則前端 Dashboard 會壞掉。</div>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>來源</th><th>凍結欄位</th></tr></thead>
+<tbody>
+<tr><td>result.json 頂層</td><td class="mono">run_id, created_at, strategies, symbols, bar, start, end, metrics, artifacts</td></tr>
+<tr><td>metrics 必備</td><td class="mono">total_return, sharpe, max_drawdown, profit_factor, order_count, fill_rate, bankrupt</td></tr>
+<tr><td>trades.csv</td><td class="mono">ts, datetime, inst_id, side, fill_px, fill_sz, fee, realized_pnl, net_realized_pnl, size_before, size_after, equity_after</td></tr>
+<tr><td>equity_curve.csv</td><td class="mono">ts, datetime, equity, drawdown, return</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>圖表解析</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>圖表名稱</th><th>Y 軸</th><th>解讀方式</th></tr></thead>
+<tbody>
+<tr>
+  <td class="cn">權益曲線（Equity Curve）</td>
+  <td>資產規模（初始=1.0）</td>
+  <td class="desc cn">曲線越平滑且持續向右上，代表策略穩定。急速下跌需注意回撤控制。</td>
+</tr>
+<tr>
+  <td class="cn">水下曲線（Drawdown）</td>
+  <td>從波峰跌幅（負值）</td>
+  <td class="desc cn">越接近 0% 越好；長時間在深水下代表策略陷入衰退期。max_drawdown 是最低點。</td>
+</tr>
+<tr>
+  <td class="cn">Walk-Forward IS vs OOS Sharpe</td>
+  <td>Sharpe 值</td>
+  <td class="desc cn">藍線（樣本內）應接近橙線（樣本外）。OOS 大幅低於 IS 代表過度擬合。</td>
+</tr>
+<tr>
+  <td class="cn">CPCV 熱力圖</td>
+  <td>測試組合 vs OOS Sharpe</td>
+  <td class="desc cn">顏色越綠代表各種訓練組合都能在測試集有正向 Sharpe。DSR ≥ 0.95 為合格。</td>
+</tr>
+<tr>
+  <td class="cn">月度報酬表</td>
+  <td>月報酬率</td>
+  <td class="desc cn">觀察季節性偏好；連續多月虧損需回頭檢視策略邏輯。</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 5: Strategy I/O ══════════════════ -->
+<section id="s5">
+<h2><span class="sec-label">§5</span>交易策略 I/O 架構</h2>
+
+<h3>事件流架構（Event-Driven）</h3>
+<div class="flow" style="flex-direction:column;align-items:flex-start;gap:6px">
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="flow-box gray">OKX WebSocket<br>（市場資料）</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">EventBus<br>MARKET event</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Strategy.on_market(event, book)<br><small>回傳 SignalPayload 或 None</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Portfolio Layer<br><small>倉位計算</small></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="flow-box gray">FILL event</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Strategy.on_fill(event)<br><small>更新策略內部狀態</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">PositionLedger<br><small>單一真相來源</small></div>
+  </div>
+</div>
+
+<h3>策略基底介面</h3>
+<pre>class Strategy(ABC):
+    # 每個市場事件（K線收盤、成交、報價更新）呼叫一次
+    async def on_market(
+        self,
+        event: Event,           # event.payload = CandlePayload | BookPayload
+        book: Optional[OkxBook] = None
+    ) -> Optional[SignalPayload]:
+        # 回傳 SignalPayload → 觸發下單
+        # 回傳 None → 無操作
+        ...
+
+    # 每個成交事件呼叫一次
+    async def on_fill(self, event: Event) -> None:
+        # event.payload = FillPayload（含 fill_px, fill_sz, fee 等）
+        ...</pre>
+
+<h3>OHLCV Rotation 的兩個階段</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>階段</th><th>狀態</th><th>on_market() 行為</th><th>數據路徑</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="badge badge-green">Phase 1（現在）</span></td>
+  <td class="cn">回測專用</td>
+  <td class="mono">return None（無操作存根）</td>
+  <td class="cn">DataLoader → 歷史 OHLCV → <code>run_ohlcv_rotation_backtest()</code> 向量化計算</td>
+</tr>
+<tr>
+  <td><span class="badge badge-yellow">Phase 2（未來）</span></td>
+  <td class="cn">Live 接線</td>
+  <td class="cn">從 CandlePayload 即時計算特徵 → 回傳 SignalPayload</td>
+  <td class="cn">EventBus → on_market() → Portfolio → Execution</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h3>API：從前端觸發回測</h3>
+<pre>POST /api/backtest/run
+Content-Type: application/json
+
+{
+  "strategy": "ohlcv_rotation",   # 策略名稱
+  "universe": ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"],
+  "benchmark": "BTC-USDT-SWAP",
+  "bar": "1H",                    # K 線時間框架
+  "start": "2024-01-01",
+  "end": "2024-12-31",
+  "rebalance_minutes": 60,
+  "top_k": 3,
+  "initial_equity": 5000.0,
+  "validation": "cpcv",           # "wf" | "cpcv" | "both" | null
+  "run_id": "my_run_001"          # 可選，自訂識別碼
+}
+
+# 回傳：
+{ "job_id": "uuid...", "run_id": "my_run_001", "status": "running" }
+
+# 輪詢進度：
+GET /api/backtest/run/status/{job_id}
+→ { "status": "done", "progress": 100, "output": "..." }</pre>
+
+<h3>主要 API 端點一覽</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>方法</th><th>路徑</th><th>中文說明</th></tr></thead>
+<tbody>
+<tr><td>GET</td><td class="mono">/api/backtest/runs</td><td class="cn">列出所有回測執行記錄與摘要指標</td></tr>
+<tr><td>POST</td><td class="mono">/api/backtest/run</td><td class="cn">啟動新回測（背景非同步執行）</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/run/status/{job_id}</td><td class="cn">輪詢回測進度（0–100%）</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/{run_id}</td><td class="cn">取得完整 result.json</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/{run_id}/equity</td><td class="cn">權益曲線（自動降採樣至 600 點）</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/{run_id}/trades</td><td class="cn">所有完整交易記錄</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/{run_id}/walk-forward</td><td class="cn">Walk-Forward 驗證視窗結果</td></tr>
+<tr><td>GET</td><td class="mono">/api/backtest/{run_id}/cpcv</td><td class="cn">CPCV 組合結果（DSR/PSR）</td></tr>
+<tr><td>GET</td><td class="mono">/api/data/coverage</td><td class="cn">各標的資料覆蓋率（含 gap_count）</td></tr>
+<tr><td>POST</td><td class="mono">/api/data/fetch</td><td class="cn">觸發 OKX 歷史資料下載</td></tr>
+<tr><td>GET</td><td class="mono">/api/config/risk</td><td class="cn">取得 risk.yaml 設定（JSON 格式）</td></tr>
+<tr><td>DELETE</td><td class="mono">/api/backtest/{run_id}</td><td class="cn">刪除回測記錄與資料庫紀錄</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 6: New Strategy Guide ══════════════════ -->
+<section id="s6">
+<h2><span class="sec-label">§6</span>新增交易策略指南（人類 / AI 適用）</h2>
+
+<div class="callout">本節說明如何從零開始新增一個交易策略，同時遵守所有協作規範與禁止事項。</div>
+
+<ol class="steps">
+  <li>
+    <div class="step-body">
+      <strong>定義策略假設（先寫文件，再寫程式）</strong>
+      <span>在 <code>research/strategy_synthesis.md</code> 新增一個章節，包含：策略名稱、市場假設（例如動量效應來自何處）、預期優勢、參考論文或資料、被拒絕的替代方案。這是 Claude 審查的起點。</span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>建立 ADR（如有架構改變）</strong>
+      <span>若此策略需要新的資料表、新的事件型別或改變現有介面，在 <code>docs/ADR/000N-strategy-name.md</code> 記錄決策。參考 <code>ADR/0002</code>（結果 schema）與 <code>ADR/0003</code>（PnL 計算）確保一致性。</span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>實作 Strategy 子類別</strong>
+      <span>在 <code>src/okx_quant/strategies/my_strategy.py</code> 繼承 <code>Strategy</code>：實作 <code>on_market()</code> 與 <code>on_fill()</code>。初期 <code>on_market()</code> 可回傳 <code>None</code>（Phase 1 存根）。<br><strong>禁止</strong>修改 <code>strategies/base.py</code>、任何 risk / portfolio / execution 模組。</span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>實作回測模組</strong>
+      <span>在 <code>backtesting/my_strategy_backtest.py</code> 參考 <code>ohlcv_rotation_backtest.py</code> 的結構：定義 Params dataclass → 特徵計算 → 訊號生成 → 成本扣除 → 回傳 <code>BacktestResult</code>。輸出的 <code>metrics</code> dict 必須包含 ADR-0002 凍結欄位。</span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>設定參數</strong>
+      <span>在 <code>config/strategies.yaml</code> 新增策略區塊（參考現有格式）。<strong>禁止</strong>修改 <code>config/risk.yaml</code>。</span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>撰寫測試</strong>
+      <span>在 <code>tests/test_my_strategy.py</code> 撰寫：① 特徵無前視偏差測試 ② 退化情況（全 NaN、單一標的）③ 成本計算精確性 ④ 至少一個端對端整合測試（800 棒，驗證 equity_curve 不為空且無 NaN）。<br>執行：<code>python -m pytest tests/test_my_strategy.py -v</code></span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>執行回測驗證（DSR ≥ 0.95 為合格門檻）</strong>
+      <span>
+        <code>python scripts/backtest_ohlcv_rotation.py --bar 1H --start 2023-01-01 --end 2024-12-31 ...</code><br>
+        然後執行 Walk-Forward 與 CPCV：<code>python -m pytest tests/ -k replay -v</code><br>
+        Deflated Sharpe Ratio (DSR) ≥ 0.95 才可進入 Demo 階段。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>更新 AI_HANDOFF.md</strong>
+      <span>在 <code>docs/AI_HANDOFF.md</code> 的「Recent Changes」區塊記錄：新增的策略名稱、當前狀態（Phase 1 / 2）、已通過的 gate、已知問題。<strong>PR 未更新此檔案不可合併。</strong></span>
+    </div>
+  </li>
+  <li>
+    <div class="step-body">
+      <strong>PR Checklist</strong>
+      <span>
+        ☐ 只修改 PERMITTED FILES 清單中的檔案<br>
+        ☐ 無前視偏差（rolling 使用 shift 或 min_periods）<br>
+        ☐ SWAP PnL 包含 ct_val<br>
+        ☐ ADR-0002 凍結欄位完整<br>
+        ☐ AI_HANDOFF.md 已更新<br>
+        ☐ 測試全部通過<br>
+        ☐ Commit 含 AI-Origin trailer
+      </span>
+    </div>
+  </li>
+</ol>
+
+<h3>Codex 任務模板（Claude 交接給 Codex 時使用）</h3>
+<pre>Task: 實作 [策略名稱] 回測模組
+Strategy/spec source: research/strategy_synthesis.md § [章節名稱]
+Required behavior: [具體描述]
+
+PERMITTED FILES (only edit these):
+- backtesting/my_strategy_backtest.py
+- src/okx_quant/strategies/my_strategy.py
+- tests/test_my_strategy.py
+- config/strategies.yaml
+- docs/AI_HANDOFF.md
+
+FORBIDDEN (do not touch):
+- src/okx_quant/strategies/obi_market_maker.py
+- src/okx_quant/strategies/as_market_maker.py
+- src/okx_quant/risk/
+- src/okx_quant/portfolio/
+- src/okx_quant/execution/
+- config/risk.yaml
+
+SCOPE LIMIT:
+Fix only what is described. Do not refactor adjacent code.
+
+REQUIRED ON COMPLETION:
+- List changed files
+- Run: python -m pytest tests/test_my_strategy.py -v
+- Update docs/AI_HANDOFF.md
+- Commit with AI-Origin: Codex trailer
+
+ACCEPTANCE CRITERIA:
+- [ ] BacktestResult 回傳，equity_curve 非空且無 NaN
+- [ ] metrics 含所有 ADR-0002 凍結欄位
+- [ ] 前視偏差測試通過
+- [ ] DSR ≥ 0.95（1年以上歷史資料回測）</pre>
+
+<h3>現有四個策略的限制說明</h3>
+<div class="callout danger">以下策略已在 production code 中，未經 Claude 審查 + 人工核准，Codex 不得修改其核心邏輯：</div>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>策略</th><th>檔案</th><th>特殊注意事項</th></tr></thead>
+<tbody>
+<tr><td>AS Market Maker</td><td class="mono">strategies/as_market_maker.py</td><td class="cn">T_minus_t = 1.0 固定；VPIN 只控制價差寬度</td></tr>
+<tr><td>OBI Market Maker</td><td class="mono">strategies/obi_market_maker.py</td><td class="cn">Multi-level OFI；Post-only only</td></tr>
+<tr><td>Funding Carry</td><td class="mono">strategies/funding_carry.py</td><td class="cn">Spot/Perp 雙腿必須同步；ct_val 必填</td></tr>
+<tr><td>Pairs Trading</td><td class="mono">strategies/pairs_trading.py</td><td class="cn">Kalman filter hedge ratio；出場必須同時平兩腿</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ SECTION 7: Roadmap ══════════════════ -->
+<section id="s7">
+<h2><span class="sec-label">§7</span>後續路線圖</h2>
+
+<div class="roadmap-grid">
+
+  <!-- Track A -->
+  <div class="roadmap-card">
+    <h3><span class="badge badge-yellow">Track A</span>&nbsp;多時框外部數據</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">新增非加密貨幣宏觀數據以改善趨勢過濾與市場環境識別</p>
+    <ol>
+      <li>10Y 美國公債殖利率（US Bond Yield）— 風險偏好指標</li>
+      <li>恐懼貪婪指數（Fear &amp; Greed Index）— 市場情緒</li>
+      <li>S&amp;P 500 指數（TradingView: SPX）— 總體市場強度</li>
+      <li>BTC Dominance（BTC1!）— 加密貨幣資金流向</li>
+      <li>以上資料需要新增 <code>market_instruments</code> 記錄與對應 ingestor</li>
+      <li>更新 <code>benchmark_regime</code> 邏輯，支援多指標複合過濾</li>
+    </ol>
+    <div style="margin-top:10px"><span class="badge badge-yellow">計劃中</span></div>
+  </div>
+
+  <!-- Track B -->
+  <div class="roadmap-card">
+    <h3><span class="badge badge-blue">Track B</span>&nbsp;AWS 部署遷移</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">先部署 offline/backtest dashboard，不直接上 live</p>
+    <ol>
+      <li><strong>決定模式：</strong>先 offline/backtest dashboard 或 demo/shadow，不做直接 live</li>
+      <li><strong>補 P0 安全：</strong>Auth、TLS、CORS/allowed-origins、Secrets Manager/SSM、health check、Docker env、port mapping</li>
+      <li><strong>決定 DB：</strong>先驗證 RDS 是否支援 TimescaleDB；不支援→EC2 自管 TimescaleDB 或改 native partitioning</li>
+      <li><strong>建 AWS 基礎：</strong>VPC / private subnet DB / SG / ECR / EC2 or ECS / ALB / Route53+ACM / S3 artifacts / CloudWatch</li>
+      <li><strong>匯入資料：</strong>執行 migrations、import/canonicalize、驗證 coverage/gaps，大檔（backtest artifacts）搬 S3</li>
+      <li><strong>部署 App：</strong>API+Frontend 一個服務；backtest/ingestor worker 另一個服務；Redis/SQS 做 job queue</li>
+      <li><strong>驗證：</strong>unit/integration tests、API smoke、WebSocket、資料 coverage、replay validation、demo calibration</li>
+      <li><strong>上線策略：</strong>先 private VPN/IP allowlist → 逐步開放 → live mode 保持關閉直到所有 gates 完成</li>
+    </ol>
+    <div style="margin-top:10px"><span class="badge badge-blue">規劃中</span></div>
+  </div>
+
+  <!-- Track C -->
+  <div class="roadmap-card">
+    <h3><span class="badge badge-green">Track C</span>&nbsp;實際 Live Trading</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">依賴 Track A + B + 策略驗證完成後才啟動</p>
+    <ol>
+      <li>✅ Bar-proxy CPCV DSR ≥ 0.95</li>
+      <li>✅ Replay DSR ≥ 0.95</li>
+      <li>✅ Demo 模式 4 週（無真實資金）</li>
+      <li>✅ Shadow 模式 2 週（影子下單比對）</li>
+      <li>✅ 人工核准（資金規模、風控參數確認）</li>
+      <li>→ 先半倉運行 2 週</li>
+      <li>→ 全倉運行</li>
+    </ol>
+    <div style="margin-top:10px">
+      <span class="badge badge-green">等待 Track A+B 完成</span>
+    </div>
+    <div class="callout danger" style="margin-top:12px;font-size:12px">
+      Live mode 被代碼層級鎖定，需人工核准才可啟用。任何 AI 不可自行開啟。
+    </div>
+  </div>
+
+</div>
+
+<h3 style="margin-top:28px">Backtest → Live 驗證管道（完整）</h3>
+<div class="flow">
+  <div class="flow-box gray">1. 下載歷史資料<br><small>python scripts/fetch_candles.py</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">2. Bar-proxy 回測<br><small>backtest_ohlcv_rotation.py</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">3. Replay smoke gate<br><small>infra 驗證</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">4. Replay CPCV gate<br><small>DSR ≥ 0.95</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">5. Demo 模式<br><small>4 週</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">6. Shadow 模式<br><small>2 週</small></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">7. Live<br><small>人工核准</small></div>
+</div>
+
+<h3>已知技術債（P0–P2）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>優先級</th><th>項目</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><span class="badge badge-red">P0</span></td><td class="cn">Web 安全強化</td><td class="desc">Auth、TLS、CORS、Secrets Manager 補齊</td></tr>
+<tr><td><span class="badge badge-red">P0</span></td><td class="cn">Backtest UI 修復</td><td class="desc">前端部分顯示問題待修正</td></tr>
+<tr><td><span class="badge badge-yellow">P1</span></td><td class="cn">Position-aware close sizing</td><td class="desc">Pairs trading 出場/停損流程需感知現有倉位大小</td></tr>
+<tr><td><span class="badge badge-yellow">P1</span></td><td class="cn">Shadow calibration tests</td><td class="desc">影子模式 fill rate / slippage 需與 SimBroker 對齊</td></tr>
+<tr><td><span class="badge badge-gray">P2</span></td><td class="cn">SimBroker fill events</td><td class="desc">SimBroker 需正確發送 FILL events（目前有 bug）</td></tr>
+<tr><td><span class="badge badge-gray">P2</span></td><td class="cn">Replay bar-level approximation</td><td class="desc">Replay 目前仍部分使用公式近似，非真實事件驅動</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ── Footer ── -->
+<footer style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);text-align:center">
+  OKX Quant Strategy Platform · 本文件由 Claude (Sonnet 4.6) 根據原始碼自動生成 · 2026-05-14<br>
+  如有疑問請參閱 <code>docs/AI_HANDOFF.md</code>（當前狀態）與 <code>docs/ADR/</code>（架構決策）
+</footer>
+
+</div><!-- #content -->
+
+<script>
+// ── Active sidebar link on scroll ──────────────────────────────────────────
+(function(){
+  const links = document.querySelectorAll('#sidebar a[href^="#"]');
+  const sections = Array.from(links).map(l => document.querySelector(l.getAttribute('href'))).filter(Boolean);
+  function onScroll(){
+    const mid = window.scrollY + window.innerHeight * 0.3;
+    let active = sections[0];
+    for(const s of sections){ if(s.offsetTop <= mid) active = s; else break; }
+    links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + active.id));
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+</script>
+</body>
+</html>

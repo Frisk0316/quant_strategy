@@ -27,6 +27,20 @@ _run_jobs: dict[str, dict[str, Any]] = {}
 _SAFE_DATA_DIR_RE = re.compile(r"^[\w./\-]+$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$")
 _SAFE_SYMBOL_RE = re.compile(r"^[A-Z0-9\-]+$")
+DEFAULT_DAILY_WINNER_UNIVERSE = [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "BNB-USDT-SWAP",
+    "SOL-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "ADA-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "LINK-USDT-SWAP",
+    "AVAX-USDT-SWAP",
+    "DOT-USDT-SWAP",
+    "LTC-USDT-SWAP",
+    "SHIB-USDT-SWAP",
+]
 
 
 class RunBacktestRequest(BaseModel):
@@ -231,6 +245,169 @@ def _post_process_ohlcv_rotation(
     )
 
 
+def _run_daily_winner_job(
+    job_id: str,
+    req: "RunBacktestRequest",
+    run_id: str,
+    results_dir: Path,
+) -> None:
+    # VALIDATION-ONLY: not a deployable alpha strategy. Intentional deviations from ADR-0002:
+    # trades schema omits standard fills columns; fee model is None; Postgres-only (no parquet
+    # fallback); no WF/CPCV. Do not "fix" these to conform with production strategy schemas.
+    # See docs/ai_collaboration.md § 驗證專用策略.
+    try:
+        from backtesting.daily_winner_backtest import DailyWinnerParams, run_daily_winner_backtest
+        from backtesting.data_loader import load_candles
+
+        out_dir = results_dir / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        universe = list(dict.fromkeys(req.universe or DEFAULT_DAILY_WINNER_UNIVERSE))
+        dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+
+        _run_jobs[job_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Loading daily winner 1D candles from DB",
+        })
+        dfs: dict[str, pd.DataFrame] = {}
+        skipped: list[str] = []
+        for i, inst in enumerate(universe):
+            df = load_candles(
+                inst_id=inst,
+                bar="1D",
+                data_dir=req.data_dir or "data/ticks",
+                start=req.start,
+                end=req.end,
+                backend="postgres",
+                dsn=dsn,
+            )
+            if df.empty:
+                skipped.append(inst)
+                continue
+            dfs[inst] = df
+            _run_jobs[job_id]["progress"] = 10 + int((i + 1) / max(len(universe), 1) * 45)
+
+        if len(dfs) < 2:
+            _run_jobs[job_id].update({
+                "status": "error",
+                "progress": 100,
+                "message": "Daily winner needs at least two symbols with daily OHLCV",
+                "output": f"Loaded={list(dfs)} skipped={skipped}",
+            })
+            return
+
+        _run_jobs[job_id].update({"progress": 65, "message": "Running daily winner backtest"})
+        result = run_daily_winner_backtest(
+            dfs,
+            DailyWinnerParams(
+                universe=list(dfs.keys()),
+                initial_equity=req.initial_equity or 5000.0,
+            ),
+        )
+
+        _run_jobs[job_id].update({"progress": 85, "message": "Writing frontend result"})
+        result_json = _build_daily_winner_result_json(
+            run_id=run_id,
+            req=req,
+            result=result,
+            loaded_symbols=list(dfs.keys()),
+            skipped_symbols=skipped,
+        )
+        (out_dir / "result.json").write_text(
+            json.dumps(result_json, allow_nan=False, indent=2),
+            encoding="utf-8",
+        )
+        _run_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Backtest complete",
+            "output": (
+                f"Daily winner completed: {result_json['metrics']['number_of_trades']} / "
+                f"{result_json['metrics']['expected_trade_days']} expected daily trades"
+            ),
+        })
+    except Exception as exc:
+        _run_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+        })
+
+
+def _build_daily_winner_result_json(
+    *,
+    run_id: str,
+    req: "RunBacktestRequest",
+    result: Any,
+    loaded_symbols: list[str],
+    skipped_symbols: list[str],
+) -> dict[str, Any]:
+    """Build the ADR-0002-compatible inline result payload for daily_winner."""
+    equity_df = result.equity_curve.to_frame("equity")
+    equity_df["datetime"] = equity_df.index.astype(str)
+    equity_df["return"] = equity_df["equity"].pct_change().fillna(0.0)
+    equity_df["drawdown"] = (
+        equity_df["equity"] / equity_df["equity"].cummax() - 1.0
+    ).fillna(0.0)
+    equity_df.index.name = "ts"
+    equity_records = json.loads(
+        equity_df.reset_index().to_json(orient="records", date_format="iso", force_ascii=False)
+    )
+
+    returns_df = result.daily_returns.to_frame("return")
+    returns_df["datetime"] = returns_df.index.astype(str)
+    returns_df["log_return"] = returns_df["return"].map(
+        lambda value: math.log1p(value) if pd.notna(value) and value > -1 else pd.NA
+    )
+    returns_df.index.name = "ts"
+    returns_records = json.loads(
+        returns_df.reset_index().to_json(orient="records", date_format="iso", force_ascii=False)
+    )
+
+    trades = result.trades.copy()
+    if not trades.empty:
+        trades["strategy"] = "daily_winner"
+        trades["side"] = "buy"
+        trades["pnl"] = trades["net_return"]
+    trades_records = json.loads(
+        trades.to_json(orient="records", date_format="iso", force_ascii=False)
+    )
+
+    metrics = dict(result.metrics)
+    trade_count = metrics.get("number_of_trades", 0)
+    metrics.setdefault("profit_factor", 0.0)
+    metrics.setdefault("order_count", trade_count * 2)
+    metrics.setdefault("fill_count", trade_count * 2)
+    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    metrics.setdefault("bankrupt", False)
+    metrics.setdefault("total_fees", None)
+    metrics["loaded_symbols"] = loaded_symbols
+    metrics["skipped_symbols"] = skipped_symbols
+    metrics = {
+        key: (
+            None
+            if isinstance(value, float) and not math.isfinite(value)
+            else value
+        )
+        for key, value in metrics.items()
+    }
+
+    return {
+        "run_id": run_id,
+        "created_at": pd.Timestamp.now(tz="UTC").isoformat(),
+        "strategies": ["daily_winner"],
+        "symbols": loaded_symbols,
+        "bar": "1D",
+        "start": req.start or "",
+        "end": req.end or "",
+        "metrics": metrics,
+        "equity": equity_records,
+        "returns": returns_records,
+        "trades": trades_records,
+        "artifacts": {},
+    }
+
+
 def _run_backtest_job(
     job_id: str,
     req: RunBacktestRequest,
@@ -419,7 +596,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                 try:
                     data = json.loads(result_file.read_text(encoding="utf-8"))
                     metrics = data.get("metrics", data.get("mainStats", {}))
-                    if not (run_dir / "returns.csv").exists():
+                    if not (run_dir / "returns.csv").exists() and not data.get("returns"):
                         continue
                     run_id = data.get("run_id", run_dir.name)
                     merged[run_id] = {
@@ -480,17 +657,24 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.post("/run")
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
-        allowed = {"obi_market_maker", "as_market_maker", "funding_carry", "pairs_trading", "ohlcv_rotation"}
+        allowed = {
+            "obi_market_maker",
+            "as_market_maker",
+            "funding_carry",
+            "pairs_trading",
+            "ohlcv_rotation",
+            "daily_winner",
+        }
         validate_allowed = {None, "wf", "cpcv", "both"}
         _validate_backtest_request(req)
         if req.strategy not in allowed:
             raise HTTPException(status_code=400, detail="Unsupported strategy")
-        if req.strategy != "ohlcv_rotation" and req.validation not in validate_allowed:
+        if req.strategy not in {"ohlcv_rotation", "daily_winner"} and req.validation not in validate_allowed:
             raise HTTPException(status_code=400, detail="Unsupported validation mode")
         if req.strategy == "pairs_trading" and req.symbol_x == req.symbol_y:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
-        if req.strategy == "ohlcv_rotation" and not req.universe:
-            raise HTTPException(status_code=400, detail="ohlcv_rotation requires at least one symbol in universe")
+        if req.strategy in {"ohlcv_rotation", "daily_winner"} and not req.universe:
+            raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol in universe")
         job_id = str(uuid.uuid4())[:8]
         run_id = req.run_id or f"ui_{req.strategy}_{job_id}"
         _run_jobs[job_id] = {
@@ -502,6 +686,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         }
         if req.strategy == "ohlcv_rotation":
             bg.add_task(_run_ohlcv_rotation_job, job_id, req, run_id, results_dir)
+        elif req.strategy == "daily_winner":
+            bg.add_task(_run_daily_winner_job, job_id, req, run_id, results_dir)
         else:
             bg.add_task(_run_backtest_job, job_id, req, run_id, results_dir)
         return _run_jobs[job_id]
@@ -585,7 +771,15 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/{run_id}/equity")
     async def get_equity(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "equity")
-        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "equity_curve.csv")
+        if payload is not None:
+            records = payload
+        else:
+            d = _run_dir(run_id)
+            path = d / "equity_curve.csv"
+            if path.exists():
+                records = _read_csv(path)
+            else:
+                records = _read_json(d / "result.json").get("equity", [])
         return _downsample_records(records, n)
 
     # ------------------------------------------------------------------
@@ -620,7 +814,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         offset: int = Query(default=0, ge=0),
     ):
         payload = await _read_db_artifact(run_id, "trades")
-        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "trades.csv")
+        if payload is not None:
+            records = payload
+        else:
+            d = _run_dir(run_id)
+            path = d / "trades.csv"
+            records = _read_csv(path) if path.exists() else _read_json(d / "result.json").get("trades", [])
         if offset:
             records = records[offset:]
         if limit:
@@ -641,7 +840,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/{run_id}/returns")
     async def get_returns(run_id: str, n: int = Query(default=0, ge=0)):
         payload = await _read_db_artifact(run_id, "returns")
-        records = payload if payload is not None else _read_csv(_run_dir(run_id) / "returns.csv")
+        if payload is not None:
+            records = payload
+        else:
+            d = _run_dir(run_id)
+            path = d / "returns.csv"
+            records = _read_csv(path) if path.exists() else _read_json(d / "result.json").get("returns", [])
         return _downsample_records(records, n)
 
     @router.get("/{run_id}/drawdown")

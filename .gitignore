@@ -16,6 +16,9 @@ data/parquet/
 .ruff_cache/
 notebooks/.ipynb_checkpoints/
 
+# Claude Code local settings (personal allowlist, not shared)
+.claude/settings.local.json
+
 # Backtest run artifacts (timestamped dirs with CSV/JSON per run)
 results/*/
 

@@ -11,9 +11,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backtesting"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from backtesting.daily_winner_backtest import DailyWinnerParams, run_daily_winner_backtest
 from backtesting.data_loader import load_candles
+from okx_quant.api.routes_backtest import RunBacktestRequest, _build_daily_winner_result_json
 
 
 def _daily_df(opens: list[float], closes: list[float]) -> pd.DataFrame:
@@ -83,6 +85,38 @@ def test_daily_winner_applies_round_trip_cost() -> None:
     assert trade["gross_return"] == pytest.approx(0.01)
     assert trade["cost_rate"] == pytest.approx(0.001)
     assert trade["net_return"] == pytest.approx(0.009)
+
+
+def test_daily_winner_api_payload_preserves_frontend_schema() -> None:
+    dfs = {
+        "BTC-USDT-SWAP": _daily_df([100, 100, 100], [110, 101, 100]),
+        "ETH-USDT-SWAP": _daily_df([100, 100, 100], [101, 105, 106]),
+    }
+    backtest_result = run_daily_winner_backtest(
+        dfs,
+        DailyWinnerParams(universe=list(dfs), fee_bps=0.0, slippage_bps=0.0),
+    )
+    backtest_result.metrics.pop("profit_factor")
+    req = RunBacktestRequest(
+        strategy="daily_winner",
+        universe=list(dfs),
+        start="2024-01-01",
+        end="2024-01-03",
+    )
+
+    payload = _build_daily_winner_result_json(
+        run_id="schema_daily_winner",
+        req=req,
+        result=backtest_result,
+        loaded_symbols=list(dfs),
+        skipped_symbols=[],
+    )
+
+    assert {"run_id", "created_at", "strategies", "symbols", "bar", "metrics", "artifacts"} <= set(payload)
+    assert {"datetime", "return", "equity", "drawdown"} <= set(payload["equity"][0])
+    assert payload["equity"][0]["return"] == 0.0
+    assert "profit_factor" in payload["metrics"]
+    assert payload["metrics"]["profit_factor"] == 0.0
 
 
 def test_load_candles_derives_1d_from_1m_parquet(tmp_path) -> None:

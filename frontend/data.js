@@ -69,6 +69,7 @@
     { id: "funding_carry", name: "Funding Carry", tag: "Carry", desc: "Delta-neutral long spot / short perp, earns 8h funding" },
     { id: "pairs_trading", name: "Pairs Trading", tag: "Stat Arb", desc: "Kalman filter hedge ratio + OU spread z-score" },
     { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
+    { id: "daily_winner", name: "Daily Winner", tag: "Validation", desc: "Every day buys yesterday's strongest symbol and exits at the daily close" },
   ];
 
   const SYMBOLS = [
