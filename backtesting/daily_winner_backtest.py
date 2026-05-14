@@ -103,8 +103,13 @@ def _compute_metrics(
     else:
         annualized_return = 0.0
 
-    ann_vol = float(daily_returns.std() * math.sqrt(365.25)) if len(daily_returns) > 1 else 0.0
-    sharpe = annualized_return / ann_vol if ann_vol > 0 else 0.0
+    if len(daily_returns) > 1:
+        ret_std = daily_returns.std(ddof=1)
+        sharpe = float(daily_returns.mean() / ret_std * math.sqrt(365.25)) if ret_std > 0 else 0.0
+        ann_vol = float(ret_std * math.sqrt(365.25))
+    else:
+        sharpe = 0.0
+        ann_vol = 0.0
     max_drawdown = _max_drawdown(equity_curve)
     calmar = annualized_return / abs(max_drawdown) if max_drawdown < 0 else 0.0
     n_trades = int(len(trades))

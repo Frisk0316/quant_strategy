@@ -177,6 +177,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [equity, setEquity] = useState([]);
   const [fills, setFills] = useState([]);
   const [trades, setTrades] = useState([]);
+  const [walkForward, setWalkForward] = useState([]);
+  const [cpcv, setCpcv] = useState(null);
   const [riskEvents, setRiskEvents] = useState([]);
   const [phase2Loading, setPhase2Loading] = useState(true);
   const [phase2Error, setPhase2Error] = useState(null);
@@ -202,16 +204,22 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setEquity([]);
     setFills([]);
     setTrades([]);
+    setWalkForward([]);
+    setCpcv(null);
     setRiskEvents([]);
     Promise.all([
       window.API.fetchBacktestEquity(runId).catch(() => []),
       window.API.fetchBacktestFills(runId).catch(() => []),
       window.API.fetchBacktestTrades(runId).catch(() => []),
+      window.API.fetchWalkForward(runId).catch(() => []),
+      window.API.fetchCPCV(runId).catch(() => null),
       window.API.fetchBacktestRiskEvents(runId).catch(() => []),
-    ]).then(([eq, fl, tr, re]) => {
+    ]).then(([eq, fl, tr, wf, cv, re]) => {
       setEquity(eq || []);
       setFills(fl || []);
       setTrades(tr || []);
+      setWalkForward(wf || []);
+      setCpcv(cv || null);
       setRiskEvents(re || []);
     }).catch((e) => setPhase2Error(e.message))
       .finally(() => setPhase2Loading(false));
@@ -286,9 +294,25 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${MetricCard} label="PSR" value=${n(m.psr)} sub="prob Sharpe > 0" />
-        <${MetricCard} label="Orders / Fills" value=${`${m.submitted_order_count ?? m.order_count ?? "—"} / ${m.orders_filled_count ?? m.real_fill_count ?? "—"}`} sub=${`Fill rate ${pct(m.fill_rate)}`} />
+        <${MetricCard} label="Orders / Fills" value=${`${m.submitted_order_count ?? m.order_count ?? "—"} / ${m.orders_filled_count ?? m.real_fill_count ?? m.fill_count ?? "—"}`} sub=${`Fill rate ${pct(m.fill_rate)}`} />
         <${MetricCard} label="Total Fees" value=${usd(m.total_fees)} sub=${`Notional ${usd(m.fill_notional_usd)}`} />
         <${MetricCard} label="Funding P&L" value=${(+m.funding_cashflow >= 0 ? "+" : "") + usd(m.funding_cashflow)} tone=${+m.funding_cashflow >= 0 ? "up" : "down"} sub=${`${m.funding_settlement_count ?? 0} settlements`} />
+      </div>
+
+      <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} loading=${phase2Loading} />
+
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="card-title">Trades / Orders</div>
+            <div class="card-sub">round trips and execution rows for the selected run</div>
+          </div>
+          ${phase2Loading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading...</div>`}
+        </div>
+        ${phase2Loading
+          ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading trades and orders...</div>`
+          : html`<${TradesOrdersTable} trades=${trades} fills=${fills} />`
+        }
       </div>
 
       <div class="card">
@@ -389,6 +413,149 @@ function RunDetailView({ runId, onBack, onDelete }) {
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading risk events…</div>`
             : html`<${RiskEventsTable} rows=${riskEvents} />`
         )}
+      </div>
+    </div>
+  `;
+}
+
+function ValidationSummary({ walkForward, cpcv, metrics, loading }) {
+  const windows = walkForward || [];
+  const combos = cpcv?.combos || [];
+  const oos = windows.map((w) => +w.oos_sharpe || 0);
+  const meanOos = oos.length ? oos.reduce((a, b) => a + b, 0) / oos.length : null;
+  return html`
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <div class="card-title">Walk-Forward / CPCV / DSR</div>
+          <div class="card-sub">validation summary embedded with the selected run</div>
+        </div>
+        ${metrics.validation_only && html`<span class="chip warn">Validation-only</span>`}
+      </div>
+      ${loading ? html`
+        <div class="field-hint" style=${{ padding: 20, textAlign: "center" }}>Loading validation data...</div>
+      ` : html`
+        <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+          <${MetricCard} label="WF windows" value=${windows.length} sub=${meanOos == null ? "not run" : `Mean OOS ${n(meanOos)}`} />
+          <${MetricCard} label="CPCV combos" value=${combos.length} sub=${cpcv ? `Std ${n(cpcv.std_oos_sharpe)}` : "not run"} />
+          <${MetricCard} label="DSR" value=${n(metrics.dsr ?? cpcv?.dsr)} sub="deflated Sharpe" tone=${(metrics.dsr ?? cpcv?.dsr ?? 0) >= 0.95 ? "up" : undefined} />
+          <${MetricCard} label="PSR" value=${n(metrics.psr ?? cpcv?.psr)} sub="prob Sharpe > 0" />
+        </div>
+        <div class="tbl-wrap" style=${{ maxHeight: 260 }}>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>OOS start</th><th>OOS end</th>
+                <th class="num">IS Sharpe</th><th class="num">OOS Sharpe</th>
+                <th class="num">OOS Return</th><th class="num">OOS MDD</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${windows.map((w, i) => html`
+                <tr key=${i}>
+                  <td class="mono">${w.i ?? i}</td>
+                  <td class="mono">${fmtDt(w.oos_start).slice(0, 10)}</td>
+                  <td class="mono">${fmtDt(w.oos_end).slice(0, 10)}</td>
+                  <td class="num">${n(w.is_sharpe)}</td>
+                  <td class="num" style=${{ color: +w.oos_sharpe >= 0 ? "var(--profit)" : "var(--loss)" }}>${n(w.oos_sharpe)}</td>
+                  <td class="num" style=${{ color: +w.oos_return >= 0 ? "var(--profit)" : "var(--loss)" }}>${pct(w.oos_return)}</td>
+                  <td class="num" style=${{ color: "var(--loss)" }}>${pct(w.oos_mdd)}</td>
+                </tr>
+              `)}
+              ${!windows.length && html`
+                <tr><td colSpan=${7} class="field-hint" style=${{ textAlign: "center", padding: 14 }}>Walk-Forward was not run for this backtest.</td></tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function normalizeLedgerTrade(t, i) {
+  const ts = t.datetime || t.entry_ts || t.ts || t.exit_ts || "";
+  const side = String(t.side || "buy").toUpperCase();
+  const price = +(t.price ?? t.entry_price ?? t.fill_px ?? 0);
+  const qty = +(t.qty ?? t.fill_sz ?? 0);
+  const fee = +(t.fee ?? 0);
+  const pnlRaw = t.pnl_usd ?? t.net_realized_pnl ?? t.realized_pnl ?? t.pnl ?? t.net_return ?? 0;
+  const pnl = +(pnlRaw ?? 0);
+  return {
+    id: t.id ?? t.cl_ord_id ?? i,
+    ts,
+    symbol: t.symbol || t.inst_id || "-",
+    side,
+    type: t.type || t.ord_type || "validation_round_trip",
+    price,
+    qty,
+    notional: +(t.notional ?? t.notional_usd ?? 0),
+    fee,
+    pnl,
+    status: String(t.status || t.state || "FILLED").toUpperCase(),
+    strategy: t.strategy || "-",
+    exit_ts: t.exit_ts,
+    note: t.note,
+  };
+}
+
+function formatLedgerPnl(t) {
+  if (t.notional === 0 && Math.abs(t.pnl) < 1) return pct(t.pnl);
+  return (t.pnl >= 0 ? "+" : "") + usd(t.pnl);
+}
+
+function TradesOrdersTable({ trades, fills }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const tradeRows = (trades || []).map(normalizeLedgerTrade);
+  const fillRows = (fills || []).map(normalizeLedgerTrade);
+  const rows = tradeRows.length ? tradeRows : fillRows;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  if (!rows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders in this run.</div>`;
+  return html`
+    <div>
+      <div class="row wrap" style=${{ gap: 12, alignItems: "center", marginBottom: 12 }}>
+        <div class="field-hint" style=${{ flex: 1 }}>
+          Showing ${((safePage - 1) * pageSize + 1).toLocaleString()}-${Math.min(safePage * pageSize, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}
+        </div>
+        <select class="select" value=${pageSize} onChange=${(e) => { setPageSize(+e.target.value); setPage(1); }} style=${{ width: 140 }}>
+          ${[25, 50, 100, 250, 500].map((size) => html`<option key=${size} value=${size}>${size} / page</option>`)}
+        </select>
+        <button class="btn ghost sm" disabled=${safePage <= 1} onClick=${() => setPage(safePage - 1)}>Prev</button>
+        <span class="mono" style=${{ color: "var(--text-muted)", fontSize: 12 }}>Page ${safePage} / ${totalPages}</span>
+        <button class="btn ghost sm" disabled=${safePage >= totalPages} onClick=${() => setPage(safePage + 1)}>Next</button>
+      </div>
+      <div class="tbl-wrap" style=${{ maxHeight: 620 }}>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>ID</th><th>Timestamp (UTC)</th><th>Exit</th><th>Symbol</th><th>Side</th><th>Type</th>
+              <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional</th>
+              <th class="num">Fee</th><th class="num">PnL</th><th>Status</th><th>Strategy</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageRows.map((t, i) => html`
+              <tr key=${`${t.id}-${i}`}>
+                <td class="mono" style=${{ color: "var(--text-muted)" }}>${t.id}</td>
+                <td class="mono">${fmtDt(t.ts)}</td>
+                <td class="mono">${t.exit_ts ? fmtDt(t.exit_ts).slice(0, 10) : "-"}</td>
+                <td class="mono">${t.symbol}</td>
+                <td><span class="chip" style=${{ color: t.side === "BUY" ? "var(--profit)" : "var(--loss)", background: t.side === "BUY" ? "var(--profit-soft)" : "var(--loss-soft)", borderColor: "transparent" }}>${t.side}</span></td>
+                <td class="mono" title=${t.note || ""} style=${{ color: "var(--text-muted)" }}>${t.type}</td>
+                <td class="num">${n(t.price, 4)}</td>
+                <td class="num">${n(t.qty, 4)}</td>
+                <td class="num">${usd(t.notional)}</td>
+                <td class="num" style=${{ color: "var(--text-muted)" }}>${usd(t.fee, 4)}</td>
+                <td class="num" style=${{ color: t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? formatLedgerPnl(t) : "-"}</td>
+                <td><span class=${`chip ${t.status === "FILLED" ? "profit" : t.status === "REJECTED" ? "loss" : "warn"}`} style=${{ fontSize: 10 }}>${t.status}</span></td>
+                <td class="mono" style=${{ color: "var(--text-subtle)", fontSize: 11 }}>${t.strategy}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
       </div>
     </div>
   `;

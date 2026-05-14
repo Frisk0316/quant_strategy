@@ -148,7 +148,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
-      validate: isBasketStrategy ? null : (validation === "none" ? null : validation),
+      validate: isRotation ? null : (validation === "none" ? null : validation),
       universe: isBasketStrategy ? rotUniverse : [],
       benchmark: isRotation ? rotBenchmark : undefined,
       rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
@@ -364,7 +364,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               }
               return null;
             })()}
-            ${!isBasketStrategy && html`
+            ${!isRotation && html`
               <div class="field">
                 <div class="field-label">Validation</div>
                 <select class="select" value=${validation} onChange=${(e) => setValidation(e.target.value)}>

@@ -163,9 +163,6 @@ function App() {
   const NAV = [
     { id: "config", label: "Run Backtest", group: "Setup", glyph: "config" },
     { id: "backtest", label: "Backtest Runs", group: "Backtest", glyph: "backtest" },
-    { id: "wf", label: "Walk-Forward", group: "Backtest", glyph: "wf" },
-    { id: "cpcv", label: "CPCV / DSR", group: "Backtest", glyph: "cpcv" },
-    { id: "trades", label: "Trades / Orders", group: "Backtest", glyph: "trades" },
     { id: "compare", label: "Compare runs", group: "Analysis", glyph: "compare" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
   ];

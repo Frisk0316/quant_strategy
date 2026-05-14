@@ -15,7 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from backtesting.daily_winner_backtest import DailyWinnerParams, run_daily_winner_backtest
 from backtesting.data_loader import load_candles
-from okx_quant.api.routes_backtest import RunBacktestRequest, _build_daily_winner_result_json
+from okx_quant.api.routes_backtest import (
+    RunBacktestRequest,
+    _attach_daily_winner_validation,
+    _build_daily_winner_result_json,
+    _normalize_daily_winner_payload,
+)
 
 
 def _daily_df(opens: list[float], closes: list[float]) -> pd.DataFrame:
@@ -57,6 +62,7 @@ def test_daily_winner_uses_yesterday_winner_for_today_trade() -> None:
     assert result.metrics["expected_trade_days"] == 3
     assert result.metrics["skipped_trade_days"] == 0
     assert result.metrics["daily_trade_coverage_pct"] == 1.0
+    assert result.metrics["sharpe"] < 100
 
 
 def test_daily_winner_does_not_use_today_return_to_pick_winner() -> None:
@@ -117,6 +123,56 @@ def test_daily_winner_api_payload_preserves_frontend_schema() -> None:
     assert payload["equity"][0]["return"] == 0.0
     assert "profit_factor" in payload["metrics"]
     assert payload["metrics"]["profit_factor"] == 0.0
+    assert payload["metrics"]["fill_count"] == 4
+    assert payload["metrics"]["total_fees"] == 0.0
+    assert payload["trades"][0]["datetime"].startswith("2024-01-02")
+
+
+def test_daily_winner_api_payload_can_embed_validation_summaries() -> None:
+    dfs = {
+        "BTC-USDT-SWAP": _daily_df([100] * 10, [101, 102, 101, 103, 104, 103, 105, 106, 105, 107]),
+        "ETH-USDT-SWAP": _daily_df([100] * 10, [100, 101, 102, 101, 103, 102, 104, 105, 104, 106]),
+    }
+    backtest_result = run_daily_winner_backtest(
+        dfs,
+        DailyWinnerParams(universe=list(dfs), fee_bps=0.0, slippage_bps=0.0),
+    )
+    req = RunBacktestRequest(strategy="daily_winner", universe=list(dfs), validate="both")
+    payload = _build_daily_winner_result_json(
+        run_id="schema_daily_winner_validation",
+        req=req,
+        result=backtest_result,
+        loaded_symbols=list(dfs),
+        skipped_symbols=[],
+    )
+    _attach_daily_winner_validation(payload, backtest_result.daily_returns, req.validation)
+
+    assert payload["walk_forward"]
+    assert payload["cpcv"]["combos"]
+    assert "psr" in payload["metrics"]
+    assert payload["metrics"]["validation_only"] is True
+
+
+def test_daily_winner_payload_normalizer_repairs_legacy_inline_result() -> None:
+    payload = {
+        "run_id": "legacy_daily",
+        "strategies": ["daily_winner"],
+        "metrics": {"number_of_trades": 1, "sharpe": 793.0},
+        "equity": [
+            {"ts": "2024-01-01T00:00:00.000", "equity": 5000.0, "drawdown": 0.0},
+            {"ts": "2024-01-02T00:00:00.000", "equity": 5050.0, "drawdown": 0.0},
+        ],
+        "returns": [{"ts": "2024-01-02T00:00:00.000", "return": 0.01}],
+        "trades": [{"inst_id": "BTC-USDT-SWAP", "entry_ts": "2024-01-02T00:00:00.000", "net_return": 0.01}],
+    }
+
+    repaired = _normalize_daily_winner_payload(payload)
+
+    assert repaired["equity"][0]["datetime"] == "2024-01-01"
+    assert repaired["equity"][1]["return"] == pytest.approx(0.01)
+    assert repaired["metrics"]["fill_count"] == 2
+    assert repaired["metrics"]["total_fees"] == 0.0
+    assert repaired["trades"][0]["datetime"] == "2024-01-02T00:00:00.000"
 
 
 def test_load_candles_derives_1d_from_1m_parquet(tmp_path) -> None:

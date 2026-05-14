@@ -163,6 +163,7 @@ function normalizeEquityRows(rows) {
       ...r,
       _ts: normalizeTsKey(r.ts || r.datetime),
       _equity: equity,
+      _pnl: equity - first,
       _cumReturn: r.cum_return != null ? +r.cum_return : equity / first - 1,
     };
   }).filter((r) => r._ts);
@@ -210,15 +211,16 @@ function CompareView({ selectedRunId }) {
       out[id] = allTs.map((ts) => {
         const exact = byTs.get(ts);
         if (exact) last = exact;
-        return last ? { ts, value: last._cumReturn, equity: last._equity } : { ts, value: null, equity: null };
+        return last ? { ts, pnl: last._pnl, cumReturn: last._cumReturn, equity: last._equity } : { ts, pnl: null, cumReturn: null, equity: null };
       });
     });
     return out;
   }, [selectedIds, runData, allTs]);
 
   const chartSeries = selectedIds.map((id, i) => ({
-    values: (aligned[id] || []).map((p) => p.value ?? 0),
+    values: (aligned[id] || []).map((p) => p.pnl ?? 0),
     color: COLORS[i % COLORS.length],
+    label: id.slice(-8),
   }));
 
   function toggleRun(id) {
@@ -249,7 +251,7 @@ function CompareView({ selectedRunId }) {
         <div class="card-h">
           <div>
             <div class="card-title">Equity curves</div>
-            <div class="card-sub">union timeline with forward-filled gaps</div>
+            <div class="card-sub">PnL on a union timeline with forward-filled gaps</div>
           </div>
           <span class="chip">${allTs.length.toLocaleString()} timestamps</span>
         </div>
@@ -264,7 +266,13 @@ function CompareView({ selectedRunId }) {
             setHoverIdx(Math.round((x / rect.width) * (allTs.length - 1)));
           }}
         >
-          <${LineChart} series=${chartSeries.length ? chartSeries : [{ values: [0], color: "var(--accent)" }]} height=${280} />
+          <${LineChart}
+            series=${chartSeries.length ? chartSeries : [{ values: [0], color: "var(--accent)" }]}
+            height=${280}
+            xLabels=${allTs}
+            tooltipLabelFormatter=${(value) => fmt.date(value)}
+            tooltipValueFormatter=${(value) => fmt.usd(value)}
+          />
           ${hoverIdx != null && allTs[hoverIdx] && html`
             <div style=${{ position: "absolute", top: 8, left: 16, background: "var(--surface-2)",
                             border: "1px solid var(--border-strong)", borderRadius: 6,
@@ -273,11 +281,10 @@ function CompareView({ selectedRunId }) {
               ${selectedIds.map((id, i) => {
                 const points = aligned[id] || [];
                 const p = points[hoverIdx];
-                const prev = hoverIdx > 0 ? points[hoverIdx - 1] : null;
-                const pnl = p?.equity != null && prev?.equity != null ? p.equity - prev.equity : null;
+                const pnl = p?.pnl;
                 return html`
                   <div key=${id}>
-                    <span style=${{ color: COLORS[i % COLORS.length] }}>●</span> ${id.slice(-8)}: ${p?.value != null ? fmt.pct(p.value) : "-"} · PnL ${pnl != null ? fmt.usd(pnl) : "-"}
+                    <span style=${{ color: COLORS[i % COLORS.length] }}>●</span> ${id.slice(-8)}: ${p?.cumReturn != null ? fmt.pct(p.cumReturn) : "-"} · PnL ${pnl != null ? fmt.usd(pnl) : "-"}
                   </div>
                 `;
               })}

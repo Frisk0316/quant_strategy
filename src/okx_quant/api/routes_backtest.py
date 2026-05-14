@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -315,6 +316,8 @@ def _run_daily_winner_job(
             loaded_symbols=list(dfs.keys()),
             skipped_symbols=skipped,
         )
+        _attach_daily_winner_validation(result_json, result.daily_returns, req.validation)
+        result_json = _json_sanitize(result_json)
         (out_dir / "result.json").write_text(
             json.dumps(result_json, allow_nan=False, indent=2),
             encoding="utf-8",
@@ -370,29 +373,39 @@ def _build_daily_winner_result_json(
     if not trades.empty:
         trades["strategy"] = "daily_winner"
         trades["side"] = "buy"
+        trades["status"] = "FILLED"
+        trades["type"] = "validation_round_trip"
+        trades["datetime"] = trades["entry_ts"]
+        trades["ts"] = trades["entry_ts"]
+        trades["price"] = trades["entry_price"]
+        trades["qty"] = 0.0
+        trades["notional"] = 0.0
+        trades["fee"] = 0.0
         trades["pnl"] = trades["net_return"]
     trades_records = json.loads(
         trades.to_json(orient="records", date_format="iso", force_ascii=False)
     )
+    for i, record in enumerate(trades_records):
+        record["id"] = i
+        record["pnl_usd"] = None
+        record["note"] = "validation-only round trip; quantity/notional are not modeled"
 
     metrics = dict(result.metrics)
     trade_count = metrics.get("number_of_trades", 0)
     metrics.setdefault("profit_factor", 0.0)
     metrics.setdefault("order_count", trade_count * 2)
     metrics.setdefault("fill_count", trade_count * 2)
+    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
+    metrics.setdefault("orders_filled_count", trade_count * 2)
     metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
     metrics.setdefault("bankrupt", False)
-    metrics.setdefault("total_fees", None)
+    metrics.setdefault("total_fees", 0.0)
+    metrics.setdefault("fill_notional_usd", 0.0)
+    metrics.setdefault("funding_cashflow", 0.0)
+    metrics.setdefault("funding_settlement_count", 0)
     metrics["loaded_symbols"] = loaded_symbols
     metrics["skipped_symbols"] = skipped_symbols
-    metrics = {
-        key: (
-            None
-            if isinstance(value, float) and not math.isfinite(value)
-            else value
-        )
-        for key, value in metrics.items()
-    }
+    metrics = {key: _json_safe(value) for key, value in metrics.items()}
 
     return {
         "run_id": run_id,
@@ -408,6 +421,239 @@ def _build_daily_winner_result_json(
         "trades": trades_records,
         "artifacts": {},
     }
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, np.floating):
+        as_float = float(value)
+        return as_float if math.isfinite(as_float) else None
+    if isinstance(value, np.integer):
+        return int(value)
+    return value
+
+
+def _json_sanitize(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _json_sanitize(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_sanitize(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_sanitize(v) for v in value]
+    return _json_safe(value)
+
+
+def _daily_winner_return_series(records: list[dict[str, Any]]) -> pd.Series:
+    rows = []
+    for i, record in enumerate(records or []):
+        ts = record.get("datetime") or record.get("ts") or i
+        value = record.get("return", record.get("simple_return"))
+        if value is None or value == "":
+            continue
+        try:
+            rows.append((pd.to_datetime(ts), float(value)))
+        except Exception:
+            continue
+    if not rows:
+        return pd.Series(dtype=float)
+    index, values = zip(*rows)
+    return pd.Series(values, index=pd.DatetimeIndex(index)).sort_index()
+
+
+def _slice_return_stats(returns: pd.Series, periods: int = 365) -> dict[str, Any]:
+    from okx_quant.analytics.performance import max_drawdown, sharpe
+
+    clean = pd.Series(returns, dtype=float).dropna()
+    if clean.empty:
+        return {"sharpe": 0.0, "return": 0.0, "mdd": 0.0, "n": 0}
+    return {
+        "sharpe": sharpe(clean, periods=periods),
+        "return": float((1.0 + clean).prod() - 1.0),
+        "mdd": max_drawdown(clean),
+        "n": int(len(clean)),
+    }
+
+
+def _daily_winner_walk_forward(returns: pd.Series, periods: int = 365) -> list[dict[str, Any]]:
+    clean = pd.Series(returns, dtype=float).dropna().sort_index()
+    n = len(clean)
+    if n < 4:
+        return []
+    is_len = max(2, n // 3)
+    oos_len = max(1, min(7, (n - is_len) // 2 or 1))
+    rows: list[dict[str, Any]] = []
+    cursor = is_len
+    i = 0
+    while cursor + oos_len <= n:
+        is_slice = clean.iloc[cursor - is_len:cursor]
+        oos_slice = clean.iloc[cursor:cursor + oos_len]
+        is_stats = _slice_return_stats(is_slice, periods)
+        oos_stats = _slice_return_stats(oos_slice, periods)
+        rows.append({
+            "i": i,
+            "is_start": is_slice.index[0].isoformat(),
+            "is_end": is_slice.index[-1].isoformat(),
+            "oos_start": oos_slice.index[0].isoformat(),
+            "oos_end": oos_slice.index[-1].isoformat(),
+            "is_n": is_stats["n"],
+            "oos_n": oos_stats["n"],
+            "is_sharpe": is_stats["sharpe"],
+            "oos_sharpe": oos_stats["sharpe"],
+            "oos_return": oos_stats["return"],
+            "oos_mdd": oos_stats["mdd"],
+            "validation_only": True,
+        })
+        cursor += oos_len
+        i += 1
+    return rows
+
+
+def _daily_winner_cpcv(returns: pd.Series, periods: int = 365) -> dict[str, Any] | None:
+    from itertools import combinations
+
+    from okx_quant.analytics.dsr import deflated_sharpe, psr
+    from okx_quant.analytics.performance import sharpe
+
+    clean = pd.Series(returns, dtype=float).dropna().sort_index()
+    n = len(clean)
+    if n < 4:
+        return None
+    n_splits = min(6, n)
+    k_test = 2 if n_splits >= 3 else 1
+    groups = np.array_split(np.arange(n), n_splits)
+    combos = []
+    combo_returns = []
+    for group_ids in combinations(range(n_splits), k_test):
+        idx = np.concatenate([groups[group_id] for group_id in group_ids])
+        oos = clean.iloc[np.sort(idx)]
+        stats = _slice_return_stats(oos, periods)
+        combo_returns.append(oos)
+        combos.append({
+            "test_groups": list(group_ids),
+            "sharpe": stats["sharpe"],
+            "ret": stats["return"],
+            "mdd": stats["mdd"],
+            "n": stats["n"],
+        })
+    if not combos:
+        return None
+    combo_sharpes = [float(c["sharpe"]) for c in combos]
+    combined = pd.concat(combo_returns, ignore_index=True) if combo_returns else clean
+    overall = float(np.mean(combo_sharpes)) if combo_sharpes else 0.0
+    return {
+        "combos": combos,
+        "paths": [],
+        "dsr": deflated_sharpe(
+            returns=np.asarray(combined, dtype=float),
+            sr=overall,
+            sr_list=combo_sharpes,
+            N=max(len(combo_sharpes), 1),
+        ),
+        "psr": psr(np.asarray(clean, dtype=float)),
+        "mean_oos_sharpe": overall,
+        "std_oos_sharpe": float(np.std(combo_sharpes, ddof=1)) if len(combo_sharpes) > 1 else 0.0,
+        "n_combinations": len(combos),
+        "n_paths": 0,
+        "validation_only": True,
+    }
+
+
+def _attach_daily_winner_validation(
+    payload: dict[str, Any],
+    returns: pd.Series,
+    mode: str | None,
+) -> None:
+    if mode in {"wf", "both"}:
+        payload["walk_forward"] = _daily_winner_walk_forward(returns)
+    cpcv = _daily_winner_cpcv(returns)
+    if mode in {"cpcv", "both"} and cpcv:
+        payload["cpcv"] = cpcv
+    metrics = payload.setdefault("metrics", {})
+    metrics.setdefault("psr", cpcv.get("psr") if cpcv else 0.0)
+    metrics.setdefault("dsr", cpcv.get("dsr") if cpcv else 0.0)
+    metrics["validation_only"] = True
+
+
+def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    strategies = payload.get("strategies") or [payload.get("strategy")]
+    if "daily_winner" not in strategies:
+        return payload
+
+    normalized = dict(payload)
+    metrics = dict(normalized.get("metrics") or {})
+    equity = [dict(row) for row in normalized.get("equity") or []]
+    previous_equity: float | None = None
+    for row in equity:
+        ts = row.get("datetime") or row.get("ts")
+        if ts and not row.get("datetime"):
+            row["datetime"] = str(ts)[:10] if "T" in str(ts) else str(ts)
+        equity_value = row.get("equity_usd", row.get("equity"))
+        try:
+            equity_float = float(equity_value)
+        except (TypeError, ValueError):
+            equity_float = None
+        if row.get("return") in {None, ""}:
+            row["return"] = 0.0 if previous_equity in {None, 0.0} or equity_float is None else equity_float / previous_equity - 1.0
+        if equity_float is not None:
+            previous_equity = equity_float
+    normalized["equity"] = equity
+
+    returns = normalized.get("returns") or []
+    return_series = _daily_winner_return_series(returns)
+    if return_series.empty and equity:
+        return_series = _daily_winner_return_series(equity)
+
+    if not return_series.empty:
+        from okx_quant.analytics.dsr import psr
+        from okx_quant.analytics.performance import sharpe
+
+        metrics["sharpe"] = sharpe(return_series, periods=365)
+        metrics.setdefault("psr", psr(np.asarray(return_series, dtype=float)))
+        metrics.setdefault("dsr", 0.0)
+        if "walk_forward" not in normalized:
+            normalized["walk_forward"] = _daily_winner_walk_forward(return_series)
+        if "cpcv" not in normalized:
+            cpcv = _daily_winner_cpcv(return_series)
+            if cpcv:
+                normalized["cpcv"] = cpcv
+                metrics["psr"] = cpcv.get("psr", metrics.get("psr"))
+                metrics["dsr"] = cpcv.get("dsr", metrics.get("dsr"))
+
+    trade_count = int(metrics.get("number_of_trades") or len(normalized.get("trades") or []))
+    metrics.setdefault("profit_factor", 0.0)
+    metrics.setdefault("order_count", trade_count * 2)
+    metrics.setdefault("fill_count", trade_count * 2)
+    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
+    metrics.setdefault("orders_filled_count", trade_count * 2)
+    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    metrics.setdefault("bankrupt", False)
+    metrics.setdefault("total_fees", 0.0)
+    metrics.setdefault("fill_notional_usd", 0.0)
+    metrics.setdefault("funding_cashflow", 0.0)
+    metrics.setdefault("funding_settlement_count", 0)
+    metrics["validation_only"] = True
+    normalized["metrics"] = {key: _json_safe(value) for key, value in metrics.items()}
+
+    trades = []
+    for i, trade in enumerate(normalized.get("trades") or []):
+        row = dict(trade)
+        entry_ts = row.get("entry_ts") or row.get("datetime") or row.get("ts")
+        row.setdefault("id", i)
+        row.setdefault("datetime", entry_ts)
+        row.setdefault("ts", entry_ts)
+        row.setdefault("status", "FILLED")
+        row.setdefault("type", "validation_round_trip")
+        row.setdefault("price", row.get("entry_price", 0.0))
+        row.setdefault("qty", 0.0)
+        row.setdefault("notional", 0.0)
+        row.setdefault("fee", 0.0)
+        row.setdefault("pnl", row.get("net_return", 0.0))
+        row.setdefault("pnl_usd", None)
+        row.setdefault("note", "validation-only round trip; quantity/notional are not modeled")
+        trades.append(row)
+    normalized["trades"] = trades
+    return normalized
 
 
 def _run_backtest_job(
@@ -597,6 +843,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     continue
                 try:
                     data = json.loads(result_file.read_text(encoding="utf-8"))
+                    data = _normalize_daily_winner_payload(data)
                     metrics = data.get("metrics", data.get("mainStats", {}))
                     if not (run_dir / "returns.csv").exists() and not data.get("returns"):
                         continue
@@ -671,7 +918,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         _validate_backtest_request(req)
         if req.strategy not in allowed:
             raise HTTPException(status_code=400, detail="Unsupported strategy")
-        if req.strategy not in {"ohlcv_rotation", "daily_winner"} and req.validation not in validate_allowed:
+        if req.strategy != "ohlcv_rotation" and req.validation not in validate_allowed:
             raise HTTPException(status_code=400, detail="Unsupported validation mode")
         if req.strategy == "pairs_trading" and req.symbol_x == req.symbol_y:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
@@ -732,9 +979,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         """Return the full result.json for a run."""
         payload = await _read_db_artifact(run_id, "result")
         if payload is not None:
-            return payload
+            return _normalize_daily_winner_payload(payload)
         d = _run_dir(run_id)
-        return _read_json(d / "result.json")
+        return _normalize_daily_winner_payload(_read_json(d / "result.json"))
 
     # ------------------------------------------------------------------
     # Metrics
@@ -749,7 +996,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         path = d / "metrics.json"
         if path.exists():
             return _read_json(path)
-        result = _read_json(d / "result.json")
+        result = _normalize_daily_winner_payload(_read_json(d / "result.json"))
         return result.get("metrics", {})
 
     @router.get("/{run_id}/walk-forward")
@@ -757,6 +1004,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         result = await _read_db_artifact(run_id, "result")
         if result is None:
             result = _read_json(_run_dir(run_id) / "result.json")
+        result = _normalize_daily_winner_payload(result)
         return result.get("walk_forward", result.get("walkForward", [])) or []
 
     @router.get("/{run_id}/cpcv")
@@ -764,6 +1012,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         result = await _read_db_artifact(run_id, "result")
         if result is None:
             result = _read_json(_run_dir(run_id) / "result.json")
+        result = _normalize_daily_winner_payload(result)
         return result.get("cpcv")
 
     # ------------------------------------------------------------------
@@ -781,7 +1030,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             if path.exists():
                 records = _read_csv(path)
             else:
-                records = _read_json(d / "result.json").get("equity", [])
+                records = _normalize_daily_winner_payload(_read_json(d / "result.json")).get("equity", [])
         return _downsample_records(records, n)
 
     # ------------------------------------------------------------------
@@ -821,7 +1070,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         else:
             d = _run_dir(run_id)
             path = d / "trades.csv"
-            records = _read_csv(path) if path.exists() else _read_json(d / "result.json").get("trades", [])
+            records = _read_csv(path) if path.exists() else _normalize_daily_winner_payload(_read_json(d / "result.json")).get("trades", [])
         if offset:
             records = records[offset:]
         if limit:
@@ -847,7 +1096,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         else:
             d = _run_dir(run_id)
             path = d / "returns.csv"
-            records = _read_csv(path) if path.exists() else _read_json(d / "result.json").get("returns", [])
+            records = _read_csv(path) if path.exists() else _normalize_daily_winner_payload(_read_json(d / "result.json")).get("returns", [])
         return _downsample_records(records, n)
 
     @router.get("/{run_id}/drawdown")
