@@ -678,10 +678,81 @@ def _resolve_indicator_params(cfg: Any, strategy_name: str) -> Optional[dict]:
     return dumped if isinstance(dumped, dict) else None
 
 
+def _indicator_lookback_bars(strategy_name: str, params: dict) -> int:
+    if strategy_name == "ma_crossover":
+        return max(int(params.get("slow_window", 50) or 50) - 1, 0)
+    if strategy_name == "ema_crossover":
+        return max(int(params.get("slow_span", 50) or 50) * 3, 0)
+    if strategy_name == "macd_crossover":
+        slow_s = int(params.get("slow_span", 26) or 26)
+        signal_s = int(params.get("signal_span", 9) or 9)
+        return max(slow_s, signal_s) * 3
+    return 0
+
+
+def _fetch_warmup_candles(
+    dsn: Optional[str],
+    inst_ids: list[str],
+    bar: str,
+    start_ts: Any,
+    lookback_bars: int,
+) -> dict[str, pd.DataFrame]:
+    if not dsn or not inst_ids or lookback_bars <= 0 or not bar:
+        return {}
+    try:
+        import asyncio
+
+        import asyncpg
+
+        if isinstance(start_ts, (int, float, np.integer, np.floating)) or (
+            isinstance(start_ts, str) and start_ts.isdigit()
+        ):
+            numeric_ts = float(start_ts)
+            unit = "ms" if numeric_ts > 1e11 else "s"
+            start_dt = pd.to_datetime(numeric_ts, unit=unit, utc=True, errors="coerce")
+        else:
+            start_dt = pd.to_datetime(start_ts, utc=True, errors="coerce")
+        if pd.isna(start_dt):
+            return {}
+        start_value = start_dt.to_pydatetime()
+
+        async def _fetch() -> dict[str, pd.DataFrame]:
+            conn = await asyncpg.connect(dsn)
+            try:
+                result: dict[str, pd.DataFrame] = {}
+                for inst_id in inst_ids:
+                    rows = await conn.fetch(
+                        """
+                        SELECT ts, close FROM canonical_candles
+                        WHERE inst_id=$1 AND bar=$2 AND ts < $3
+                        ORDER BY ts DESC LIMIT $4
+                        """,
+                        inst_id,
+                        bar,
+                        start_value,
+                        lookback_bars,
+                    )
+                    if not rows:
+                        continue
+                    df = pd.DataFrame([dict(r) for r in rows]).sort_values("ts")
+                    df["inst_id"] = inst_id
+                    df["datetime"] = _ts_to_datetime(df["ts"])
+                    result[inst_id] = df
+                return result
+            finally:
+                await conn.close()
+
+        return asyncio.run(_fetch())
+    except Exception as exc:
+        logger.warning("Could not fetch indicator warmup candles from DB: {}", exc)
+        return {}
+
+
 def _compute_indicator_frame(
     price_df: pd.DataFrame,
     strategy_name: str,
     params: dict,
+    warmup_per_inst: Optional[dict[str, pd.DataFrame]] = None,
 ) -> pd.DataFrame:
     """Recompute fast/slow (and MACD) per inst_id from price_series close prices.
 
@@ -695,12 +766,22 @@ def _compute_indicator_frame(
     grouped = price_df.sort_values("ts").groupby("inst_id", sort=False)
     for inst_id, group in grouped:
         sub = group.copy()
-        closes = sub["close"].astype(float)
-        fast = pd.Series(float("nan"), index=sub.index)
-        slow = pd.Series(float("nan"), index=sub.index)
-        macd = pd.Series(float("nan"), index=sub.index)
-        macd_signal = pd.Series(float("nan"), index=sub.index)
-        macd_hist = pd.Series(float("nan"), index=sub.index)
+        warm = (warmup_per_inst or {}).get(str(inst_id))
+        warm_closes = (
+            warm.sort_values("ts")["close"].astype(float)
+            if warm is not None and not warm.empty and "close" in warm.columns
+            else pd.Series(dtype=float)
+        )
+        closes = pd.concat(
+            [warm_closes.reset_index(drop=True), sub["close"].astype(float).reset_index(drop=True)],
+            ignore_index=True,
+        )
+        warm_len = len(warm_closes)
+        fast = pd.Series(float("nan"), index=closes.index)
+        slow = pd.Series(float("nan"), index=closes.index)
+        macd = pd.Series(float("nan"), index=closes.index)
+        macd_signal = pd.Series(float("nan"), index=closes.index)
+        macd_hist = pd.Series(float("nan"), index=closes.index)
 
         if strategy_name == "ma_crossover":
             fast_w = int(params.get("fast_window", 20) or 20)
@@ -727,15 +808,15 @@ def _compute_indicator_frame(
             continue
 
         out = pd.DataFrame({
-            "ts": sub["ts"].values,
+            "ts": sub["ts"].tolist(),
             "inst_id": inst_id,
             "strategy": strategy_name,
-            "close": closes.values,
-            "fast_value": fast.values,
-            "slow_value": slow.values,
-            "macd": macd.values,
-            "macd_signal": macd_signal.values,
-            "macd_histogram": macd_hist.values,
+            "close": sub["close"].astype(float).values,
+            "fast_value": fast.iloc[warm_len:].values,
+            "slow_value": slow.iloc[warm_len:].values,
+            "macd": macd.iloc[warm_len:].values,
+            "macd_signal": macd_signal.iloc[warm_len:].values,
+            "macd_histogram": macd_hist.iloc[warm_len:].values,
         })
         if "datetime" in sub.columns:
             out["datetime"] = sub["datetime"].values
@@ -753,6 +834,8 @@ def _build_indicator_series_df(
     price_df: pd.DataFrame,
     cfg: Any,
     strategy_names: list[str],
+    dsn: Optional[str] = None,
+    bar: str = "",
 ) -> pd.DataFrame:
     """Recompute indicator time series for any technical strategy in the run.
 
@@ -763,14 +846,27 @@ def _build_indicator_series_df(
     if not active or price_df.empty or "close" not in price_df.columns:
         return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
     frames: list[pd.DataFrame] = []
+    inst_ids = [str(s) for s in price_df.get("inst_id", pd.Series(dtype=object)).dropna().unique()]
+    start_ts = price_df["ts"].min() if "ts" in price_df.columns and not price_df.empty else None
     for strat in active:
         params = _resolve_indicator_params(cfg, strat) or {}
-        sub = _compute_indicator_frame(price_df, strat, params)
+        lookback = _indicator_lookback_bars(strat, params)
+        warmup = _fetch_warmup_candles(dsn, inst_ids, bar, start_ts, lookback)
+        sub = _compute_indicator_frame(price_df, strat, params, warmup_per_inst=warmup)
         if not sub.empty:
             frames.append(sub)
     if not frames:
         return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
-    return pd.concat(frames, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
+    trimmed: list[pd.DataFrame] = []
+    for _, group in df.sort_values("ts").groupby(["strategy", "inst_id"], sort=False):
+        finite_mask = group["fast_value"].apply(_is_finite_number) | group["slow_value"].apply(_is_finite_number)
+        if finite_mask.any():
+            first_idx = finite_mask[finite_mask].index[0]
+            trimmed.append(group.loc[first_idx:])
+    if not trimmed:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    return pd.concat(trimmed, ignore_index=True)
 
 
 def _build_data_coverage(
@@ -1052,7 +1148,7 @@ def save_backtest_artifacts(
     # -------------------------------------------------------------------
     # indicator_series.csv — only emitted for technical-indicator strategies
     # -------------------------------------------------------------------
-    indicator_df = _build_indicator_series_df(price_df, cfg, strats)
+    indicator_df = _build_indicator_series_df(price_df, cfg, strats, dsn=dsn, bar=bar_s)
     if write_files:
         _write_csv(run_dir / "indicator_series.csv", indicator_df, INDICATOR_SERIES_COLUMNS)
 

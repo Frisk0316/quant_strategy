@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
-const { LineChart, TradePriceChart, IndicatorChart } = window.Charts;
+const { LineChart, TradePriceChart, IndicatorChart, adaptiveDateLabel } = window.Charts;
 
 const TECHNICAL_STRATEGIES_SET = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
 
@@ -31,6 +31,18 @@ function parseChartDate(value) {
 function chartDateTick(value) {
   const d = parseChartDate(value);
   return d ? d.toISOString().slice(0, 10) : String(value || "—");
+}
+function safeNum(v) {
+  return v == null || v === "" ? NaN : +v;
+}
+function chartRangeMs(range) {
+  if (!range || !Array.isArray(range)) return NaN;
+  const [startMs, endMs] = range;
+  return Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.abs(endMs - startMs) : NaN;
+}
+function chartDateTickForRange(range) {
+  const span = chartRangeMs(range);
+  return (value, _idx, visibleSpan) => adaptiveDateLabel(value, Number.isFinite(visibleSpan) ? visibleSpan : span);
 }
 function chartDateTooltip(value) {
   const d = parseChartDate(value);
@@ -255,15 +267,25 @@ function AnomalyBanner({ metrics }) {
 // ---------------------------------------------------------------------------
 // Run Detail View — phase-1 loads result immediately; phase-2 loads heavy data
 // ---------------------------------------------------------------------------
-function ChartZoomToolbar({ range, onReset }) {
+function ChartZoomReset({ range, onReset }) {
   if (!range) return null;
   const [startMs, endMs] = range;
+  const fmtZoom = (ms) => {
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? "--" : d.toISOString().slice(0, 16).replace("T", " ");
+  };
+  return html`
+    <div class="chart-zoom-reset" role="status">
+      <div class="chart-zoom-caption">圖表已縮放至 ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC，重新框選</div>
+      <button class="btn ghost sm" type="button" onClick=${onReset}>Reset zoom</button>
+    </div>
+  `;
   const fmt = (ms) => {
     const d = new Date(ms);
     return isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 16).replace("T", " ");
   };
   return html`
-    <div class="chart-zoom-toolbar" role="status">
+    <div class="chart-zoom-reset" role="status">
       <span class="chart-zoom-label">圖表已縮放至 ${fmt(startMs)} → ${fmt(endMs)} UTC（拖曳任一圖可重新框選）</span>
       <button class="btn ghost sm" type="button" onClick=${onReset}>回復原始尺度</button>
     </div>
@@ -289,7 +311,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [activeTab, setActiveTab] = useState("fills");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedChartSymbols, setSelectedChartSymbols] = useState([]);
-  const [chartRange, setChartRange] = useState(null);
+  const [chartRanges, setChartRanges] = useState(new Map());
+  const [visibleSeries, setVisibleSeries] = useState(new Map());
   const [indicators, setIndicators] = useState([]);
 
   // Phase 1: load result.json (fast — small payload)
@@ -318,7 +341,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setExecutionMarkers([]);
     setSelectedChartSymbols([]);
     setIndicators([]);
-    setChartRange(null);
+    setChartRanges(new Map());
+    setVisibleSeries(new Map());
     Promise.all([
       window.API.fetchBacktestEquity(runId).catch(() => []),
       window.API.fetchBacktestFills(runId).catch(() => []),
@@ -394,6 +418,43 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const filteredRiskEvents = riskEvents.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
 
   const realFills = filteredFills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
+
+  function useChartRange(id) {
+    const setRange = (nextRange) => {
+      setChartRanges((prev) => {
+        const next = new Map(prev);
+        if (nextRange) next.set(id, nextRange);
+        else next.delete(id);
+        return next;
+      });
+    };
+    return [chartRanges.get(id) || null, setRange];
+  }
+
+  function indicatorVisibleState(id, hasMacd) {
+    const current = visibleSeries.get(id);
+    return {
+      price: current?.price !== false,
+      fast: current?.fast !== false,
+      slow: current?.slow !== false,
+      macd: hasMacd ? current?.macd !== false : false,
+    };
+  }
+
+  function toggleIndicatorSeries(id, key, hasMacd) {
+    setVisibleSeries((prev) => {
+      const current = indicatorVisibleState(id, hasMacd);
+      const visibleKeys = ["price", "fast", "slow", ...(hasMacd ? ["macd"] : [])].filter((k) => current[k]);
+      if (current[key] && visibleKeys.length <= 1) return prev;
+      const next = new Map(prev);
+      next.set(id, { ...current, [key]: !current[key] });
+      return next;
+    });
+  }
+
+  const [priceRange, setPriceRange] = useChartRange("price");
+  const [equityRange, setEquityRange] = useChartRange("equity");
+  const [drawdownRange, setDrawdownRange] = useChartRange("drawdown");
 
   // Technical-indicator strategies render per-symbol IndicatorChart cards.
   const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
@@ -476,8 +537,6 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} loading=${phase2Loading} />
 
-      <${ChartZoomToolbar} range=${chartRange} onReset=${() => setChartRange(null)} />
-
       <div class="card">
         <div class="card-h">
           <div>
@@ -504,7 +563,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
           : html`
-            <div class="price-marker-layout">
+            <${ChartZoomReset} range=${priceRange} onReset=${() => setPriceRange(null)} />
+            <div class="chart-stack">
               <div class="chart-wrap">
                 ${filteredPriceSeries.length > 1
                   ? html`<${TradePriceChart}
@@ -512,14 +572,15 @@ function RunDetailView({ runId, onBack, onDelete }) {
                       markers=${filteredMarkers}
                       height=${280}
                       symbolColors=${chartSymbolColors}
+                      xTickFormatter=${adaptiveDateLabel}
                       tooltipLabelFormatter=${chartDateTooltip}
-                      range=${chartRange}
-                      onRangeChange=${setChartRange}
+                      range=${priceRange}
+                      onRangeChange=${setPriceRange}
                     />`
                   : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
                 }
               </div>
-              <${SymbolSelector}
+              <${SymbolPillBar}
                 symbols=${chartSymbols}
                 selected=${effectiveSelectedChartSymbols}
                 colors=${chartSymbolColors}
@@ -533,14 +594,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
       ${isTechnicalRun && indicatorSymbols.length > 0 && indicatorSymbols.map((sym) => {
         const rows = indicatorBySymbol.get(sym) || [];
         if (rows.length < 2) return null;
+        const chartId = `indicator:${sym}`;
+        const [indicatorRange, setIndicatorRange] = useChartRange(chartId);
+        const strategyForLabel = activeStrategies.find((s) => TECHNICAL_STRATEGIES_SET.has(s)) || "";
         const timestamps = rows.map(chartTimestamp);
-        const closes = rows.map((r) => +r.close).map((v) => Number.isFinite(v) ? v : NaN);
-        const fast = rows.map((r) => +r.fast_value).map((v) => Number.isFinite(v) ? v : NaN);
-        const slow = rows.map((r) => +r.slow_value).map((v) => Number.isFinite(v) ? v : NaN);
-        const macd = rows.map((r) => +r.macd);
-        const macdSignalVals = rows.map((r) => +r.macd_signal);
-        const macdHist = rows.map((r) => +r.macd_histogram);
-        const hasMacd = macd.some((v) => Number.isFinite(v));
+        const closes = rows.map((r) => safeNum(r.close)).map((v) => Number.isFinite(v) ? v : NaN);
+        const fast = rows.map((r) => safeNum(r.fast_value)).map((v) => Number.isFinite(v) ? v : NaN);
+        const slow = rows.map((r) => safeNum(r.slow_value)).map((v) => Number.isFinite(v) ? v : NaN);
+        const macd = rows.map((r) => safeNum(r.macd));
+        const macdSignalVals = rows.map((r) => safeNum(r.macd_signal));
+        const macdHist = rows.map((r) => safeNum(r.macd_histogram));
+        const hasMacd = strategyForLabel === "macd_crossover";
+        const indicatorVisible = indicatorVisibleState(chartId, hasMacd);
         // Map markers from datetime back to row index for this symbol.
         const dtToIdx = new Map(timestamps.map((t, i) => [String(t), i]));
         const symMarkers = (markersBySymbol.get(sym) || []).map((m) => {
@@ -560,7 +625,6 @@ function RunDetailView({ runId, onBack, onDelete }) {
           }
           return { ...m, idx };
         }).filter((m) => Number.isFinite(m.idx));
-        const strategyForLabel = activeStrategies.find((s) => TECHNICAL_STRATEGIES_SET.has(s)) || "";
         const labels = strategyForLabel === "ma_crossover"
           ? { fast: "Fast MA", slow: "Slow MA" }
           : strategyForLabel === "ema_crossover"
@@ -574,6 +638,13 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 <div class="card-sub">price + ${labels.fast.toLowerCase()} / ${labels.slow.toLowerCase()}${hasMacd ? " · MACD sub-panel" : ""}</div>
               </div>
             </div>
+            <${ChartZoomReset} range=${indicatorRange} onReset=${() => setIndicatorRange(null)} />
+            <${IndicatorSeriesPillBar}
+              visible=${indicatorVisible}
+              labels=${labels}
+              hasMacd=${hasMacd}
+              onToggle=${(key) => toggleIndicatorSeries(chartId, key, hasMacd)}
+            />
             <div class="chart-wrap">
               <${IndicatorChart}
                 symbol=${sym}
@@ -587,8 +658,10 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 macdSignal=${hasMacd ? macdSignalVals : null}
                 macdHistogram=${hasMacd ? macdHist : null}
                 markers=${symMarkers}
-                range=${chartRange}
-                onRangeChange=${setChartRange}
+                visibleSeries=${indicatorVisible}
+                range=${indicatorRange}
+                onRangeChange=${setIndicatorRange}
+                xTickFormatter=${adaptiveDateLabel}
                 tooltipLabelFormatter=${chartDateTooltip}
               />
             </div>
@@ -611,16 +684,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
             : eqValues.length > 1
-              ? html`<div class="chart-wrap"><${LineChart}
+              ? html`
+                <${ChartZoomReset} range=${equityRange} onReset=${() => setEquityRange(null)} />
+                <div class="chart-wrap"><${LineChart}
                   series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
                   height=${220}
                   mode="area"
                   xLabels=${eqDates}
-                  xTickFormatter=${chartDateTick}
+                  xTickFormatter=${chartDateTickForRange(equityRange)}
                   tooltipLabelFormatter=${chartDateTooltip}
                   tooltipValueFormatter=${(v) => signedUsd(v)}
-                  range=${chartRange}
-                  onRangeChange=${setChartRange}
+                  range=${equityRange}
+                  onRangeChange=${setEquityRange}
                 /></div>`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
@@ -637,16 +712,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
-            ? html`<div class="chart-wrap"><${LineChart}
+            ? html`
+              <${ChartZoomReset} range=${drawdownRange} onReset=${() => setDrawdownRange(null)} />
+              <div class="chart-wrap"><${LineChart}
                 series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
                 height=${140}
                 mode="area"
                 xLabels=${ddDates}
-                xTickFormatter=${chartDateTick}
+                xTickFormatter=${chartDateTickForRange(drawdownRange)}
                 tooltipLabelFormatter=${chartDateTooltip}
                 tooltipValueFormatter=${(v) => pct(v)}
-                range=${chartRange}
-                onRangeChange=${setChartRange}
+                range=${drawdownRange}
+                onRangeChange=${setDrawdownRange}
               /></div>`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }
@@ -701,7 +778,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   `;
 }
 
-function SymbolSelector({ symbols, selected, colors, onChange }) {
+function SymbolPillBar({ symbols, selected, colors, onChange }) {
   const selectedSet = new Set(selected || []);
   function toggle(symbol) {
     if (selectedSet.has(symbol) && selectedSet.size <= 1) return;
@@ -711,27 +788,54 @@ function SymbolSelector({ symbols, selected, colors, onChange }) {
     onChange(next.filter((item, index, arr) => arr.indexOf(item) === index).sort());
   }
   return html`
-    <aside class="symbol-selector" aria-label="Visible symbols">
-      <div class="field-label">Visible markets</div>
-      <div class="col" style=${{ gap: 8 }}>
-        ${(symbols || []).map((symbol, i) => {
-          const checked = selectedSet.has(symbol);
-          const color = colors?.[symbol] || symbolColor(symbol, i);
-          return html`
-            <label key=${symbol} class="symbol-check">
-              <input
-                type="checkbox"
-                checked=${checked}
-                disabled=${checked && selectedSet.size <= 1}
-                onChange=${() => toggle(symbol)}
-              />
-              <span class="symbol-swatch" style=${{ background: color }}></span>
-              <span class="mono">${symbol}</span>
-            </label>
-          `;
-        })}
-      </div>
-    </aside>
+    <div class="symbol-pill-bar" aria-label="Visible symbols">
+      ${(symbols || []).map((symbol, i) => {
+        const checked = selectedSet.has(symbol);
+        const color = colors?.[symbol] || symbolColor(symbol, i);
+        const disabled = checked && selectedSet.size <= 1;
+        return html`
+          <button
+            key=${symbol}
+            type="button"
+            class="symbol-pill"
+            aria-pressed=${checked ? "true" : "false"}
+            disabled=${disabled}
+            onClick=${() => toggle(symbol)}
+          >
+            <span class="symbol-pill-swatch" style=${{ background: color }}></span>
+            <span class="mono">${symbol}</span>
+          </button>
+        `;
+      })}
+    </div>
+  `;
+}
+
+function IndicatorSeriesPillBar({ visible, labels, hasMacd, onToggle }) {
+  const items = [
+    ["price", "Price"],
+    ["fast", labels.fast],
+    ["slow", labels.slow],
+    ...(hasMacd ? [["macd", "MACD"]] : []),
+  ];
+  const visibleCount = items.filter(([key]) => visible[key]).length;
+  return html`
+    <div class="indicator-pill-bar" aria-label="Visible indicator series">
+      ${items.map(([key, label]) => {
+        const active = visible[key];
+        const disabled = active && visibleCount <= 1;
+        return html`
+          <button
+            key=${key}
+            type="button"
+            class="symbol-pill"
+            aria-pressed=${active ? "true" : "false"}
+            disabled=${disabled}
+            onClick=${() => onToggle(key)}
+          >${label}</button>
+        `;
+      })}
+    </div>
   `;
 }
 

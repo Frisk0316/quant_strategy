@@ -139,6 +139,32 @@ function compactDateLabel(value) {
   return d.toISOString().slice(0, 10);
 }
 
+function adaptiveDateLabel(value, rangeMs) {
+  if (value == null || value === "") return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  const iso = d.toISOString();
+  const day = iso.slice(0, 10);
+  const time = iso.slice(11, 19);
+  const days = 24 * 60 * 60 * 1000;
+  const hours = 60 * 60 * 1000;
+  const minutes = 60 * 1000;
+  if (!Number.isFinite(rangeMs)) return day;
+  if (rangeMs >= 730 * days) return iso.slice(0, 4);
+  if (rangeMs >= 90 * days) return iso.slice(0, 7);
+  if (rangeMs >= 3 * days) return day;
+  if (rangeMs >= 6 * hours) return `${iso.slice(5, 10)} ${time.slice(0, 5)}`;
+  if (rangeMs >= 30 * minutes) return time.slice(0, 5);
+  return time;
+}
+
+function visibleRangeMs(timestamps, visibleStart, visibleEnd) {
+  if (!timestamps?.length) return NaN;
+  const startMs = tsToMs(timestamps[visibleStart]);
+  const endMs = tsToMs(timestamps[visibleEnd]);
+  return Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.abs(endMs - startMs) : NaN;
+}
+
 function defaultTooltipValue(v) {
   if (v == null || isNaN(+v)) return "--";
   return Math.abs(+v) > 100 ? (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) : (+v).toFixed(4);
@@ -228,6 +254,125 @@ function uniqueTicks(count, maxTicks) {
   return [...new Set(ticks)];
 }
 
+function RangeBrush({
+  timestamps,
+  values,
+  range = null,
+  onRangeChange = null,
+  height = 58,
+  color = "var(--accent)",
+}) {
+  const interactive = typeof onRangeChange === "function";
+  const len = timestamps?.length || 0;
+  if (!interactive || len < 2) return null;
+
+  const w = 1000, h = height;
+  const padL = 52, padR = 16, padT = 8, padB = 14;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const last = len - 1;
+  const [rangeStart, rangeEnd] = rangeToSlice(range, timestamps);
+  const [draft, setDraft] = useState(null);
+  const [drag, setDrag] = useState(null);
+  const windowStart = draft ? draft.start : rangeStart;
+  const windowEnd = draft ? draft.end : rangeEnd;
+
+  const cleanValues = (values || []).slice(0, len).map((v) => +v);
+  const finiteValues = cleanValues.filter(Number.isFinite);
+  const yMin = finiteValues.length ? Math.min(...finiteValues) : 0;
+  const yMax = finiteValues.length ? Math.max(...finiteValues) : 1;
+  const yPad = (yMax - yMin) * 0.08 || Math.max(Math.abs(yMax) * 0.01, 1);
+  const y0 = yMin - yPad, y1 = yMax + yPad;
+  const xScale = (i) => padL + (i / Math.max(last, 1)) * innerW;
+  const yScale = (v) => padT + (1 - (v - y0) / Math.max(y1 - y0, 1e-9)) * innerH;
+  const overviewPoints = downsample(
+    cleanValues.map((v) => (Number.isFinite(v) ? v : NaN)),
+    260,
+  )
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([idx, v]) => [xScale(idx), yScale(v)]);
+
+  function pointerIdx(e) {
+    return pointerToAbsoluteIdx(e, { w, padL, innerW, visibleStart: 0, visibleEnd: last });
+  }
+
+  function handlePointerDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const idx = pointerIdx(e);
+    const handlePad = Math.max(Math.ceil(len * 0.01), 2);
+    let mode = "move";
+    if (Math.abs(idx - windowStart) <= handlePad) mode = "start";
+    else if (Math.abs(idx - windowEnd) <= handlePad) mode = "end";
+    else if (idx < windowStart || idx > windowEnd) {
+      const half = Math.max(Math.round((windowEnd - windowStart) / 2), MIN_BRUSH_WIDTH);
+      const start = clampIdx(idx - half, 0, Math.max(last - MIN_BRUSH_WIDTH, 0));
+      const end = clampIdx(start + Math.max(windowEnd - windowStart, MIN_BRUSH_WIDTH), MIN_BRUSH_WIDTH, last);
+      setDraft({ start: Math.min(start, end), end: Math.max(start, end) });
+      mode = "move";
+    }
+    setDrag({ mode, anchorIdx: idx, start: windowStart, end: windowEnd });
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* no-op */ }
+  }
+
+  function handlePointerMove(e) {
+    if (!drag) return;
+    const idx = pointerIdx(e);
+    let start = drag.start;
+    let end = drag.end;
+    if (drag.mode === "start") {
+      start = clampIdx(idx, 0, end - MIN_BRUSH_WIDTH);
+    } else if (drag.mode === "end") {
+      end = clampIdx(idx, start + MIN_BRUSH_WIDTH, last);
+    } else {
+      const width = Math.max(drag.end - drag.start, MIN_BRUSH_WIDTH);
+      const delta = idx - drag.anchorIdx;
+      start = clampIdx(drag.start + delta, 0, Math.max(last - width, 0));
+      end = clampIdx(start + width, start + MIN_BRUSH_WIDTH, last);
+    }
+    setDraft({ start, end });
+  }
+
+  function finish() {
+    if (!drag) return;
+    const start = draft ? draft.start : windowStart;
+    const end = draft ? draft.end : windowEnd;
+    setDrag(null);
+    setDraft(null);
+    const msRange = brushIdxToTsRange(start, end, timestamps);
+    if (msRange) onRangeChange(msRange);
+  }
+
+  const winX = xScale(windowStart);
+  const winW = Math.max(xScale(windowEnd) - winX, 1);
+
+  return html`
+    <svg
+      class="range-brush"
+      viewBox=${`0 0 ${w} ${h}`}
+      width="100%"
+      height=${h}
+      preserveAspectRatio="none"
+      style=${{ display: "block", maxWidth: "100%", cursor: drag ? "grabbing" : "grab" }}
+      onPointerDown=${handlePointerDown}
+      onPointerMove=${handlePointerMove}
+      onPointerUp=${finish}
+      onPointerLeave=${finish}
+    >
+      <rect x=${padL} y=${padT} width=${innerW} height=${innerH} rx="3" fill="var(--surface-2)" stroke="var(--border)" />
+      ${overviewPoints.length > 1 && html`<path d=${lineFromPoints(overviewPoints)} fill="none" stroke=${color} stroke-width="1.1" opacity="0.72" />`}
+      <rect x=${padL} y=${padT} width=${innerW} height=${innerH} fill="var(--surface)" opacity="0.55" />
+      <rect x=${winX} y=${padT} width=${winW} height=${innerH} fill=${color} opacity="0.16" stroke=${color} stroke-width="1.2" />
+      ${[windowStart, windowEnd].map((idx, i) => html`
+        <g key=${i} transform=${`translate(${xScale(idx)}, 0)`}>
+          <rect x="-4" y=${padT - 2} width="8" height=${innerH + 4} rx="2" fill="var(--surface)" stroke=${color} stroke-width="1.2" />
+          <line x1="-1.5" x2="-1.5" y1=${padT + 7} y2=${padT + innerH - 7} stroke=${color} stroke-width="1" />
+          <line x1="1.5" x2="1.5" y1=${padT + 7} y2=${padT + innerH - 7} stroke=${color} stroke-width="1" />
+        </g>
+      `)}
+    </svg>
+  `;
+}
+
 function LineChart({
   series,
   height = 220,
@@ -279,6 +424,7 @@ function LineChart({
   const xTicks = hasXLabels
     ? uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel)
     : [];
+  const tickRangeMs = supportsTimeRange ? visibleRangeMs(xLabels, visibleStart, visibleEnd) : NaN;
 
   const interactive = typeof onRangeChange === "function";
 
@@ -323,6 +469,7 @@ function LineChart({
   const brushHi = brush ? Math.max(brush.startIdx, brush.currentIdx) : null;
 
   return html`
+    <div>
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
       ${showAxes && yTicks.map((t, i) => html`
         <g key=${i}>
@@ -336,7 +483,7 @@ function LineChart({
         <g key=${`x-${idx}`}>
           <line x1=${xScale(idx)} x2=${xScale(idx)} y1=${padT} y2=${h - padB} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
           <text x=${xScale(idx)} y=${h - 10} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">
-            ${xTickFormatter(xLabels[idx], idx)}
+            ${xTickFormatter(xLabels[idx], idx, tickRangeMs)}
           </text>
         </g>
       `)}
@@ -346,7 +493,7 @@ function LineChart({
         const pts = ds.map(([i, v]) => [
           padL + (i / Math.max(slice.length - 1, 1)) * innerW,
           yScale(v),
-        ]);
+        ]).filter(([, y]) => Number.isFinite(y));
         const stroke = s.color || color;
         const d = mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts);
         return html`
@@ -407,6 +554,16 @@ function LineChart({
         onPointerLeave=${handlePointerLeave}
       />
     </svg>
+    ${interactive && supportsTimeRange && html`
+      <${RangeBrush}
+        timestamps=${xLabels}
+        values=${cleanSeries[0]?.values || []}
+        range=${range}
+        onRangeChange=${onRangeChange}
+        color=${cleanSeries[0]?.color || color}
+      />
+    `}
+    </div>
   `;
 }
 
@@ -474,6 +631,7 @@ function TradePriceChart({
   markers,
   height = 280,
   symbolColors = {},
+  xTickFormatter = adaptiveDateLabel,
   tooltipLabelFormatter = compactDateLabel,
   range = null,
   onRangeChange = null,
@@ -538,6 +696,14 @@ function TradePriceChart({
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
   const xTicks = uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel);
+  const tickRangeMs = visibleRangeMs(sortedKeys, visibleStart, visibleEnd);
+  const overviewValues = sortedKeys.map((_, idx) => {
+    for (const s of series) {
+      const v = s.values.get(idx);
+      if (Number.isFinite(v)) return v;
+    }
+    return NaN;
+  });
   const plottedMarkers = (markers || [])
     .map((m) => {
       const key = String(m.datetime || m.ts || "");
@@ -632,6 +798,7 @@ function TradePriceChart({
   const tooltipH = 42 + hoverPrices.length * 16 + hoverMarkerGroups.length * 32;
 
   return html`
+    <div>
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
       ${series.length > 0 && html`
         <g transform=${`translate(${w / 2}, 18)`}>
@@ -661,7 +828,7 @@ function TradePriceChart({
         <g key=${`x-${idx}`}>
           <line x1=${xScale(idx)} x2=${xScale(idx)} y1=${padT} y2=${h - padB} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.45" />
           <text x=${xScale(idx)} y=${h - 10} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">
-            ${compactDateLabel(sortedKeys[idx])}
+            ${xTickFormatter(sortedKeys[idx], tickRangeMs)}
           </text>
         </g>
       `)}
@@ -745,12 +912,20 @@ function TradePriceChart({
         onPointerLeave=${handlePointerLeave}
       />
     </svg>
+    ${interactive && html`
+      <${RangeBrush}
+        timestamps=${sortedKeys}
+        values=${overviewValues}
+        range=${range}
+        onRangeChange=${onRangeChange}
+        color=${series[0]?.color || "var(--accent)"}
+      />
+    `}
+    </div>
   `;
 }
 
 // Indicator chart: price + fast/slow lines + trade markers, optional MACD sub-panel.
-// Mirrors the brush-zoom behavior used by LineChart / TradePriceChart so it stays
-// in sync with the global chartRange wired from RunDetailView.
 function IndicatorChart({
   symbol,
   timestamps,
@@ -768,11 +943,19 @@ function IndicatorChart({
   color = "var(--accent)",
   fastColor = "#2563eb",
   slowColor = "#dc2626",
+  visibleSeries = null,
   range = null,
   onRangeChange = null,
+  xTickFormatter = adaptiveDateLabel,
   tooltipLabelFormatter = compactDateLabel,
 }) {
-  const hasMacd = Array.isArray(macd) && macd.length > 0 && Array.isArray(macdSignal);
+  const show = {
+    price: visibleSeries?.price !== false,
+    fast: visibleSeries?.fast !== false,
+    slow: visibleSeries?.slow !== false,
+    macd: visibleSeries?.macd !== false,
+  };
+  const hasMacd = show.macd && Array.isArray(macd) && macd.length > 0 && Array.isArray(macdSignal);
   const totalH = hasMacd ? height + macdHeight : height;
   const mainH = hasMacd ? height : totalH;
   const w = 1000;
@@ -792,16 +975,16 @@ function IndicatorChart({
   const inVisibleRange = (idx) => idx >= visibleStart && idx <= visibleEnd;
 
   const allSeries = [
-    { values: prices, color, label: symbol || "Price" },
-    { values: fast, color: fastColor, label: fastLabel },
-    { values: slow, color: slowColor, label: slowLabel },
-  ].filter((s) => Array.isArray(s.values) && s.values.length > 0);
+    show.price ? { values: prices, color, label: symbol || "Price" } : null,
+    show.fast ? { values: fast, color: fastColor, label: fastLabel } : null,
+    show.slow ? { values: slow, color: slowColor, label: slowLabel } : null,
+  ].filter((s) => s && Array.isArray(s.values) && s.values.length > 0);
   const visiblePriceVals = allSeries.flatMap((s) =>
     s.values.slice(visibleStart, visibleEnd + 1)
   ).filter((v) => Number.isFinite(v));
-  if (!visiblePriceVals.length) return null;
-  const yMin = Math.min(...visiblePriceVals);
-  const yMax = Math.max(...visiblePriceVals);
+  if (!visiblePriceVals.length && !hasMacd) return null;
+  const yMin = visiblePriceVals.length ? Math.min(...visiblePriceVals) : 0;
+  const yMax = visiblePriceVals.length ? Math.max(...visiblePriceVals) : 1;
   const yPad = (yMax - yMin) * 0.05 || Math.max(Math.abs(yMax) * 0.01, 1);
   const y0 = yMin - yPad, y1 = yMax + yPad;
   const xScale = (i) => padL + ((i - visibleStart) / Math.max(visibleLen - 1, 1)) * innerW;
@@ -833,6 +1016,8 @@ function IndicatorChart({
 
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
   const xTicks = uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel);
+  const tickRangeMs = visibleRangeMs(timestamps || [], visibleStart, visibleEnd);
+  const overviewValues = (allSeries[0]?.values || prices || []).slice(0, tsLen);
 
   const interactive = typeof onRangeChange === "function";
 
@@ -874,6 +1059,7 @@ function IndicatorChart({
   }
 
   return html`
+    <div>
     <svg viewBox=${`0 0 ${w} ${totalH}`} width="100%" height=${totalH} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
       <g transform=${`translate(${padL}, 14)`}>
         <text x="0" y="0" font-size="12" fill="var(--text)" font-family="var(--font-mono)" font-weight="600">${symbol || ""}</text>
@@ -893,7 +1079,7 @@ function IndicatorChart({
       ${!hasMacd && xTicks.map((idx) => html`
         <g key=${`x-${idx}`}>
           <line x1=${xScale(idx)} x2=${xScale(idx)} y1=${padT} y2=${mainH - padB} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.45" />
-          <text x=${xScale(idx)} y=${mainH - 10} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${compactDateLabel(timestamps[idx])}</text>
+          <text x=${xScale(idx)} y=${mainH - 10} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${xTickFormatter(timestamps[idx], tickRangeMs)}</text>
         </g>
       `)}
       ${allSeries.map((s, si) => {
@@ -903,7 +1089,7 @@ function IndicatorChart({
           .filter(([, y]) => Number.isFinite(y));
         return html`<path key=${si} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width=${si === 0 ? 1.6 : 1.4} stroke-linejoin="round" stroke-linecap="round" opacity=${si === 0 ? 0.95 : 0.85} />`;
       })}
-      ${(markers || []).filter((m) => inVisibleRange(m.idx) && Number.isFinite(+m.price)).map((m, i) => {
+      ${show.price && (markers || []).filter((m) => inVisibleRange(m.idx) && Number.isFinite(+m.price)).map((m, i) => {
         const buy = String(m.side || "").toLowerCase() === "buy";
         const x = xScale(m.idx);
         const y = yScale(+m.price);
@@ -943,7 +1129,7 @@ function IndicatorChart({
             return html`<path key=${`macd-${si}`} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width="1.3" />`;
           })}
           ${xTicks.map((idx) => html`
-            <text key=${`mx-${idx}`} x=${xScale(idx)} y=${macdYTop + macdInnerH + 16} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${compactDateLabel(timestamps[idx])}</text>
+            <text key=${`mx-${idx}`} x=${xScale(idx)} y=${macdYTop + macdInnerH + 16} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${xTickFormatter(timestamps[idx], tickRangeMs)}</text>
           `)}
         </g>
       `}
@@ -994,7 +1180,17 @@ function IndicatorChart({
         onPointerLeave=${handlePointerLeave}
       />
     </svg>
+    ${interactive && html`
+      <${RangeBrush}
+        timestamps=${timestamps || []}
+        values=${overviewValues}
+        range=${range}
+        onRangeChange=${onRangeChange}
+        color=${allSeries[0]?.color || color}
+      />
+    `}
+    </div>
   `;
 }
 
-window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart };
+window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart, adaptiveDateLabel };

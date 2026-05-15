@@ -14,7 +14,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from backtesting.artifacts import save_backtest_artifacts
+from backtesting.artifacts import _build_indicator_series_df, save_backtest_artifacts
 from backtesting.cpcv import CPCV
 from backtesting.data_loader import compute_returns, load_funding
 from backtesting.replay import (
@@ -566,6 +566,60 @@ def test_save_backtest_artifacts_writes_validation_to_result_json(tmp_path, monk
     assert payload["walk_forward"][0]["oos_sharpe"] == pytest.approx(1.23)
     assert payload["cpcv"]["dsr"] == pytest.approx(0.97)
     assert payload["validation"]["validation_frame_rows"] == 2
+
+
+def test_indicator_series_uses_warmup_candles_before_trimming(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=4, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * 4,
+        "close": [100.0, 101.0, 102.0, 103.0],
+    })
+    warm_ts = pd.date_range("2023-12-31 21:00:00+00:00", periods=3, freq="1h")
+    warm_df = pd.DataFrame({
+        "ts": warm_ts,
+        "inst_id": ["BTC-USDT-SWAP"] * 3,
+        "close": [97.0, 98.0, 99.0],
+    })
+
+    def fake_fetch(dsn, inst_ids, bar, start_ts, lookback_bars):
+        assert dsn == "postgres://unit"
+        assert inst_ids == ["BTC-USDT-SWAP"]
+        assert bar == "1H"
+        assert lookback_bars == 3
+        return {"BTC-USDT-SWAP": warm_df}
+
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", fake_fetch)
+    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={"fast_window": 2, "slow_window": 4}))
+
+    out = _build_indicator_series_df(price_df, cfg, ["ma_crossover"], dsn="postgres://unit", bar="1H")
+
+    assert len(out) == 4
+    assert out["ts"].tolist() == price_df["ts"].tolist()
+    assert np.isfinite(out["fast_value"]).all()
+    assert np.isfinite(out["slow_value"]).all()
+    assert out["slow_value"].iloc[0] == pytest.approx((97.0 + 98.0 + 99.0 + 100.0) / 4)
+
+
+def test_indicator_series_trims_leading_rows_when_warmup_missing(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=6, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * 6,
+        "close": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0],
+    })
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", lambda *args, **kwargs: {})
+    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={"fast_window": 3, "slow_window": 5}))
+
+    out = _build_indicator_series_df(price_df, cfg, ["ma_crossover"], dsn=None, bar="1H")
+
+    assert pd.Timestamp(out["ts"].iloc[0]) == ts[2]
+    assert np.isfinite(out["fast_value"].iloc[0])
+    assert pd.isna(out["slow_value"].iloc[0])
+    both_empty = out["fast_value"].isna() & out["slow_value"].isna()
+    assert not both_empty.iloc[0]
 
 
 def test_replay_asmm_parameter_selection_uses_is_and_oos_windows():
