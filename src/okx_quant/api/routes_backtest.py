@@ -27,9 +27,81 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 _run_jobs: dict[str, dict[str, Any]] = {}
+
+
+def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
+    """Best-effort TCP probe that the DSN's host:port accepts connections.
+
+    A full `asyncpg.connect()` would be authoritative but is slow when the DB
+    is down (TCP retries can take 5–30s). A simple TCP-level probe is fast and
+    catches the common "DB process not running" case which the docs/handoff
+    treat as the trigger for parquet fallback.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(dsn)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 5432
+    except Exception:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
+
+
+def _resolve_candle_backend() -> tuple[str, str | None]:
+    """Resolve the candle backend the backtest subprocesses should use.
+
+    Returns (backend, dsn). Prefers `cfg.storage.candle_backend` from
+    config/settings.yaml. Falls back to parquet when the DSN is missing OR
+    unreachable so backtests don't crash on ConnectionRefusedError when the
+    DB process is not running.
+    """
+    backend = "parquet"
+    dsn: str | None = None
+    try:
+        from okx_quant.core.config import load_config
+
+        cfg = load_config(require_secrets=False)
+        backend = (getattr(cfg.storage, "candle_backend", "parquet") or "parquet").lower()
+        dsn = getattr(cfg.storage, "timescale_dsn", None)
+    except Exception:
+        pass
+    if not dsn:
+        dsn = os.environ.get("DATABASE_URL")
+    if backend == "postgres":
+        if not dsn or not _dsn_reachable(dsn):
+            backend = "parquet"
+            dsn = None
+    return backend, dsn
+
+
 _SAFE_DATA_DIR_RE = re.compile(r"^[\w./\-]+$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$")
 _SAFE_SYMBOL_RE = re.compile(r"^[A-Z0-9\-]+$")
+_ALLOWED_EXCHANGES = {"binance", "okx", "bybit", "coinbase", "kraken"}
+
+
+def _normalize_exchange(value: str | None) -> str:
+    """Validate the per-run exchange selection against the allowed set.
+
+    Falls back to cfg.storage.primary_exchange when the input is missing or
+    not whitelisted, so a stale frontend can't ask for a non-existent venue.
+    """
+    candidate = (value or "").strip().lower()
+    if candidate in _ALLOWED_EXCHANGES:
+        return candidate
+    try:
+        from okx_quant.core.config import load_config
+        cfg = load_config(require_secrets=False)
+        cfg_value = (getattr(cfg.storage, "primary_exchange", None) or "binance").lower()
+    except Exception:
+        cfg_value = "binance"
+    return cfg_value if cfg_value in _ALLOWED_EXCHANGES else "binance"
 DEFAULT_DAILY_WINNER_UNIVERSE = [
     "BTC-USDT-SWAP",
     "ETH-USDT-SWAP",
@@ -60,6 +132,9 @@ class RunBacktestRequest(BaseModel):
     end: str | None = None
     run_id: str | None = None
     validation: str | None = Field(default=None, alias="validate")
+    # Exchange whose data the backtest should consume. Must match the live-target
+    # exchange for deployment promotion (see ai_collaboration.md deployment gates).
+    exchange: str | None = None
     universe: list[str] = []
     benchmark: str = "BTC-USDT-SWAP"
     rebalance_minutes: int = 60
@@ -82,35 +157,39 @@ def _run_ohlcv_rotation_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
 
-        # Pre-validate parquet availability for benchmark + universe.
-        data_dir = _resolve_data_dir(req.data_dir)
-        _BAR_RESAMPLE = {"1H", "2H", "4H", "6H", "12H", "1D"}
-        missing: list[str] = []
-        for inst in list(req.universe or []) + [req.benchmark or "BTC-USDT-SWAP"]:
-            inst_dir = data_dir / inst.replace("-", "_")
-            has_bar = (inst_dir / f"candles_{bar}.parquet").exists()
-            has_1m = (inst_dir / "candles_1m.parquet").exists()
-            can_derive = bar in _BAR_RESAMPLE and has_1m
-            if not has_bar and not can_derive:
-                available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
-                missing.append(f"{inst}: no candles_{bar}.parquet — available: {available or 'none'}")
+        backend, dsn = _resolve_candle_backend()
+        exchange = _normalize_exchange(req.exchange)
         benchmark = req.benchmark or "BTC-USDT-SWAP"
-        if any(benchmark in m for m in missing):
-            _run_jobs[job_id].update({
-                "status": "error",
-                "progress": 100,
-                "message": f"Data not available for benchmark '{benchmark}' at bar='{bar}'",
-                "output": "\n".join(missing),
-            })
-            return
+
+        if backend == "parquet":
+            # Pre-validate parquet availability for benchmark + universe.
+            data_dir = _resolve_data_dir(req.data_dir)
+            _BAR_RESAMPLE = {"1H", "2H", "4H", "6H", "12H", "1D"}
+            missing: list[str] = []
+            for inst in list(req.universe or []) + [benchmark]:
+                inst_dir = data_dir / inst.replace("-", "_")
+                has_bar = (inst_dir / f"candles_{bar}.parquet").exists()
+                has_1m = (inst_dir / "candles_1m.parquet").exists()
+                can_derive = bar in _BAR_RESAMPLE and has_1m
+                if not has_bar and not can_derive:
+                    available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
+                    missing.append(f"{inst}: no candles_{bar}.parquet — available: {available or 'none'}")
+            if any(benchmark in m for m in missing):
+                _run_jobs[job_id].update({
+                    "status": "error",
+                    "progress": 100,
+                    "message": f"Data not available for benchmark '{benchmark}' at bar='{bar}'",
+                    "output": "\n".join(missing),
+                })
+                return
 
         cmd = [
             sys.executable,
             str(script),
-            "--backend", "parquet",
+            "--backend", backend,
             "--data-dir", req.data_dir or "data/ticks",
             "--bar", bar,
-            "--benchmark", req.benchmark or "BTC-USDT-SWAP",
+            "--benchmark", benchmark,
             "--rebalance-minutes", str(req.rebalance_minutes or 60),
             "--top-k", str(req.top_k or 3),
             "--rank-exit-buffer", str(req.rank_exit_buffer or 6),
@@ -118,6 +197,9 @@ def _run_ohlcv_rotation_job(
             "--output-dir", str(out_dir),
             "--universe",
         ] + list(req.universe or [])
+        if backend == "postgres" and dsn:
+            cmd.extend(["--dsn", dsn])
+        cmd.extend(["--exchange", exchange])
         if req.start:
             cmd.extend(["--start", req.start])
         if req.end:
@@ -267,6 +349,10 @@ def _run_daily_winner_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         universe = list(dict.fromkeys(req.universe or DEFAULT_DAILY_WINNER_UNIVERSE))
         dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+        exchange = _normalize_exchange(req.exchange)
+        # daily_winner is Postgres-only; if an exchange is selected, switch from
+        # the canonical "postgres" view to the per-exchange "market" view.
+        load_backend = "market" if exchange else "postgres"
 
         _run_jobs[job_id].update({
             "status": "running",
@@ -282,8 +368,9 @@ def _run_daily_winner_job(
                 data_dir=req.data_dir or "data/ticks",
                 start=req.start,
                 end=req.end,
-                backend="postgres",
+                backend=load_backend,
                 dsn=dsn,
+                exchange=exchange if load_backend == "market" else None,
             )
             if df.empty:
                 skipped.append(inst)
@@ -701,6 +788,7 @@ def _run_backtest_job(
             cmd.extend(["--min-apr-threshold", str(req.min_apr_threshold)])
         if req.strategy_params:
             cmd.extend(["--strategy-params", json.dumps(req.strategy_params)])
+        cmd.extend(["--exchange", _normalize_exchange(req.exchange)])
 
         _run_jobs[job_id].update({
             "status": "running",
@@ -1212,6 +1300,26 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             records = payload
         else:
             records = _read_csv(_run_dir(run_id) / "price_series.csv")
+        if symbol:
+            if not _SAFE_SYMBOL_RE.match(symbol):
+                raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+            records = [row for row in records if row.get("inst_id") == symbol]
+        return _downsample_records(records, n)
+
+    @router.get("/{run_id}/indicators")
+    async def get_indicators(
+        run_id: str,
+        symbol: str | None = Query(default=None),
+        n: int = Query(default=0, ge=0),
+    ):
+        payload = await _read_db_artifact(run_id, "indicator_series")
+        if payload is not None:
+            records = payload
+        else:
+            indicator_path = _run_dir(run_id) / "indicator_series.csv"
+            if not indicator_path.exists():
+                return []
+            records = _read_csv(indicator_path)
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")

@@ -29,6 +29,10 @@ storage:
   redis_url: redis://localhost:6379
   # Switch to 'postgres' after running init_db.py and backfill
   candle_backend: postgres
+  # Default exchange whose canonical/market_klines data feeds backtests.
+  # Frontend Run Backtest UI can override per-run. Live deployment to
+  # exchange X requires backtest result.data_source.primary_exchange == X.
+  primary_exchange: binance
 
 market_data:
   source_primary: okx

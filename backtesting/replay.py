@@ -497,15 +497,18 @@ def load_l1_books(
         except FileNotFoundError:
             candles = pd.DataFrame()
         if candles.empty and fallback_inst_id:
-            candles = load_ohlcv_candles(
-                fallback_inst_id,
-                bar=bar,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                backend="postgres",
-                dsn=dsn,
-            )
+            try:
+                candles = load_ohlcv_candles(
+                    fallback_inst_id,
+                    bar=bar,
+                    data_dir=data_dir,
+                    start=start,
+                    end=end,
+                    backend="postgres",
+                    dsn=dsn,
+                )
+            except FileNotFoundError:
+                candles = pd.DataFrame()
         if not candles.empty:
             return _synthetic_l1_from_candles(
                 inst_id=inst_id,
@@ -606,14 +609,19 @@ def load_funding_events(
     dsn: Optional[str] = None,
 ) -> pd.DataFrame:
     if backend == "postgres":
-        funding = load_funding_rates(
-            inst_id=inst_id,
-            data_dir=data_dir,
-            start=start,
-            end=end,
-            backend="postgres",
-            dsn=dsn,
-        )
+        try:
+            funding = load_funding_rates(
+                inst_id=inst_id,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend="postgres",
+                dsn=dsn,
+            )
+        except FileNotFoundError:
+            # data_loader.load_funding falls back to parquet when no DSN is
+            # present; missing local funding files are tolerated.
+            return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
         if funding.empty:
             return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
         frame = funding.reset_index(names="ts")
@@ -683,6 +691,12 @@ class HistoricalEventFeed:
 
 
 class ReplayBacktestEngine:
+    # Authoritative sources whose ct_val came from a verified upstream (DB
+    # instruments registry or an explicit per-symbol config override). Any other
+    # source (registry yaml, BTC/ETH hardcoded fallback) is non-authoritative
+    # and downstream live-deployment gates should refuse such runs.
+    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = ("db", "config_override", "spot_unit")
+
     def __init__(
         self,
         cfg: AppConfig,
@@ -694,13 +708,26 @@ class ReplayBacktestEngine:
     ) -> None:
         self._cfg = cfg
         self._strategy_names = strategy_names
-        self._instrument_specs = instrument_specs or self._default_instrument_specs()
+        self._ct_val_sources: dict[str, dict] = {}
+        if instrument_specs:
+            self._instrument_specs = instrument_specs
+            # Caller-supplied specs are treated as per-symbol authoritative
+            # overrides — this is the same trust level as a DB-backed value.
+            for sym, spec in instrument_specs.items():
+                ct_val = spec.get("ctVal") if isinstance(spec, dict) else None
+                self._ct_val_sources[sym] = {
+                    "value": float(ct_val) if ct_val is not None else None,
+                    "source": "config_override",
+                }
+        else:
+            self._instrument_specs = self._default_instrument_specs()
         self._periods = periods
         self._bar_seconds = bar_seconds
         self._liquidate_on_end = cfg.backtest.liquidate_on_end if liquidate_on_end is None else liquidate_on_end
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
+        db_specs = self._load_db_instrument_specs()
         swap_symbols = set(self._cfg.system.symbols)
         swap_symbols.update(self._cfg.strategies.obi_market_maker.symbols)
         swap_symbols.update(self._cfg.strategies.as_market_maker.symbols)
@@ -715,26 +742,142 @@ class ReplayBacktestEngine:
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
+            ct_val, source = self._resolve_swap_ct_val(symbol, db_specs)
             specs[symbol] = {
-                "ctVal": self._fallback_swap_ct_val(symbol),
+                "ctVal": ct_val,
                 "minSz": 0.01,
                 "lotSz": 0.01,
                 "tickSz": 0.1,
                 "tdMode": "cross",
             }
+            self._ct_val_sources[symbol] = {"value": ct_val, "source": source}
         spot_symbols = set(self._cfg.system.spot_symbols)
         spot_symbols.add(self._cfg.strategies.funding_carry.spot_symbol)
         for symbol in spot_symbols:
             specs[symbol] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
+            # USDT spot pairs trade in base units so ctVal=1.0 is exact, not a fallback.
+            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit"}
         return specs
+
+    def _load_db_instrument_specs(self) -> dict:
+        """Query `instruments.contract_value` for every active row, when DB is reachable.
+
+        Returned shape: {inst_id: {"ct_val": float}}. Empty dict when DSN is
+        missing, unreachable, or query fails — caller falls through to the
+        bundled YAML registry. Errors are warnings, not exceptions, because the
+        DB-primary architecture must degrade gracefully to parquet.
+        """
+        dsn = getattr(self._cfg.storage, "timescale_dsn", None)
+        if not dsn:
+            return {}
+        try:
+            from backtesting.data_loader import _dsn_reachable
+        except Exception:
+            return {}
+        if not _dsn_reachable(dsn):
+            return {}
+        try:
+            import asyncio
+
+            import asyncpg
+
+            async def _fetch() -> list:
+                conn = await asyncpg.connect(dsn)
+                try:
+                    return await conn.fetch(
+                        """
+                        SELECT inst_id, contract_value
+                        FROM instruments
+                        WHERE contract_value IS NOT NULL
+                        """
+                    )
+                finally:
+                    await conn.close()
+
+            rows = asyncio.run(_fetch())
+        except Exception as exc:  # noqa: BLE001 — DB issues should not crash backtest
+            logger.warning("Failed to load instrument ctVal from DB: {}", exc)
+            return {}
+        out: dict = {}
+        for row in rows:
+            ct_val = row.get("contract_value") if isinstance(row, dict) else row["contract_value"]
+            inst_id = row.get("inst_id") if isinstance(row, dict) else row["inst_id"]
+            if ct_val is None:
+                continue
+            try:
+                out[inst_id] = {"ct_val": float(ct_val)}
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    @staticmethod
+    def _load_instrument_spec_registry() -> dict:
+        """Read config/instrument_specs.yaml (bundled OKX SWAP spec registry).
+
+        Cached on the class so repeated lookups don't re-read the file.
+        """
+        cache_attr = "_INSTRUMENT_SPEC_CACHE"
+        cached = getattr(ReplayBacktestEngine, cache_attr, None)
+        if cached is not None:
+            return cached
+        registry: dict = {}
+        try:
+            import yaml
+            specs_path = Path(__file__).resolve().parents[1] / "config" / "instrument_specs.yaml"
+            if specs_path.exists():
+                data = yaml.safe_load(specs_path.read_text(encoding="utf-8")) or {}
+                registry = data.get("swaps", {}) or {}
+        except Exception as exc:  # noqa: BLE001 — file IO / yaml errors should not crash backtest
+            logger.warning("Failed to load instrument_specs.yaml: {}", exc)
+        setattr(ReplayBacktestEngine, cache_attr, registry)
+        return registry
+
+    @staticmethod
+    def _resolve_swap_ct_val(symbol: str, db_specs: dict | None = None) -> tuple[float, str]:
+        """Resolve a swap symbol's ctVal and report the provenance label.
+
+        Lookup priority (highest = most authoritative):
+          1. `db` — DB-backed `instruments.contract_value`. Verified upstream;
+             trusted for live deployment.
+          2. `registry` — bundled `config/instrument_specs.yaml`. Trusted for
+             backtest but flagged as non-authoritative for live gating because
+             it can drift from the exchange spec.
+          3. `hardcoded_btc_eth` — last-resort 0.01 for BTC/ETH symbols only.
+             Same authority class as `registry`.
+          4. Raise — unknown swap; never silently fall back to 1.0 because the
+             ct_val multiplier directly drives PnL / notional / funding.
+        """
+        if db_specs and db_specs.get(symbol, {}).get("ct_val") is not None:
+            return float(db_specs[symbol]["ct_val"]), "db"
+        registry = ReplayBacktestEngine._load_instrument_spec_registry()
+        spec = registry.get(symbol)
+        if spec and spec.get("ct_val") is not None:
+            return float(spec["ct_val"]), "registry"
+        if symbol.startswith(("BTC-", "ETH-")):
+            logger.warning(
+                "Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01",
+                inst_id=symbol,
+            )
+            return 0.01, "hardcoded_btc_eth"
+        logger.error(
+            "Instrument ctVal missing for swap; add it to config/instrument_specs.yaml "
+            "or populate instruments.contract_value in DB",
+            inst_id=symbol,
+        )
+        raise ValueError(
+            f"Missing ctVal for swap '{symbol}'. Add an entry under `swaps:` in "
+            f"config/instrument_specs.yaml or populate the DB instruments table."
+        )
 
     @staticmethod
     def _fallback_swap_ct_val(symbol: str) -> float:
-        if symbol.startswith(("BTC-", "ETH-")):
-            logger.warning("Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01", inst_id=symbol)
-            return 0.01
-        logger.error("Instrument ctVal missing for non-BTC/ETH swap; refusing silent fallback", inst_id=symbol)
-        raise ValueError(f"Missing ctVal for non-BTC/ETH swap: {symbol}")
+        """Backwards-compatible wrapper that drops the provenance label.
+
+        Existing call sites (and tests) only care about the numeric value;
+        new code should call `_resolve_swap_ct_val` directly to also record
+        provenance.
+        """
+        return ReplayBacktestEngine._resolve_swap_ct_val(symbol)[0]
 
     def _build_strategies(self) -> list[Strategy]:
         wanted = set(self._strategy_names or [])
@@ -1673,6 +1816,14 @@ def run_replay_backtest(
     liquidate_on_end: Optional[bool] = None,
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
+    # Safety net for the DB-primary default. Treat both "no DSN" and "DSN
+    # unreachable" (DB process not running) as a trigger to drop to parquet,
+    # otherwise the very first load_candles call crashes with
+    # ConnectionRefusedError.
+    if getattr(cfg.storage, "candle_backend", "parquet") == "postgres":
+        from backtesting.data_loader import _dsn_reachable as _dsn_probe
+        if not cfg.storage.timescale_dsn or not _dsn_probe(cfg.storage.timescale_dsn):
+            cfg.storage = cfg.storage.model_copy(update={"candle_backend": "parquet"})
     feed = build_feed_for_strategies(cfg, strategy_names=strategy_names, data_dir=data_dir, start=start, end=end, bar=bar)
     coverage = _compute_data_coverage(feed, start, end, bar)
     _check_data_coverage_gate(coverage)
@@ -1684,5 +1835,39 @@ def run_replay_backtest(
         liquidate_on_end=liquidate_on_end,
     )
     result = engine.run_sync(feed)
+    _attach_ct_val_provenance(result, engine)
     _apply_post_run_gates(result, strategy_names, coverage)
     return result
+
+
+def _attach_ct_val_provenance(result: Any, engine: "ReplayBacktestEngine") -> None:
+    """Record the source of every symbol's ctVal on `result.validation`.
+
+    Drives the live-deployment gate: backtests whose ctVal came from anything
+    other than DB / config_override / spot_unit must NOT be promoted to live or
+    shadow trading without explicit human override. The full per-symbol map is
+    preserved so reviewers can audit exactly where each value came from.
+    """
+    sources = getattr(engine, "_ct_val_sources", {}) or {}
+    authoritative = ReplayBacktestEngine.AUTHORITATIVE_CT_VAL_SOURCES
+    non_authoritative = {
+        sym: info for sym, info in sources.items()
+        if info.get("source") not in authoritative
+    }
+    payload = {
+        "ct_val_sources": {
+            sym: {"value": info.get("value"), "source": info.get("source")}
+            for sym, info in sources.items()
+        },
+        "ct_val_all_authoritative": len(non_authoritative) == 0,
+        "ct_val_non_authoritative_symbols": sorted(non_authoritative.keys()),
+        "ct_val_gate_passed": len(non_authoritative) == 0,
+    }
+    try:
+        existing = getattr(result, "validation", None) or {}
+        if not isinstance(existing, dict):
+            existing = dict(existing) if existing else {}
+        existing.update(payload)
+        setattr(result, "validation", existing)
+    except Exception as exc:  # noqa: BLE001 — ct_val tracking is informational, never blocks the run
+        logger.warning("Failed to attach ct_val provenance to result.validation: {}", exc)

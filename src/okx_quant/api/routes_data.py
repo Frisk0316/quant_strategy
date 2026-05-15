@@ -96,6 +96,49 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
         finally:
             await conn.close()
 
+    @router.get("/exchanges")
+    async def get_exchanges():
+        """List exchanges that have OHLCV data ingested into market_klines.
+
+        Frontend uses this to populate the Run Backtest exchange dropdown.
+        Falls back to a hardcoded default list when the DB is not configured,
+        so the dropdown still works on parquet-only environments.
+        """
+        default = [
+            {"exchange": "binance", "available": False, "row_count": 0},
+            {"exchange": "okx", "available": False, "row_count": 0},
+            {"exchange": "bybit", "available": False, "row_count": 0},
+        ]
+        if not db_dsn:
+            return default
+        import asyncpg
+        try:
+            conn = await asyncpg.connect(db_dsn)
+        except Exception:
+            return default
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT exchange, COUNT(*)::bigint AS row_count
+                FROM market_klines
+                GROUP BY exchange
+                ORDER BY exchange
+                """
+            )
+            seen = {r["exchange"]: int(r["row_count"]) for r in rows}
+            out = [
+                {"exchange": ex, "available": ex in seen, "row_count": seen.get(ex, 0)}
+                for ex in ("binance", "okx", "bybit", "coinbase", "kraken")
+            ]
+            # Surface any extra exchanges the DB knows about that aren't in our defaults.
+            for extra in sorted(set(seen) - {row["exchange"] for row in out}):
+                out.append({"exchange": extra, "available": True, "row_count": seen[extra]})
+            return out
+        except Exception:
+            return default
+        finally:
+            await conn.close()
+
     @router.get("/export")
     async def export_ohlcv(symbols: str, bar: str = "1m", start: str = "", end: str = "", format: str = "xlsx"):
         if not db_dsn:

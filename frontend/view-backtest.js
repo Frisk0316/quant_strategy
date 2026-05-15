@@ -3,7 +3,9 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
-const { LineChart, TradePriceChart } = window.Charts;
+const { LineChart, TradePriceChart, IndicatorChart } = window.Charts;
+
+const TECHNICAL_STRATEGIES_SET = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,6 +35,62 @@ function chartDateTick(value) {
 function chartDateTooltip(value) {
   const d = parseChartDate(value);
   return d ? d.toISOString().slice(0, 19).replace("T", " ") + " UTC" : String(value || "—");
+}
+
+function parseMetadata(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function firstFinite(...values) {
+  for (const value of values) {
+    const n = +value;
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function tradeNotional(row, price, qty) {
+  const meta = parseMetadata(row?.metadata);
+  const explicit = firstFinite(row?.notional_usd, row?.notional, meta.notional_usd);
+  if (explicit != null) return Math.abs(explicit);
+  const ctVal = firstFinite(row?.ct_val, meta.ct_val, 1);
+  const fallback = Math.abs((+price || 0) * (+qty || 0) * (ctVal ?? 1));
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function markerMatchKey(row) {
+  const price = firstFinite(row?.price, row?.fill_px, row?.px, 0);
+  const qty = firstFinite(row?.qty, row?.fill_sz, row?.sz, 0);
+  return [
+    row?.inst_id || row?.symbol || "",
+    row?.ts || row?.datetime || "",
+    String(row?.side || "").toLowerCase(),
+    (price ?? 0).toFixed(8),
+    (qty ?? 0).toFixed(8),
+  ].join("|");
+}
+
+const SYMBOL_COLORS = [
+  "#2563eb",
+  "#dc2626",
+  "#059669",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#4f46e5",
+];
+
+function symbolColor(symbol, index = 0) {
+  return SYMBOL_COLORS[Math.abs(index) % SYMBOL_COLORS.length];
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +255,21 @@ function AnomalyBanner({ metrics }) {
 // ---------------------------------------------------------------------------
 // Run Detail View — phase-1 loads result immediately; phase-2 loads heavy data
 // ---------------------------------------------------------------------------
+function ChartZoomToolbar({ range, onReset }) {
+  if (!range) return null;
+  const [startMs, endMs] = range;
+  const fmt = (ms) => {
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 16).replace("T", " ");
+  };
+  return html`
+    <div class="chart-zoom-toolbar" role="status">
+      <span class="chart-zoom-label">圖表已縮放至 ${fmt(startMs)} → ${fmt(endMs)} UTC（拖曳任一圖可重新框選）</span>
+      <button class="btn ghost sm" type="button" onClick=${onReset}>回復原始尺度</button>
+    </div>
+  `;
+}
+
 function RunDetailView({ runId, onBack, onDelete }) {
   const [result, setResult] = useState(null);
   const [phase1Loading, setPhase1Loading] = useState(true);
@@ -215,7 +288,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
   const [activeTab, setActiveTab] = useState("fills");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [chartSymbol, setChartSymbol] = useState("__all__");
+  const [selectedChartSymbols, setSelectedChartSymbols] = useState([]);
+  const [chartRange, setChartRange] = useState(null);
+  const [indicators, setIndicators] = useState([]);
 
   // Phase 1: load result.json (fast — small payload)
   useEffect(() => {
@@ -230,6 +305,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
   // Phase 2: load heavy data after phase 1 completes
   useEffect(() => {
+    if (!result) return;
     setPhase2Loading(true);
     setPhase2Error(null);
     setEquity([]);
@@ -240,6 +316,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setRiskEvents([]);
     setPriceSeries([]);
     setExecutionMarkers([]);
+    setSelectedChartSymbols([]);
+    setIndicators([]);
+    setChartRange(null);
     Promise.all([
       window.API.fetchBacktestEquity(runId).catch(() => []),
       window.API.fetchBacktestFills(runId).catch(() => []),
@@ -249,7 +328,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
       window.API.fetchBacktestRiskEvents(runId).catch(() => []),
       window.API.fetchBacktestPriceSeries(runId).catch(() => []),
       window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
-    ]).then(([eq, fl, tr, wf, cv, re, ps, em]) => {
+      window.API.fetchBacktestIndicators?.(runId).catch(() => []) ?? Promise.resolve([]),
+    ]).then(([eq, fl, tr, wf, cv, re, ps, em, ind]) => {
       setEquity(eq || []);
       setFills(fl || []);
       setTrades(tr || []);
@@ -258,9 +338,17 @@ function RunDetailView({ runId, onBack, onDelete }) {
       setRiskEvents(re || []);
       setPriceSeries(ps || []);
       setExecutionMarkers(em || []);
+      setIndicators(ind || []);
+      setSelectedChartSymbols([...new Set([
+        ...(result.symbols || []),
+        ...(ps || []).map((row) => row.inst_id).filter(Boolean),
+        ...(em || []).map((row) => row.inst_id).filter(Boolean),
+        ...(tr || []).map((row) => row.inst_id || row.symbol).filter(Boolean),
+        ...(fl || []).map((row) => row.inst_id || row.symbol).filter(Boolean),
+      ])].sort());
     }).catch((e) => setPhase2Error(e.message))
       .finally(() => setPhase2Loading(false));
-  }, [runId]);
+  }, [runId, result]);
 
   if (phase1Loading) return html`<div class="field-hint" style=${{ padding: 32 }}>Loading run ${runId}…</div>`;
   if (phase1Error) return html`<div style=${{ color: "var(--loss)", padding: 32 }}>Error: ${phase1Error}</div>`;
@@ -284,17 +372,56 @@ function RunDetailView({ runId, onBack, onDelete }) {
     ...priceSeries.map((r) => r.inst_id).filter(Boolean),
     ...executionMarkers.map((r) => r.inst_id).filter(Boolean),
   ])].sort();
-  const filteredPriceSeries = chartSymbol === "__all__"
-    ? priceSeries
-    : priceSeries.filter((r) => r.inst_id === chartSymbol);
-  const filteredMarkers = chartSymbol === "__all__"
-    ? executionMarkers
-    : executionMarkers.filter((r) => r.inst_id === chartSymbol);
+  const chartSymbolColors = Object.fromEntries(chartSymbols.map((symbol, i) => [symbol, symbolColor(symbol, i)]));
+  const effectiveSelectedChartSymbols = selectedChartSymbols.length
+    ? selectedChartSymbols
+    : chartSymbols.slice(0, 1);
+  const fillNotionalByMarker = new Map();
+  for (const fill of fills) {
+    const price = +(fill.fill_px ?? fill.price ?? fill.px ?? 0);
+    const qty = +(fill.fill_sz ?? fill.qty ?? fill.sz ?? 0);
+    fillNotionalByMarker.set(markerMatchKey(fill), tradeNotional(fill, price, qty));
+  }
+  const enrichedExecutionMarkers = executionMarkers.map((marker) => ({
+    ...marker,
+    notional_usd: firstFinite(marker.notional_usd, fillNotionalByMarker.get(markerMatchKey(marker))),
+  }));
+  const selectedSymbolSet = new Set(effectiveSelectedChartSymbols);
+  const filteredPriceSeries = priceSeries.filter((r) => selectedSymbolSet.has(r.inst_id));
+  const filteredMarkers = enrichedExecutionMarkers.filter((r) => selectedSymbolSet.has(r.inst_id));
+  const filteredTrades = trades.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
+  const filteredFills = fills.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
+  const filteredRiskEvents = riskEvents.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
 
-  const realFills = fills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
+  const realFills = filteredFills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
+
+  // Technical-indicator strategies render per-symbol IndicatorChart cards.
+  const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
+  const isTechnicalRun = activeStrategies.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
+  const indicatorBySymbol = (() => {
+    if (!isTechnicalRun || !indicators.length) return new Map();
+    const groups = new Map();
+    for (const row of indicators) {
+      const sym = row.inst_id || row.symbol || "";
+      if (!groups.has(sym)) groups.set(sym, []);
+      groups.get(sym).push(row);
+    }
+    for (const rows of groups.values()) {
+      rows.sort((a, b) => new Date(chartTimestamp(a)).getTime() - new Date(chartTimestamp(b)).getTime());
+    }
+    return groups;
+  })();
+  const indicatorSymbols = [...indicatorBySymbol.keys()].filter((s) => selectedSymbolSet.has(s));
+  const markersBySymbol = new Map();
+  for (const m of enrichedExecutionMarkers) {
+    const sym = m.inst_id || m.symbol || "";
+    if (!sym) continue;
+    if (!markersBySymbol.has(sym)) markersBySymbol.set(sym, []);
+    markersBySymbol.get(sym).push(m);
+  }
 
   const tradesMap = new Map();
-  for (const t of trades) {
+  for (const t of filteredTrades) {
     if (t.cl_ord_id && t.net_realized_pnl != null) {
       tradesMap.set(t.cl_ord_id, (tradesMap.get(t.cl_ord_id) ?? 0) + +t.net_realized_pnl);
     }
@@ -349,6 +476,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} loading=${phase2Loading} />
 
+      <${ChartZoomToolbar} range=${chartRange} onReset=${() => setChartRange(null)} />
+
       <div class="card">
         <div class="card-h">
           <div>
@@ -359,7 +488,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
         </div>
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading trades and orders...</div>`
-          : html`<${TradesOrdersTable} trades=${trades} fills=${fills} />`
+          : html`<${TradesOrdersTable} trades=${filteredTrades} fills=${filteredFills} selectedSymbols=${effectiveSelectedChartSymbols} />`
         }
       </div>
 
@@ -371,23 +500,101 @@ function RunDetailView({ runId, onBack, onDelete }) {
               ${phase2Loading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
             </div>
           </div>
-          <select class="select mono" value=${chartSymbol} onChange=${(e) => setChartSymbol(e.target.value)} style=${{ width: 190 }}>
-            <option value="__all__">All symbols</option>
-            ${chartSymbols.map((s) => html`<option key=${s} value=${s}>${s}</option>`)}
-          </select>
         </div>
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
-          : filteredPriceSeries.length > 1
-            ? html`<div class="chart-wrap"><${TradePriceChart}
-                prices=${filteredPriceSeries}
-                markers=${filteredMarkers}
-                height=${260}
-                tooltipLabelFormatter=${chartDateTooltip}
-              /></div>`
-            : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series available for this run.</div>`
+          : html`
+            <div class="price-marker-layout">
+              <div class="chart-wrap">
+                ${filteredPriceSeries.length > 1
+                  ? html`<${TradePriceChart}
+                      prices=${filteredPriceSeries}
+                      markers=${filteredMarkers}
+                      height=${280}
+                      symbolColors=${chartSymbolColors}
+                      tooltipLabelFormatter=${chartDateTooltip}
+                      range=${chartRange}
+                      onRangeChange=${setChartRange}
+                    />`
+                  : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
+                }
+              </div>
+              <${SymbolSelector}
+                symbols=${chartSymbols}
+                selected=${effectiveSelectedChartSymbols}
+                colors=${chartSymbolColors}
+                onChange=${setSelectedChartSymbols}
+              />
+            </div>
+          `
         }
       </div>
+
+      ${isTechnicalRun && indicatorSymbols.length > 0 && indicatorSymbols.map((sym) => {
+        const rows = indicatorBySymbol.get(sym) || [];
+        if (rows.length < 2) return null;
+        const timestamps = rows.map(chartTimestamp);
+        const closes = rows.map((r) => +r.close).map((v) => Number.isFinite(v) ? v : NaN);
+        const fast = rows.map((r) => +r.fast_value).map((v) => Number.isFinite(v) ? v : NaN);
+        const slow = rows.map((r) => +r.slow_value).map((v) => Number.isFinite(v) ? v : NaN);
+        const macd = rows.map((r) => +r.macd);
+        const macdSignalVals = rows.map((r) => +r.macd_signal);
+        const macdHist = rows.map((r) => +r.macd_histogram);
+        const hasMacd = macd.some((v) => Number.isFinite(v));
+        // Map markers from datetime back to row index for this symbol.
+        const dtToIdx = new Map(timestamps.map((t, i) => [String(t), i]));
+        const symMarkers = (markersBySymbol.get(sym) || []).map((m) => {
+          const key = String(m.datetime || m.ts || "");
+          let idx = dtToIdx.get(key);
+          if (idx == null) {
+            const target = new Date(key).getTime();
+            if (Number.isFinite(target)) {
+              let best = 0, bestDiff = Infinity;
+              for (let i = 0; i < timestamps.length; i++) {
+                const t = new Date(timestamps[i]).getTime();
+                const diff = Math.abs(t - target);
+                if (diff < bestDiff) { best = i; bestDiff = diff; }
+              }
+              idx = best;
+            }
+          }
+          return { ...m, idx };
+        }).filter((m) => Number.isFinite(m.idx));
+        const strategyForLabel = activeStrategies.find((s) => TECHNICAL_STRATEGIES_SET.has(s)) || "";
+        const labels = strategyForLabel === "ma_crossover"
+          ? { fast: "Fast MA", slow: "Slow MA" }
+          : strategyForLabel === "ema_crossover"
+            ? { fast: "Fast EMA", slow: "Slow EMA" }
+            : { fast: "MACD fast", slow: "MACD slow" };
+        return html`
+          <div key=${sym} class="card">
+            <div class="card-h">
+              <div>
+                <div class="card-title">${sym} — ${strategyForLabel || "indicator"}</div>
+                <div class="card-sub">price + ${labels.fast.toLowerCase()} / ${labels.slow.toLowerCase()}${hasMacd ? " · MACD sub-panel" : ""}</div>
+              </div>
+            </div>
+            <div class="chart-wrap">
+              <${IndicatorChart}
+                symbol=${sym}
+                timestamps=${timestamps}
+                prices=${closes}
+                fast=${fast}
+                slow=${slow}
+                fastLabel=${labels.fast}
+                slowLabel=${labels.slow}
+                macd=${hasMacd ? macd : null}
+                macdSignal=${hasMacd ? macdSignalVals : null}
+                macdHistogram=${hasMacd ? macdHist : null}
+                markers=${symMarkers}
+                range=${chartRange}
+                onRangeChange=${setChartRange}
+                tooltipLabelFormatter=${chartDateTooltip}
+              />
+            </div>
+          </div>
+        `;
+      })}
 
       <div class="card">
         <div class="card-h">
@@ -412,6 +619,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
                   xTickFormatter=${chartDateTick}
                   tooltipLabelFormatter=${chartDateTooltip}
                   tooltipValueFormatter=${(v) => signedUsd(v)}
+                  range=${chartRange}
+                  onRangeChange=${setChartRange}
                 /></div>`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
@@ -436,6 +645,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 xTickFormatter=${chartDateTick}
                 tooltipLabelFormatter=${chartDateTooltip}
                 tooltipValueFormatter=${(v) => pct(v)}
+                range=${chartRange}
+                onRangeChange=${setChartRange}
               /></div>`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }
@@ -464,7 +675,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
       <div class="card">
         <div class="card-h">
           <div class="row" style=${{ gap: 4 }}>
-            ${[["fills", `Fills (${realFills.length})`], ["all_fills", `All fills (${fills.length})`], ["risk", `Risk events (${riskEvents.length})`]].map(([id, label]) => html`
+            ${[["fills", `Fills (${realFills.length})`], ["all_fills", `All fills (${filteredFills.length})`], ["risk", `Risk events (${filteredRiskEvents.length})`]].map(([id, label]) => html`
               <button
                 key=${id}
                 class=${`btn sm ${activeTab === id ? "" : "ghost"}`}
@@ -478,15 +689,49 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${(activeTab === "fills" || activeTab === "all_fills") && (
           phase2Loading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading fills data…</div>`
-            : html`<${FillsTable} rows=${activeTab === "fills" ? realFills : fills} tradesMap=${tradesMap} />`
+            : html`<${FillsTable} rows=${activeTab === "fills" ? realFills : filteredFills} tradesMap=${tradesMap} />`
         )}
         ${activeTab === "risk" && (
           phase2Loading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading risk events…</div>`
-            : html`<${RiskEventsTable} rows=${riskEvents} />`
+            : html`<${RiskEventsTable} rows=${filteredRiskEvents} />`
         )}
       </div>
     </div>
+  `;
+}
+
+function SymbolSelector({ symbols, selected, colors, onChange }) {
+  const selectedSet = new Set(selected || []);
+  function toggle(symbol) {
+    if (selectedSet.has(symbol) && selectedSet.size <= 1) return;
+    const next = selectedSet.has(symbol)
+      ? (selected || []).filter((item) => item !== symbol)
+      : [...(selected || []), symbol];
+    onChange(next.filter((item, index, arr) => arr.indexOf(item) === index).sort());
+  }
+  return html`
+    <aside class="symbol-selector" aria-label="Visible symbols">
+      <div class="field-label">Visible markets</div>
+      <div class="col" style=${{ gap: 8 }}>
+        ${(symbols || []).map((symbol, i) => {
+          const checked = selectedSet.has(symbol);
+          const color = colors?.[symbol] || symbolColor(symbol, i);
+          return html`
+            <label key=${symbol} class="symbol-check">
+              <input
+                type="checkbox"
+                checked=${checked}
+                disabled=${checked && selectedSet.size <= 1}
+                onChange=${() => toggle(symbol)}
+              />
+              <span class="symbol-swatch" style=${{ background: color }}></span>
+              <span class="mono">${symbol}</span>
+            </label>
+          `;
+        })}
+      </div>
+    </aside>
   `;
 }
 
@@ -548,8 +793,8 @@ function ValidationSummary({ walkForward, cpcv, metrics, loading }) {
 function normalizeLedgerTrade(t, i) {
   const ts = t.datetime || t.entry_ts || t.ts || t.exit_ts || "";
   const side = String(t.side || "buy").toUpperCase();
-  const price = +(t.price ?? t.entry_price ?? t.fill_px ?? 0);
-  const qty = +(t.qty ?? t.fill_sz ?? 0);
+  const price = +(t.price ?? t.entry_price ?? t.fill_px ?? t.px ?? 0);
+  const qty = +(t.qty ?? t.fill_sz ?? t.sz ?? 0);
   const fee = +(t.fee ?? 0);
   const pnlRaw = t.pnl_usd ?? t.net_realized_pnl ?? t.realized_pnl ?? t.pnl ?? t.net_return ?? 0;
   const pnl = +(pnlRaw ?? 0);
@@ -561,7 +806,7 @@ function normalizeLedgerTrade(t, i) {
     type: t.type || t.ord_type || "validation_round_trip",
     price,
     qty,
-    notional: +(t.notional ?? t.notional_usd ?? 0),
+    notional: tradeNotional(t, price, qty),
     fee,
     pnl,
     status: String(t.status || t.state || "FILLED").toUpperCase(),
@@ -576,16 +821,17 @@ function formatLedgerPnl(t) {
   return (t.pnl >= 0 ? "+" : "") + usd(t.pnl);
 }
 
-function TradesOrdersTable({ trades, fills }) {
+function TradesOrdersTable({ trades, fills, selectedSymbols }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  useEffect(() => setPage(1), [(selectedSymbols || []).join("|")]);
   const tradeRows = (trades || []).map(normalizeLedgerTrade);
   const fillRows = (fills || []).map(normalizeLedgerTrade);
   const rows = tradeRows.length ? tradeRows : fillRows;
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
-  if (!rows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders in this run.</div>`;
+  if (!rows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders for the selected markets.</div>`;
   return html`
     <div>
       <div class="row wrap" style=${{ gap: 12, alignItems: "center", marginBottom: 12 }}>
@@ -604,7 +850,7 @@ function TradesOrdersTable({ trades, fills }) {
           <thead>
             <tr>
               <th>ID</th><th>Timestamp (UTC)</th><th>Exit</th><th>Symbol</th><th>Side</th><th>Type</th>
-              <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional</th>
+              <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional (USDT)</th>
               <th class="num">Fee</th><th class="num">PnL</th><th>Status</th><th>Strategy</th>
             </tr>
           </thead>
@@ -653,7 +899,7 @@ function FillsTable({ rows, tradesMap }) {
               <th>Side</th>
               <th class="num">Fill px</th>
               <th class="num">Qty</th>
-              <th class="num">Notional</th>
+              <th class="num">Notional (USDT)</th>
               <th class="num">Fee</th>
               <th class="num" title="Net realized PnL for this order's fills (from trades data)">Net PnL</th>
               <th>State</th>

@@ -20,9 +20,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from okx_quant.core.config import load_config
 from okx_quant.data.rest_client import OKXRestClient
+from _db_writer import upsert_candles_to_db  # noqa: E402
 
 
 def download_candles(
@@ -31,6 +33,8 @@ def download_candles(
     bar: str = "1m",
     days: int = 30,
     out_dir: Path = Path("data/ticks"),
+    write_db: bool = True,
+    dsn: str | None = None,
 ) -> None:
     """Download OHLCV candles and save to Parquet."""
     print(f"Downloading {bar} candles for {inst_id} ({days} days)...")
@@ -72,6 +76,22 @@ def download_candles(
     out.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pandas(df), out, compression="snappy")
     print(f"Saved {len(df)} rows → {out}")
+
+    if write_db:
+        db_result = upsert_candles_to_db(
+            df=df,
+            inst_id=inst_id,
+            bar=bar,
+            source="okx",
+            dsn=dsn,
+        )
+        status = db_result.get("status")
+        if status == "ok":
+            print(f"DB upsert: {db_result['written']:,} canonical rows (raw={db_result['raw_written']:,})")
+        elif status == "skipped":
+            print(f"DB upsert skipped: {db_result.get('reason')}")
+        else:
+            print(f"DB upsert error (non-fatal): {db_result.get('reason')}")
 
 
 def download_funding(
@@ -120,6 +140,15 @@ def main() -> None:
     parser.add_argument("--bar", default="1m", help="Candle bar size (for type=candles)")
     parser.add_argument("--days", type=int, default=30, help="Days of history")
     parser.add_argument("--out", default="data/ticks", help="Output directory")
+    parser.add_argument(
+        "--write-db", dest="write_db", action="store_true", default=True,
+        help="Also upsert candles into TimescaleDB canonical_candles (default: on)",
+    )
+    parser.add_argument(
+        "--no-write-db", dest="write_db", action="store_false",
+        help="Skip DB upsert and only write parquet",
+    )
+    parser.add_argument("--dsn", default=None, help="Override DATABASE_URL / config DSN for the DB upsert")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -136,7 +165,15 @@ def main() -> None:
 
     try:
         if args.type in ("candles", "all"):
-            download_candles(client, args.inst, args.bar, args.days, out_dir)
+            download_candles(
+                client,
+                args.inst,
+                args.bar,
+                args.days,
+                out_dir,
+                write_db=args.write_db,
+                dsn=args.dsn,
+            )
         if args.type in ("funding", "all") and "SWAP" in args.inst:
             download_funding(client, args.inst, out_dir)
     finally:

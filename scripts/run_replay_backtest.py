@@ -63,6 +63,9 @@ def main() -> None:
                         help="Output format for tabular artifacts (default: csv)")
     parser.add_argument("--validate", choices=["wf", "cpcv", "both"], default=None,
                         help="Run replay-backed Walk-Forward, CPCV, or both and write them into result.json")
+    parser.add_argument("--exchange", default=None,
+                        choices=["binance", "okx", "bybit", "coinbase", "kraken"],
+                        help="Override cfg.storage.primary_exchange for this run (data source selector)")
     liquidation_group = parser.add_mutually_exclusive_group()
     liquidation_group.add_argument("--liquidate-on-end", dest="liquidate_on_end", action="store_true", default=None,
                                    help="Close open replay positions at the final available mid price")
@@ -71,6 +74,8 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
+    if args.exchange:
+        cfg.storage = cfg.storage.model_copy(update={"primary_exchange": args.exchange})
     if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
         cfg.storage.candle_backend = "parquet"
     strategy_params = json.loads(args.strategy_params) if args.strategy_params else {}

@@ -332,6 +332,14 @@ window.API = (function () {
       const qs = q.toString();
       return _getLarge("/api/backtest/" + id + "/price-series" + (qs ? "?" + qs : ""));
     },
+    /** Indicator time series CSV as JSON records (technical-indicator strategies only). */
+    fetchBacktestIndicators: (id, symbol = null, n = 1200) => {
+      const q = new URLSearchParams();
+      if (symbol) q.set("symbol", symbol);
+      if (n) q.set("n", n);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/indicators" + (qs ? "?" + qs : ""));
+    },
     /** Data coverage JSON. */
     fetchBacktestCoverage:    (id)      => _get("/api/backtest/" + id + "/data-coverage"),
     fetchWalkForward:         (id)      => _get("/api/backtest/" + id + "/walk-forward"),

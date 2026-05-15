@@ -44,8 +44,11 @@ from okx_quant.strategies.ohlcv_rotation import OHLCVRotationParams
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OHLCV Rotation Strategy backtest")
 
-    parser.add_argument("--backend", choices=["parquet", "postgres"], default="parquet")
-    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (required for postgres backend)")
+    parser.add_argument("--backend", choices=["parquet", "postgres", "market"], default="parquet")
+    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (required for postgres/market backend)")
+    parser.add_argument("--exchange", default=None,
+                        choices=["binance", "okx", "bybit", "coinbase", "kraken"],
+                        help="When set, load from market_klines filtered by this exchange (forces backend=market)")
     parser.add_argument("--data-dir", default="data/ticks")
     parser.add_argument("--bar", default="1m")
     parser.add_argument("--start", default=None)
@@ -87,8 +90,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if args.backend == "postgres" and not args.dsn:
-        sys.exit("Error: --dsn is required when --backend=postgres")
+    # When --exchange is provided we MUST query market_klines (the only layer
+    # that retains per-exchange rows). canonical_candles is the merged view.
+    if args.exchange:
+        args.backend = "market"
+    if args.backend in {"postgres", "market"} and not args.dsn:
+        sys.exit(f"Error: --dsn is required when --backend={args.backend}")
 
     # Ensure benchmark is in universe
     universe = list(dict.fromkeys(args.universe))  # preserve order, deduplicate
@@ -107,6 +114,7 @@ def main() -> None:
                 end=args.end,
                 backend=args.backend,
                 dsn=args.dsn,
+                exchange=args.exchange,
             )
             dfs[inst] = df
             print(f"  {inst}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")

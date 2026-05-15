@@ -37,7 +37,7 @@ FILL_COLUMNS = [
 
 TRADE_COLUMNS = [
     "ts", "datetime", "strategy", "inst_id", "side", "fill_px", "fill_sz",
-    "fee", "fee_ccy",
+    "notional_usd", "fee", "fee_ccy",
     "size_before", "size_after", "avg_entry_before", "avg_entry_after",
     "position_notional_before", "position_notional_after",
     "realized_pnl", "net_realized_pnl", "unrealized_pnl_after",
@@ -91,10 +91,18 @@ CANCEL_LOG_COLUMNS = [
 
 EXECUTION_MARKER_COLUMNS = [
     "ts", "datetime", "inst_id", "strategy", "side", "price", "qty", "fee",
-    "net_realized_pnl", "day_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
+    "notional_usd", "net_realized_pnl", "day_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
 ]
 
 PRICE_SERIES_COLUMNS = ["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"]
+
+INDICATOR_SERIES_COLUMNS = [
+    "ts", "datetime", "inst_id", "strategy", "close",
+    "fast_value", "slow_value",
+    "macd", "macd_signal", "macd_histogram",
+]
+
+_TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +599,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
         price = _safe_float(f.get("fill_px"), 0.0)
         qty = _safe_float(f.get("fill_sz"), 0.0)
         fee = _safe_float(f.get("fee"), 0.0)
+        notional_usd = _safe_float(f.get("notional_usd"), abs(price * qty))
         pnl = _safe_float(
             net_pnl_map.get((f.get("inst_id", ""), f.get("ts", 0)), float("nan")),
             float("nan"),
@@ -607,6 +616,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
         marker_shape = "arrowUp" if side == "buy" else "arrowDown"
         marker_text = (
             f"{side.upper()} {qty:.6g} @ {price:,.2f} | "
+            f"Notional: {notional_usd:,.2f} USDT | "
             f"Trade PnL: {pnl_str} | Day PnL: {day_pnl_str}"
         )
 
@@ -629,6 +639,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
             "price": price,
             "qty": qty,
             "fee": fee,
+            "notional_usd": notional_usd,
             "net_realized_pnl": pnl,
             "day_pnl": day_pnl,
             "position_after": pos_after,
@@ -646,6 +657,120 @@ def _build_price_series_df(price_log: pd.DataFrame) -> pd.DataFrame:
     if "datetime" not in df.columns and "ts" in df.columns:
         df["datetime"] = _ts_to_datetime(df["ts"])
     return df
+
+
+def _resolve_indicator_params(cfg: Any, strategy_name: str) -> Optional[dict]:
+    """Pull the active parameters for a technical-indicator strategy from cfg.
+
+    Returns None when the cfg does not carry the strategy config object — callers
+    treat that as "skip indicator emission" rather than fail.
+    """
+    strategies = getattr(cfg, "strategies", None)
+    if strategies is None:
+        return None
+    sub = getattr(strategies, strategy_name, None)
+    if sub is None:
+        return None
+    try:
+        dumped = sub.model_dump() if hasattr(sub, "model_dump") else dict(sub)
+    except Exception:
+        return None
+    return dumped if isinstance(dumped, dict) else None
+
+
+def _compute_indicator_frame(
+    price_df: pd.DataFrame,
+    strategy_name: str,
+    params: dict,
+) -> pd.DataFrame:
+    """Recompute fast/slow (and MACD) per inst_id from price_series close prices.
+
+    Mirrors the math in src/okx_quant/strategies/technical_indicators.py so the
+    artifact lines up with the live strategy without re-importing it.
+    """
+    if price_df.empty or "close" not in price_df.columns:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+
+    out_frames: list[pd.DataFrame] = []
+    grouped = price_df.sort_values("ts").groupby("inst_id", sort=False)
+    for inst_id, group in grouped:
+        sub = group.copy()
+        closes = sub["close"].astype(float)
+        fast = pd.Series(float("nan"), index=sub.index)
+        slow = pd.Series(float("nan"), index=sub.index)
+        macd = pd.Series(float("nan"), index=sub.index)
+        macd_signal = pd.Series(float("nan"), index=sub.index)
+        macd_hist = pd.Series(float("nan"), index=sub.index)
+
+        if strategy_name == "ma_crossover":
+            fast_w = int(params.get("fast_window", 20) or 20)
+            slow_w = int(params.get("slow_window", 50) or 50)
+            fast = closes.rolling(fast_w, min_periods=fast_w).mean()
+            slow = closes.rolling(slow_w, min_periods=slow_w).mean()
+        elif strategy_name == "ema_crossover":
+            fast_s = int(params.get("fast_span", 20) or 20)
+            slow_s = int(params.get("slow_span", 50) or 50)
+            fast = closes.ewm(span=fast_s, adjust=False).mean()
+            slow = closes.ewm(span=slow_s, adjust=False).mean()
+        elif strategy_name == "macd_crossover":
+            fast_s = int(params.get("fast_span", 12) or 12)
+            slow_s = int(params.get("slow_span", 26) or 26)
+            signal_s = int(params.get("signal_span", 9) or 9)
+            fast = closes.ewm(span=fast_s, adjust=False).mean()
+            slow = closes.ewm(span=slow_s, adjust=False).mean()
+            macd_line = fast - slow
+            signal_line = macd_line.ewm(span=signal_s, adjust=False).mean()
+            macd = macd_line
+            macd_signal = signal_line
+            macd_hist = macd_line - signal_line
+        else:
+            continue
+
+        out = pd.DataFrame({
+            "ts": sub["ts"].values,
+            "inst_id": inst_id,
+            "strategy": strategy_name,
+            "close": closes.values,
+            "fast_value": fast.values,
+            "slow_value": slow.values,
+            "macd": macd.values,
+            "macd_signal": macd_signal.values,
+            "macd_histogram": macd_hist.values,
+        })
+        if "datetime" in sub.columns:
+            out["datetime"] = sub["datetime"].values
+        out_frames.append(out)
+
+    if not out_frames:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    df = pd.concat(out_frames, ignore_index=True)
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    return df
+
+
+def _build_indicator_series_df(
+    price_df: pd.DataFrame,
+    cfg: Any,
+    strategy_names: list[str],
+) -> pd.DataFrame:
+    """Recompute indicator time series for any technical strategy in the run.
+
+    Empty DataFrame when no technical strategy is active or when price_series is
+    missing close prices — non-fatal, just skips emitting the CSV.
+    """
+    active = [s for s in (strategy_names or []) if s in _TECHNICAL_STRATEGIES]
+    if not active or price_df.empty or "close" not in price_df.columns:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    frames: list[pd.DataFrame] = []
+    for strat in active:
+        params = _resolve_indicator_params(cfg, strat) or {}
+        sub = _compute_indicator_frame(price_df, strat, params)
+        if not sub.empty:
+            frames.append(sub)
+    if not frames:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    return pd.concat(frames, ignore_index=True)
 
 
 def _build_data_coverage(
@@ -810,6 +935,23 @@ def save_backtest_artifacts(
         trades_df = trades_df[trades_df.get("fill_sz", pd.Series(0, index=trades_df.index)).astype(float) > 0].copy()
         if "datetime" not in trades_df.columns:
             trades_df["datetime"] = _ts_to_datetime(trades_df["ts"])
+        if "notional_usd" not in trades_df.columns:
+            if "metadata" in trades_df.columns:
+                trades_df["notional_usd"] = trades_df["metadata"].apply(
+                    lambda m: _safe_float(m.get("notional_usd"), float("nan")) if isinstance(m, dict) else float("nan")
+                )
+            else:
+                trades_df["notional_usd"] = float("nan")
+        fallback_mask = trades_df["notional_usd"].isna() | (trades_df["notional_usd"] == 0)
+        if fallback_mask.any():
+            ct_val = pd.Series(1.0, index=trades_df.index)
+            if "ct_val_after" in trades_df.columns:
+                ct_val = trades_df["ct_val_after"].fillna(1.0)
+            trades_df.loc[fallback_mask, "notional_usd"] = (
+                trades_df.loc[fallback_mask, "fill_px"].astype(float)
+                * trades_df.loc[fallback_mask, "fill_sz"].astype(float)
+                * ct_val.loc[fallback_mask].astype(float)
+            ).abs()
         if "metadata" in trades_df.columns:
             trades_df["metadata"] = trades_df["metadata"].apply(_dump_metadata)
     if write_files:
@@ -908,6 +1050,13 @@ def save_backtest_artifacts(
         _write_csv(run_dir / "price_series.csv", price_df, PRICE_SERIES_COLUMNS)
 
     # -------------------------------------------------------------------
+    # indicator_series.csv — only emitted for technical-indicator strategies
+    # -------------------------------------------------------------------
+    indicator_df = _build_indicator_series_df(price_df, cfg, strats)
+    if write_files:
+        _write_csv(run_dir / "indicator_series.csv", indicator_df, INDICATOR_SERIES_COLUMNS)
+
+    # -------------------------------------------------------------------
     # data_coverage.json
     # -------------------------------------------------------------------
     coverage = _build_data_coverage(
@@ -952,6 +1101,7 @@ def save_backtest_artifacts(
         "cancel_log": "cancel_log.csv",
         "execution_markers": "execution_markers.csv",
         "price_series": "price_series.csv",
+        "indicator_series": "indicator_series.csv",
         "data_coverage": "data_coverage.json",
     }
     if artifact_mode == "db":
@@ -1012,6 +1162,7 @@ def save_backtest_artifacts(
         "cancel_log": _df_records(ensure_columns(cancel_df.copy(), CANCEL_LOG_COLUMNS)),
         "execution_markers": _df_records(ensure_columns(markers_df.copy(), EXECUTION_MARKER_COLUMNS)),
         "price_series": _df_records(ensure_columns(price_df.copy(), PRICE_SERIES_COLUMNS)),
+        "indicator_series": _df_records(ensure_columns(indicator_df.copy(), INDICATOR_SERIES_COLUMNS)),
         "data_coverage": coverage,
     }, dsn=dsn, mode=artifact_mode)
 

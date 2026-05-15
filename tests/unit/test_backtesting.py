@@ -103,16 +103,20 @@ def test_strategy_config_accepts_legacy_max_half_life_key():
 
 
 def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
+    """Symbols not in the bundled registry (config/instrument_specs.yaml) and
+    not BTC/ETH still raise — preserves the safety guard against silent ct_val
+    fallback for unfamiliar contracts.
+    """
     cfg = minimal_cfg.model_copy(deep=True)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
-            "symbol_y": "SOL-USDT-SWAP",
-            "symbol_x": "ADA-USDT-SWAP",
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
         }
     )
 
-    with pytest.raises(ValueError, match="Missing ctVal for non-BTC/ETH swap"):
+    with pytest.raises(ValueError, match="Missing ctVal for swap"):
         ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
 
 
@@ -130,6 +134,58 @@ def test_replay_default_specs_allow_btc_eth_swaps(minimal_cfg):
 
     assert engine._instrument_specs["ETH-USDT-SWAP"]["ctVal"] == pytest.approx(0.01)
     assert engine._instrument_specs["BTC-USDT-SWAP"]["ctVal"] == pytest.approx(0.01)
+
+
+def test_replay_default_specs_resolve_registry_swaps(minimal_cfg):
+    """SOL/ADA are in config/instrument_specs.yaml so they should resolve
+    without falling back to BTC/ETH defaults or raising.
+    """
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "SOL-USDT-SWAP",
+            "symbol_x": "ADA-USDT-SWAP",
+        }
+    )
+
+    engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
+
+    assert engine._instrument_specs["SOL-USDT-SWAP"]["ctVal"] == pytest.approx(1.0)
+    assert engine._instrument_specs["ADA-USDT-SWAP"]["ctVal"] == pytest.approx(100.0)
+    # Provenance tracked per symbol. SOL/ADA come from the YAML registry, BTC/ETH would
+    # come from hardcoded fallback. Either way they are non-authoritative for live gating.
+    sources = engine._ct_val_sources
+    assert sources["SOL-USDT-SWAP"]["source"] == "registry"
+    assert sources["ADA-USDT-SWAP"]["source"] == "registry"
+    # Spot pairs are always exact unit ctVal — authoritative.
+    if cfg.system.spot_symbols:
+        spot_sym = next(iter(cfg.system.spot_symbols))
+        assert sources[spot_sym]["source"] == "spot_unit"
+
+
+def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
+    """Caller-supplied instrument_specs should be labeled as `config_override`
+    so the live-deployment gate treats them as authoritative.
+    """
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
+        }
+    )
+    override = {
+        "FOO-USDT-SWAP": {"ctVal": 0.5, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+        "BAR-USDT-SWAP": {"ctVal": 2.0, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+    }
+    engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"], instrument_specs=override)
+
+    assert engine._ct_val_sources["FOO-USDT-SWAP"]["source"] == "config_override"
+    assert engine._ct_val_sources["FOO-USDT-SWAP"]["value"] == pytest.approx(0.5)
+    assert engine._ct_val_sources["BAR-USDT-SWAP"]["source"] == "config_override"
+    assert engine._ct_val_sources["BAR-USDT-SWAP"]["value"] == pytest.approx(2.0)
 
 
 def test_load_config_reads_backtest_execution_defaults():
@@ -678,6 +734,16 @@ def test_replay_backtest_funding_carry_runs_dual_leg(tmp_path):
     assert "dsr" in result.metrics
     assert result.metrics["dsr"] == pytest.approx(result.metrics["psr"])
     assert not result.returns.empty
+    # ct_val provenance must end up on result.validation so the deployment gate
+    # can audit where each symbol's ctVal came from. BTC comes from the YAML
+    # registry (non-authoritative), spot pair is spot_unit (authoritative);
+    # therefore ct_val_all_authoritative=False and gate_passed=False.
+    validation = result.validation or {}
+    assert "ct_val_sources" in validation
+    assert validation["ct_val_sources"]["BTC-USDT-SWAP"]["source"] in {"db", "registry", "hardcoded_btc_eth"}
+    assert validation["ct_val_sources"]["BTC-USDT"]["source"] == "spot_unit"
+    assert "ct_val_all_authoritative" in validation
+    assert "ct_val_gate_passed" in validation
 
 
 def test_replay_funding_falls_back_to_avg_entry_when_mark_price_missing(monkeypatch):

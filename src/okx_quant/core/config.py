@@ -53,7 +53,14 @@ class StorageConfig(BaseModel):
     parquet_dir: str = "./data/ticks"
     timescale_dsn: Optional[str] = None
     redis_url: str = "redis://localhost:6379"
-    candle_backend: Literal["parquet", "postgres"] = "parquet"
+    # Default to TimescaleDB candles; run_replay_backtest.py + routes_backtest.py
+    # auto-fall back to "parquet" when no DSN is reachable so the parquet flow
+    # keeps working in environments without a DB.
+    candle_backend: Literal["parquet", "postgres"] = "postgres"
+    # Default exchange whose data is consumed by backtests. Strategies must
+    # backtest on the same exchange's data they intend to trade on (see
+    # docs/ai_collaboration.md deployment gates). Frontend can override per-run.
+    primary_exchange: Literal["binance", "okx", "bybit", "coinbase", "kraken"] = "binance"
 
 
 # ---------------------------------------------------------------------------

@@ -642,13 +642,17 @@ Tested: &lt;test command&gt;</pre>
 
 <p>資料庫使用 <strong>PostgreSQL 15 + TimescaleDB</strong>，以 Hypertable 儲存時間序列 K 線資料，並透過 Continuous Aggregates 自動產生多時框（5m、15m、1H）。</p>
 
+<p><strong>DB 為主，Parquet 為離線快取（自 2026-05 起）：</strong><code>scripts/download_okx_data.py</code> 與 <code>scripts/download_binance_data.py</code> 預設透過 <code>scripts/_db_writer.py</code> 同時寫入本地 parquet 與 DB（<code>raw_candles</code> + <code>canonical_candles</code>）。回測預設 <code>storage.candle_backend=postgres</code>，DSN 不可達時 <code>run_replay_backtest.py</code> 與 <code>routes_backtest._resolve_candle_backend()</code> 自動退回 parquet。L2 books 仍以 <code>data/ticks/{INST}/{date}/books.parquet</code> 儲存（DB 沒有對應表）。</p>
+
 <h3>架構總覽</h3>
 <div class="flow">
-  <div class="flow-box gray">OKX API / 外部交易所</div><div class="flow-arrow">→</div>
+  <div class="flow-box gray">OKX / Binance API</div><div class="flow-arrow">→</div>
+  <div class="flow-box gray">download_*.py + _db_writer.py</div><div class="flow-arrow">→</div>
   <div class="flow-box">raw_candles (Hypertable)</div><div class="flow-arrow">→</div>
   <div class="flow-box">canonical_candles (Hypertable)</div><div class="flow-arrow">→</div>
-  <div class="flow-box gray">Continuous Aggregates (5m/15m/1H)</div>
+  <div class="flow-box gray">回測 (backend=postgres) / 前端 Coverage</div>
 </div>
+<p style="margin-top:8px;color:var(--text-muted);font-size:13px;">注：<code>download_*.py</code> 同時寫 <code>data/ticks/*.parquet</code> 作為離線快取與 fallback；<code>scripts/market_data/ingest.py</code> 用於大量歷史回填（透過 <code>market_klines</code> 多交易所層）。</p>
 
 <details open>
 <summary>instruments — 交易對基本資訊</summary>
@@ -902,7 +906,7 @@ GET /api/data/coverage  →  [{ inst_id, bar, first_ts, last_ts, row_count, gap_
 
 <h3>回測完整流程</h3>
 <ol class="steps">
-  <li><div class="step-body"><strong>載入資料</strong><span>DataLoader 從 parquet / PostgreSQL 讀取各標的 1m OHLCV，合併為寬格式 DataFrame（index = UTC timestamp，columns = inst_id）</span></div></li>
+  <li><div class="step-body"><strong>載入資料</strong><span>DataLoader 預設從 <code>canonical_candles</code>（backend=postgres）讀取各標的 1m OHLCV，無 DSN 時自動退回 <code>data/ticks/*.parquet</code>。<code>backend='market'</code> 可直接讀 <code>market_klines</code>。合併為寬格式 DataFrame（index = UTC timestamp，columns = inst_id）</span></div></li>
   <li><div class="step-body"><strong>特徵工程</strong><span>計算 return_fast、return_slow、volume_z、realized_vol、rolling_high、EMA、ATR，全部使用 lagged 資料</span></div></li>
   <li><div class="step-body"><strong>橫截面評分</strong><span>對每個調倉時間點做 row-wise z-score，加權混合為複合分數</span></div></li>
   <li><div class="step-body"><strong>趨勢過濾</strong><span>判斷 benchmark（BTC）是否在牛市（close > EMA）；不在則全部歸零</span></div></li>
