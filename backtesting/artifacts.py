@@ -100,6 +100,7 @@ INDICATOR_SERIES_COLUMNS = [
     "ts", "datetime", "inst_id", "strategy", "close",
     "fast_value", "slow_value",
     "macd", "macd_signal", "macd_histogram",
+    "warmup_source",
 ]
 
 _TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
@@ -679,6 +680,8 @@ def _resolve_indicator_params(cfg: Any, strategy_name: str) -> Optional[dict]:
 
 
 def _indicator_lookback_bars(strategy_name: str, params: dict) -> int:
+    if not bool(params.get("indicator_db_warmup", False)):
+        return 0
     if strategy_name == "ma_crossover":
         return max(int(params.get("slow_window", 50) or 50) - 1, 0)
     if strategy_name == "ema_crossover":
@@ -817,6 +820,7 @@ def _compute_indicator_frame(
             "macd": macd.iloc[warm_len:].values,
             "macd_signal": macd_signal.iloc[warm_len:].values,
             "macd_histogram": macd_hist.iloc[warm_len:].values,
+            "warmup_source": "db" if warm_len > 0 else "cold",
         })
         if "datetime" in sub.columns:
             out["datetime"] = sub["datetime"].values
@@ -851,7 +855,7 @@ def _build_indicator_series_df(
     for strat in active:
         params = _resolve_indicator_params(cfg, strat) or {}
         lookback = _indicator_lookback_bars(strat, params)
-        warmup = _fetch_warmup_candles(dsn, inst_ids, bar, start_ts, lookback)
+        warmup = _fetch_warmup_candles(dsn, inst_ids, bar, start_ts, lookback) if lookback > 0 else {}
         sub = _compute_indicator_frame(price_df, strat, params, warmup_per_inst=warmup)
         if not sub.empty:
             frames.append(sub)
@@ -867,6 +871,17 @@ def _build_indicator_series_df(
     if not trimmed:
         return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
     return pd.concat(trimmed, ignore_index=True)
+
+
+def _indicator_warmup_sources(indicator_df: pd.DataFrame) -> dict[str, dict[str, str]]:
+    if indicator_df.empty or not {"strategy", "inst_id", "warmup_source"} <= set(indicator_df.columns):
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for (strategy, inst_id), group in indicator_df.groupby(["strategy", "inst_id"], sort=True):
+        sources = [str(v) for v in group["warmup_source"].dropna().unique()]
+        source = "db" if "db" in sources else "cold"
+        out.setdefault(str(strategy), {})[str(inst_id)] = source
+    return out
 
 
 def _build_data_coverage(
@@ -1149,6 +1164,7 @@ def save_backtest_artifacts(
     # indicator_series.csv — only emitted for technical-indicator strategies
     # -------------------------------------------------------------------
     indicator_df = _build_indicator_series_df(price_df, cfg, strats, dsn=dsn, bar=bar_s)
+    indicator_warmup_sources = _indicator_warmup_sources(indicator_df)
     if write_files:
         _write_csv(run_dir / "indicator_series.csv", indicator_df, INDICATOR_SERIES_COLUMNS)
 
@@ -1235,6 +1251,8 @@ def save_backtest_artifacts(
             for key, value in validation_results.items()
             if key not in {"walk_forward", "cpcv"}
         })
+    if indicator_warmup_sources:
+        validation_payload.setdefault("indicator_warmup_sources", indicator_warmup_sources)
     if validation_payload:
         result_json["validation"] = validation_payload
     if write_files:

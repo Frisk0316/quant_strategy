@@ -98,6 +98,8 @@ ma_crossover:
     - BTC-USDT-SWAP
   fast_window: 20
   slow_window: 50
+  # Default false keeps indicator artifacts aligned with strategy cold-start semantics.
+  indicator_db_warmup: false
   td_mode: cross
 
 ema_crossover:
@@ -106,6 +108,8 @@ ema_crossover:
     - BTC-USDT-SWAP
   fast_span: 20
   slow_span: 50
+  # Opt in only when visual continuity is preferred over marker/strategy parity.
+  indicator_db_warmup: false
   td_mode: cross
 
 macd_crossover:
@@ -115,6 +119,8 @@ macd_crossover:
   fast_span: 12
   slow_span: 26
   signal_span: 9
+  # Opt in only when visual continuity is preferred over marker/strategy parity.
+  indicator_db_warmup: false
   td_mode: cross
 
 

@@ -5,6 +5,7 @@ import { html } from 'htm/preact';
 
 // Minimum brush selection in data-indices below which we treat the gesture as a click (no zoom).
 const MIN_BRUSH_WIDTH = 2;
+const MAX_Y_ZOOM = 8;
 
 function clampIdx(i, lo, hi) {
   if (!Number.isFinite(i)) return lo;
@@ -191,6 +192,31 @@ function indexedValue(price, base, indexed) {
   if (!indexed) return price;
   if (!Number.isFinite(+price) || !Number.isFinite(+base) || +base === 0) return NaN;
   return (+price / +base) * 100;
+}
+
+function applyYZoomDomain(y0, y1, yZoom = 1, yZoomAnchor = "mid") {
+  const zoom = Number.isFinite(+yZoom) ? Math.max(1, Math.min(+yZoom, MAX_Y_ZOOM)) : 1;
+  if (zoom <= 1) return [y0, y1];
+  const anchor = yZoomAnchor === "min"
+    ? y0
+    : yZoomAnchor === "max"
+      ? y1
+      : Number.isFinite(+yZoomAnchor)
+        ? +yZoomAnchor
+        : (y0 + y1) / 2;
+  const nextY0 = anchor + (y0 - anchor) / zoom;
+  const nextY1 = anchor + (y1 - anchor) / zoom;
+  if (Math.abs(nextY1 - nextY0) < 1e-9) return [y0, y1];
+  return [nextY0, nextY1];
+}
+
+function formatAxisTick(t) {
+  if (!Number.isFinite(+t)) return "";
+  const v = +t;
+  if (Math.abs(v) >= 1000) return v.toFixed(0);
+  if (Math.abs(v) >= 100) return v.toFixed(1);
+  if (Math.abs(v) >= 1) return v.toFixed(2);
+  return v.toFixed(4);
 }
 
 function weightedAverage(rows, valueKey, weightKey) {
@@ -386,10 +412,13 @@ function LineChart({
   tooltipValueFormatter = defaultTooltipValue,
   range = null,
   onRangeChange = null,
+  yZoom = 1,
+  yZoomAnchor = "mid",
 }) {
   // series: [{ values: number[], color, label }]
   const [hover, setHover] = useState(null);
   const [brush, setBrush] = useState(null); // { startIdx, currentIdx } in absolute indices
+  const clipId = useRef(`line-clip-${Math.random().toString(36).slice(2)}`).current;
   const w = 1000, h = height;
   const hasXLabels = Array.isArray(xLabels) && xLabels.length > 0;
   const padL = 44, padR = 12, padT = 12, padB = hasXLabels ? 36 : 24;
@@ -413,7 +442,8 @@ function LineChart({
   const yMin = yDomain ? yDomain[0] : Math.min(...visibleValues);
   const yMax = yDomain ? yDomain[1] : Math.max(...visibleValues);
   const yPad = (yMax - yMin) * 0.05 || 0.01;
-  const y0 = yMin - yPad, y1 = yMax + yPad;
+  let y0 = yMin - yPad, y1 = yMax + yPad;
+  [y0, y1] = applyYZoomDomain(y0, y1, yZoom, yZoomAnchor);
 
   // Absolute-index scale (i in [visibleStart..visibleEnd] -> screen X).
   const xScale = (i) => padL + ((i - visibleStart) / Math.max(visibleLen - 1, 1)) * innerW;
@@ -471,11 +501,12 @@ function LineChart({
   return html`
     <div>
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
+      <defs><clipPath id=${clipId}><rect x=${padL} y=${padT} width=${innerW} height=${innerH} /></clipPath></defs>
       ${showAxes && yTicks.map((t, i) => html`
         <g key=${i}>
           <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
           <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">
-            ${Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}
+            ${formatAxisTick(t)}
           </text>
         </g>
       `)}
@@ -487,22 +518,24 @@ function LineChart({
           </text>
         </g>
       `)}
-      ${cleanSeries.map((s, si) => {
-        const slice = s.values.slice(visibleStart, visibleEnd + 1);
-        const ds = downsample(slice, 240);
-        const pts = ds.map(([i, v]) => [
-          padL + (i / Math.max(slice.length - 1, 1)) * innerW,
-          yScale(v),
-        ]).filter(([, y]) => Number.isFinite(y));
-        const stroke = s.color || color;
-        const d = mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts);
-        return html`
-          <g key=${si}>
-            ${mode === "area" && html`<path d=${areaFromPoints(pts, yScale(y0))} fill=${stroke} opacity="0.12" />`}
-            <path d=${d} fill="none" stroke=${stroke} stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
-          </g>
-        `;
-      })}
+      <g clip-path=${`url(#${clipId})`}>
+        ${cleanSeries.map((s, si) => {
+          const slice = s.values.slice(visibleStart, visibleEnd + 1);
+          const ds = downsample(slice, 240);
+          const pts = ds.map(([i, v]) => [
+            padL + (i / Math.max(slice.length - 1, 1)) * innerW,
+            yScale(v),
+          ]).filter(([, y]) => Number.isFinite(y));
+          const stroke = s.color || color;
+          const d = mode === "step" ? stepFromPoints(pts) : lineFromPoints(pts);
+          return html`
+            <g key=${si}>
+              ${mode === "area" && html`<path d=${areaFromPoints(pts, yScale(y0))} fill=${stroke} opacity="0.12" />`}
+              <path d=${d} fill="none" stroke=${stroke} stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
+            </g>
+          `;
+        })}
+      </g>
       ${brush && html`
         <rect
           x=${xScale(brushLo)}
@@ -517,11 +550,13 @@ function LineChart({
       ${hover != null && !brush && hover >= visibleStart && hover <= visibleEnd && html`
         <g>
           <line x1=${xScale(hover)} x2=${xScale(hover)} y1=${padT} y2=${h - padB} stroke="var(--text-muted)" stroke-dasharray="3 4" />
-          ${cleanSeries.map((s, si) => {
-            const value = s.values[hover];
-            if (!Number.isFinite(value)) return null;
-            return html`<circle key=${si} cx=${xScale(hover)} cy=${yScale(value)} r="3.5" fill=${s.color || color} stroke="var(--surface)" stroke-width="1.5" />`;
-          })}
+          <g clip-path=${`url(#${clipId})`}>
+            ${cleanSeries.map((s, si) => {
+              const value = s.values[hover];
+              if (!Number.isFinite(value)) return null;
+              return html`<circle key=${si} cx=${xScale(hover)} cy=${yScale(value)} r="3.5" fill=${s.color || color} stroke="var(--surface)" stroke-width="1.5" />`;
+            })}
+          </g>
           <g transform=${`translate(${Math.min(xScale(hover) + 12, w - 214)}, ${padT + 8})`}>
             <rect width="202" height=${32 + cleanSeries.length * 16} rx="6" fill="var(--surface)" stroke="var(--border-strong)" />
             <text x="10" y="18" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">
@@ -635,9 +670,12 @@ function TradePriceChart({
   tooltipLabelFormatter = compactDateLabel,
   range = null,
   onRangeChange = null,
+  yZoom = 1,
+  yZoomAnchor = "mid",
 }) {
   const [hover, setHover] = useState(null);
   const [brush, setBrush] = useState(null);
+  const clipId = useRef(`trade-clip-${Math.random().toString(36).slice(2)}`).current;
   const w = 1000, h = height;
   const padL = 52, padR = 16, padT = 46, padB = 34;
   const innerW = w - padL - padR, innerH = h - padT - padB;
@@ -691,7 +729,8 @@ function TradePriceChart({
   const yMin = allY.length ? Math.min(...allY) : 0;
   const yMax = allY.length ? Math.max(...allY) : 1;
   const yPad = (yMax - yMin) * 0.06 || Math.max(Math.abs(yMax) * 0.01, 1);
-  const y0 = yMin - yPad, y1 = yMax + yPad;
+  let y0 = yMin - yPad, y1 = yMax + yPad;
+  [y0, y1] = applyYZoomDomain(y0, y1, yZoom, yZoomAnchor);
   const xScale = (i) => padL + ((i - visibleStart) / Math.max(visibleLen - 1, 1)) * innerW;
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
@@ -800,6 +839,7 @@ function TradePriceChart({
   return html`
     <div>
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
+      <defs><clipPath id=${clipId}><rect x=${padL} y=${padT} width=${innerW} height=${innerH} /></clipPath></defs>
       ${series.length > 0 && html`
         <g transform=${`translate(${w / 2}, 18)`}>
           ${series.map((s, i) => {
@@ -820,7 +860,7 @@ function TradePriceChart({
         <g key=${i}>
           <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
           <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">
-            ${Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}
+            ${formatAxisTick(t)}
           </text>
         </g>
       `)}
@@ -832,36 +872,38 @@ function TradePriceChart({
           </text>
         </g>
       `)}
-      ${series.map((s) => {
-        const visiblePoints = s.points.filter(([idx]) => inVisibleRange(idx));
-        const pts = downsamplePoints(visiblePoints, 360).map(([idx, v]) => [xScale(idx), yScale(v)]);
-        return html`
-          <path
-            key=${s.symbol}
-            d=${lineFromPoints(pts)}
-            fill="none"
-            stroke=${s.color}
-            stroke-width="1.7"
-            stroke-linejoin="round"
-            stroke-linecap="round"
-          />
-        `;
-      })}
-      ${plottedMarkers.filter((m) => inVisibleRange(m.idx)).map((m, i) => {
-        const buy = String(m.side || "").toLowerCase() === "buy";
-        const x = xScale(m.idx);
-        const y = yScale(m.plot_price);
-        return html`
-          <g key=${i}>
+      <g clip-path=${`url(#${clipId})`}>
+        ${series.map((s) => {
+          const visiblePoints = s.points.filter(([idx]) => inVisibleRange(idx));
+          const pts = downsamplePoints(visiblePoints, 360).map(([idx, v]) => [xScale(idx), yScale(v)]);
+          return html`
             <path
-              d=${buy ? `M${x},${y - 8} L${x - 5},${y + 2} L${x + 5},${y + 2} Z` : `M${x},${y + 8} L${x - 5},${y - 2} L${x + 5},${y - 2} Z`}
-              fill=${markerFill(m)}
-              stroke=${markerStroke(m)}
-              stroke-width="1.5"
+              key=${s.symbol}
+              d=${lineFromPoints(pts)}
+              fill="none"
+              stroke=${s.color}
+              stroke-width="1.7"
+              stroke-linejoin="round"
+              stroke-linecap="round"
             />
-          </g>
-        `;
-      })}
+          `;
+        })}
+        ${plottedMarkers.filter((m) => inVisibleRange(m.idx)).map((m, i) => {
+          const buy = String(m.side || "").toLowerCase() === "buy";
+          const x = xScale(m.idx);
+          const y = yScale(m.plot_price);
+          return html`
+            <g key=${i}>
+              <path
+                d=${buy ? `M${x},${y - 8} L${x - 5},${y + 2} L${x + 5},${y + 2} Z` : `M${x},${y + 8} L${x - 5},${y - 2} L${x + 5},${y - 2} Z`}
+                fill=${markerFill(m)}
+                stroke=${markerStroke(m)}
+                stroke-width="1.5"
+              />
+            </g>
+          `;
+        })}
+      </g>
       ${brush && html`
         <rect
           x=${xScale(brushLo)}
@@ -876,9 +918,11 @@ function TradePriceChart({
       ${hoverInRange && html`
         <g>
           <line x1=${xScale(hover)} x2=${xScale(hover)} y1=${padT} y2=${h - padB} stroke="var(--text-muted)" stroke-dasharray="3 4" />
-          ${hoverPrices.map((row) => html`
-            ${Number.isFinite(row.value) && html`<circle key=${row.symbol} cx=${xScale(hover)} cy=${yScale(row.value)} r="3.5" fill=${row.color} stroke="var(--surface)" stroke-width="1.5" />`}
-          `)}
+          <g clip-path=${`url(#${clipId})`}>
+            ${hoverPrices.map((row) => html`
+              ${Number.isFinite(row.value) && html`<circle key=${row.symbol} cx=${xScale(hover)} cy=${yScale(row.value)} r="3.5" fill=${row.color} stroke="var(--surface)" stroke-width="1.5" />`}
+            `)}
+          </g>
           <g transform=${`translate(${tooltipX}, ${padT + 8})`}>
             <rect width=${tooltipW} height=${tooltipH} rx="6" fill="var(--surface)" stroke="var(--border-strong)" />
             <text x="10" y="18" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">
@@ -948,6 +992,10 @@ function IndicatorChart({
   onRangeChange = null,
   xTickFormatter = adaptiveDateLabel,
   tooltipLabelFormatter = compactDateLabel,
+  yZoom = 1,
+  yZoomAnchor = "mid",
+  macdYZoom = null,
+  macdYZoomAnchor = "mid",
 }) {
   const show = {
     price: visibleSeries?.price !== false,
@@ -968,6 +1016,8 @@ function IndicatorChart({
 
   const [hover, setHover] = useState(null);
   const [brush, setBrush] = useState(null);
+  const mainClipId = useRef(`indicator-main-clip-${Math.random().toString(36).slice(2)}`).current;
+  const macdClipId = useRef(`indicator-macd-clip-${Math.random().toString(36).slice(2)}`).current;
 
   const tsLen = timestamps?.length || 0;
   const [visibleStart, visibleEnd] = rangeToSlice(range, timestamps || []);
@@ -986,16 +1036,16 @@ function IndicatorChart({
   const yMin = visiblePriceVals.length ? Math.min(...visiblePriceVals) : 0;
   const yMax = visiblePriceVals.length ? Math.max(...visiblePriceVals) : 1;
   const yPad = (yMax - yMin) * 0.05 || Math.max(Math.abs(yMax) * 0.01, 1);
-  const y0 = yMin - yPad, y1 = yMax + yPad;
+  let y0 = yMin - yPad, y1 = yMax + yPad;
+  [y0, y1] = applyYZoomDomain(y0, y1, yZoom, yZoomAnchor);
   const xScale = (i) => padL + ((i - visibleStart) / Math.max(visibleLen - 1, 1)) * innerW;
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
 
   // MACD sub-panel domain
   let macdY0 = 0, macdY1 = 0, macdYScale = null;
+  let macdYTicks = [];
   if (hasMacd) {
-    const macdSlice = [...macd, ...macdSignal, ...(macdHistogram || [])]
-      .map((_, i) => i)
-      .filter((i) => inVisibleRange(i));
+    const macdSlice = Array.from({ length: tsLen }, (_, i) => i).filter((i) => inVisibleRange(i));
     const macdVals = [];
     for (const arr of [macd, macdSignal, macdHistogram]) {
       if (!Array.isArray(arr)) continue;
@@ -1010,6 +1060,8 @@ function IndicatorChart({
       const mPad = (mMax - mMin) * 0.1 || Math.max(Math.abs(mMax) * 0.05, 0.0001);
       macdY0 = mMin - mPad;
       macdY1 = mMax + mPad;
+      [macdY0, macdY1] = applyYZoomDomain(macdY0, macdY1, macdYZoom ?? 1, macdYZoomAnchor);
+      macdYTicks = Array.from({ length: 3 }, (_, i) => macdY0 + (i / 2) * (macdY1 - macdY0));
       macdYScale = (v) => macdYTop + (1 - (v - macdY0) / Math.max(macdY1 - macdY0, 1e-9)) * macdInnerH;
     }
   }
@@ -1061,6 +1113,10 @@ function IndicatorChart({
   return html`
     <div>
     <svg viewBox=${`0 0 ${w} ${totalH}`} width="100%" height=${totalH} preserveAspectRatio="none" style=${{ display: "block", maxWidth: "100%", cursor: interactive ? "crosshair" : "default" }}>
+      <defs>
+        <clipPath id=${mainClipId}><rect x=${padL} y=${padT} width=${innerW} height=${innerH} /></clipPath>
+        <clipPath id=${macdClipId}><rect x=${padL} y=${macdYTop} width=${innerW} height=${macdInnerH} /></clipPath>
+      </defs>
       <g transform=${`translate(${padL}, 14)`}>
         <text x="0" y="0" font-size="12" fill="var(--text)" font-family="var(--font-mono)" font-weight="600">${symbol || ""}</text>
         ${allSeries.map((s, i) => html`
@@ -1073,7 +1129,7 @@ function IndicatorChart({
       ${yTicks.map((t, i) => html`
         <g key=${`y-${i}`}>
           <line x1=${padL} x2=${w - padR} y1=${yScale(t)} y2=${yScale(t)} stroke="var(--border)" stroke-dasharray="2 4" />
-          <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">${Math.abs(t) > 100 ? t.toFixed(0) : t.toFixed(2)}</text>
+          <text x=${padL - 8} y=${yScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">${formatAxisTick(t)}</text>
         </g>
       `)}
       ${!hasMacd && xTicks.map((idx) => html`
@@ -1082,52 +1138,64 @@ function IndicatorChart({
           <text x=${xScale(idx)} y=${mainH - 10} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${xTickFormatter(timestamps[idx], tickRangeMs)}</text>
         </g>
       `)}
-      ${allSeries.map((s, si) => {
-        const slice = s.values.slice(visibleStart, visibleEnd + 1);
-        const ds = downsample(slice, 360);
-        const pts = ds.map(([i, v]) => [padL + (i / Math.max(slice.length - 1, 1)) * innerW, yScale(v)])
-          .filter(([, y]) => Number.isFinite(y));
-        return html`<path key=${si} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width=${si === 0 ? 1.6 : 1.4} stroke-linejoin="round" stroke-linecap="round" opacity=${si === 0 ? 0.95 : 0.85} />`;
-      })}
-      ${show.price && (markers || []).filter((m) => inVisibleRange(m.idx) && Number.isFinite(+m.price)).map((m, i) => {
-        const buy = String(m.side || "").toLowerCase() === "buy";
-        const x = xScale(m.idx);
-        const y = yScale(+m.price);
-        return html`
-          <g key=${i}>
-            <path
-              d=${buy ? `M${x},${y - 8} L${x - 5},${y + 2} L${x + 5},${y + 2} Z` : `M${x},${y + 8} L${x - 5},${y - 2} L${x + 5},${y - 2} Z`}
-              fill=${color}
-              stroke=${markerStroke(m)}
-              stroke-width="1.5"
-            />
-          </g>
-        `;
-      })}
+      <g clip-path=${`url(#${mainClipId})`}>
+        ${allSeries.map((s, si) => {
+          const slice = s.values.slice(visibleStart, visibleEnd + 1);
+          const ds = downsample(slice, 360);
+          const pts = ds.map(([i, v]) => [padL + (i / Math.max(slice.length - 1, 1)) * innerW, yScale(v)])
+            .filter(([, y]) => Number.isFinite(y));
+          return html`<path key=${si} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width=${si === 0 ? 1.6 : 1.4} stroke-linejoin="round" stroke-linecap="round" opacity=${si === 0 ? 0.95 : 0.85} />`;
+        })}
+        ${show.price && (markers || []).filter((m) => inVisibleRange(m.idx) && Number.isFinite(+m.price)).map((m, i) => {
+          const buy = String(m.side || "").toLowerCase() === "buy";
+          const x = xScale(m.idx);
+          const y = yScale(+m.price);
+          return html`
+            <g key=${i}>
+              <path
+                d=${buy ? `M${x},${y - 8} L${x - 5},${y + 2} L${x + 5},${y + 2} Z` : `M${x},${y + 8} L${x - 5},${y - 2} L${x + 5},${y - 2} Z`}
+                fill=${color}
+                stroke=${markerStroke(m)}
+                stroke-width="1.5"
+              />
+            </g>
+          `;
+        })}
+      </g>
       ${hasMacd && macdYScale && html`
         <g>
+          <line x1=${padL} x2=${w - padR} y1=${mainH} y2=${mainH} stroke="var(--border)" />
+          <text x=${padL} y=${macdYTop - 2} font-size="10" fill="var(--text-subtle)" font-family="var(--font-mono)">MACD</text>
+          ${macdYTicks.map((t, i) => html`
+            <g key=${`my-${i}`}>
+              <line x1=${padL} x2=${w - padR} y1=${macdYScale(t)} y2=${macdYScale(t)} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.65" />
+              <text x=${padL - 8} y=${macdYScale(t) + 3} font-size="10" text-anchor="end" fill="var(--text-subtle)" font-family="var(--font-mono)">${formatAxisTick(t)}</text>
+            </g>
+          `)}
           <line x1=${padL} x2=${w - padR} y1=${macdYScale(0)} y2=${macdYScale(0)} stroke="var(--border-strong)" />
-          ${(macdHistogram || []).map((v, i) => {
-            if (!inVisibleRange(i) || !Number.isFinite(+v)) return null;
-            const x = xScale(i);
-            const yZero = macdYScale(0);
-            const yVal = macdYScale(+v);
-            const top = Math.min(yZero, yVal);
-            const barH = Math.max(Math.abs(yVal - yZero), 1);
-            const fill = +v >= 0 ? "var(--profit)" : "var(--loss)";
-            const barW = Math.max(innerW / Math.max(visibleLen, 1) * 0.7, 1);
-            return html`<rect key=${i} x=${x - barW / 2} y=${top} width=${barW} height=${barH} fill=${fill} opacity="0.55" />`;
-          })}
-          ${[
-            { values: macd, color: fastColor },
-            { values: macdSignal, color: slowColor },
-          ].map((s, si) => {
-            const slice = s.values.slice(visibleStart, visibleEnd + 1);
-            const ds = downsample(slice, 360);
-            const pts = ds.map(([i, v]) => [padL + (i / Math.max(slice.length - 1, 1)) * innerW, macdYScale(+v)])
-              .filter(([, y]) => Number.isFinite(y));
-            return html`<path key=${`macd-${si}`} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width="1.3" />`;
-          })}
+          <g clip-path=${`url(#${macdClipId})`}>
+            ${(macdHistogram || []).map((v, i) => {
+              if (!inVisibleRange(i) || !Number.isFinite(+v)) return null;
+              const x = xScale(i);
+              const yZero = macdYScale(0);
+              const yVal = macdYScale(+v);
+              const top = Math.min(yZero, yVal);
+              const barH = Math.max(Math.abs(yVal - yZero), 1);
+              const fill = +v >= 0 ? "var(--profit)" : "var(--loss)";
+              const barW = Math.max(innerW / Math.max(visibleLen, 1) * 0.7, 1);
+              return html`<rect key=${i} x=${x - barW / 2} y=${top} width=${barW} height=${barH} fill=${fill} opacity="0.55" />`;
+            })}
+            ${[
+              { values: macd, color: fastColor },
+              { values: macdSignal, color: slowColor },
+            ].map((s, si) => {
+              const slice = s.values.slice(visibleStart, visibleEnd + 1);
+              const ds = downsample(slice, 360);
+              const pts = ds.map(([i, v]) => [padL + (i / Math.max(slice.length - 1, 1)) * innerW, macdYScale(+v)])
+                .filter(([, y]) => Number.isFinite(y));
+              return html`<path key=${`macd-${si}`} d=${lineFromPoints(pts)} fill="none" stroke=${s.color} stroke-width="1.3" />`;
+            })}
+          </g>
           ${xTicks.map((idx) => html`
             <text key=${`mx-${idx}`} x=${xScale(idx)} y=${macdYTop + macdInnerH + 16} font-size="10" text-anchor=${idx === visibleStart ? "start" : idx === visibleEnd ? "end" : "middle"} fill="var(--text-subtle)" font-family="var(--font-mono)">${xTickFormatter(timestamps[idx], tickRangeMs)}</text>
           `)}
@@ -1193,4 +1261,4 @@ function IndicatorChart({
   `;
 }
 
-window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart, adaptiveDateLabel };
+window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart, adaptiveDateLabel, MAX_Y_ZOOM };

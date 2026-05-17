@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
-const { LineChart, TradePriceChart, IndicatorChart, adaptiveDateLabel } = window.Charts;
+const { LineChart, TradePriceChart, IndicatorChart, adaptiveDateLabel, MAX_Y_ZOOM = 8 } = window.Charts;
 
 const TECHNICAL_STRATEGIES_SET = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
 
@@ -137,8 +137,16 @@ const METRIC_DESCRIPTIONS = {
   fill_notional_usd:        { desc: "Total gross notional value of all fills", unit: "USD" },
   funding_cashflow:         { desc: "Net cashflow from funding rate settlements (positive = earned, negative = paid)", unit: "USD" },
   funding_settlement_count: { desc: "Number of funding settlement events processed", unit: "count" },
-  tail_ratio:               { desc: "95th percentile gain / |5th percentile loss| — measures tail balance", unit: "dimensionless" },
+  tail_ratio:               { desc: "95th percentile gain / |5th percentile loss| - measures tail balance", unit: "dimensionless" },
   pending_fill_event_count: { desc: "Number of fill events still in pending state at backtest end", unit: "count" },
+  terminal_open_position_count: { desc: "Open positions still present before terminal liquidation or end-of-run closeout", unit: "count" },
+  terminal_liquidation_fill_count: { desc: "Synthetic fills generated to close remaining positions at the run endpoint", unit: "count" },
+  terminal_liquidation_notional_usd: { desc: "Notional value closed by terminal liquidation fills", unit: "USD" },
+  validation_only:          { desc: "True when the strategy/run is for system validation only and is not deployable", unit: "boolean" },
+  number_of_trades:         { desc: "Strategy-specific count of completed round trips or trade decisions", unit: "count" },
+  expected_trade_days:      { desc: "Expected number of trading days in a daily validation run", unit: "days" },
+  loaded_symbols:           { desc: "Symbols that had enough data and were included in the run", unit: "list" },
+  skipped_symbols:          { desc: "Requested symbols skipped because data was unavailable or invalid", unit: "list" },
 };
 
 function metricTitle(key) {
@@ -267,27 +275,40 @@ function AnomalyBanner({ metrics }) {
 // ---------------------------------------------------------------------------
 // Run Detail View — phase-1 loads result immediately; phase-2 loads heavy data
 // ---------------------------------------------------------------------------
-function ChartZoomReset({ range, onReset }) {
-  if (!range) return null;
-  const [startMs, endMs] = range;
+function ChartZoomControls({
+  range,
+  onReset,
+  xResetLabel = "Reset X",
+  yZoom = 1,
+  onYZoomIn = null,
+  onYZoomOut = null,
+  onYReset = null,
+  yResetLabel = "Reset Y",
+}) {
+  const hasRange = Array.isArray(range);
+  const hasYControls = typeof onYZoomIn === "function" || typeof onYZoomOut === "function";
+  const isYZoomed = Number.isFinite(+yZoom) && +yZoom > 1.0001;
+  if (!hasRange && !hasYControls) return null;
+  const [startMs, endMs] = hasRange ? range : [null, null];
   const fmtZoom = (ms) => {
     const d = new Date(ms);
     return isNaN(d.getTime()) ? "--" : d.toISOString().slice(0, 16).replace("T", " ");
   };
   return html`
     <div class="chart-zoom-reset" role="status">
-      <div class="chart-zoom-caption">圖表已縮放至 ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC，重新框選</div>
-      <button class="btn ghost sm" type="button" onClick=${onReset}>Reset zoom</button>
-    </div>
-  `;
-  const fmt = (ms) => {
-    const d = new Date(ms);
-    return isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 16).replace("T", " ");
-  };
-  return html`
-    <div class="chart-zoom-reset" role="status">
-      <span class="chart-zoom-label">圖表已縮放至 ${fmt(startMs)} → ${fmt(endMs)} UTC（拖曳任一圖可重新框選）</span>
-      <button class="btn ghost sm" type="button" onClick=${onReset}>回復原始尺度</button>
+      <div class="chart-zoom-caption">
+        ${hasRange ? `Zoom ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC` : `Y ${(+yZoom || 1).toFixed(1)}x`}
+      </div>
+      ${hasYControls && html`
+        <button class="btn ghost sm" type="button" title="Zoom Y axis in" aria-label="Zoom Y axis in" onClick=${onYZoomIn}>Y+</button>
+        <button class="btn ghost sm" type="button" title="Zoom Y axis out" aria-label="Zoom Y axis out" disabled=${!isYZoomed} onClick=${onYZoomOut}>Y-</button>
+      `}
+      ${hasRange && typeof onReset === "function" && html`
+        <button class="btn ghost sm" type="button" onClick=${onReset}>${xResetLabel}</button>
+      `}
+      ${isYZoomed && typeof onYReset === "function" && html`
+        <button class="btn ghost sm" type="button" onClick=${onYReset}>${yResetLabel}</button>
+      `}
     </div>
   `;
 }
@@ -312,6 +333,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedChartSymbols, setSelectedChartSymbols] = useState([]);
   const [chartRanges, setChartRanges] = useState(new Map());
+  const [chartYZooms, setChartYZooms] = useState(new Map());
   const [visibleSeries, setVisibleSeries] = useState(new Map());
   const [indicators, setIndicators] = useState([]);
 
@@ -342,6 +364,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setSelectedChartSymbols([]);
     setIndicators([]);
     setChartRanges(new Map());
+    setChartYZooms(new Map());
     setVisibleSeries(new Map());
     Promise.all([
       window.API.fetchBacktestEquity(runId).catch(() => []),
@@ -419,7 +442,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
   const realFills = filteredFills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
 
-  function useChartRange(id) {
+  function getChartRange(id) {
     const setRange = (nextRange) => {
       setChartRanges((prev) => {
         const next = new Map(prev);
@@ -429,6 +452,25 @@ function RunDetailView({ runId, onBack, onDelete }) {
       });
     };
     return [chartRanges.get(id) || null, setRange];
+  }
+
+  function getChartYControls(id) {
+    const yZoom = chartYZooms.get(id) || 1;
+    const setYZoom = (nextValue) => {
+      setChartYZooms((prev) => {
+        const next = new Map(prev);
+        const clean = Math.max(1, Math.min(MAX_Y_ZOOM, Number.isFinite(+nextValue) ? +nextValue : 1));
+        if (clean <= 1.0001) next.delete(id);
+        else next.set(id, clean);
+        return next;
+      });
+    };
+    return {
+      yZoom,
+      onYZoomIn: () => setYZoom(yZoom * 1.4),
+      onYZoomOut: () => setYZoom(yZoom / 1.4),
+      onYReset: () => setYZoom(1),
+    };
   }
 
   function indicatorVisibleState(id, hasMacd) {
@@ -452,9 +494,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
     });
   }
 
-  const [priceRange, setPriceRange] = useChartRange("price");
-  const [equityRange, setEquityRange] = useChartRange("equity");
-  const [drawdownRange, setDrawdownRange] = useChartRange("drawdown");
+  const [marketRange, setMarketRange] = getChartRange("market");
+  const [equityRange, setEquityRange] = getChartRange("equity");
+  const [drawdownRange, setDrawdownRange] = getChartRange("drawdown");
 
   // Technical-indicator strategies render per-symbol IndicatorChart cards.
   const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
@@ -487,6 +529,11 @@ function RunDetailView({ runId, onBack, onDelete }) {
       tradesMap.set(t.cl_ord_id, (tradesMap.get(t.cl_ord_id) ?? 0) + +t.net_realized_pnl);
     }
   }
+  const priceChartSymbols = effectiveSelectedChartSymbols.filter((sym) =>
+    filteredPriceSeries.some((row) => row.inst_id === sym)
+  );
+  const equityY = getChartYControls("equity");
+  const drawdownY = getChartYControls("drawdown");
 
   return html`
     <div class="col" style=${{ gap: "var(--gap-lg)" }}>
@@ -563,23 +610,48 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${phase2Loading
           ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
           : html`
-            <${ChartZoomReset} range=${priceRange} onReset=${() => setPriceRange(null)} />
             <div class="chart-stack">
-              <div class="chart-wrap">
-                ${filteredPriceSeries.length > 1
-                  ? html`<${TradePriceChart}
-                      prices=${filteredPriceSeries}
-                      markers=${filteredMarkers}
-                      height=${280}
-                      symbolColors=${chartSymbolColors}
-                      xTickFormatter=${adaptiveDateLabel}
-                      tooltipLabelFormatter=${chartDateTooltip}
-                      range=${priceRange}
-                      onRangeChange=${setPriceRange}
-                    />`
-                  : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
-                }
-              </div>
+              ${priceChartSymbols.length
+                ? priceChartSymbols.map((sym) => {
+                    const chartId = `price:${sym}`;
+                    const y = getChartYControls(chartId);
+                    const rows = filteredPriceSeries.filter((row) => row.inst_id === sym);
+                    const markerRows = filteredMarkers.filter((row) => row.inst_id === sym);
+                    return html`
+                      <div key=${sym} class="chart-panel">
+                        <div class="chart-panel-h">
+                          <div>
+                            <div class="card-title">${sym}</div>
+                            <div class="card-sub">${rows.length.toLocaleString()} price samples - ${markerRows.length.toLocaleString()} markers</div>
+                          </div>
+                        </div>
+                        <${ChartZoomControls}
+                          range=${marketRange}
+                          onReset=${() => setMarketRange(null)}
+                          xResetLabel="Reset X (market)"
+                          yZoom=${y.yZoom}
+                          onYZoomIn=${y.onYZoomIn}
+                          onYZoomOut=${y.onYZoomOut}
+                          onYReset=${y.onYReset}
+                        />
+                        <div class="chart-wrap">
+                          <${TradePriceChart}
+                            prices=${rows}
+                            markers=${markerRows}
+                            height=${280}
+                            symbolColors=${chartSymbolColors}
+                            xTickFormatter=${adaptiveDateLabel}
+                            tooltipLabelFormatter=${chartDateTooltip}
+                            range=${marketRange}
+                            onRangeChange=${setMarketRange}
+                            yZoom=${y.yZoom}
+                          />
+                        </div>
+                      </div>
+                    `;
+                  })
+                : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
+              }
               <${SymbolPillBar}
                 symbols=${chartSymbols}
                 selected=${effectiveSelectedChartSymbols}
@@ -595,7 +667,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
         const rows = indicatorBySymbol.get(sym) || [];
         if (rows.length < 2) return null;
         const chartId = `indicator:${sym}`;
-        const [indicatorRange, setIndicatorRange] = useChartRange(chartId);
+        const y = getChartYControls(chartId);
         const strategyForLabel = activeStrategies.find((s) => TECHNICAL_STRATEGIES_SET.has(s)) || "";
         const timestamps = rows.map(chartTimestamp);
         const closes = rows.map((r) => safeNum(r.close)).map((v) => Number.isFinite(v) ? v : NaN);
@@ -605,7 +677,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
         const macdSignalVals = rows.map((r) => safeNum(r.macd_signal));
         const macdHist = rows.map((r) => safeNum(r.macd_histogram));
         const hasMacd = strategyForLabel === "macd_crossover";
+        const macdY = getChartYControls(`${chartId}:macd`);
         const indicatorVisible = indicatorVisibleState(chartId, hasMacd);
+        const warmupSource = rows.some((r) => String(r.warmup_source || "").toLowerCase() === "db") ? "db" : "cold";
+        const warmupLabel = warmupSource === "db"
+          ? "DB warmup (opt-in visual aid)"
+          : "Cold-start (strategy-aligned)";
         // Map markers from datetime back to row index for this symbol.
         const dtToIdx = new Map(timestamps.map((t, i) => [String(t), i]));
         const symMarkers = (markersBySymbol.get(sym) || []).map((m) => {
@@ -635,16 +712,37 @@ function RunDetailView({ runId, onBack, onDelete }) {
             <div class="card-h">
               <div>
                 <div class="card-title">${sym} — ${strategyForLabel || "indicator"}</div>
-                <div class="card-sub">price + ${labels.fast.toLowerCase()} / ${labels.slow.toLowerCase()}${hasMacd ? " · MACD sub-panel" : ""}</div>
+                <div class="card-sub">price + ${labels.fast.toLowerCase()} / ${labels.slow.toLowerCase()}${hasMacd ? " - MACD sub-panel" : ""}</div>
               </div>
             </div>
-            <${ChartZoomReset} range=${indicatorRange} onReset=${() => setIndicatorRange(null)} />
+            <${ChartZoomControls}
+              range=${marketRange}
+              onReset=${() => setMarketRange(null)}
+              xResetLabel="Reset X (market)"
+              yZoom=${y.yZoom}
+              onYZoomIn=${y.onYZoomIn}
+              onYZoomOut=${y.onYZoomOut}
+              onYReset=${y.onYReset}
+            />
+            <div class=${`indicator-warmup-banner ${warmupSource === "db" ? "warn" : "accent"}`}>
+              ${warmupLabel}
+            </div>
             <${IndicatorSeriesPillBar}
               visible=${indicatorVisible}
               labels=${labels}
               hasMacd=${hasMacd}
               onToggle=${(key) => toggleIndicatorSeries(chartId, key, hasMacd)}
             />
+            ${hasMacd && html`
+              <div class="chart-axis-controls">
+                <span>MACD Y ${macdY.yZoom.toFixed(1)}x</span>
+                <button class="btn ghost sm" type="button" title="Zoom MACD Y axis in" aria-label="Zoom MACD Y axis in" onClick=${macdY.onYZoomIn}>MACD Y+</button>
+                <button class="btn ghost sm" type="button" title="Zoom MACD Y axis out" aria-label="Zoom MACD Y axis out" disabled=${macdY.yZoom <= 1.0001} onClick=${macdY.onYZoomOut}>MACD Y-</button>
+                ${macdY.yZoom > 1.0001 && html`
+                  <button class="btn ghost sm" type="button" onClick=${macdY.onYReset}>Reset MACD Y</button>
+                `}
+              </div>
+            `}
             <div class="chart-wrap">
               <${IndicatorChart}
                 symbol=${sym}
@@ -659,8 +757,10 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 macdHistogram=${hasMacd ? macdHist : null}
                 markers=${symMarkers}
                 visibleSeries=${indicatorVisible}
-                range=${indicatorRange}
-                onRangeChange=${setIndicatorRange}
+                range=${marketRange}
+                onRangeChange=${setMarketRange}
+                yZoom=${y.yZoom}
+                macdYZoom=${hasMacd ? macdY.yZoom : 1}
                 xTickFormatter=${adaptiveDateLabel}
                 tooltipLabelFormatter=${chartDateTooltip}
               />
@@ -684,8 +784,15 @@ function RunDetailView({ runId, onBack, onDelete }) {
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
             : eqValues.length > 1
-              ? html`
-                <${ChartZoomReset} range=${equityRange} onReset=${() => setEquityRange(null)} />
+            ? html`
+                <${ChartZoomControls}
+                  range=${equityRange}
+                  onReset=${() => setEquityRange(null)}
+                  yZoom=${equityY.yZoom}
+                  onYZoomIn=${equityY.onYZoomIn}
+                  onYZoomOut=${equityY.onYZoomOut}
+                  onYReset=${equityY.onYReset}
+                />
                 <div class="chart-wrap"><${LineChart}
                   series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
                   height=${220}
@@ -696,6 +803,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                   tooltipValueFormatter=${(v) => signedUsd(v)}
                   range=${equityRange}
                   onRangeChange=${setEquityRange}
+                  yZoom=${equityY.yZoom}
                 /></div>`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
@@ -713,7 +821,14 @@ function RunDetailView({ runId, onBack, onDelete }) {
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
             ? html`
-              <${ChartZoomReset} range=${drawdownRange} onReset=${() => setDrawdownRange(null)} />
+              <${ChartZoomControls}
+                range=${drawdownRange}
+                onReset=${() => setDrawdownRange(null)}
+                yZoom=${drawdownY.yZoom}
+                onYZoomIn=${drawdownY.onYZoomIn}
+                onYZoomOut=${drawdownY.onYZoomOut}
+                onYReset=${drawdownY.onYReset}
+              />
               <div class="chart-wrap"><${LineChart}
                 series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
                 height=${140}
@@ -724,6 +839,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 tooltipValueFormatter=${(v) => pct(v)}
                 range=${drawdownRange}
                 onRangeChange=${setDrawdownRange}
+                yZoom=${drawdownY.yZoom}
+                yZoomAnchor="min"
               /></div>`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }

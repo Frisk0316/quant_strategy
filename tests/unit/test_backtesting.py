@@ -591,7 +591,11 @@ def test_indicator_series_uses_warmup_candles_before_trimming(monkeypatch):
         return {"BTC-USDT-SWAP": warm_df}
 
     monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", fake_fetch)
-    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={"fast_window": 2, "slow_window": 4}))
+    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={
+        "fast_window": 2,
+        "slow_window": 4,
+        "indicator_db_warmup": True,
+    }))
 
     out = _build_indicator_series_df(price_df, cfg, ["ma_crossover"], dsn="postgres://unit", bar="1H")
 
@@ -600,6 +604,7 @@ def test_indicator_series_uses_warmup_candles_before_trimming(monkeypatch):
     assert np.isfinite(out["fast_value"]).all()
     assert np.isfinite(out["slow_value"]).all()
     assert out["slow_value"].iloc[0] == pytest.approx((97.0 + 98.0 + 99.0 + 100.0) / 4)
+    assert set(out["warmup_source"]) == {"db"}
 
 
 def test_indicator_series_trims_leading_rows_when_warmup_missing(monkeypatch):
@@ -618,8 +623,101 @@ def test_indicator_series_trims_leading_rows_when_warmup_missing(monkeypatch):
     assert pd.Timestamp(out["ts"].iloc[0]) == ts[2]
     assert np.isfinite(out["fast_value"].iloc[0])
     assert pd.isna(out["slow_value"].iloc[0])
+    assert set(out["warmup_source"]) == {"cold"}
     both_empty = out["fast_value"].isna() & out["slow_value"].isna()
     assert not both_empty.iloc[0]
+
+
+def test_indicator_series_ema_macd_default_cold_start_does_not_fetch_db(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=8, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * len(ts),
+        "close": [100.0, 101.0, 103.0, 102.0, 104.0, 106.0, 105.0, 107.0],
+    })
+
+    def fail_fetch(*args, **kwargs):
+        raise AssertionError("DB warmup should be opt-in for indicator artifacts")
+
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", fail_fetch)
+    cfg = SimpleNamespace(strategies=StrategiesConfig(
+        ema_crossover={"fast_span": 2, "slow_span": 4},
+        macd_crossover={"fast_span": 2, "slow_span": 4, "signal_span": 2},
+    ))
+
+    out = _build_indicator_series_df(
+        price_df,
+        cfg,
+        ["ema_crossover", "macd_crossover"],
+        dsn="postgres://unit",
+        bar="1H",
+    )
+
+    assert set(out["strategy"]) == {"ema_crossover", "macd_crossover"}
+    assert set(out["warmup_source"]) == {"cold"}
+    for _, group in out.groupby("strategy"):
+        assert pd.Timestamp(group["ts"].iloc[0]) == ts[0]
+
+
+def test_save_artifacts_records_indicator_warmup_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKTEST_ARTIFACT_MODE", "files")
+    idx = pd.date_range("2024-01-01 00:00:00+00:00", periods=6, freq="1h")
+    result = SimpleNamespace(
+        equity_curve=pd.Series([10_000.0, 10_010.0], index=idx[:2]),
+        metrics={
+            "total_return": 0.001,
+            "sharpe": 0.5,
+            "max_drawdown": 0.0,
+            "profit_factor": 1.0,
+            "order_count": 0,
+            "fill_rate": 0.0,
+            "bankrupt": False,
+        },
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+        price_log=pd.DataFrame({
+            "ts": idx,
+            "inst_id": ["BTC-USDT-SWAP"] * len(idx),
+            "open": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0],
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0, 106.0],
+            "low": [99.0, 100.0, 101.0, 102.0, 103.0, 104.0],
+            "close": [100.0, 101.0, 103.0, 102.0, 104.0, 106.0],
+            "vol": [1.0] * len(idx),
+        }),
+        signal_log=[],
+        risk_event_log=[],
+        rejected_log=[],
+        cancel_log=[],
+        validation={},
+    )
+    cfg = SimpleNamespace(
+        storage=SimpleNamespace(timescale_dsn=None, candle_backend="parquet"),
+        strategies=StrategiesConfig(ema_crossover={"fast_span": 2, "slow_span": 4}),
+    )
+    args = SimpleNamespace(strategy=["ema_crossover"], start="2024-01-01", end="2024-01-02", bar="1H")
+
+    run_dir = save_backtest_artifacts(
+        result=result,
+        cfg=cfg,
+        args=args,
+        output_dir=str(tmp_path),
+        run_id="indicator_sources",
+        strategy_names=["ema_crossover"],
+        start="2024-01-01",
+        end="2024-01-02",
+        bar="1H",
+    )
+
+    indicators = pd.read_csv(run_dir / "indicator_series.csv")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+
+    assert set(indicators["warmup_source"]) == {"cold"}
+    assert payload["validation"]["indicator_warmup_sources"] == {
+        "ema_crossover": {"BTC-USDT-SWAP": "cold"}
+    }
 
 
 def test_replay_asmm_parameter_selection_uses_is_and_oos_windows():

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-05-14
+last_reviewed: 2026-05-17
 expires: none
 superseded_by: null
 ---
@@ -48,7 +48,7 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 | Commit / PR | Change | Risk |
 |---|---|---|
-| Chart UX overhaul `(in progress by Codex)` | Backtest viewer charts now use below-chart symbol pills, per-chart range state/reset controls, bottom range brushes, adaptive x-axis tick labels, defensive indicator number parsing, ma/ema crossover MACD suppression, indicator line visibility pills, and warmup/trimmed `indicator_series.csv` emission for technical indicators. | Chart range is now per-chart; users who relied on global zoom must brush each chart individually. Indicator warmup reads `canonical_candles` best-effort and falls back to trimming leading empty indicator rows when DB warmup is unavailable. |
+| Chart UX overhaul fix-up `(complete; pending Claude re-review)` | Backtest viewer market charts now share one `market` X range across price and indicator panels; reset controls split X vs Y semantics; per-panel Y zoom uses shared `MAX_Y_ZOOM`; drawdown Y zoom anchors at the minimum; MACD sub-panel Y zoom is independent; indicator cards show `warmup_source`; metrics glossary is available from the left nav; artifact indicators default to cold-start strategy-aligned values with `indicator_db_warmup` opt-in and `result.validation.indicator_warmup_sources`. | Pending Claude re-review. DB warmup is an opt-in visual aid and can intentionally diverge from cold-start strategy marker timing if enabled. RangeBrush click-outside behavior, binary-search range slicing, and wheel/keyboard zoom remain backlog. |
 | Chart zoom + indicator visualization + DB-primary backtest `(complete; pending Codex verification)` | Frontend brush-zoom (now timestamp-domain) across all charts with shared `chartRange` + reset toolbar; per-symbol `IndicatorChart` (price + fast/slow + MACD sub-panel) wired to a new `/api/backtest/{run_id}/indicators` route reading `indicator_series.csv` recomputed at artifact time from `price_series`; download scripts now mirror parquet writes into `raw_candles` + `canonical_candles` via `scripts/_db_writer.py`; canonical writes share `okx_quant.data.canonical_policy` priority `manual > binance > okx > bybit > coinbase/kraken > other`, used by `_db_writer.py`, `CandleStore.canonicalize_from_raw()`, `CandleStore.canonicalize_from_market_klines()`, and `CandleStore.upsert_canonical_candles()`; `routes_backtest._resolve_candle_backend()` + `StorageConfig.candle_backend` default to `postgres` with TCP-probe-based parquet fallback when DSN missing or unreachable; `_to_naive_utc_index` normalises Binance tz-aware vs OKX tz-naive parquet on read; new `config/instrument_specs.yaml` registry + `_resolve_swap_ct_val` writes per-symbol provenance (`db` / `registry` / `hardcoded_btc_eth` / `config_override` / `spot_unit`) into `result.validation.ct_val_sources` with a `ct_val_all_authoritative` boolean for the live/shadow/demo deployment gate | Postgres-by-default may surprise environments without `DATABASE_URL`; fallback is logged but silent in the API. `indicator_series.csv` is additive (does not break ADR-0002 schema). No `src/okx_quant/strategies/` changes. ct_val gate forbids promotion to live unless every symbol's ct_val came from `db`/`config_override`/`spot_unit`; `registry` / `hardcoded_btc_eth` are backtest-only and require explicit reviewer override to ship. |
 | P0 web security hardening `(committed fca239f)` | Add API key protection for FastAPI routes/WebSocket, close Swagger UI, add CORS allowlist, and tighten Docker env/port bindings | API clients must send `X-Api-Key` when `API_KEY` is set; standalone `scripts/run_server.py` remains out of scope |
 | OHLCV/backtest UI fix `(committed ed283d7, 6d1fd41)` | Fix OHLCV exit code 1, equity scale, drawdown, chart width, background jobs, progress, warm-up transparency, and volume-threshold diagnostics | Frontend + backtest script + routes only; no risk/portfolio code touched |
@@ -68,6 +68,21 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 | PR9 | Add backtest artifact schema regression tests for ADR-0002 frozen fields | Test-only coverage for artifact contract |
 | PR8 | Add frontend MIME smoke tests for `.js` and legacy `.jsx` ES modules | Test-only coverage for FastAPI StaticFiles MIME behavior |
 | PR7 | Add branch/version management policy and PR template checklist | Governance docs only |
+
+## Latest Codex Verification Commands
+
+Chart UX review fix-up + indicator warmup alignment, run on 2026-05-17:
+
+- `node --check frontend/charts.js` - passed
+- `node --check frontend/view-backtest.js` - passed
+- `node --check frontend/view-glossary.js` - passed
+- `node --check frontend/app.js` - passed
+- `& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m pytest tests/unit/test_frontend_static_mime.py -v` - 2 passed
+- `& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m pytest tests/unit/test_backtesting.py::test_indicator_series_uses_warmup_candles_before_trimming tests/unit/test_backtesting.py::test_indicator_series_trims_leading_rows_when_warmup_missing tests/unit/test_backtesting.py::test_indicator_series_ema_macd_default_cold_start_does_not_fetch_db tests/unit/test_backtesting.py::test_save_artifacts_records_indicator_warmup_sources -v` - 4 passed
+- `& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m pytest tests/unit/test_technical_indicator_strategies.py -v` - 5 passed
+- `git -c safe.directory=C:/quant_strategy diff --check` - passed
+
+Note: focused indicator artifact tests used explicit pytest node ids because pytest does not expand `::test_indicator_series_*` as a node-id glob. Pytest emitted a non-fatal cache permission warning for `.pytest_cache`.
 
 ## Known Bugs / Open Issues
 
@@ -100,11 +115,12 @@ _(Status: tests/unit pass locally; integration tests require TimescaleDB — not
 
 ## Next Steps (in order)
 
-1. **[P0]** Codex verification of chart zoom + indicator chart + DB-primary backend changes (see ExitPlanMode block in plan `C:\Users\woody\.claude\plans\1-eager-sedgewick.md`): run `pytest tests/unit/test_technical_indicator_strategies.py -v`, end-to-end SOL download + backtest, DSN-invalid fallback path, and grep for stray `--backend parquet` outside fallback/tests
-2. **[P0]** Run deployment smoke tests for API key auth, CORS, WebSocket auth, and Docker port bindings before any public AWS deployment
-3. **[P1]** Download 1m candle data for BTC-USDT-SWAP, ETH-USDT-SWAP, SOL-USDT-SWAP to enable 1m OHLCV rotation backtests (now routes through DB on download)
-4. **[P2]** Review `docs/pairs_position_aware_close_sizing_plan.md`
-5. **[P2]** Implement position-aware close sizing after design review
+1. **[P0]** Claude re-review Chart UX overhaul fix-up and indicator warmup alignment; confirm shared market X behavior, split reset semantics, cold-start artifact parity, and `warmup_source` UI/metadata.
+2. **[P0]** Remaining DB-primary backend verification from prior handoff: end-to-end SOL download + backtest, DSN-invalid fallback path, and grep for stray `--backend parquet` outside fallback/tests.
+3. **[P0]** Run deployment smoke tests for API key auth, CORS, WebSocket auth, and Docker port bindings before any public AWS deployment.
+4. **[P1]** Download 1m candle data for BTC-USDT-SWAP, ETH-USDT-SWAP, SOL-USDT-SWAP to enable 1m OHLCV rotation backtests (now routes through DB on download).
+5. **[P2]** Review `docs/pairs_position_aware_close_sizing_plan.md`.
+6. **[P2]** Implement position-aware close sizing after design review.
 
 ## Documentation Cleanup Next Step
 

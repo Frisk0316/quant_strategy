@@ -210,6 +210,7 @@ class MACrossoverParams(BaseModel):
     symbols: list[str] = ["BTC-USDT-SWAP"]
     fast_window: int = Field(default=20, gt=0)
     slow_window: int = Field(default=50, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
@@ -229,6 +230,7 @@ class EMACrossoverParams(BaseModel):
     symbols: list[str] = ["BTC-USDT-SWAP"]
     fast_span: int = Field(default=20, gt=0)
     slow_span: int = Field(default=50, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
@@ -249,6 +251,7 @@ class MACDCrossoverParams(BaseModel):
     fast_span: int = Field(default=12, gt=0)
     slow_span: int = Field(default=26, gt=0)
     signal_span: int = Field(default=9, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
