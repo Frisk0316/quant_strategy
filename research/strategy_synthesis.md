@@ -183,6 +183,246 @@ Deflated Sharpe Ratio checks before promotion.
 - **Backtest path:** Run ablations against existing strategies with and without
   the regime multiplier.
 
+## Strategy 9: Crypto Fear & Greed Sentiment Long-Flat (Research Baseline Only)
+
+- **Theoretical basis:** Baker and Wurgler 2006 sentiment-as-mispricing; crypto
+  retail-sentiment studies. Treated here as a behavioral baseline, not as a
+  validated alpha hypothesis.
+- **Core logic:** Long/flat BTC perp. Enter long when Alternative.me classifies
+  the index as `Extreme Fear`; stay in position through `Fear` and `Neutral`;
+  exit only on `Greed` or `Extreme Greed`. This is a deliberate hold-through-
+  retracement assumption — a mean-reversion bet that sentiment must rebound to
+  the upper half of the scale before alpha is realised. It is **not** a trend
+  filter; `Fear` and `Neutral` are intentionally non-exits.
+- **Signal source:** Alternative.me public Crypto Fear & Greed Index (dataset
+  `fear_greed_btc`), daily cadence, no publish lag.
+- **Sizing rule:** Standard fixed-fractional / vol-target via
+  `portfolio/sizing.py`; no sentiment-conditional sizing in v1.
+- **Execution:** Maker-only on OKX BTC-USDT-SWAP; reuses long/flat exit close
+  sizing established by the MA/MACD baseline. `enabled: false` by default.
+- **Applicable instruments:** BTC-USDT-SWAP only. Alternative.me does not
+  publish per-asset indices.
+- **Expected edge:** Unknown. The hypothesis is that holding through `Fear` /
+  `Neutral` and exiting only on `Greed`+ captures the sentiment-rebound regime.
+  This must be measured via walk-forward and CPCV before any promotion claim.
+- **Risk controls:** Required feature: stale or missing observations produce no
+  signal (`max_age_seconds=172800`). Counters `missing_no_signal_count` and
+  `stale_no_signal_count` are written to `validation.external_features` for
+  audit.
+- **Known caveats (must resolve before promotion):**
+  - Label match is case-sensitive against Alternative.me free-text. Mitigated:
+    `FearGreedSentimentParams` enforces an allow-list at config load and the
+    strategy carries numeric `extreme_fear_threshold` / `exit_value_threshold`
+    fallbacks on `value_num`; promotion ADR must state which path is
+    canonical.
+  - `Fear` and `Neutral` hold-through assumption has not been backtested with
+    DSR ≥ 0.95.
+  - Coverage-gate thresholds (see Promotion Checklist) must be measured on a
+    full replay run, not yet executed.
+- **Fit with existing system:** Implemented in
+  `src/okx_quant/strategies/external_features.py::FearGreedSentimentStrategy`.
+  Signals carry `metadata["research_only"] = True`.
+- **Backtest path:** Replay with `--strategy fear_greed_sentiment`; cross-check
+  against `dgs10`-conditioned variants once the macro feature is wired.
+
+## Strategy 10: CME BTC Daily Weekend-Gap Research Baseline (Not Real-Time)
+
+- **Theoretical basis:** Caporale, Plastun and Pochinkov 2019; weekend / overnight
+  gap mean-reversion studies in equity index futures. Here used as a research
+  reference, not as a tradable real-time strategy.
+- **Core logic:** Detect Friday-close → Monday-open price gaps on the CME BTC
+  futures daily series of at least `min_gap_bps` (default 10 bps). Take an
+  OKX BTC-USDT-SWAP position opposite to the gap direction and exit when OKX
+  touches the prior Friday CME close or the holding-time cap (`max_hold_days`,
+  default 5) elapses.
+- **Critical timing assumption (must be acknowledged before any deployment
+  claim):**
+  - Source is **daily**, not intraday. The Monday CME bar is `observed_at` at
+    Monday 00:00 UTC and `published_at` at Tuesday 00:00 UTC under
+    `publish_lag_days=1`.
+  - As a result, the replay engine cannot emit the gap-detection FEATURE event
+    until **the Tuesday after the weekend**, by which point OKX (which trades
+    24/7) has typically already absorbed the CME gap.
+  - This baseline therefore measures *OKX response to a one-day-delayed CME
+    daily signal*. It is **explicitly not a real-time weekend gap-fill
+    strategy**. Treat any reported PnL as a daily-cadence research reference,
+    not an executable edge.
+- **Signal source (official, blocked):** `cme_btc1_continuous` (Nasdaq Data
+  Link), daily OHLCV. `CHRIS/CME_BTC1` was discontinued by Nasdaq Data Link in
+  2022-03; ingest against it produces zero rows.
+- **Signal source (research proxy, currently wired):** `cme_btc_yfinance`,
+  built from Yahoo Finance `BTC=F` daily OHLC. This is **a research-only
+  unofficial proxy** for CME BTC futures, not the official CME settle and not
+  comparable in fidelity. Numbers from this proxy can only be used for
+  directional sanity checks. **They are not admissible as deployment or
+  promotion evidence** and any artefact derived from `cme_btc_yfinance` must
+  carry `source: research_proxy_only` in its `research_status` block. See
+  Research Feature Data Caveats below.
+- **Execution:** Maker-preferred on OKX; reuses long/flat exit close sizing.
+  Signals carry `metadata["research_only"] = True` and `enabled: false`.
+- **Applicable instruments:** OKX BTC-USDT-SWAP as the trading venue; CME BTC
+  futures (continuous, back-adjusted) as the signal source.
+- **Expected edge (research proxy run, 2026-05-19, yfinance):** 112 gaps over
+  2024-01-01 → 2026-05-19, fill probability 82.1%, median time-to-fill 0 days.
+  But the reverse-gap trade simulation on OKX 1H bars with 12 bps round-trip
+  cost shows **negative total return (-33.3%), Sharpe -0.52, max drawdown
+  -49.2%** despite a 76% win rate, because 27 timeout trades sum -12,978 bps
+  vs. 82 target-fill trades summing +9,791 bps. The asymmetric
+  capped-win / uncapped-loss payoff under `max_hold_days=5` and no stop-loss
+  is the structural problem — not the gap signal itself. Up-gaps (short BTC)
+  account for -4,072 bps, against the long-run BTC drift in this window. See
+  the "Strategy improvements" subsection below for stop-loss / dust-bucket
+  filter mitigations.
+- **Status of CME-evidence claims:** None of the above numbers are admissible
+  as deployment evidence because they are derived from a research proxy
+  (`cme_btc_yfinance`), not from the official CME settle series.
+- **Known caveats (must resolve before any promotion claim):**
+  - `CHRIS/CME_BTC1` was discontinued by Nasdaq Data Link in 2022-03. The
+    official adapter target is non-functional. `cme_btc_yfinance` is wired as
+    a research-only proxy and is not a substitute for the official feed.
+  - Weekend-gap detection currently requires
+    `current_observed.weekday() in {0, 6}`, which silently misses US holiday
+    Mondays (gap rolls to Tuesday).
+  - Continuous back-adjusted / Yahoo-stitched series introduce artificial
+    roll-day gaps that must be filtered. The strategy and analyzer already
+    accept a `roll_dates` list; it must be populated before any claim.
+  - **Mitigated**: cross-venue target basis. Both the strategy and the
+    analyzer now anchor the target on the OKX entry mid plus the CME
+    `gap_bps`, not on the absolute CME `prev_close`.
+  - To become a *real-time* gap-fill strategy this baseline would have to be
+    re-implemented on minute-resolution CME data with `publish_lag_minutes`
+    semantics, which is a separate research item.
+
+- **Strategy improvements (research plan, pending Codex implementation):**
+  In-sample analysis of the 109-trade yfinance-proxy run (2024-01 → 2026-05)
+  shows the negative expectancy is driven entirely by the long-tail timeout
+  trades; the gap signal itself has a positive raw fill probability.
+  Recommended structural changes (effects are **in-sample only** — must be
+  re-validated walk-forward / CPCV before any deployment claim):
+  - **P0 stop-loss**: cap adverse move at `stop_loss_bps_mult × gap_bps`.
+    In-sample: a 1.5× stop flips the run from -3,187 bps to +3,308 bps and
+    caps worst trade from -2,059 bps to -925 bps. Stop has a clean physical
+    interpretation — if price has moved further against entry than the
+    original gap, the mean-reversion thesis is broken.
+  - **P0 dust-bucket exclusion**: raise `min_gap_bps` from 10 to 25. Gaps
+    under 25 bps have edge ≤ 12 bps round-trip cost on the proxy run.
+  - **P1 hold-time cap**: drop `max_hold_days` default from 5 to 2. Median
+    in-sample fill happens at 7h; 73% of fills land in the first day.
+  - **P1 direction filter**: optional `allow_direction` toggle (default
+    `both`). Up-gaps (short BTC) account for -4,072 bps in the proxy run,
+    but this may be a regime artefact of BTC's 2024-2026 drift, so the
+    filter is off by default and gated on walk-forward evidence.
+  - **Not deployment-ready even after these fixes**: improvements above are
+    in-sample fits on a research-proxy dataset. They reduce blow-up risk and
+    move expectancy from clearly negative to positive on the in-sample
+    window, but do not constitute validated alpha.
+- **Fit with existing system:** Implemented in
+  `src/okx_quant/strategies/external_features.py::CMEGapFillStrategy`.
+  Offline analysis lives in `scripts/analyze_cme_gaps.py`.
+- **Backtest path:** Replay with `--strategy cme_gap_fill` once a working CME
+  source is wired; also rerun `analyze_cme_gaps.py` for fill-probability
+  diagnostics with roll-day and holiday filters in place.
+
+## Research Feature Data Caveats
+
+These are caveats that apply to the external-feature datasets feeding research
+strategies above. They are not strategies in themselves, but every consumer must
+acknowledge them.
+
+### `dgs10` (FRED 10-Year Treasury Constant Maturity Rate)
+
+- **Cadence:** Business-daily; missing on US federal holidays and weekends.
+  Stored in `external_observations` under dataset id `dgs10`,
+  `required: false` (long stretches of absent values are expected).
+- **Publish-lag policy:** `publish_lag_days=1`. Real FRED H.15 release is the
+  same trading day at ~16:30 ET; a 1-day lag (next 00:00 UTC) is conservative
+  and safe by ~2.5 hours. Configuration must enforce `publish_lag_days >= 1`
+  at schema load to prevent same-day lookahead.
+- **Vintage policy: latest-vintage only, NOT point-in-time.** FRED occasionally
+  revises DGS10 historicals. The current ingest schema
+  (`external_observations` PRIMARY KEY `(dataset_id, observed_at)` with
+  `ON CONFLICT DO UPDATE`) overwrites any prior value when a revised vintage
+  is re-ingested. Backtests run after a revision therefore see the **latest**
+  rate at every historical observed_at, not the rate that was actually
+  available at that moment in time. This is a known subtle lookahead bias for
+  any DGS10-conditioned research.
+  - To make this strict point-in-time would require FRED's ALFRED vintage
+    endpoint plus `realtime_start` / `realtime_end` semantics in
+    `external_observations`. Not in v1 scope.
+  - Until upgraded, any DGS10-conditioned signal must be flagged
+    `research_only` and excluded from live promotion. DSR results on
+    DGS10-conditioned variants must explicitly note the latest-vintage
+    caveat.
+- **Stale-handling:** Strategies consuming `dgs10` should set
+  `max_age_seconds` ≥ 604800 (7 days) to cover long holiday weekends without
+  spurious stale flags.
+
+### `fear_greed_btc` (Alternative.me Crypto Fear & Greed Index)
+
+- **Cadence:** Daily; index labels are free-text strings.
+- **Publish-lag policy:** None — Alternative.me publishes same-day.
+  `published_at = observed_at` is correct.
+- **Label-stability dependency:** Strategy label matching is case-sensitive
+  against the upstream string set
+  `{Extreme Fear, Fear, Neutral, Greed, Extreme Greed}`. Any upstream
+  capitalization or punctuation drift would silently disable label-only signal
+  emission. **Mitigated in code**: `FearGreedSentimentParams` enforces a
+  config-load allow-list via `validate_extreme_fear_label`, and the strategy
+  carries numeric `extreme_fear_threshold` (default 25.0) and
+  `exit_value_threshold` (default 51.0) fallbacks driven off `value_num` so
+  signals can still fire if upstream label text drifts. Promotion ADR should
+  attest which path (label match vs. numeric thresholds) is canonical for the
+  proposed live run.
+- **TTL:** `max_age_seconds=172800` (48h) tolerates one missed publication.
+
+### `cme_btc1_continuous` (Nasdaq Data Link CME BTC Futures, official, blocked)
+
+- **Status: source replacement required.** `CHRIS/CME_BTC1` was discontinued by
+  Nasdaq Data Link in 2022-03; the current adapter target returns no data.
+  No CME-based research result is reproducible against the official source
+  until it is replaced (paid CME DataMine, Databento `GLBX.MDP3`, Polygon CME
+  feed, or equivalent).
+- **Cadence:** Intended daily settle. Real-time / intraday gap-fill is **not**
+  supported by this dataset; see Strategy 10 caveats.
+- **Continuous-contract artefact:** Back-adjustment introduces synthetic
+  roll-day price jumps. Detection logic must filter roll days or switch to a
+  front-month series before any statistic can be trusted.
+- **Cross-venue price comparability:** Back-adjusted CME continuous prices are
+  not directly comparable to OKX BTC-USDT-SWAP price levels; the strategy and
+  analyzer now anchor targets on OKX entry mid, not on the absolute CME
+  `prev_close`.
+
+### `cme_btc_yfinance` (Yahoo Finance `BTC=F`, research proxy ONLY)
+
+- **Status: research-only proxy for an officially-blocked dataset.** Wired in
+  2026-05 because the official CME and Nasdaq Data Link sources are paid and
+  not currently provisioned. Yahoo's `BTC=F` is Yahoo's representation of CME
+  BTC futures front-month continuous quotes; it is **not** CME's official
+  settle and is not provided under a market-data licence suitable for
+  production.
+- **Hard rule:** Numbers derived from this dataset are admissible only as
+  preliminary directional sanity checks. They are **never** admissible as
+  deployment, shadow-promotion, or live-trading evidence. Any artefact must
+  carry `source: research_proxy_only` (or equivalent) in `research_status`,
+  and any PR / handoff / ADR citing them must label them as such.
+- **Quality caveats:**
+  - Quote delay: Yahoo `BTC=F` is typically a delayed quote (15-30 min).
+  - Continuous-contract stitching: Yahoo's continuous-series logic is not
+    documented; behaves like an undisclosed back-adjusted or rolled series.
+    Roll-day artefacts are likely and must be filtered.
+  - Adjustments: Yahoo applies its own adjustments (splits, missing-data
+    forward fill); not directly comparable to CME settle.
+  - Date convention: Yahoo's date labels do not match CME's official Globex
+    trade-date convention in all cases.
+- **Use as a research proxy:** OK for measuring (a) is there a stable
+  weekend-gap fill rate? (b) does a stop-loss / dust-bucket / direction
+  filter materially improve the payoff distribution? (c) is the gap signal
+  worth pursuing once an official source is provisioned? Not OK for
+  measuring backtest PnL that anyone will rely on.
+- **Replacement plan:** Once an official CME source is provisioned, re-run
+  every yfinance-derived analysis side-by-side; treat directional agreement
+  as a sanity check, not as confirmation of edge.
+
 ## Strategies Rejected For Now
 
 | Idea | Reason to reject for now |
@@ -204,4 +444,27 @@ Deflated Sharpe Ratio checks before promotion.
 | Overfit control | DSR >= 0.95 before promotion. |
 | Risk | Max order notional, drawdown stops, and circuit breakers active. |
 | Execution | Maker-only by default; taker usage explicitly justified for risk exits. |
+| ct_val provenance | `validation.ct_val_all_authoritative = true` (every symbol's ctVal from `db`, `config_override`, or `spot_unit`). |
+| Reduce-only audit (per ADR-0006) | Shadow run produced at least one `allowed_reduce_only_bypass:*` event sample for reviewer inspection (or a documented attestation that none occurred in the window). |
+
+### External-Feature Coverage Gate
+
+Strategies consuming `external_observations` must satisfy the following before
+any live or shadow promotion. These thresholds are inputs to the per-strategy
+promotion ADR and must be reported from `validation.external_features.<name>`
+in the replay artefact.
+
+| Gate | Threshold | Reported via |
+| --- | --- | --- |
+| Required-dataset availability | `event_count > 0` for every `required: true` dataset over the test window. | `data_coverage.json::features[]` |
+| Stale-rate | `stale_no_signal_count / total_market_bars <= 0.10` (i.e. ≤ 10% of bars within the test window may be blocked by a stale feature). | `validation.external_features.<strategy>.stale_no_signal_count` |
+| Missing-rate | `missing_no_signal_count / total_market_bars <= 0.05` after warmup. A `required: true` dataset that exceeds this is a hard fail. | `validation.external_features.<strategy>.missing_no_signal_count` |
+| Vintage attestation | For non-PIT datasets (currently `dgs10`), the promotion ADR must explicitly accept latest-vintage exposure or upgrade ingest to ALFRED-vintage before promotion. | ADR text |
+| Source-stability attestation | For each external dataset, the promotion ADR must name the live upstream endpoint and a fallback. Discontinued sources (e.g. current `CHRIS/CME_BTC1`) block promotion. | ADR text |
+| Label-stability attestation (text-valued features) | For label-matched features (currently `fear_greed_btc`), promotion ADR must confirm either a config-load allow-list validator or numeric-threshold replacement is in place. | ADR text |
+
+Strategies flagged `research_only: true` in their signal metadata
+(Strategies 9-10 above) must not be merged into any live/shadow deployment
+configuration until every applicable row of this gate is satisfied and a
+strategy-specific promotion ADR has been accepted.
 
