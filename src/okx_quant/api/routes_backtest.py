@@ -1025,6 +1025,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "ma_crossover",
             "ema_crossover",
             "macd_crossover",
+            "fear_greed_sentiment",
+            "cme_gap_fill",
         }
         validate_allowed = {None, "wf", "cpcv", "both"}
         _validate_backtest_request(req)

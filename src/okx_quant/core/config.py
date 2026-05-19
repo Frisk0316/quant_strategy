@@ -9,11 +9,20 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
+import pandas as pd
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
+
+FEAR_GREED_LABELS: dict[str, str] = {
+    "extreme fear": "Extreme Fear",
+    "fear": "Fear",
+    "neutral": "Neutral",
+    "greed": "Greed",
+    "extreme greed": "Extreme Greed",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +275,67 @@ class MACDCrossoverParams(BaseModel):
         return self
 
 
+class FearGreedSentimentParams(BaseModel):
+    enabled: bool = False
+    symbol: str = "BTC-USDT-SWAP"
+    dataset_id: str = "fear_greed_btc"
+    max_age_seconds: int = Field(default=172800, gt=0)
+    extreme_fear_label: str = "Extreme Fear"
+    exit_labels: list[str] = ["Greed", "Extreme Greed"]
+    extreme_fear_threshold: float = Field(default=25.0, ge=0.0, le=100.0)
+    exit_value_threshold: float = Field(default=51.0, ge=0.0, le=100.0)
+    max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    td_mode: str = "cross"
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
+
+    @field_validator("extreme_fear_label")
+    @classmethod
+    def validate_extreme_fear_label(cls, value: str) -> str:
+        return _canonical_fear_greed_label(value)
+
+    @field_validator("exit_labels")
+    @classmethod
+    def validate_exit_labels(cls, value: list[str]) -> list[str]:
+        labels = [_canonical_fear_greed_label(label) for label in value]
+        if not labels:
+            raise ValueError("fear_greed_sentiment exit_labels must not be empty")
+        return labels
+
+
+class CMEGapFillParams(BaseModel):
+    enabled: bool = False
+    symbol: str = "BTC-USDT-SWAP"
+    dataset_id: str = "cme_btc1_continuous"
+    max_age_seconds: int = Field(default=604800, gt=0)
+    min_gap_bps: float = Field(default=10.0, ge=0)
+    max_hold_days: float = Field(default=5.0, gt=0)
+    roll_dates: list[str] = []
+    max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    td_mode: str = "cross"
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
+
+    @field_validator("roll_dates")
+    @classmethod
+    def validate_roll_dates(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for raw in value:
+            try:
+                normalized.append(pd.Timestamp(raw).date().isoformat())
+            except Exception as exc:
+                raise ValueError(f"invalid cme_gap_fill roll date: {raw}") from exc
+        return normalized
+
+
 class StrategiesConfig(BaseModel):
     obi_market_maker: OBIMarketMakerParams = OBIMarketMakerParams()
     as_market_maker: ASMarketMakerParams = ASMarketMakerParams()
@@ -274,6 +344,17 @@ class StrategiesConfig(BaseModel):
     ma_crossover: MACrossoverParams = MACrossoverParams()
     ema_crossover: EMACrossoverParams = EMACrossoverParams()
     macd_crossover: MACDCrossoverParams = MACDCrossoverParams()
+    fear_greed_sentiment: FearGreedSentimentParams = FearGreedSentimentParams()
+    cme_gap_fill: CMEGapFillParams = CMEGapFillParams()
+
+
+def _canonical_fear_greed_label(value: str) -> str:
+    text = str(value or "").strip()
+    canonical = FEAR_GREED_LABELS.get(text.casefold())
+    if not canonical:
+        allowed = ", ".join(FEAR_GREED_LABELS.values())
+        raise ValueError(f"Unknown Fear & Greed label '{value}'. Allowed: {allowed}")
+    return canonical
 
 
 # ---------------------------------------------------------------------------

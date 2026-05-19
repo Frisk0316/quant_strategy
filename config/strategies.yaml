@@ -123,4 +123,33 @@ macd_crossover:
   indicator_db_warmup: false
   td_mode: cross
 
+fear_greed_sentiment:
+  enabled: false
+  symbol: BTC-USDT-SWAP
+  dataset_id: fear_greed_btc
+  # Required feature: stale or missing values produce no signal.
+  max_age_seconds: 172800
+  extreme_fear_label: Extreme Fear
+  exit_labels:
+    - Greed
+    - Extreme Greed
+  # Numeric thresholds are a fallback if the upstream label spelling drifts.
+  extreme_fear_threshold: 25.0
+  exit_value_threshold: 51.0
+  max_missing_signal_ratio: 0.05
+  max_stale_signal_ratio: 0.05
+  td_mode: cross
 
+cme_gap_fill:
+  enabled: false
+  symbol: BTC-USDT-SWAP
+  dataset_id: cme_btc1_continuous
+  # Required feature: stale or missing CME observations produce no signal.
+  # Daily CME observations are a delayed research baseline, not real-time gap-fill.
+  max_age_seconds: 604800
+  min_gap_bps: 10.0
+  max_hold_days: 5.0
+  roll_dates: []
+  max_missing_signal_ratio: 0.05
+  max_stale_signal_ratio: 0.05
+  td_mode: cross

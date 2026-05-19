@@ -1175,6 +1175,11 @@ def save_backtest_artifacts(
         market_frames_meta or [],
         funding_frames_meta or [],
     )
+    replay_coverage = result_validation.get("gate3_data_coverage")
+    if isinstance(replay_coverage, dict):
+        coverage["replay_gate"] = replay_coverage
+        if "features" in replay_coverage:
+            coverage["features"] = replay_coverage.get("features") or []
     if write_files:
         _write_json(run_dir / "data_coverage.json", coverage)
 

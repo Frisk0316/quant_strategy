@@ -18,12 +18,13 @@ import pyarrow.parquet as pq
 from loguru import logger
 
 from backtesting.data_loader import load_candles as load_ohlcv_candles
+from backtesting.data_loader import load_feature_events as load_external_feature_events
 from backtesting.data_loader import load_funding as load_funding_rates
 from okx_quant.analytics.dsr import psr
 from okx_quant.analytics.performance import summary
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig, load_config
-from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload, OrderPayload
+from okx_quant.core.events import Event, EvtType, FeaturePayload, FillPayload, MarketPayload, OrderPayload
 from okx_quant.data.okx_book import OkxBook
 from okx_quant.execution.broker import SimBroker
 from okx_quant.execution.execution_handler import ExecutionHandler
@@ -38,6 +39,7 @@ from okx_quant.risk.risk_guard import RiskGuard
 from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
+from okx_quant.strategies.external_features import CMEGapFillStrategy, FearGreedSentimentStrategy
 from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 from okx_quant.strategies.technical_indicators import (
@@ -393,7 +395,24 @@ def _compute_data_coverage(
         "start": start,
         "end": end,
         "symbols": per_symbol,
+        "features": _feature_coverage(feed),
     }
+
+
+def _feature_coverage(feed: "HistoricalEventFeed") -> list[dict]:
+    feature_events = getattr(feed, "feature_events", pd.DataFrame())
+    if feature_events.empty or "dataset_id" not in feature_events.columns:
+        return []
+    coverage: list[dict] = []
+    for dataset_id, group in feature_events.groupby("dataset_id"):
+        ts = pd.to_datetime(group["ts"], unit="ms", utc=True, errors="coerce")
+        coverage.append({
+            "dataset_id": str(dataset_id),
+            "event_count": int(group["ts"].nunique()),
+            "first_event_ts": ts.min().isoformat() if not ts.dropna().empty else None,
+            "last_event_ts": ts.max().isoformat() if not ts.dropna().empty else None,
+        })
+    return coverage
 
 
 def _check_data_coverage_gate(coverage: dict) -> None:
@@ -648,12 +667,45 @@ def load_funding_events(
 
 
 class HistoricalEventFeed:
-    def __init__(self, market_events: pd.DataFrame, funding_events: pd.DataFrame) -> None:
+    def __init__(
+        self,
+        market_events: pd.DataFrame,
+        funding_events: pd.DataFrame,
+        feature_events: Optional[pd.DataFrame] = None,
+    ) -> None:
         self.market_events = market_events
         self.funding_events = funding_events
+        self.feature_events = feature_events if feature_events is not None else pd.DataFrame()
 
     def iter_events(self) -> Iterable[Event]:
         combined: list[tuple[int, int, Event]] = []
+
+        for row in self.feature_events.itertuples(index=False):
+            payload = FeaturePayload(
+                dataset_id=str(row.dataset_id),
+                ts=int(row.ts),
+                observed_at=_to_ms_int(getattr(row, "observed_at", None)) or None,
+                published_at=_to_ms_int(getattr(row, "published_at", None)) or None,
+                value_num=(
+                    float(row.value_num)
+                    if getattr(row, "value_num", None) is not None
+                    and pd.notna(getattr(row, "value_num", None))
+                    else None
+                ),
+                value_text=(
+                    str(row.value_text)
+                    if getattr(row, "value_text", None) is not None
+                    and pd.notna(getattr(row, "value_text", None))
+                    else None
+                ),
+                fields=(
+                    getattr(row, "fields", {})
+                    if isinstance(getattr(row, "fields", {}), dict)
+                    else {}
+                ),
+                quality_status=str(getattr(row, "quality_status", "raw") or "raw"),
+            )
+            combined.append((int(row.ts), 0, Event(EvtType.FEATURE, payload=payload)))
 
         for row in self.market_events.itertuples(index=False):
             payload = MarketPayload(
@@ -664,7 +716,7 @@ class HistoricalEventFeed:
                 seq_id=0,
                 channel="books",
             )
-            combined.append((int(row.ts), 0, Event(EvtType.MARKET, payload=payload)))
+            combined.append((int(row.ts), 1, Event(EvtType.MARKET, payload=payload)))
 
         for row in self.funding_events.itertuples(index=False):
             payload = MarketPayload(
@@ -683,7 +735,7 @@ class HistoricalEventFeed:
                     else None
                 ),
             )
-            combined.append((int(row.ts), 1, Event(EvtType.FUNDING, payload=payload)))
+            combined.append((int(row.ts), 2, Event(EvtType.FUNDING, payload=payload)))
 
         combined.sort(key=lambda item: (item[0], item[1]))
         for _, _, event in combined:
@@ -739,6 +791,10 @@ class ReplayBacktestEngine:
         swap_symbols.update(self._cfg.strategies.ma_crossover.symbols)
         swap_symbols.update(self._cfg.strategies.ema_crossover.symbols)
         swap_symbols.update(self._cfg.strategies.macd_crossover.symbols)
+        swap_symbols.update({
+            self._cfg.strategies.fear_greed_sentiment.symbol,
+            self._cfg.strategies.cme_gap_fill.symbol,
+        })
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
@@ -898,6 +954,8 @@ class ReplayBacktestEngine:
             ("ma_crossover", MACrossoverStrategy(strat_cfg.ma_crossover.model_dump())),
             ("ema_crossover", EMACrossoverStrategy(strat_cfg.ema_crossover.model_dump())),
             ("macd_crossover", MACDCrossoverStrategy(strat_cfg.macd_crossover.model_dump())),
+            ("fear_greed_sentiment", FearGreedSentimentStrategy(strat_cfg.fear_greed_sentiment.model_dump())),
+            ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
         ]
         enabled = {
             "obi_market_maker": strat_cfg.obi_market_maker.enabled,
@@ -907,6 +965,8 @@ class ReplayBacktestEngine:
             "ma_crossover": strat_cfg.ma_crossover.enabled,
             "ema_crossover": strat_cfg.ema_crossover.enabled,
             "macd_crossover": strat_cfg.macd_crossover.enabled,
+            "fear_greed_sentiment": strat_cfg.fear_greed_sentiment.enabled,
+            "cme_gap_fill": strat_cfg.cme_gap_fill.enabled,
         }
 
         for name, strategy in candidates:
@@ -929,7 +989,7 @@ class ReplayBacktestEngine:
                 book.asks[float(px)] = (px, sz)
 
     async def run(self, feed: HistoricalEventFeed) -> ReplayBacktestResult:
-        if feed.market_events.empty and feed.funding_events.empty:
+        if feed.market_events.empty and feed.funding_events.empty and feed.feature_events.empty:
             raise ValueError("ReplayBacktestEngine received an empty historical feed")
 
         bus = EventBus()
@@ -1056,6 +1116,8 @@ class ReplayBacktestEngine:
             symbol
             for strategy in strategies
             for symbol in getattr(strategy, "symbols", [])
+        } | {
+            getattr(strategy, "symbol", None) for strategy in strategies
         } | set(self._cfg.system.symbols) | set(self._cfg.system.spot_symbols)
         books = {symbol: OkxBook(symbol) for symbol in book_symbols if symbol}
 
@@ -1087,6 +1149,17 @@ class ReplayBacktestEngine:
                 if strategy.is_active:
                     signal = await strategy.on_market(event)
                     if signal:
+                        recorder.record_signal(signal, payload.ts)
+                        await bus.put(Event(EvtType.SIGNAL, payload=signal))
+
+        async def on_feature_event(event: Event) -> None:
+            payload = event.payload
+            reset_daily_risk_if_needed(payload.ts)
+            for strategy in strategies:
+                if strategy.is_active:
+                    signal = await strategy.on_market(event)
+                    if signal:
+                        recorder.record_signal(signal, payload.ts)
                         await bus.put(Event(EvtType.SIGNAL, payload=signal))
 
         async def on_signal_event(event: Event) -> None:
@@ -1112,6 +1185,7 @@ class ReplayBacktestEngine:
 
         bus.subscribe(EvtType.MARKET, on_market_event)
         bus.subscribe(EvtType.FUNDING, on_funding_event)
+        bus.subscribe(EvtType.FEATURE, on_feature_event)
         bus.subscribe(EvtType.SIGNAL, on_signal_event)
         bus.subscribe(EvtType.ORDER, on_order_event)
         bus.subscribe(EvtType.FILL, on_fill_event)
@@ -1137,6 +1211,9 @@ class ReplayBacktestEngine:
             ts=last_event_ts,
             liquidate_on_end=self._liquidate_on_end,
         )
+        feature_validation = self._collect_feature_validation(strategies)
+        if feature_validation:
+            terminal_validation["external_features"] = feature_validation
 
         return recorder.build_result(
             positions,
@@ -1145,6 +1222,15 @@ class ReplayBacktestEngine:
             validation=terminal_validation,
             metric_overrides=terminal_metrics,
         )
+
+    @staticmethod
+    def _collect_feature_validation(strategies: list[Strategy]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for strategy in strategies:
+            status = getattr(strategy, "coverage_status", None)
+            if isinstance(status, dict):
+                out[str(strategy.name)] = dict(status)
+        return out
 
     def _liquidate_terminal_positions(
         self,
@@ -1356,6 +1442,7 @@ def build_feed_for_strategies(
 ) -> HistoricalEventFeed:
     market_frames: list[pd.DataFrame] = []
     funding_frames: list[pd.DataFrame] = []
+    feature_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
     if "obi_market_maker" in strategy_set:
@@ -1453,6 +1540,46 @@ def build_feed_for_strategies(
             dsn=cfg.storage.timescale_dsn,
         ))
 
+    if "fear_greed_sentiment" in strategy_set:
+        params = cfg.strategies.fear_greed_sentiment
+        market_frames.append(load_l1_books(
+            params.symbol,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+        feature_frames.append(load_external_feature_events(
+            params.dataset_id,
+            start=start,
+            end=end,
+            backend="postgres",
+            dsn=cfg.storage.timescale_dsn,
+            lookback_seconds=params.max_age_seconds,
+        ))
+
+    if "cme_gap_fill" in strategy_set:
+        params = cfg.strategies.cme_gap_fill
+        market_frames.append(load_l1_books(
+            params.symbol,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+        feature_frames.append(load_external_feature_events(
+            params.dataset_id,
+            start=start,
+            end=end,
+            backend="postgres",
+            dsn=cfg.storage.timescale_dsn,
+            lookback_seconds=params.max_age_seconds,
+        ))
+
     market_df = _concat_non_empty(market_frames)
 
     # Load funding for all SWAP symbols that appear in market data,
@@ -1484,7 +1611,8 @@ def build_feed_for_strategies(
             logger.warning("No funding data available for {}", sym)
 
     funding_df = _concat_non_empty(funding_frames)
-    return HistoricalEventFeed(market_events=market_df, funding_events=funding_df)
+    feature_df = _concat_non_empty(feature_frames)
+    return HistoricalEventFeed(market_events=market_df, funding_events=funding_df, feature_events=feature_df)
 
 
 def _concat_non_empty(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -1561,7 +1689,10 @@ def build_replay_validation_frame(
         end=end,
         bar=bar,
     )
-    frames = [df for df in [feed.market_events, feed.funding_events] if not df.empty and "ts" in df.columns]
+    frames = [
+        df for df in [feed.market_events, feed.funding_events, feed.feature_events]
+        if not df.empty and "ts" in df.columns
+    ]
     if not frames:
         return pd.DataFrame(columns=["event_count"], index=pd.DatetimeIndex([], tz="UTC"))
 

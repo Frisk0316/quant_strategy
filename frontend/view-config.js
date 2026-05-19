@@ -11,10 +11,14 @@ const BAR_PERIODS = {
   "30m": 17520, "1H": 8760, "2H": 4380, "4H": 2190, "1D": 365,
 };
 const TECHNICAL_STRATEGIES = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
+const EXTERNAL_STRATEGIES = new Set(["fear_greed_sentiment", "cme_gap_fill"]);
+const PARAMETERIZED_STRATEGIES = new Set([...TECHNICAL_STRATEGIES, ...EXTERNAL_STRATEGIES]);
 const STRATEGY_PARAM_DEFAULTS = {
   ma_crossover: { fast_window: 20, slow_window: 50 },
   ema_crossover: { fast_span: 20, slow_span: 50 },
   macd_crossover: { fast_span: 12, slow_span: 26, signal_span: 9 },
+  fear_greed_sentiment: { dataset_id: "fear_greed_btc", max_age_seconds: 172800, extreme_fear_label: "Extreme Fear", extreme_fear_threshold: 25, exit_value_threshold: 51 },
+  cme_gap_fill: { dataset_id: "cme_btc1_continuous", max_age_seconds: 604800, min_gap_bps: 10, max_hold_days: 5 },
 };
 
 const todayUtc = new Date();
@@ -83,6 +87,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const isRotation = strategy === "ohlcv_rotation";
   const isDailyWinner = strategy === "daily_winner";
   const isTechnical = TECHNICAL_STRATEGIES.has(strategy);
+  const hasStrategyParams = PARAMETERIZED_STRATEGIES.has(strategy);
   const isBasketStrategy = isRotation || isDailyWinner || isTechnical;
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
@@ -166,7 +171,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       top_k: isRotation ? rotTopK : undefined,
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
       initial_equity: +equity || 5000,
-      strategy_params: isTechnical ? (strategyParams[strategy] || {}) : {},
+      strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -497,6 +502,19 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
       ["slow_span", "26", "MACD slow EMA", "Slow EMA span used in MACD. Default: 26."],
       ["signal_span", "9", "signal EMA", "EMA span applied to the MACD line. Default: 9."],
     ],
+    fear_greed_sentiment: [
+      ["dataset_id", "fear_greed_btc", "external dataset", "External feature dataset id. Missing or stale observations suppress trading signals."],
+      ["max_age_seconds", "172800", "feature TTL", "Maximum age for the as-of Fear & Greed value. Older values are treated as stale and generate no signal."],
+      ["extreme_fear_label", "Extreme Fear", "entry label", "Classification label that opens a long position when the feature is fresh."],
+      ["extreme_fear_threshold", "25", "numeric entry", "Numeric Fear & Greed value at or below this threshold also opens a long position."],
+      ["exit_value_threshold", "51", "numeric exit", "Numeric Fear & Greed value at or above this threshold exits an existing position."],
+    ],
+    cme_gap_fill: [
+      ["dataset_id", "cme_btc1_continuous", "external dataset", "External CME BTC futures dataset id. Missing or stale observations suppress trading signals."],
+      ["max_age_seconds", "604800", "feature TTL", "Maximum age for the as-of CME observation before it is treated as stale."],
+      ["min_gap_bps", "10", "gap threshold", "Minimum weekend CME gap size in basis points before the strategy considers an entry."],
+      ["max_hold_days", "5", "max hold", "Maximum holding time in days before a gap-fill position exits by timeout."],
+    ],
     ohlcv_rotation: [
       ["top_k", "3", "max simultaneous positions", "Max instruments held at once. Each gets equal weight (1/n), capped at max_position_weight=0.35."],
       ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
@@ -510,7 +528,7 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
       ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
   }[id] || [];
-  const editable = TECHNICAL_STRATEGIES.has(id);
+  const editable = PARAMETERIZED_STRATEGIES.has(id);
   function parseParam(value) {
     const num = Number(value);
     return value !== "" && Number.isFinite(num) ? num : value;

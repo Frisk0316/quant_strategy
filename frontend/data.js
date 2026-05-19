@@ -71,6 +71,8 @@
     { id: "ma_crossover", name: "MA Crossover", tag: "Trend", desc: "Long/flat moving-average crossover strategy with adjustable fast and slow windows" },
     { id: "ema_crossover", name: "EMA Crossover", tag: "Trend", desc: "Long/flat exponential moving-average crossover strategy with adjustable spans" },
     { id: "macd_crossover", name: "MACD Crossover", tag: "Trend", desc: "Long/flat MACD line versus signal line crossover strategy" },
+    { id: "fear_greed_sentiment", name: "Fear & Greed Sentiment", tag: "External", desc: "Research-only BTC sentiment strategy using as-of Fear & Greed observations" },
+    { id: "cme_gap_fill", name: "CME Daily Gap Baseline", tag: "External", desc: "Research-only delayed daily CME BTC gap baseline, not real-time gap-fill" },
     { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
     { id: "daily_winner", name: "Daily Winner", tag: "Validation", desc: "Every day buys yesterday's strongest symbol and exits at the daily close" },
   ];

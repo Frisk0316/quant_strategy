@@ -32,6 +32,8 @@ def main() -> None:
                             "ma_crossover",
                             "ema_crossover",
                             "macd_crossover",
+                            "fear_greed_sentiment",
+                            "cme_gap_fill",
                         ])
     parser.add_argument("--start")
     parser.add_argument("--end")
@@ -100,6 +102,14 @@ def main() -> None:
             cfg.strategies.macd_crossover = cfg.strategies.macd_crossover.model_copy(
                 update={"symbols": args.symbol}
             )
+        if "fear_greed_sentiment" in args.strategy:
+            cfg.strategies.fear_greed_sentiment = cfg.strategies.fear_greed_sentiment.model_copy(
+                update={"symbol": args.symbol[0]}
+            )
+        if "cme_gap_fill" in args.strategy:
+            cfg.strategies.cme_gap_fill = cfg.strategies.cme_gap_fill.model_copy(
+                update={"symbol": args.symbol[0]}
+            )
         cfg.system.symbols = args.symbol
     if "pairs_trading" in args.strategy:
         if args.symbol_x:
@@ -121,6 +131,7 @@ def main() -> None:
             cfg.strategies.funding_carry.min_apr_threshold = args.min_apr_threshold
 
     technical_names = {"ma_crossover", "ema_crossover", "macd_crossover"}
+    single_symbol_names = {"fear_greed_sentiment", "cme_gap_fill"}
     selected_technical = technical_names.intersection(args.strategy)
     if strategy_params:
         if len(args.strategy) != 1:
@@ -132,6 +143,8 @@ def main() -> None:
         updates = dict(strategy_params)
         if args.symbol and "symbols" not in updates and strategy_name in technical_names:
             updates["symbols"] = args.symbol
+        if args.symbol and "symbol" not in updates and strategy_name in single_symbol_names:
+            updates["symbol"] = args.symbol[0]
         setattr(cfg.strategies, strategy_name, current.model_copy(update=updates))
     elif selected_technical and args.symbol:
         cfg.system.symbols = args.symbol
