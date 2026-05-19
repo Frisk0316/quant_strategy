@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -107,6 +107,28 @@ def _to_naive_utc_ts(value: Optional[str]) -> Optional[pd.Timestamp]:
     if ts.tzinfo is not None:
         ts = ts.tz_convert("UTC").tz_localize(None)
     return ts
+
+
+def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.to_pydatetime()
+
+
+def _shift_start(value: Optional[str], lookback_seconds: int) -> Optional[str]:
+    if not value or lookback_seconds <= 0:
+        return value
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return (ts - pd.Timedelta(seconds=int(lookback_seconds))).isoformat()
 
 
 def _load_candles_parquet(
@@ -438,6 +460,148 @@ def load_funding(
     if end_ts is not None:
         df = df[df.index < end_ts]
     return df
+
+
+def load_external_observations(
+    dataset_id: str,
+    data_dir: str = "data/external",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: Literal["postgres", "parquet"] = "postgres",
+    dsn: Optional[str] = None,
+    lookback_seconds: int = 0,
+) -> pd.DataFrame:
+    """Load external feature observations from PostgreSQL.
+
+    The ``data_dir`` argument is reserved for a future local fixture backend so
+    callers can keep the same signature as other loaders.
+    """
+    del data_dir
+    if backend != "postgres" or not dsn or not _dsn_reachable(dsn):
+        return pd.DataFrame(columns=[
+            "dataset_id", "observed_at", "published_at", "value_num",
+            "value_text", "fields", "quality_status", "raw_payload", "ingested_at",
+        ])
+    return _load_external_observations_pg(
+        dataset_id,
+        dsn,
+        _shift_start(start, lookback_seconds),
+        end,
+    )
+
+
+def _load_external_observations_pg(
+    dataset_id: str,
+    dsn: str,
+    start: Optional[str],
+    end: Optional[str],
+) -> pd.DataFrame:
+    from okx_quant.data.external_store import ExternalDataStore
+
+    start_dt = _to_utc_dt(start)
+    end_dt = _to_utc_dt(end)
+
+    async def _fetch() -> pd.DataFrame:
+        async with await ExternalDataStore.from_dsn(dsn, min_size=1, max_size=2) as store:
+            return await store.get_observations(dataset_id, start=start_dt, end=end_dt)
+
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _fetch()).result()
+    except RuntimeError:
+        return asyncio.run(_fetch())
+
+
+def load_feature_events(
+    dataset_id: str,
+    data_dir: str = "data/external",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: Literal["postgres", "parquet"] = "postgres",
+    dsn: Optional[str] = None,
+    lookback_seconds: int = 0,
+) -> pd.DataFrame:
+    """Return feature observations as replay event rows.
+
+    Event time is ``published_at`` when present, otherwise ``observed_at``.
+    This keeps the replay from seeing values before the configured publication
+    policy allows them.
+    """
+    observations = load_external_observations(
+        dataset_id,
+        data_dir=data_dir,
+        start=start,
+        end=end,
+        backend=backend,
+        dsn=dsn,
+        lookback_seconds=lookback_seconds,
+    )
+    if observations.empty:
+        return pd.DataFrame(columns=[
+            "ts", "dataset_id", "observed_at", "published_at", "value_num",
+            "value_text", "fields", "quality_status",
+        ])
+    frame = observations.copy()
+    frame["observed_at"] = pd.to_datetime(frame["observed_at"], utc=True, errors="coerce")
+    frame["published_at"] = pd.to_datetime(frame.get("published_at"), utc=True, errors="coerce")
+    frame = frame.dropna(subset=["observed_at"])
+    event_ts = frame["published_at"].where(frame["published_at"].notna(), frame["observed_at"])
+    frame["ts"] = event_ts.astype("int64") // 1_000_000
+    frame["dataset_id"] = dataset_id
+    frame["fields"] = frame["fields"].apply(lambda value: value if isinstance(value, dict) else {})
+    return frame[[
+        "ts", "dataset_id", "observed_at", "published_at", "value_num",
+        "value_text", "fields", "quality_status",
+    ]].sort_values("ts")
+
+
+def asof_join_features(
+    timestamps: pd.Series | pd.DatetimeIndex | list[Any],
+    observations: pd.DataFrame,
+    *,
+    max_age_seconds: int,
+    prefix: str,
+) -> pd.DataFrame:
+    """Backward as-of join observations onto event timestamps with TTL."""
+    left = pd.DataFrame({"ts": pd.to_datetime(timestamps, utc=True, errors="coerce")}).dropna()
+    if left.empty:
+        return pd.DataFrame(columns=["ts"])
+    if observations.empty:
+        out = left.copy()
+        out[f"{prefix}_fresh"] = False
+        out[f"{prefix}_missing"] = True
+        out[f"{prefix}_stale"] = False
+        return out
+
+    right = observations.copy()
+    right["observed_at"] = pd.to_datetime(right["observed_at"], utc=True, errors="coerce")
+    right["published_at"] = pd.to_datetime(right.get("published_at"), utc=True, errors="coerce")
+    right["feature_ts"] = right["published_at"].where(right["published_at"].notna(), right["observed_at"])
+    right = right.dropna(subset=["feature_ts"]).sort_values("feature_ts")
+    merged = pd.merge_asof(
+        left.sort_values("ts"),
+        right[["feature_ts", "observed_at", "published_at", "value_num", "value_text", "fields"]],
+        left_on="ts",
+        right_on="feature_ts",
+        direction="backward",
+    )
+    age_seconds = (merged["ts"] - merged["feature_ts"]).dt.total_seconds()
+    missing = merged["feature_ts"].isna()
+    stale = ~missing & (age_seconds > int(max_age_seconds))
+    merged[f"{prefix}_fresh"] = ~missing & ~stale
+    merged[f"{prefix}_missing"] = missing
+    merged[f"{prefix}_stale"] = stale
+    merged[f"{prefix}_age_seconds"] = age_seconds
+    rename = {
+        "value_num": f"{prefix}_value_num",
+        "value_text": f"{prefix}_value_text",
+        "fields": f"{prefix}_fields",
+        "observed_at": f"{prefix}_observed_at",
+        "published_at": f"{prefix}_published_at",
+    }
+    return merged.rename(columns=rename)
 
 
 # def _load_funding_pg(

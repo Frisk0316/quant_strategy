@@ -17,6 +17,7 @@ class EvtType(Enum):
     FILL = 4     # Execution confirmation
     RISK = 5     # Risk event: halt, soft-stop, circuit-break
     FUNDING = 6  # Funding rate update (dedicated channel)
+    FEATURE = 7  # External feature observation
 
 
 @dataclass
@@ -49,6 +50,20 @@ class MarketPayload:
     funding_rate: Optional[float] = None
     next_funding_time: Optional[int] = None
     funding_interval_hours: Optional[float] = None
+
+
+@dataclass
+class FeaturePayload:
+    dataset_id: str
+    ts: int
+    observed_at: Optional[int] = None
+    published_at: Optional[int] = None
+    value_num: Optional[float] = None
+    value_text: Optional[str] = None
+    fields: dict = field(default_factory=dict)
+    quality_status: str = "raw"
+    stale: bool = False
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass

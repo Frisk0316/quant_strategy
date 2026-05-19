@@ -87,32 +87,24 @@ async def main(config_path: str) -> None:
         click.echo("ERROR: storage.timescale_dsn is not set in settings.yaml", err=True)
         sys.exit(1)
 
-    migration_path = (
+    migrations_dir = (
         Path(__file__).parent.parent.parent
-        / "src" / "okx_quant" / "data" / "migrations" / "001_ohlcv_pipeline_v2.sql"
+        / "src" / "okx_quant" / "data" / "migrations"
     )
-    if not migration_path.exists():
-        click.echo(f"ERROR: Migration file not found: {migration_path}", err=True)
+    migration_paths = sorted(migrations_dir.glob("*.sql"))
+    if not migration_paths:
+        click.echo(f"ERROR: No migration files found in: {migrations_dir}", err=True)
         sys.exit(1)
 
     instruments = cfg.market_data.instruments
     bars = cfg.market_data.bars
 
-    migration_002_path = (
-        Path(__file__).parent.parent.parent
-        / "src" / "okx_quant" / "data" / "migrations" / "002_market_canonical_bridge.sql"
-    )
-
     click.echo(f"Connecting to {dsn.split('@')[-1]}...")
     conn = await asyncpg.connect(dsn)
     try:
-        click.echo("Applying migration 001_ohlcv_pipeline_v2.sql...")
-        await _apply_migration(conn, migration_path)
-        click.echo("  Migration applied.")
-
-        if migration_002_path.exists():
-            click.echo("Applying migration 002_market_canonical_bridge.sql...")
-            await _apply_migration(conn, migration_002_path)
+        for migration_path in migration_paths:
+            click.echo(f"Applying migration {migration_path.name}...")
+            await _apply_migration(conn, migration_path)
             click.echo("  Migration applied.")
 
         click.echo(f"Seeding {len(instruments)} instruments...")
