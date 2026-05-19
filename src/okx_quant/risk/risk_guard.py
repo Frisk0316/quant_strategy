@@ -164,6 +164,16 @@ class RiskGuard:
                 return False
             note_reduce_only_bypass("daily_loss_limit")
 
+        if self.last_bypass_reason:
+            logger.warning(
+                "Reduce-only risk bypass",
+                inst_id=order.inst_id,
+                strategy=order.strategy,
+                cl_ord_id=order.cl_ord_id,
+                reason=self.last_bypass_reason,
+                notional=notional,
+            )
+
         return True
 
     # ------------------------------------------------------------------

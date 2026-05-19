@@ -32,7 +32,8 @@ For this patch:
    daily-loss hard stop is active so the system can close risk.
 5. Replay records allowed reduce-only bypasses as risk events with reason
    `allowed_reduce_only_bypass:<reason>` so the behavior is auditable in
-   artifacts.
+   artifacts. Multiple bypass causes are joined with `+`, for example
+   `allowed_reduce_only_bypass:kill_switch+position_limit`.
 6. Stale quote checks still apply to reduce-only orders.
 
 ## Non-Goals
@@ -51,5 +52,8 @@ For this patch:
   fat-finger protection.
 - Replay artifacts gain an audit trail for allowed reduce-only bypasses in
   `risk_events.csv`.
+- Live/shadow execution logs allowed reduce-only bypasses from the shared
+  `RiskGuard.check()` path with the same joined reason format.
 - Live/shadow promotion still requires the usual gates, including ctVal
-  provenance, OOS/WF/CPCV review, and explicit human approval.
+  provenance, OOS/WF/CPCV review, explicit human approval, and a shadow-period
+  audit sample showing any reduce-only bypass events for reviewer inspection.

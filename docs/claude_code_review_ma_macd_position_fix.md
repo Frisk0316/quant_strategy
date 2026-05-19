@@ -71,6 +71,8 @@ bars, became a truncated EMA/MACD rather than the full recursive
 - Allows reduce-only orders through position-limit increase checks.
 - Allows reduce-only orders while kill switch or daily/hard-stop state is active,
   so exits can reduce risk.
+- Logs allowed reduce-only bypasses from the shared `RiskGuard.check()` path,
+  using `+` to join multiple bypass causes.
 - Sets explicit block reasons such as `fat_finger`, `position_limit`,
   `stale_quote`, `daily_loss_limit`, and `kill_switch`.
 
@@ -125,6 +127,8 @@ bars, became a truncated EMA/MACD rather than the full recursive
   `stale_quote`.
 - Updates missing-ctVal test symbols to unknown `FOO/BAR` because current config
   now contains SOL/ADA specs.
+- Adds replay integration coverage that an allowed reduce-only bypass is
+  exported to `risk_event_log`.
 
 ## Validation Run
 
@@ -140,7 +144,7 @@ Targeted test suite:
 
 Result:
 
-- `64 passed, 1 warning`
+- `65 passed, 1 warning`
 - Warning: pytest cache could not write `.pytest_cache` due workspace permission.
 
 Replay artifacts:
