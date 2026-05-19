@@ -26,10 +26,14 @@ def detect_weekend_gaps(
     min_gap_bps: float = 25.0,
     max_fill_days: int = 2,
     max_gap_bps: float = 0.0,
-    allow_direction: str = "both",
+    allow_direction: str = "long_only",
     exclude_roll_days: bool = True,
 ) -> pd.DataFrame:
-    """Detect Friday-close to Sunday/Monday-open gaps and whether they filled."""
+    """Detect Friday-close to Sunday/Monday-open gaps and whether they filled.
+
+    The default direction filter is long_only as a regime-fitted BTC 2024-26
+    research baseline; re-validate against bear regimes before promotion.
+    """
     columns = [
         "prev_close_at", "open_at", "prev_close", "gap_open", "gap_bps",
         "direction", "is_roll_day", "filled", "filled_at", "time_to_fill_days",
@@ -178,7 +182,7 @@ def simulate_reverse_gap_trades(
     max_hold_days: int = 2,
     stop_loss_bps_mult: float = 1.5,
     max_gap_bps: float = 0.0,
-    allow_direction: str = "both",
+    allow_direction: str = "long_only",
     fee_bps_per_side: float = 5.0,
     slippage_bps_per_side: float = 1.0,
     entry_lag_hours: float = 0.0,
@@ -187,6 +191,8 @@ def simulate_reverse_gap_trades(
 
     Up CME gap -> short OKX; down CME gap -> long OKX. The target is based on
     OKX entry anchor +/- the CME gap percentage, not the absolute CME price.
+    The default direction filter keeps only down-gap/long trades because the
+    proxy edge is regime-fitted to the BTC 2024-26 uptrend.
     If target and stop both touch inside the same OHLC bar, the simulator uses
     whichever level is closer to the bar open; exact ties use the stop-loss as
     the conservative assumption.
@@ -637,8 +643,9 @@ def _json_safe(value):
 @click.option("--stop-loss-bps-mult", default=1.5, show_default=True, type=float)
 @click.option(
     "--allow-direction",
-    default="both",
+    default="long_only",
     show_default=True,
+    help="Direction filter; default is regime-fitted to BTC 2024-26 and needs bear-regime WF.",
     type=click.Choice(["both", "long_only", "short_only"]),
 )
 @click.option("--fee-bps-per-side", default=5.0, show_default=True, type=float)

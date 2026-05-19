@@ -197,7 +197,9 @@ class CMEGapFillStrategy(Strategy):
     """Delayed daily CME gap baseline for OKX BTC swap.
 
     This consumes daily CME observations after their publication policy. It is
-    not an intraday real-time gap-fill implementation.
+    not an intraday real-time gap-fill implementation. The default direction
+    filter is long_only, which is regime-fitted to the BTC 2024-26 uptrend and
+    must be re-validated against bear-regime walk-forward before promotion.
     """
 
     def __init__(self, params: dict) -> None:
@@ -209,7 +211,7 @@ class CMEGapFillStrategy(Strategy):
         self.max_hold_days = float(params.get("max_hold_days", 2.0))
         self.stop_loss_bps_mult = float(params.get("stop_loss_bps_mult", 1.5))
         self.max_gap_bps = float(params.get("max_gap_bps", 0.0))
-        self.allow_direction = str(params.get("allow_direction") or "both")
+        self.allow_direction = str(params.get("allow_direction") or "long_only")
         self.roll_dates = {str(d) for d in params.get("roll_dates", [])}
         self.max_missing_signal_ratio = float(params.get("max_missing_signal_ratio", 0.05))
         self.max_stale_signal_ratio = float(params.get("max_stale_signal_ratio", 0.05))
@@ -478,6 +480,11 @@ def _is_roll_day(payload: FeaturePayload, configured_roll_dates: set[str]) -> bo
 
 
 def _trade_direction_allowed(trade_direction: str, allow_direction: str) -> bool:
+    """Return whether a gap trade passes the configured direction filter.
+
+    The configured default is long_only for the research baseline; that default
+    is regime-fitted and should be revisited if bear-regime validation fails.
+    """
     if allow_direction == "long_only":
         return trade_direction == "long"
     if allow_direction == "short_only":

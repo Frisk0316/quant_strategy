@@ -320,8 +320,8 @@ class CMEGapFillParams(BaseModel):
     stop_loss_bps_mult: float = Field(default=1.5, ge=0.0)
     # 0 disables; >0 skips oversized gaps that often behave like regime moves.
     max_gap_bps: float = Field(default=0.0, ge=0.0)
-    # long_only trades only down-gaps; short_only trades only up-gaps.
-    allow_direction: Literal["both", "long_only", "short_only"] = "both"
+    # Regime-fitted default: long_only trades only down-gaps; short_only trades only up-gaps.
+    allow_direction: Literal["both", "long_only", "short_only"] = "long_only"
     roll_dates: list[str] = []
     max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)

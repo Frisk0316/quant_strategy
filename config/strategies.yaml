@@ -155,8 +155,8 @@ cme_gap_fill:
   stop_loss_bps_mult: 1.5
   # Optional oversize-gap filter; 0 disables upper bound.
   max_gap_bps: 0.0
-  # both | long_only (down-gaps only) | short_only (up-gaps only)
-  allow_direction: both
+  # Regime-fitted to BTC 2024-26; revert if bear-regime WF fails.
+  allow_direction: long_only
   roll_dates: []
   max_missing_signal_ratio: 0.05
   max_stale_signal_ratio: 0.05

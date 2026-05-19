@@ -28,7 +28,7 @@ def test_detect_weekend_gaps_and_fill_probability():
         "close": [100.0, 101.0, 101.0, 100.0, 99.0],
     })
 
-    gaps = detect_weekend_gaps(bars, min_gap_bps=10, max_fill_days=2)
+    gaps = detect_weekend_gaps(bars, min_gap_bps=10, max_fill_days=2, allow_direction="both")
     summary = summarize_gaps(gaps, thresholds=(10, 200))
 
     assert len(gaps) == 2
@@ -70,8 +70,14 @@ def test_detect_weekend_gaps_excludes_roll_day_artifacts_by_default():
         "is_roll_day": [False, True],
     })
 
-    gaps = detect_weekend_gaps(bars, min_gap_bps=10, max_fill_days=1)
-    included = detect_weekend_gaps(bars, min_gap_bps=10, max_fill_days=1, exclude_roll_days=False)
+    gaps = detect_weekend_gaps(bars, min_gap_bps=10, max_fill_days=1, allow_direction="both")
+    included = detect_weekend_gaps(
+        bars,
+        min_gap_bps=10,
+        max_fill_days=1,
+        allow_direction="both",
+        exclude_roll_days=False,
+    )
 
     assert gaps.empty
     assert len(included) == 1
@@ -99,6 +105,7 @@ def test_simulate_reverse_gap_trades_uses_okx_anchor_target_and_reports_metrics(
         gaps,
         okx,
         max_hold_days=5,
+        allow_direction="both",
         fee_bps_per_side=0,
         slippage_bps_per_side=0,
     )
@@ -138,6 +145,7 @@ def test_simulate_reverse_gap_trades_records_stop_loss_exits():
         okx,
         max_hold_days=1,
         stop_loss_bps_mult=1.5,
+        allow_direction="both",
         fee_bps_per_side=0,
         slippage_bps_per_side=0,
     )
@@ -216,6 +224,7 @@ def test_detect_weekend_gaps_applies_min_and_max_gap_filters():
         min_gap_bps=25.0,
         max_gap_bps=400.0,
         max_fill_days=1,
+        allow_direction="both",
     )
 
     assert len(gaps) == 1
@@ -239,3 +248,35 @@ def test_detect_weekend_gaps_long_only_excludes_up_gaps():
     )
 
     assert gaps.empty
+
+
+def test_simulate_reverse_gap_trades_default_excludes_short_side():
+    gaps = pd.DataFrame({
+        "open_at": [
+            "2024-01-08T00:00:00+00:00",
+            "2024-01-15T00:00:00+00:00",
+        ],
+        "direction": ["up", "down"],
+        "gap_bps": [100.0, 100.0],
+        "filled": [False, False],
+        "time_to_fill_days": [None, None],
+        "is_roll_day": [False, False],
+    })
+    okx = pd.DataFrame({
+        "ts": pd.to_datetime(["2024-01-08 00:00Z", "2024-01-15 00:00Z"]),
+        "open": [100.0, 100.0],
+        "high": [101.0, 101.0],
+        "low": [99.0, 99.0],
+        "close": [100.0, 100.0],
+    })
+
+    trades = simulate_reverse_gap_trades(
+        gaps,
+        okx,
+        max_hold_days=1,
+        fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+
+    assert len(trades) == 1
+    assert set(trades["side"]) == {"long"}
