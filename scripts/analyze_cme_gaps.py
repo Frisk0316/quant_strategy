@@ -23,8 +23,10 @@ from okx_quant.data.external_store import ExternalDataStore
 def detect_weekend_gaps(
     cme_df: pd.DataFrame,
     *,
-    min_gap_bps: float = 10.0,
-    max_fill_days: int = 5,
+    min_gap_bps: float = 25.0,
+    max_fill_days: int = 2,
+    max_gap_bps: float = 0.0,
+    allow_direction: str = "both",
     exclude_roll_days: bool = True,
 ) -> pd.DataFrame:
     """Detect Friday-close to Sunday/Monday-open gaps and whether they filled."""
@@ -55,6 +57,10 @@ def detect_weekend_gaps(
         if gap_bps < min_gap_bps:
             continue
         direction = "up" if gap_open > prev_close else "down"
+        if max_gap_bps > 0 and gap_bps > max_gap_bps:
+            continue
+        if not _gap_direction_allowed(direction, allow_direction):
+            continue
         search = bars.iloc[idx: idx + max_fill_days + 1]
         filled_at = None
         if direction == "up":
@@ -169,7 +175,10 @@ def simulate_reverse_gap_trades(
     gaps: pd.DataFrame,
     okx_candles: pd.DataFrame,
     *,
-    max_hold_days: int = 5,
+    max_hold_days: int = 2,
+    stop_loss_bps_mult: float = 1.5,
+    max_gap_bps: float = 0.0,
+    allow_direction: str = "both",
     fee_bps_per_side: float = 5.0,
     slippage_bps_per_side: float = 1.0,
     entry_lag_hours: float = 0.0,
@@ -178,11 +187,14 @@ def simulate_reverse_gap_trades(
 
     Up CME gap -> short OKX; down CME gap -> long OKX. The target is based on
     OKX entry anchor +/- the CME gap percentage, not the absolute CME price.
+    If target and stop both touch inside the same OHLC bar, the simulator uses
+    whichever level is closer to the bar open; exact ties use the stop-loss as
+    the conservative assumption.
     """
     columns = [
         "open_at", "direction", "side", "gap_bps", "entry_ts", "entry_price",
-        "target_price", "exit_ts", "exit_price", "exit_reason", "holding_hours",
-        "gross_return", "cost_return", "net_return",
+        "target_price", "stop_price", "exit_ts", "exit_price", "exit_reason",
+        "holding_hours", "gross_return", "cost_return", "net_return",
     ]
     if gaps.empty or okx_candles.empty:
         return pd.DataFrame(columns=columns)
@@ -206,10 +218,15 @@ def simulate_reverse_gap_trades(
             continue
 
         gap_bps = float(gap.gap_bps)
+        if max_gap_bps > 0 and gap_bps > max_gap_bps:
+            continue
         gap_pct = gap_bps / 10_000.0
         is_up_gap = str(gap.direction) == "up"
+        if not _gap_direction_allowed(str(gap.direction), allow_direction):
+            continue
         side = "short" if is_up_gap else "long"
         target_price = entry_price * (1.0 - gap_pct if is_up_gap else 1.0 + gap_pct)
+        stop_price = _stop_price(entry_price, gap_bps, is_up_gap, stop_loss_bps_mult)
         deadline = entry_ts + pd.Timedelta(days=int(max_hold_days))
         window = candles[(candles["ts"] >= entry_ts) & (candles["ts"] <= deadline)]
         if window.empty:
@@ -218,13 +235,41 @@ def simulate_reverse_gap_trades(
         exit_ts: pd.Timestamp | None = None
         exit_price = target_price
         exit_reason = "target_fill"
-        if is_up_gap:
-            hits = window[window["low"].astype(float) <= target_price]
-        else:
-            hits = window[window["high"].astype(float) >= target_price]
-        if not hits.empty:
-            exit_ts = pd.Timestamp(hits.iloc[0]["ts"])
-        else:
+        for bar in window.itertuples(index=False):
+            bar_ts = pd.Timestamp(bar.ts)
+            target_hit = (
+                float(bar.low) <= target_price
+                if is_up_gap else float(bar.high) >= target_price
+            )
+            stop_hit = False
+            if stop_price is not None:
+                stop_hit = (
+                    float(bar.high) >= stop_price
+                    if is_up_gap else float(bar.low) <= stop_price
+                )
+            if target_hit and stop_hit:
+                exit_ts = bar_ts
+                bar_open = float(bar.open)
+                target_distance = abs(bar_open - float(target_price))
+                stop_distance = abs(bar_open - float(stop_price))
+                if target_distance < stop_distance:
+                    exit_price = float(target_price)
+                    exit_reason = "target_fill"
+                else:
+                    exit_price = float(stop_price)
+                    exit_reason = "stop_loss"
+                break
+            if target_hit:
+                exit_ts = bar_ts
+                exit_price = float(target_price)
+                exit_reason = "target_fill"
+                break
+            if stop_hit:
+                exit_ts = bar_ts
+                exit_price = float(stop_price)
+                exit_reason = "stop_loss"
+                break
+        if exit_ts is None:
             last = window.iloc[-1]
             exit_ts = pd.Timestamp(last["ts"])
             exit_price = float(last["close"])
@@ -243,6 +288,7 @@ def simulate_reverse_gap_trades(
             "entry_ts": entry_ts.isoformat(),
             "entry_price": entry_price,
             "target_price": float(target_price),
+            "stop_price": float(stop_price) if stop_price is not None else None,
             "exit_ts": exit_ts.isoformat(),
             "exit_price": float(exit_price),
             "exit_reason": exit_reason,
@@ -285,6 +331,7 @@ def summarize_trades(trades: pd.DataFrame, *, annualization_days: float = 365.0)
     return {
         "trade_count": int(len(trades)),
         "target_fill_trade_count": int((trades["exit_reason"] == "target_fill").sum()),
+        "stop_loss_trade_count": int((trades["exit_reason"] == "stop_loss").sum()),
         "timeout_trade_count": int((trades["exit_reason"] == "timeout").sum()),
         "target_fill_rate": float((trades["exit_reason"] == "target_fill").mean()),
         "total_return": total_return,
@@ -426,6 +473,28 @@ def _sharpe(returns: pd.Series, *, annualization_days: float = 365.0) -> Optiona
     return float((returns.mean() / std) * (annualization_days ** 0.5))
 
 
+def _stop_price(
+    entry_price: float,
+    gap_bps: float,
+    is_up_gap: bool,
+    stop_loss_bps_mult: float,
+) -> Optional[float]:
+    if stop_loss_bps_mult <= 0:
+        return None
+    stop_pct = float(stop_loss_bps_mult) * float(gap_bps) / 10_000.0
+    if is_up_gap:
+        return entry_price * (1.0 + stop_pct)
+    return entry_price * (1.0 - stop_pct)
+
+
+def _gap_direction_allowed(gap_direction: str, allow_direction: str) -> bool:
+    if allow_direction == "long_only":
+        return gap_direction == "down"
+    if allow_direction == "short_only":
+        return gap_direction == "up"
+    return True
+
+
 def _is_weekend_reopen(prev_ts: pd.Timestamp, cur_ts: pd.Timestamp) -> bool:
     gap_days = (cur_ts.date() - prev_ts.date()).days
     if prev_ts.weekday() != 4 or gap_days < 2:
@@ -538,6 +607,10 @@ def _research_status(
     }
 
 
+def _is_research_proxy_dataset(dataset_id: str) -> bool:
+    return "yfinance" in str(dataset_id or "").casefold()
+
+
 def _json_safe(value):
     if isinstance(value, dict):
         return {key: _json_safe(item) for key, item in value.items()}
@@ -558,8 +631,16 @@ def _json_safe(value):
 @click.option("--okx-backend", default="parquet", show_default=True, type=click.Choice(["parquet", "postgres", "market"]))
 @click.option("--start", default=None)
 @click.option("--end", default=None)
-@click.option("--min-gap-bps", default=10.0, show_default=True, type=float)
-@click.option("--max-fill-days", default=5, show_default=True, type=int)
+@click.option("--min-gap-bps", default=25.0, show_default=True, type=float)
+@click.option("--max-gap-bps", default=0.0, show_default=True, type=float)
+@click.option("--max-fill-days", "--max-hold-days", default=2, show_default=True, type=int)
+@click.option("--stop-loss-bps-mult", default=1.5, show_default=True, type=float)
+@click.option(
+    "--allow-direction",
+    default="both",
+    show_default=True,
+    type=click.Choice(["both", "long_only", "short_only"]),
+)
 @click.option("--fee-bps-per-side", default=5.0, show_default=True, type=float)
 @click.option("--slippage-bps-per-side", default=1.0, show_default=True, type=float)
 @click.option("--entry-lag-hours", default=0.0, show_default=True, type=float)
@@ -577,7 +658,10 @@ def cli(
     start: Optional[str],
     end: Optional[str],
     min_gap_bps: float,
+    max_gap_bps: float,
     max_fill_days: int,
+    stop_loss_bps_mult: float,
+    allow_direction: str,
     fee_bps_per_side: float,
     slippage_bps_per_side: float,
     entry_lag_hours: float,
@@ -601,6 +685,8 @@ def cli(
         source,
         min_gap_bps=min_gap_bps,
         max_fill_days=max_fill_days,
+        max_gap_bps=max_gap_bps,
+        allow_direction=allow_direction,
         exclude_roll_days=not include_roll_days,
     )
     try:
@@ -623,14 +709,27 @@ def cli(
         gaps,
         okx,
         max_hold_days=max_fill_days,
+        stop_loss_bps_mult=stop_loss_bps_mult,
+        max_gap_bps=max_gap_bps,
+        allow_direction=allow_direction,
         fee_bps_per_side=fee_bps_per_side,
         slippage_bps_per_side=slippage_bps_per_side,
         entry_lag_hours=entry_lag_hours,
     )
     payload = {
         "dataset_id": dataset,
+        "research_proxy_only": _is_research_proxy_dataset(dataset),
+        "source_caveat": (
+            "Yahoo/yfinance futures data is an unofficial research proxy and must not be used "
+            "as deployment, promotion, shadow, or live-trading evidence."
+            if _is_research_proxy_dataset(dataset)
+            else None
+        ),
         "min_gap_bps": min_gap_bps,
+        "max_gap_bps": max_gap_bps,
         "max_fill_days": max_fill_days,
+        "stop_loss_bps_mult": stop_loss_bps_mult,
+        "allow_direction": allow_direction,
         "exclude_roll_days": not include_roll_days,
         "okx_symbol": okx_symbol,
         "okx_bar": okx_bar,

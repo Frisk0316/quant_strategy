@@ -114,3 +114,128 @@ def test_simulate_reverse_gap_trades_uses_okx_anchor_target_and_reports_metrics(
     holding = trade_holding_distribution(trades, buckets_hours=(1, 6))
     assert holding["trade_count"] == 1
     assert holding["buckets"][0]["count"] == 1
+
+
+def test_simulate_reverse_gap_trades_records_stop_loss_exits():
+    gaps = pd.DataFrame({
+        "open_at": ["2024-01-08T00:00:00+00:00"],
+        "direction": ["up"],
+        "gap_bps": [100.0],
+        "filled": [False],
+        "time_to_fill_days": [None],
+        "is_roll_day": [False],
+    })
+    okx = pd.DataFrame({
+        "ts": pd.to_datetime(["2024-01-08 00:00Z", "2024-01-08 01:00Z"]),
+        "open": [100.0, 101.0],
+        "high": [100.5, 101.6],
+        "low": [99.2, 100.8],
+        "close": [100.2, 101.4],
+    })
+
+    trades = simulate_reverse_gap_trades(
+        gaps,
+        okx,
+        max_hold_days=1,
+        stop_loss_bps_mult=1.5,
+        fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    metrics = summarize_trades(trades)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["side"] == "short"
+    assert trades.iloc[0]["stop_price"] == pytest.approx(101.5)
+    assert trades.iloc[0]["exit_reason"] == "stop_loss"
+    assert trades.iloc[0]["net_return"] == pytest.approx(-0.015)
+    assert metrics["stop_loss_trade_count"] == 1
+
+
+def test_simulate_reverse_gap_trades_drops_above_max_gap_bps():
+    gaps = pd.DataFrame({
+        "open_at": ["2024-01-08T00:00:00+00:00"],
+        "direction": ["up"],
+        "gap_bps": [300.0],
+        "filled": [False],
+        "time_to_fill_days": [None],
+        "is_roll_day": [False],
+    })
+    okx = pd.DataFrame({
+        "ts": pd.to_datetime(["2024-01-08 00:00Z"]),
+        "open": [100.0],
+        "high": [101.0],
+        "low": [99.0],
+        "close": [100.0],
+    })
+
+    trades = simulate_reverse_gap_trades(gaps, okx, max_gap_bps=200.0)
+
+    assert trades.empty
+
+
+def test_simulate_reverse_gap_trades_long_only_excludes_short_side():
+    gaps = pd.DataFrame({
+        "open_at": ["2024-01-08T00:00:00+00:00"],
+        "direction": ["up"],
+        "gap_bps": [100.0],
+        "filled": [False],
+        "time_to_fill_days": [None],
+        "is_roll_day": [False],
+    })
+    okx = pd.DataFrame({
+        "ts": pd.to_datetime(["2024-01-08 00:00Z"]),
+        "open": [100.0],
+        "high": [101.0],
+        "low": [99.0],
+        "close": [100.0],
+    })
+
+    trades = simulate_reverse_gap_trades(gaps, okx, allow_direction="long_only")
+
+    assert trades.empty
+
+
+def test_detect_weekend_gaps_applies_min_and_max_gap_filters():
+    bars = pd.DataFrame({
+        "ts": pd.to_datetime([
+            "2024-01-05",
+            "2024-01-08",
+            "2024-01-12",
+            "2024-01-15",
+            "2024-01-19",
+            "2024-01-22",
+        ], utc=True),
+        "open": [100.0, 100.1, 101.0, 104.0, 104.0, 109.2],
+        "high": [101.0, 101.0, 102.0, 105.0, 105.0, 110.0],
+        "low": [99.0, 99.0, 100.0, 103.0, 103.0, 108.0],
+        "close": [100.0, 101.0, 101.0, 104.0, 104.0, 109.0],
+    })
+
+    gaps = detect_weekend_gaps(
+        bars,
+        min_gap_bps=25.0,
+        max_gap_bps=400.0,
+        max_fill_days=1,
+    )
+
+    assert len(gaps) == 1
+    assert gaps.iloc[0]["open_at"] == "2024-01-15T00:00:00+00:00"
+
+
+def test_detect_weekend_gaps_long_only_excludes_up_gaps():
+    bars = pd.DataFrame({
+        "ts": pd.to_datetime(["2024-01-05", "2024-01-08"], utc=True),
+        "open": [100.0, 103.0],
+        "high": [101.0, 104.0],
+        "low": [99.0, 102.0],
+        "close": [100.0, 103.0],
+    })
+
+    gaps = detect_weekend_gaps(
+        bars,
+        min_gap_bps=10,
+        max_fill_days=1,
+        allow_direction="long_only",
+    )
+
+    assert gaps.empty

@@ -312,8 +312,16 @@ class CMEGapFillParams(BaseModel):
     symbol: str = "BTC-USDT-SWAP"
     dataset_id: str = "cme_btc1_continuous"
     max_age_seconds: int = Field(default=604800, gt=0)
-    min_gap_bps: float = Field(default=10.0, ge=0)
-    max_hold_days: float = Field(default=5.0, gt=0)
+    # Exclude dust gaps below likely round-trip costs.
+    min_gap_bps: float = Field(default=25.0, ge=0)
+    # Most proxy fills occur quickly; two days trims the timeout tail.
+    max_hold_days: float = Field(default=2.0, gt=0)
+    # 0 disables; >0 exits at stop_loss_bps_mult * gap_bps adverse from OKX entry.
+    stop_loss_bps_mult: float = Field(default=1.5, ge=0.0)
+    # 0 disables; >0 skips oversized gaps that often behave like regime moves.
+    max_gap_bps: float = Field(default=0.0, ge=0.0)
+    # long_only trades only down-gaps; short_only trades only up-gaps.
+    allow_direction: Literal["both", "long_only", "short_only"] = "both"
     roll_dates: list[str] = []
     max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)

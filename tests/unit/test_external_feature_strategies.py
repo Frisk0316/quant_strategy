@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from okx_quant.core.events import Event, EvtType, FeaturePayload, FillPayload, MarketPayload
 from okx_quant.data.okx_book import OkxBook
 from okx_quant.strategies.external_features import CMEGapFillStrategy, FearGreedSentimentStrategy
@@ -131,6 +133,121 @@ def test_cme_gap_fill_detects_up_gap_short_and_exits_on_target():
 
     assert exit_signal.side == "buy"
     assert exit_signal.metadata["reason"] == "target_fill"
+
+
+def test_cme_gap_fill_stop_loss_exits_short_when_adverse_threshold_hit():
+    strategy = CMEGapFillStrategy({
+        "min_gap_bps": 10,
+        "max_hold_days": 5,
+        "stop_loss_bps_mult": 1.5,
+    })
+    friday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-05"),
+        observed_at=_ms("2024-01-05"),
+        published_at=_ms("2024-01-05"),
+        fields={"open": 100.0, "high": 102.0, "low": 99.0, "close": 100.0},
+    )
+    monday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-08"),
+        observed_at=_ms("2024-01-08"),
+        published_at=_ms("2024-01-08"),
+        fields={"open": 102.0, "high": 103.0, "low": 101.0, "close": 102.0},
+    )
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=friday)))
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=monday)))
+
+    event, book = _market(_ms("2024-01-08 01:00"), 102.0)
+    entry = asyncio.run(strategy.on_market(event, book))
+    asyncio.run(strategy.on_fill(_fill(strategy.name, "sell", "entry")))
+
+    event, book = _market(_ms("2024-01-08 02:00"), 106.0)
+    exit_signal = asyncio.run(strategy.on_market(event, book))
+
+    assert entry.metadata["stop_loss_price"] == pytest.approx(102.0 * 1.03)
+    assert exit_signal.side == "buy"
+    assert exit_signal.metadata["reason"] == "stop_loss"
+
+
+def test_cme_gap_fill_respects_max_gap_bps_filter():
+    strategy = CMEGapFillStrategy({
+        "min_gap_bps": 10,
+        "max_gap_bps": 100,
+        "max_hold_days": 5,
+    })
+    friday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-05"),
+        observed_at=_ms("2024-01-05"),
+        published_at=_ms("2024-01-05"),
+        fields={"open": 100.0, "high": 102.0, "low": 99.0, "close": 100.0},
+    )
+    monday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-08"),
+        observed_at=_ms("2024-01-08"),
+        published_at=_ms("2024-01-08"),
+        fields={"open": 102.0, "high": 103.0, "low": 101.0, "close": 102.0},
+    )
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=friday)))
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=monday)))
+    event, book = _market(_ms("2024-01-08 01:00"), 102.0)
+
+    assert asyncio.run(strategy.on_market(event, book)) is None
+    assert strategy.coverage_status["max_gap_skip_count"] == 1
+
+
+def test_cme_gap_fill_long_only_skips_up_gaps():
+    strategy = CMEGapFillStrategy({
+        "min_gap_bps": 10,
+        "allow_direction": "long_only",
+        "max_hold_days": 5,
+    })
+    friday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-05"),
+        observed_at=_ms("2024-01-05"),
+        published_at=_ms("2024-01-05"),
+        fields={"open": 100.0, "high": 102.0, "low": 99.0, "close": 100.0},
+    )
+    monday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-08"),
+        observed_at=_ms("2024-01-08"),
+        published_at=_ms("2024-01-08"),
+        fields={"open": 102.0, "high": 103.0, "low": 101.0, "close": 102.0},
+    )
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=friday)))
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=monday)))
+    event, book = _market(_ms("2024-01-08 01:00"), 102.0)
+
+    assert asyncio.run(strategy.on_market(event, book)) is None
+    assert strategy.coverage_status["direction_skip_count"] == 1
+
+
+def test_cme_gap_fill_default_max_hold_days_is_two_days():
+    strategy = CMEGapFillStrategy({"min_gap_bps": 10})
+    friday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-05"),
+        observed_at=_ms("2024-01-05"),
+        published_at=_ms("2024-01-05"),
+        fields={"open": 100.0, "high": 102.0, "low": 99.0, "close": 100.0},
+    )
+    monday = FeaturePayload(
+        dataset_id="cme_btc1_continuous",
+        ts=_ms("2024-01-08"),
+        observed_at=_ms("2024-01-08"),
+        published_at=_ms("2024-01-08"),
+        fields={"open": 102.0, "high": 103.0, "low": 101.0, "close": 102.0},
+    )
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=friday)))
+    asyncio.run(strategy.on_market(Event(EvtType.FEATURE, payload=monday)))
+    event, book = _market(_ms("2024-01-08 01:00"), 102.0)
+    entry = asyncio.run(strategy.on_market(event, book))
+
+    assert entry.metadata["expires_at"] - monday.ts == 2 * 86400 * 1000
 
 
 def test_cme_gap_fill_detects_friday_to_tuesday_holiday_gap():

@@ -205,8 +205,11 @@ class CMEGapFillStrategy(Strategy):
         self.symbol = str(params.get("symbol") or "BTC-USDT-SWAP")
         self.dataset_id = str(params.get("dataset_id") or "cme_btc1_continuous")
         self.max_age_seconds = int(params.get("max_age_seconds", 7 * 86400))
-        self.min_gap_bps = float(params.get("min_gap_bps", 10.0))
-        self.max_hold_days = float(params.get("max_hold_days", 5.0))
+        self.min_gap_bps = float(params.get("min_gap_bps", 25.0))
+        self.max_hold_days = float(params.get("max_hold_days", 2.0))
+        self.stop_loss_bps_mult = float(params.get("stop_loss_bps_mult", 1.5))
+        self.max_gap_bps = float(params.get("max_gap_bps", 0.0))
+        self.allow_direction = str(params.get("allow_direction") or "both")
         self.roll_dates = {str(d) for d in params.get("roll_dates", [])}
         self.max_missing_signal_ratio = float(params.get("max_missing_signal_ratio", 0.05))
         self.max_stale_signal_ratio = float(params.get("max_stale_signal_ratio", 0.05))
@@ -227,6 +230,8 @@ class CMEGapFillStrategy(Strategy):
             "feature_gate_passed": True,
             "detected_gap_count": 0,
             "roll_skip_count": 0,
+            "max_gap_skip_count": 0,
+            "direction_skip_count": 0,
             "last_feature_ts": None,
         }
 
@@ -269,6 +274,8 @@ class CMEGapFillStrategy(Strategy):
             target = gap.okx_target_price
             if target is not None and self._target_touched(gap.direction, price, target):
                 return self._gap_signal(gap, price, "exit", "target_fill")
+            if self._stop_loss_touched(gap, price):
+                return self._gap_signal(gap, price, "exit", "stop_loss")
             if ts >= gap.expires_at:
                 return self._gap_signal(gap, price, "exit", "timeout")
             return None
@@ -294,6 +301,14 @@ class CMEGapFillStrategy(Strategy):
                     gap_bps = abs(current_open - prev_close) / prev_close * 10_000.0
                     if gap_bps >= self.min_gap_bps:
                         direction = "short" if current_open > prev_close else "long"
+                        if self.max_gap_bps > 0 and gap_bps > self.max_gap_bps:
+                            self.coverage_status["max_gap_skip_count"] += 1
+                            self._previous_feature = payload
+                            return
+                        if not _trade_direction_allowed(direction, self.allow_direction):
+                            self.coverage_status["direction_skip_count"] += 1
+                            self._previous_feature = payload
+                            return
                         self._active_gap = _ActiveGap(
                             direction=direction,
                             cme_target_price=float(prev_close),
@@ -334,6 +349,8 @@ class CMEGapFillStrategy(Strategy):
                 "cme_target_price": gap.cme_target_price,
                 "cme_gap_open_price": gap.cme_gap_open_price,
                 "gap_bps": gap.gap_bps,
+                "stop_loss_bps_mult": self.stop_loss_bps_mult,
+                "stop_loss_price": self._stop_loss_price(gap),
                 "detected_ts": gap.detected_ts,
                 "expires_at": gap.expires_at,
                 "cancel_existing": True,
@@ -366,6 +383,22 @@ class CMEGapFillStrategy(Strategy):
         if direction == "short":
             return price <= target
         return price >= target
+
+    def _stop_loss_touched(self, gap: _ActiveGap, price: float) -> bool:
+        stop_price = self._stop_loss_price(gap)
+        if stop_price is None:
+            return False
+        if gap.direction == "short":
+            return price >= stop_price
+        return price <= stop_price
+
+    def _stop_loss_price(self, gap: _ActiveGap) -> Optional[float]:
+        if self.stop_loss_bps_mult <= 0 or gap.okx_entry_anchor_price is None:
+            return None
+        stop_pct = self.stop_loss_bps_mult * float(gap.gap_bps) / 10_000.0
+        if gap.direction == "short":
+            return gap.okx_entry_anchor_price * (1.0 + stop_pct)
+        return gap.okx_entry_anchor_price * (1.0 - stop_pct)
 
     @staticmethod
     def _okx_target_from_anchor(direction: str, anchor_price: float, gap_bps: float) -> float:
@@ -442,3 +475,11 @@ def _is_roll_day(payload: FeaturePayload, configured_roll_dates: set[str]) -> bo
     if isinstance(field_flag, str):
         field_flag = field_flag.strip().casefold() in {"1", "true", "yes", "y"}
     return bool(field_flag) or (observed_date in configured_roll_dates if observed_date else False)
+
+
+def _trade_direction_allowed(trade_direction: str, allow_direction: str) -> bool:
+    if allow_direction == "long_only":
+        return trade_direction == "long"
+    if allow_direction == "short_only":
+        return trade_direction == "short"
+    return True
