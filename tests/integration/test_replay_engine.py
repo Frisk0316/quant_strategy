@@ -103,7 +103,7 @@ def test_risk_guard_blocks_are_visible_in_replay_result(minimal_cfg, btc_parquet
     )
 
     assert result.rejected_log
-    assert result.rejected_log[0]["reason"] == "risk_guard_block"
+    assert result.rejected_log[0]["reason"] == "stale_quote"
     assert result.risk_event_log
 
 
@@ -112,10 +112,10 @@ def test_replay_default_specs_reject_non_btc_eth_pairs_without_metadata(minimal_
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
-            "symbol_y": "SOL-USDT-SWAP",
-            "symbol_x": "ADA-USDT-SWAP",
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
         }
     )
 
-    with pytest.raises(ValueError, match="Missing ctVal for non-BTC/ETH swap"):
+    with pytest.raises(ValueError, match="Missing ctVal for swap"):
         ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])

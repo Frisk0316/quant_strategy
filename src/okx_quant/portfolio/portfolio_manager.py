@@ -194,13 +194,44 @@ class PortfolioManager:
         """Place a single directional order."""
         inst_id = inst_id or sig.inst_id
         side = side or sig.side
+        order_metadata = metadata if metadata is not None else dict(sig.metadata)
         price = price if price is not None else self._resolve_price(inst_id, sig.fair_value)
         if price <= 0:
             return
-        sz_str, notional_usd = self._compute_order_quantity(inst_id, price, size_usd)
+        pos = self._positions.get_position(inst_id)
+        is_long_flat = order_metadata.get("mode") == "long_flat"
+        action = order_metadata.get("action")
+        reduces_position = (pos.size > 0 and side == "sell") or (pos.size < 0 and side == "buy")
+        use_long_flat_close_sizing = is_long_flat and action == "exit" and reduces_position
+
+        if is_long_flat and action == "exit" and not reduces_position:
+            logger.debug(
+                "Skipping long/flat exit because it would not reduce an existing position",
+                inst_id=inst_id,
+                side=side,
+                position_size=pos.size,
+            )
+            return
+        if is_long_flat and action == "entry" and pos.size > 0:
+            logger.debug(
+                "Skipping long/flat entry because a long position already exists",
+                inst_id=inst_id,
+                position_size=pos.size,
+            )
+            return
+
+        if use_long_flat_close_sizing:
+            sz_str, notional_usd = self._compute_reduce_order_quantity(inst_id, price, abs(pos.size))
+        else:
+            sz_str, notional_usd = self._compute_order_quantity(inst_id, price, size_usd)
         if not sz_str:
             return
         cl_ord_id = uuid.uuid4().hex[:32]
+        order_metadata = {
+            **order_metadata,
+            "position_size_before": pos.size,
+            "reduce_only": use_long_flat_close_sizing,
+        }
         order = OrderPayload(
             cl_ord_id=cl_ord_id,
             inst_id=inst_id,
@@ -210,16 +241,41 @@ class PortfolioManager:
             px=str(price),
             td_mode=td_mode,
             strategy=sig.strategy,
+            reduce_only=use_long_flat_close_sizing,
             notional_usd=notional_usd,
-            metadata=metadata if metadata is not None else dict(sig.metadata),
+            metadata=order_metadata,
         )
-        pos = self._positions.get_position(inst_id)
-        # Reducing/closing orders don't increase position risk; pass 0 so the
-        # position-limit check is not triggered for exit trades.
-        would_reduce = (pos.size > 0 and side == "sell") or (pos.size < 0 and side == "buy")
-        check_notional = 0.0 if would_reduce else pos.notional
+        # Legacy non-long/flat reducing orders keep the historical risk context
+        # until P2 close sizing is explicitly reviewed for those strategies.
+        check_notional = pos.notional if use_long_flat_close_sizing else (0.0 if reduces_position else pos.notional)
         if self._risk.check(order, check_notional, self._resolve_price(inst_id, price)):
             await self._bus.put(Event(EvtType.ORDER, payload=order))
+
+    def _compute_reduce_order_quantity(
+        self,
+        inst_id: str,
+        price: float,
+        position_size: float,
+    ) -> tuple[str, float]:
+        specs = self._specs.get(inst_id, {})
+        if "ctVal" in specs:
+            ct_val = validate_ct_val(float(specs["ctVal"]), inst_id)
+        else:
+            ct_val = _fallback_ct_val(inst_id)
+        min_sz = float(specs.get("minSz", 1 if "SWAP" in inst_id else 0.0001))
+        lot_sz = float(specs.get("lotSz", 1 if "SWAP" in inst_id else 0.0001))
+        if price <= 0 or lot_sz <= 0:
+            return "", 0.0
+        steps_float = position_size / lot_sz
+        nearest_steps = round(steps_float)
+        if abs(steps_float - nearest_steps) <= 1e-8:
+            rounded_qty = float(nearest_steps) * lot_sz
+        else:
+            rounded_qty = float(int(steps_float)) * lot_sz
+        if rounded_qty < min_sz:
+            return "", 0.0
+        notional_usd = rounded_qty * ct_val * price
+        return self._format_size(rounded_qty, lot_sz), notional_usd
 
     async def _place_linked_hedges(self, sig: SignalPayload, base_size_usd: float) -> None:
         metadata = sig.metadata or {}

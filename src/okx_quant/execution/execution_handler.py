@@ -67,6 +67,11 @@ class ExecutionHandler:
         """
         order: OrderPayload = event.payload
 
+        # Long/flat replacement orders intentionally clear any stale same-strategy
+        # quote on the instrument before submitting the new direction.
+        if order.metadata.get("cancel_existing"):
+            await self._order_manager.cancel_all_quotes(order.strategy, order.inst_id)
+
         # Stale quote check
         mid = self._last_mids.get(order.inst_id, 0.0)
         if mid > 0:

@@ -37,6 +37,12 @@ def make_order(inst_id="BTC-USDT-SWAP", sz="1", px="100.0", side="buy", strategy
     )
 
 
+def make_reduce_only_order(**kwargs):
+    order = make_order(**kwargs)
+    order.reduce_only = True
+    return order
+
+
 def test_normal_order_passes():
     rg = make_risk_guard(equity=10_000.0)
     order = make_order(sz="1", px="100.0")  # Notional = 100
@@ -47,6 +53,31 @@ def test_fat_finger_blocked():
     rg = make_risk_guard(equity=10_000.0, max_order_notional_usd=500.0)
     order = make_order(sz="10", px="100.0")  # Notional = 1000 > 500
     assert rg.check(order) is False
+    assert rg.last_block_reason == "fat_finger"
+
+
+def test_reduce_only_close_still_respects_fat_finger_cap():
+    rg = make_risk_guard(equity=10_000.0, max_order_notional_usd=500.0)
+    order = make_reduce_only_order(sz="10", px="100.0", side="sell")
+
+    assert rg.check(order, current_pos_notional=1_000.0, current_mid=100.0) is False
+    assert rg.last_block_reason == "fat_finger"
+
+
+def test_reduce_only_close_bypasses_position_limit_increase_check():
+    rg = make_risk_guard(equity=10_000.0, max_pos_pct_equity=0.10, max_order_notional_usd=5_000.0)
+    order = make_reduce_only_order(sz="10", px="100.0", side="sell")
+
+    assert rg.check(order, current_pos_notional=1_000.0, current_mid=100.0) is True
+    assert rg.last_bypass_reason == "position_limit"
+
+
+def test_reduce_only_close_allowed_while_kill_switch_active():
+    rg = make_risk_guard(equity=10_000.0)
+    rg.kill = True
+
+    assert rg.check(make_reduce_only_order(sz="1", px="100.0", side="sell")) is True
+    assert rg.last_bypass_reason == "kill_switch"
 
 
 def test_kill_switch_blocks_all():

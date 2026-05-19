@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from okx_quant.core.bus import EventBus
-from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload
+from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload, SignalPayload
 from okx_quant.engine import _build_broker, _should_use_demo_environment
 from okx_quant.execution.broker import (
     Broker,
@@ -84,6 +84,18 @@ class DummyRisk:
     def get_size_multiplier(self, strategy: str) -> float:
         return 1.0
 
+    def check(self, order, current_pos_notional=0.0, current_mid=0.0) -> bool:
+        return True
+
+
+class RecordingRisk(DummyRisk):
+    def __init__(self) -> None:
+        self.calls = []
+
+    def check(self, order, current_pos_notional=0.0, current_mid=0.0) -> bool:
+        self.calls.append((order, current_pos_notional, current_mid))
+        return True
+
 
 class DummyCfg:
     def __init__(self, mode: str) -> None:
@@ -124,6 +136,42 @@ async def test_execution_handler_emits_immediate_fill_event_for_simulated_fills(
     assert queued.type == EvtType.FILL
     assert queued.payload.strategy == "as_market_maker"
     assert queued.payload.fill_px == 100.0
+
+
+@pytest.mark.asyncio
+async def test_execution_handler_cancels_existing_strategy_orders_before_replacement():
+    bus = EventBus()
+    broker = PendingBroker()
+    order_manager = OrderManager(broker, RateLimiter())
+    handler = ExecutionHandler(bus=bus, order_manager=order_manager)
+    old_order = OrderPayload(
+        cl_ord_id="old-order",
+        inst_id="BTC-USDT-SWAP",
+        side="buy",
+        ord_type="post_only",
+        sz="1",
+        px="100.0",
+        td_mode="cross",
+        strategy="ma_crossover",
+    )
+    new_order = OrderPayload(
+        cl_ord_id="new-order",
+        inst_id="BTC-USDT-SWAP",
+        side="sell",
+        ord_type="post_only",
+        sz="1",
+        px="101.0",
+        td_mode="cross",
+        strategy="ma_crossover",
+        metadata={"cancel_existing": True},
+    )
+
+    await order_manager.submit(old_order)
+    await handler.on_order(Event(EvtType.ORDER, payload=new_order))
+
+    pending = order_manager.get_pending()
+    assert "old-order" not in pending
+    assert "new-order" in pending
 
 
 @pytest.mark.asyncio
@@ -333,6 +381,39 @@ def test_replay_execution_model_queue_fraction_bounds_fill_quantity():
     assert fills[0].fill_sz == pytest.approx(5.0)
 
 
+def test_replay_execution_model_rounds_partial_fills_to_lot_size():
+    model = ReplayExecutionModel(
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01, "lotSz": 0.01, "minSz": 0.01}},
+        queue_fill_fraction=0.2,
+    )
+    model.on_market(make_market_payload(ts=1, bid_px=99.0, ask_px=101.0))
+    model.submit({
+        "cl_ord_id": "lot-rounded",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "buy",
+        "sz": "1.21",
+        "px": "100.0",
+        "strategy": "test",
+        "metadata": {},
+    })
+
+    fills = []
+    for ts in range(2, 8):
+        fills.extend(model.on_market(make_market_payload(ts=ts, ask_px=99.5, ask_sz=10.0)))
+
+    assert [fill.fill_sz for fill in fills] == pytest.approx([0.24, 0.24, 0.24, 0.24, 0.24, 0.01])
+    assert fills[-1].state == "filled"
+
+
+def test_replay_execution_model_consumes_sub_min_size_remainder():
+    model = ReplayExecutionModel(
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01, "lotSz": 0.01, "minSz": 0.01}},
+        queue_fill_fraction=0.2,
+    )
+
+    assert model._round_fill_size("BTC-USDT-SWAP", raw_fill_sz=0.001, remaining_sz=0.005) == pytest.approx(0.005)
+
+
 def test_replay_execution_model_respects_cancel_latency():
     model = ReplayExecutionModel(
         instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01}},
@@ -423,6 +504,104 @@ def test_portfolio_manager_refuses_unknown_swap_ct_val_fallback():
 
     with pytest.raises(ValueError, match="Missing ctVal"):
         pm._compute_order_quantity("SOL-USDT-SWAP", price=100.0, size_usd=1_000.0)
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_long_flat_exit_reduces_current_position_only():
+    bus = EventBus()
+    ledger = PositionLedger(initial_equity=10_000.0)
+    ledger.on_fill(
+        "BTC-USDT-SWAP",
+        "buy",
+        fill_px=40_000.0,
+        fill_sz=0.37,
+        fee=0.0,
+        strategy="ma_crossover",
+        metadata={"ct_val": 0.01},
+    )
+    risk = RecordingRisk()
+    pm = PortfolioManager(
+        bus=bus,
+        positions=ledger,
+        risk_guard=risk,
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01, "minSz": 0.01, "lotSz": 0.01}},
+    )
+    signal = SignalPayload(
+        strategy="ma_crossover",
+        inst_id="BTC-USDT-SWAP",
+        side="sell",
+        strength=1.0,
+        fair_value=41_000.0,
+        metadata={"mode": "long_flat", "action": "exit", "cancel_existing": True},
+    )
+
+    await pm.on_signal(Event(EvtType.SIGNAL, payload=signal))
+
+    queued = await asyncio.wait_for(bus._queue.get(), timeout=0.1)
+    order = queued.payload
+    assert order.reduce_only is True
+    assert order.sz == "0.37"
+    assert order.notional_usd == pytest.approx(151.7)
+    assert order.metadata["position_size_before"] == pytest.approx(0.37)
+    assert risk.calls[-1][1] == pytest.approx(148.0)
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_non_long_flat_reduce_keeps_legacy_sizing():
+    bus = EventBus()
+    ledger = PositionLedger(initial_equity=10_000.0)
+    ledger.on_fill(
+        "BTC-USDT-SWAP",
+        "buy",
+        fill_px=40_000.0,
+        fill_sz=0.37,
+        fee=0.0,
+        strategy="pairs_trading",
+        metadata={"ct_val": 0.01},
+    )
+    risk = RecordingRisk()
+    pm = PortfolioManager(
+        bus=bus,
+        positions=ledger,
+        risk_guard=risk,
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01, "minSz": 0.01, "lotSz": 0.01}},
+    )
+    signal = SignalPayload(
+        strategy="pairs_trading",
+        inst_id="BTC-USDT-SWAP",
+        side="sell",
+        strength=1.0,
+        fair_value=41_000.0,
+        metadata={"action": "exit"},
+    )
+
+    await pm._place_directional(signal, size_usd=1_000.0, td_mode="cross")
+
+    queued = await asyncio.wait_for(bus._queue.get(), timeout=0.1)
+    order = queued.payload
+    assert order.reduce_only is False
+    assert order.sz == "2.43"
+    assert order.metadata["position_size_before"] == pytest.approx(0.37)
+    assert order.metadata["reduce_only"] is False
+    assert risk.calls[-1][1] == pytest.approx(0.0)
+
+
+def test_portfolio_manager_reduce_quantity_treats_float_dust_as_full_lot():
+    pm = PortfolioManager(
+        bus=EventBus(),
+        positions=PositionLedger(initial_equity=10_000.0),
+        risk_guard=DummyRisk(),
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01, "minSz": 0.01, "lotSz": 0.01}},
+    )
+
+    sz, notional = pm._compute_reduce_order_quantity(
+        "BTC-USDT-SWAP",
+        price=43_694.6,
+        position_size=0.45999999999999996,
+    )
+
+    assert sz == "0.46"
+    assert notional == pytest.approx(201.0, rel=1e-3)
 
 
 @pytest.mark.asyncio

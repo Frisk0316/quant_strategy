@@ -999,7 +999,25 @@ class ReplayBacktestEngine:
         ) -> bool:
             allowed = original_risk_check(order, current_pos_notional, current_mid)
             if allowed:
+                bypass_reason = getattr(risk_guard, "last_bypass_reason", None)
+                if bypass_reason:
+                    ts = execution_model.current_ts(order.inst_id)
+                    recorder.record_risk_event(
+                        ts=ts,
+                        strategy=order.strategy,
+                        inst_id=order.inst_id,
+                        side=order.side,
+                        px=float(order.px),
+                        sz=float(order.sz),
+                        notional_usd=order.notional_usd,
+                        reason=f"allowed_reduce_only_bypass:{bypass_reason}",
+                        current_position=current_pos_notional,
+                        position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
+                        current_equity=positions.get_equity(),
+                        metadata={"reduce_only": True},
+                    )
                 return True
+            block_reason = getattr(risk_guard, "last_block_reason", None) or "risk_guard_block"
             ts = execution_model.current_ts(order.inst_id)
             execution_model.rejected_log.append({
                 "ts": ts,
@@ -1007,7 +1025,7 @@ class ReplayBacktestEngine:
                 "inst_id": order.inst_id,
                 "side": order.side,
                 "px": float(order.px),
-                "reason": "risk_guard_block",
+                "reason": block_reason,
             })
             recorder.record_risk_event(
                 ts=ts,
@@ -1017,7 +1035,7 @@ class ReplayBacktestEngine:
                 px=float(order.px),
                 sz=float(order.sz),
                 notional_usd=order.notional_usd,
-                reason="risk_guard_block",
+                reason=block_reason,
                 current_position=current_pos_notional,
                 position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
                 current_equity=positions.get_equity(),

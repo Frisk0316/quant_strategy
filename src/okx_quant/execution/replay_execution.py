@@ -181,7 +181,11 @@ class ReplayExecutionModel:
         queue_fraction = max(0.0, min(1.0, self.queue_fill_fraction))
         local_order_sz = float(order["sz"])
         fill_capacity = min(max(available, 0.0), local_order_sz) * queue_fraction
-        fill_sz = min(resting.remaining_sz, fill_capacity)
+        fill_sz = self._round_fill_size(
+            order["inst_id"],
+            raw_fill_sz=min(resting.remaining_sz, fill_capacity),
+            remaining_sz=resting.remaining_sz,
+        )
         if fill_sz <= 0:
             return None
 
@@ -216,6 +220,22 @@ class ReplayExecutionModel:
             state=state,
             metadata=metadata,
         )
+
+    def _round_fill_size(self, inst_id: str, raw_fill_sz: float, remaining_sz: float) -> float:
+        if raw_fill_sz >= remaining_sz - 1e-12:
+            return max(remaining_sz, 0.0)
+        spec = self.instrument_specs.get(inst_id, {})
+        lot_sz = float(spec.get("lotSz", spec.get("lot_size", 1.0)) or 1.0)
+        min_sz = float(spec.get("minSz", spec.get("min_size", lot_sz)) or lot_sz)
+        if 0 < remaining_sz <= min_sz + 1e-12:
+            return max(remaining_sz, 0.0)
+        if lot_sz <= 0:
+            return max(raw_fill_sz, 0.0)
+        steps = int((raw_fill_sz + lot_sz * 1e-9) / lot_sz)
+        rounded = float(steps) * lot_sz
+        if rounded < min_sz:
+            return 0.0
+        return min(rounded, remaining_sz)
 
     def _would_cross_book(self, order: dict) -> bool:
         book = self.books.get(order["inst_id"])
