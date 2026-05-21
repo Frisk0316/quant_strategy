@@ -227,6 +227,52 @@ def test_load_candles_derives_intraday_from_1m_parquet(tmp_path) -> None:
     assert loaded.iloc[0]["vol"] == 15.0
 
 
+def test_load_candles_market_derives_1d_from_1m(monkeypatch) -> None:
+    from okx_quant.data.candle_store import CandleStore
+
+    idx = pd.date_range("2024-01-01", periods=2 * 24 * 60, freq="1min", tz="UTC")
+    one_minute = pd.DataFrame(
+        {
+            "open": np.arange(len(idx), dtype=float) + 100.0,
+            "high": np.arange(len(idx), dtype=float) + 101.0,
+            "low": np.arange(len(idx), dtype=float) + 99.0,
+            "close": np.arange(len(idx), dtype=float) + 100.5,
+            "vol": np.ones(len(idx)),
+        },
+        index=idx,
+    )
+
+    class FakeStore:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_market_klines(self, *, bar, **_kwargs):
+            if bar == "1D":
+                return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+            return one_minute.copy()
+
+    async def fake_from_dsn(*_args, **_kwargs):
+        return FakeStore()
+
+    monkeypatch.setattr(CandleStore, "from_dsn", fake_from_dsn)
+
+    loaded = load_candles(
+        "BTC-USDT-SWAP",
+        bar="1D",
+        backend="market",
+        dsn="postgresql://unused",
+        exchange="binance",
+    )
+
+    assert len(loaded) == 2
+    assert loaded.iloc[0]["open"] == 100.0
+    assert loaded.iloc[0]["close"] == 1539.5
+    assert loaded.iloc[0]["vol"] == 1440.0
+
+
 def test_partial_derived_bar_coverage_is_low() -> None:
     start = pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime()
     end = pd.Timestamp("2024-01-02", tz="UTC").to_pydatetime()

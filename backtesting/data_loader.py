@@ -359,23 +359,34 @@ def _load_candles_market(
     start_dt = _to_utc_dt(start)
     end_dt = _to_utc_dt(end)
 
-    async def _fetch() -> pd.DataFrame:
+    async def _fetch() -> tuple[pd.DataFrame, bool]:
         async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
-            return await store.get_market_klines(
+            df = await store.get_market_klines(
                 normalized_symbol=inst_id,
                 bar=bar,
                 start=start_dt,
                 end=end_dt,
                 exchange=exchange,
             )
+            if _can_derive_from_1m(bar) and _has_low_bar_coverage(df, start_dt, end_dt, bar):
+                df_1m = await store.get_market_klines(
+                    normalized_symbol=inst_id,
+                    bar="1m",
+                    start=start_dt,
+                    end=end_dt,
+                    exchange=exchange,
+                )
+                if not df_1m.empty:
+                    return df_1m, True
+            return df, False
 
     try:
         asyncio.get_running_loop()
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            df = pool.submit(asyncio.run, _fetch()).result()
+            df, is_1m_fallback = pool.submit(asyncio.run, _fetch()).result()
     except RuntimeError:
-        df = asyncio.run(_fetch())
+        df, is_1m_fallback = asyncio.run(_fetch())
 
     if df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
@@ -386,6 +397,9 @@ def _load_candles_market(
     df = df.rename(columns={"vol": "vol"})
     if "vol" not in df.columns:
         df["vol"] = float("nan")
+
+    if is_1m_fallback:
+        df = _aggregate_1m_to_bar(df[["open", "high", "low", "close", "vol"]], bar)
 
     return df[["open", "high", "low", "close", "vol"]]
 

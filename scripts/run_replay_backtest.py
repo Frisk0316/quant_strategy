@@ -12,6 +12,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting.replay import run_replay_backtest, run_replay_validations
+from backtesting.research_controls import (
+    apply_research_risk_overrides,
+    summarize_risk_events,
+)
 from okx_quant.core.config import load_config
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
@@ -54,6 +58,8 @@ def main() -> None:
                         help="Override funding_carry min APR threshold for this replay")
     parser.add_argument("--strategy-params", default=None,
                         help="JSON object with strategy-specific parameter overrides")
+    parser.add_argument("--risk-overrides", default=None,
+                        help="JSON object with research-only risk overrides for this replay")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
     parser.add_argument("--save-artifacts", action="store_true",
                         help="Save all backtest artifacts to --output-dir/<run_id>/")
@@ -76,6 +82,8 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
+    risk_overrides = json.loads(args.risk_overrides) if args.risk_overrides else {}
+    cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
     if args.exchange:
         cfg.storage = cfg.storage.model_copy(update={"primary_exchange": args.exchange})
     if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
@@ -160,6 +168,9 @@ def main() -> None:
         periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
         liquidate_on_end=args.liquidate_on_end,
     )
+    result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
+    if applied_risk_overrides:
+        result.validation["research_risk_overrides"] = applied_risk_overrides
     print("PROGRESS:85", flush=True)
 
     print("=" * 72)

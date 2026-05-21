@@ -350,11 +350,15 @@ window.API = (function () {
     fetchDataCoverage:        ()        => _get("/api/data/coverage"),
     fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
     dataExportUrl:            (body)    => "/api/data/export?" + new URLSearchParams(body).toString(),
+    refreshExternalData:      (body)    => _post("/api/data/external/refresh", body),
     triggerDataFetch:         (body)    => _post("/api/data/fetch", body),
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),
+    triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
+    fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),
+    fetchBacktestSweepJobs:   ()        => _get("/api/backtest/sweep/jobs"),
     deleteRun:                (id)      => fetch("/api/backtest/" + id, { method: "DELETE" }).then((r) => r.json()),
   };
 })();

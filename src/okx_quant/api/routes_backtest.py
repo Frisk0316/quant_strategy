@@ -21,12 +21,21 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from backtesting.parameter_sweep import (
+    ParameterSweepError,
+    estimate_sweep_runtime,
+    expand_parameter_grid,
+    run_parameter_sweep,
+)
+from backtesting.research_controls import ResearchControlError, sanitize_risk_overrides
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
+
 _run_jobs: dict[str, dict[str, Any]] = {}
+_sweep_jobs: dict[str, dict[str, Any]] = {}
 
 
 def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
@@ -143,6 +152,28 @@ class RunBacktestRequest(BaseModel):
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
     strategy_params: dict[str, Any] = Field(default_factory=dict)
+    risk_overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class ParameterSweepRequest(BaseModel):
+    strategy: str
+    symbols: list[str] = []
+    bar: str = "1H"
+    periods: int | None = None
+    start: str | None = None
+    end: str | None = None
+    sweep_id: str | None = None
+    exchange: str | None = None
+    initial_equity: float = 5000.0
+    data_dir: str = "data/ticks"
+    parameter_grid: dict[str, Any] = Field(default_factory=dict)
+    max_combinations: int = Field(default=5000, ge=1, le=10000)
+    liquidate_on_end: bool | None = None
+    risk_overrides: dict[str, Any] = Field(default_factory=dict)
+    run_finalists: bool = True
+    finalist_top_pct: float = Field(default=0.10, gt=0.0, le=1.0)
+    max_finalists: int = Field(default=20, ge=0, le=100)
+    finalist_validation: str | None = None
 
 
 def _run_ohlcv_rotation_job(
@@ -361,7 +392,9 @@ def _run_daily_winner_job(
         })
         dfs: dict[str, pd.DataFrame] = {}
         skipped: list[str] = []
+        data_sources: list[dict[str, Any]] = []
         for i, inst in enumerate(universe):
+            attempts: list[dict[str, Any]] = []
             df = load_candles(
                 inst_id=inst,
                 bar="1D",
@@ -372,10 +405,46 @@ def _run_daily_winner_job(
                 dsn=dsn,
                 exchange=exchange if load_backend == "market" else None,
             )
+            attempts.append({
+                "backend": load_backend,
+                "exchange": exchange if load_backend == "market" else None,
+                "rows": int(len(df)),
+            })
+            if df.empty and load_backend == "market":
+                df = load_candles(
+                    inst_id=inst,
+                    bar="1D",
+                    data_dir=req.data_dir or "data/ticks",
+                    start=req.start,
+                    end=req.end,
+                    backend="postgres",
+                    dsn=dsn,
+                    exchange=None,
+                )
+                attempts.append({
+                    "backend": "postgres",
+                    "exchange": None,
+                    "rows": int(len(df)),
+                    "fallback": "canonical_1m_or_1d",
+                })
             if df.empty:
                 skipped.append(inst)
+                data_sources.append({
+                    "inst_id": inst,
+                    "status": "skipped",
+                    "attempts": attempts,
+                    "reason": "empty daily OHLCV after market/canonical fallback",
+                })
                 continue
             dfs[inst] = df
+            data_sources.append({
+                "inst_id": inst,
+                "status": "loaded",
+                "rows": int(len(df)),
+                "first_ts": str(df.index.min()) if not df.empty else None,
+                "last_ts": str(df.index.max()) if not df.empty else None,
+                "attempts": attempts,
+            })
             _run_jobs[job_id]["progress"] = 10 + int((i + 1) / max(len(universe), 1) * 45)
 
         if len(dfs) < 2:
@@ -403,6 +472,7 @@ def _run_daily_winner_job(
             result=result,
             loaded_symbols=list(dfs.keys()),
             skipped_symbols=skipped,
+            data_sources=data_sources,
         )
         _attach_daily_winner_validation(result_json, result.daily_returns, req.validation)
         result_json = _json_sanitize(result_json)
@@ -434,6 +504,7 @@ def _build_daily_winner_result_json(
     result: Any,
     loaded_symbols: list[str],
     skipped_symbols: list[str],
+    data_sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the ADR-0002-compatible inline result payload for daily_winner."""
     equity_df = result.equity_curve.to_frame("equity")
@@ -508,6 +579,10 @@ def _build_daily_winner_result_json(
         "returns": returns_records,
         "trades": trades_records,
         "artifacts": {},
+        "validation": {
+            "validation_only": True,
+            "daily_winner_data_sources": data_sources or [],
+        },
     }
 
 
@@ -788,6 +863,8 @@ def _run_backtest_job(
             cmd.extend(["--min-apr-threshold", str(req.min_apr_threshold)])
         if req.strategy_params:
             cmd.extend(["--strategy-params", json.dumps(req.strategy_params)])
+        if req.risk_overrides:
+            cmd.extend(["--risk-overrides", json.dumps(req.risk_overrides)])
         cmd.extend(["--exchange", _normalize_exchange(req.exchange)])
 
         _run_jobs[job_id].update({
@@ -849,6 +926,66 @@ def _run_backtest_job(
         })
     except Exception as exc:
         _run_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+        })
+
+
+def _run_parameter_sweep_job(
+    job_id: str,
+    req: ParameterSweepRequest,
+    sweep_id: str,
+    results_dir: Path,
+) -> None:
+    try:
+        symbols = [normalize_swap_symbol(symbol) for symbol in req.symbols]
+        data_dir = str(_resolve_data_dir(req.data_dir))
+
+        def _on_progress(update: dict[str, Any]) -> None:
+            _sweep_jobs[job_id].update({
+                "status": "running",
+                **update,
+            })
+
+        summary = run_parameter_sweep(
+            strategy=req.strategy,
+            parameter_grid=req.parameter_grid,
+            symbols=symbols,
+            bar=req.bar,
+            periods=req.periods,
+            start=req.start,
+            end=req.end,
+            data_dir=data_dir,
+            output_dir=results_dir / "parameter_sweeps",
+            sweep_id=sweep_id,
+            initial_equity=req.initial_equity,
+            exchange=_normalize_exchange(req.exchange),
+            max_combinations=req.max_combinations,
+            liquidate_on_end=req.liquidate_on_end,
+            risk_overrides=req.risk_overrides,
+            run_finalists=req.run_finalists,
+            finalist_top_pct=req.finalist_top_pct,
+            max_finalists=req.max_finalists,
+            finalist_validation=req.finalist_validation,
+            full_output_dir=results_dir,
+            progress_callback=_on_progress,
+        )
+        _sweep_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Parameter sweep complete",
+            "sweep_id": summary["sweep_id"],
+            "artifacts": summary.get("artifacts", {}),
+            "top_results": summary.get("top_results", [])[:10],
+            "completed_count": summary.get("completed_count", 0),
+            "failed_count": summary.get("failed_count", 0),
+            "skipped_count": summary.get("skipped_count", 0),
+            "finalist_results": summary.get("finalist_results", []),
+            "elapsed_seconds": summary.get("elapsed_seconds"),
+        })
+    except Exception as exc:
+        _sweep_jobs[job_id].update({
             "status": "error",
             "progress": 100,
             "message": str(exc),
@@ -1067,6 +1204,57 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def list_run_jobs():
         """Return all in-memory job states so the frontend can reconnect after page refresh."""
         return list(_run_jobs.values())
+
+    @router.post("/sweep")
+    async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
+        _validate_parameter_sweep_request(req)
+        try:
+            combinations, skipped = expand_parameter_grid(
+                req.strategy,
+                req.parameter_grid,
+                max_combinations=req.max_combinations,
+            )
+        except ParameterSweepError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        symbols = [normalize_swap_symbol(symbol) for symbol in req.symbols]
+        finalist_count = 0
+        if req.run_finalists and req.max_finalists > 0:
+            finalist_count = min(req.max_finalists, max(1, math.ceil(len(combinations) * req.finalist_top_pct)))
+        estimate = estimate_sweep_runtime(
+            strategy=req.strategy,
+            bar=req.bar,
+            start=req.start,
+            end=req.end,
+            symbols=symbols,
+            combinations=len(combinations),
+            finalist_count=finalist_count,
+            finalist_validation=req.finalist_validation,
+        )
+        job_id = str(uuid.uuid4())[:8]
+        sweep_id = req.sweep_id or f"ui_sweep_{req.strategy}_{job_id}"
+        _sweep_jobs[job_id] = {
+            "job_id": job_id,
+            "sweep_id": sweep_id,
+            "status": "running",
+            "progress": 0,
+            "message": "Parameter sweep queued",
+            "combination_count": len(combinations),
+            "skipped_count": len(skipped),
+            "finalist_count": finalist_count,
+            "estimate": estimate,
+        }
+        bg.add_task(_run_parameter_sweep_job, job_id, req, sweep_id, results_dir)
+        return _sweep_jobs[job_id]
+
+    @router.get("/sweep/status/{job_id}")
+    async def get_parameter_sweep_status(job_id: str):
+        if job_id not in _sweep_jobs:
+            raise HTTPException(status_code=404, detail="Sweep job not found")
+        return _sweep_jobs[job_id]
+
+    @router.get("/sweep/jobs")
+    async def list_parameter_sweep_jobs():
+        return list(_sweep_jobs.values())
 
     @router.delete("/{run_id}")
     async def delete_run(run_id: str):
@@ -1395,3 +1583,35 @@ def _validate_backtest_request(req: RunBacktestRequest) -> None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param: {key}")
         if not isinstance(value, (int, float, str, bool)) and value is not None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param value for: {key}")
+    try:
+        req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validate_parameter_sweep_request(req: ParameterSweepRequest) -> None:
+    _resolve_data_dir(req.data_dir)
+    if req.strategy not in {"ma_crossover", "ema_crossover", "macd_crossover"}:
+        raise HTTPException(status_code=400, detail="Parameter sweep supports MA, EMA, and MACD only")
+    if req.finalist_validation not in {None, "none", "wf", "cpcv", "both"}:
+        raise HTTPException(status_code=400, detail="Unsupported finalist validation mode")
+    if req.start and not _SAFE_DATE_RE.match(req.start):
+        raise HTTPException(status_code=400, detail="Invalid start date format")
+    if req.end and not _SAFE_DATE_RE.match(req.end):
+        raise HTTPException(status_code=400, detail="Invalid end date format")
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="Parameter sweep requires at least one symbol")
+    if len(req.symbols) > 50:
+        raise HTTPException(status_code=400, detail="Symbol list too large (max 50 symbols)")
+    for sym in req.symbols:
+        if not _SAFE_SYMBOL_RE.match(sym):
+            raise HTTPException(status_code=400, detail=f"Invalid symbol: {sym}")
+    for key, value in req.parameter_grid.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(key)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter: {key}")
+        if not isinstance(value, (int, float, str, list, tuple)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter value for: {key}")
+    try:
+        req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

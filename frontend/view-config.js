@@ -28,6 +28,35 @@ const STRATEGY_PARAM_DEFAULTS = {
     allow_direction: "long_only",
   },
 };
+const SWEEP_PARAM_DEFAULTS = {
+  ma_crossover: { fast_window: "7~20", slow_window: "21~100" },
+  ema_crossover: { fast_span: "7~20", slow_span: "21~100" },
+  macd_crossover: { fast_span: "8, 12", slow_span: "21, 26, 50", signal_span: "9" },
+};
+const RISK_OVERRIDE_DEFAULTS = {
+  max_order_notional_usd: "",
+  max_pos_pct_equity: "",
+  max_leverage: "",
+};
+const SWEEP_PARAM_SPECS = {
+  ma_crossover: [
+    ["fast_window", "fast"],
+    ["slow_window", "slow"],
+  ],
+  ema_crossover: [
+    ["fast_span", "fast"],
+    ["slow_span", "slow"],
+  ],
+  macd_crossover: [
+    ["fast_span", "fast"],
+    ["slow_span", "slow"],
+    ["signal_span", "signal"],
+  ],
+};
+const SWEEP_ROWS_PER_DAY = {
+  "1m": 1440, "3m": 480, "5m": 288, "15m": 96,
+  "30m": 48, "1H": 24, "2H": 12, "4H": 6, "1D": 1,
+};
 
 const todayUtc = new Date();
 todayUtc.setUTCHours(0, 0, 0, 0);
@@ -46,6 +75,83 @@ const fmtDate = (value) => {
   const d = typeof value === "number" ? new Date(value) : new Date(value);
   return isNaN(d.getTime()) ? String(value).slice(0, 10) : d.toISOString().slice(0, 10);
 };
+const fmtDuration = (seconds) => {
+  const s = Number(seconds);
+  if (!isFinite(s)) return "-";
+  if (s < 60) return `${s.toFixed(1)}s`;
+  if (s < 3600) return `${(s / 60).toFixed(1)}m`;
+  return `${(s / 3600).toFixed(1)}h`;
+};
+function parseSweepValues(raw) {
+  const out = [];
+  String(raw || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((part) => {
+    const m = part.match(/^(\d+(?:\.\d+)?)\s*(?:\.\.|~|-)\s*(\d+(?:\.\d+)?)(?::(\d+(?:\.\d+)?))?$/);
+    if (m) {
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      const step = Number(m[3] || 1);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(step) || start <= 0 || end < start || step <= 0) {
+        throw new Error(`Invalid range: ${part}`);
+      }
+      for (let v = start; v <= end; v += step) out.push(v);
+    } else {
+      const v = Number(part);
+      if (!Number.isInteger(v) || v <= 0) throw new Error(`Invalid value: ${part}`);
+      out.push(v);
+    }
+  });
+  return [...new Set(out)];
+}
+function buildSweepGrid(strategy, inputs) {
+  const specs = SWEEP_PARAM_SPECS[strategy] || [];
+  const grid = {};
+  specs.forEach(([key]) => {
+    const values = parseSweepValues(inputs?.[key]);
+    if (!values.length) throw new Error(`${key} cannot be empty`);
+    grid[key] = values;
+  });
+  return grid;
+}
+function countValidSweepCombos(strategy, grid) {
+  const keys = Object.keys(grid || {});
+  const total = keys.reduce((acc, key) => acc * (grid[key]?.length || 0), 1);
+  const fastKey = strategy === "ma_crossover" ? "fast_window" : "fast_span";
+  const slowKey = strategy === "ma_crossover" ? "slow_window" : "slow_span";
+  if (!grid?.[fastKey] || !grid?.[slowKey]) return { total, valid: total };
+  let valid = 0;
+  grid[fastKey].forEach((fast) => {
+    grid[slowKey].forEach((slow) => {
+      if (fast < slow) valid += keys
+        .filter((key) => key !== fastKey && key !== slowKey)
+        .reduce((acc, key) => acc * (grid[key]?.length || 0), 1);
+    });
+  });
+  return { total, valid };
+}
+function estimateSweepSeconds(strategy, grid, bar, start, end, symbols) {
+  const { valid } = countValidSweepCombos(strategy, grid);
+  const days = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
+  const rows = days * (SWEEP_ROWS_PER_DAY[bar] || 24) * Math.max(1, symbols.length);
+  return Math.max(0.6, 0.35 + rows * 0.00008) * Math.max(1, valid);
+}
+function estimateValidationMultiplier(start, end, validation) {
+  if (!validation || validation === "none") return 1;
+  const days = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
+  const wfWindows = Math.max(0, Math.floor(Math.max(0, days - 30) / 7) + 1);
+  const cpcvCombos = 15;
+  return 1
+    + (validation === "wf" || validation === "both" ? wfWindows : 0)
+    + (validation === "cpcv" || validation === "both" ? cpcvCombos : 0);
+}
+function cleanRiskOverrides(raw = {}) {
+  const out = {};
+  Object.entries(raw || {}).forEach(([key, value]) => {
+    if (value === "" || value == null) return;
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) out[key] = num;
+  });
+  return out;
+}
 
 window.fmt = { pct: fmtPct, num: fmtNum, usd: fmtUSD, ts: fmtTs, date: fmtDate };
 
@@ -89,6 +195,12 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [rotTopK, setRotTopK] = useConfigState(3);
   const [rotRankExitBuffer, setRotRankExitBuffer] = useConfigState(6);
   const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
+  const [sweepParams, setSweepParams] = useConfigState(SWEEP_PARAM_DEFAULTS);
+  const [riskOverrides, setRiskOverrides] = useConfigState(RISK_OVERRIDE_DEFAULTS);
+  const [sweepFinalistValidation, setSweepFinalistValidation] = useConfigState("none");
+  const [sweepTopPct, setSweepTopPct] = useConfigState(10);
+  const [sweepMaxFinalists, setSweepMaxFinalists] = useConfigState(20);
+  const [sweepJob, setSweepJob] = useConfigState(null);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
@@ -109,6 +221,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+  const effectiveStart = startMin && start < startMin ? startMin : start;
+  const estimateDays = Math.max(1, (new Date(end) - new Date(effectiveStart)) / 86_400_000);
+  const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
+  const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
+  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(effectiveStart, end, isRotation ? "none" : validation);
 
   useConfigEffect(() => {
     window.API.fetchDataInstruments()
@@ -180,6 +297,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
       initial_equity: +equity || 5000,
       strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
+      risk_overrides: cleanRiskOverrides(riskOverrides),
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -199,6 +317,43 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         });
       }, 2000);
     }).catch((err) => setRunJob({ status: "error", message: err.message }));
+  }
+
+  function triggerParameterSweep() {
+    try {
+      const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
+      const body = {
+        strategy,
+        bar,
+        periods,
+        start: startMin && start < startMin ? startMin : start,
+        end,
+        symbols: technicalSymbols,
+        initial_equity: +equity || 5000,
+        parameter_grid: parameterGrid,
+        max_combinations: 5000,
+        risk_overrides: cleanRiskOverrides(riskOverrides),
+        run_finalists: true,
+        finalist_top_pct: Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
+        max_finalists: Math.max(0, Math.min(100, Number(sweepMaxFinalists) || 20)),
+        finalist_validation: sweepFinalistValidation === "none" ? null : sweepFinalistValidation,
+      };
+      setSweepJob({ status: "running", progress: 0, message: "Submitting parameter sweep..." });
+      window.API.triggerBacktestSweep(body).then((job) => {
+        setSweepJob(job);
+        const iv = setInterval(() => {
+          window.API.fetchBacktestSweepStatus(job.job_id).then((s) => {
+            setSweepJob(s);
+            if (s.status === "done" || s.status === "error") clearInterval(iv);
+          }).catch((err) => {
+            setSweepJob({ status: "error", message: err.message });
+            clearInterval(iv);
+          });
+        }, 2000);
+      }).catch((err) => setSweepJob({ status: "error", message: err.message }));
+    } catch (err) {
+      setSweepJob({ status: "error", message: err.message });
+    }
   }
 
   return html`
@@ -430,6 +585,27 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 </select>
               </div>
             `}
+            <div class="field" style=${{ gridColumn: "1 / -1" }}>
+              <div class="field-label">Research risk overrides</div>
+              <div class="grid" style=${{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                <input class="input mono" type="number" min="0" step="50"
+                  value=${riskOverrides.max_order_notional_usd}
+                  placeholder="max order USD"
+                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_order_notional_usd: e.target.value }))} />
+                <input class="input mono" type="number" min="0" step="0.05"
+                  value=${riskOverrides.max_pos_pct_equity}
+                  placeholder="max pos pct"
+                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_pos_pct_equity: e.target.value }))} />
+                <input class="input mono" type="number" min="0" step="0.5"
+                  value=${riskOverrides.max_leverage}
+                  placeholder="max leverage"
+                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_leverage: e.target.value }))} />
+              </div>
+              <div class="field-hint">Research-only; live risk config is unchanged.</div>
+            </div>
+          </div>
+          <div class="field-hint" style=${{ marginTop: 10 }}>
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(effectiveStart, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
             <div class="row" style=${{ gap: 12, marginTop: 16, alignItems: "center" }}>
@@ -462,6 +638,28 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
           </div>
           <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          ${isTechnical && html`
+            <div class="sep" style=${{ margin: "12px 0" }}></div>
+            <${ParameterSweepPanel}
+              id=${strategy}
+              inputs=${sweepParams[strategy] || {}}
+              setInputs=${(next) => setSweepParams((all) => ({ ...all, [strategy]: next }))}
+              bar=${bar}
+              start=${startMin && start < startMin ? startMin : start}
+              end=${end}
+              symbols=${technicalSymbols}
+              job=${sweepJob}
+              onRun=${triggerParameterSweep}
+              finalistValidation=${sweepFinalistValidation}
+              setFinalistValidation=${setSweepFinalistValidation}
+              finalistTopPct=${sweepTopPct}
+              setFinalistTopPct=${setSweepTopPct}
+              maxFinalists=${sweepMaxFinalists}
+              setMaxFinalists=${setSweepMaxFinalists}
+              setView=${setView}
+              setSelectedRunId=${setSelectedRunId}
+            />
+          `}
         </div>
       </div>
 
@@ -548,11 +746,11 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
     <div class="col" style=${{ gap: 12 }}>
       ${specs.map(([k, v, short, full]) => html`
         <div key=${k} class="col" style=${{ gap: 4 }}>
-          <div class="row" style=${{ alignItems: "center", gap: 10 }}>
-            <div style=${{ flex: 1, fontSize: 12 }} class="mono" title=${short}>${k}</div>
+          <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 120px)", alignItems: "center", gap: 8 }}>
+            <div style=${{ minWidth: 0, fontSize: 12, overflowWrap: "anywhere" }} class="mono" title=${short}>${k}</div>
             <input class="input mono" value=${editable ? (activeParams[k] ?? v) : v} disabled=${!editable}
               onChange=${(e) => setParams({ ...activeParams, [k]: parseParam(e.target.value) })}
-              style=${{ width: 156, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
+              style=${{ width: "100%", maxWidth: 120, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
           </div>
           <div class="field-hint" style=${{ fontSize: 11 }}>${full}</div>
         </div>
@@ -563,24 +761,200 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
   `;
 }
 
+function ParameterSweepPanel({
+  id,
+  inputs = {},
+  setInputs = () => {},
+  bar,
+  start,
+  end,
+  symbols = [],
+  job,
+  onRun,
+  finalistValidation = "none",
+  setFinalistValidation = () => {},
+  finalistTopPct = 10,
+  setFinalistTopPct = () => {},
+  maxFinalists = 20,
+  setMaxFinalists = () => {},
+  setView,
+  setSelectedRunId,
+}) {
+  const specs = SWEEP_PARAM_SPECS[id] || [];
+  const [rangeDrafts, setRangeDrafts] = useConfigState({});
+  let grid = {};
+  let parseError = "";
+  try {
+    grid = buildSweepGrid(id, inputs);
+  } catch (err) {
+    parseError = err.message;
+  }
+  const counts = parseError ? { total: 0, valid: 0 } : countValidSweepCombos(id, grid);
+  const screeningSeconds = parseError ? null : estimateSweepSeconds(id, grid, bar, start, end, symbols);
+  const finalistCount = counts.valid
+    ? Math.min(Number(maxFinalists) || 0, Math.max(1, Math.ceil(counts.valid * ((Number(finalistTopPct) || 10) / 100))))
+    : 0;
+  const finalistSeconds = screeningSeconds == null || !counts.valid
+    ? null
+    : (screeningSeconds / Math.max(1, counts.valid)) * finalistCount * estimateValidationMultiplier(start, end, finalistValidation);
+  const estimateSeconds = screeningSeconds == null || finalistSeconds == null ? null : screeningSeconds + finalistSeconds;
+  const topRows = job?.top_results || [];
+  const finalistRows = job?.finalist_results || [];
+  function updateDraft(key, field, value) {
+    setRangeDrafts((all) => ({ ...all, [key]: { ...(all[key] || {}), [field]: value } }));
+  }
+  function applyRange(key) {
+    const draft = rangeDrafts[key] || {};
+    const startV = Number(draft.start);
+    const endV = Number(draft.end);
+    const stepV = Number(draft.step || 1);
+    if (!Number.isInteger(startV) || !Number.isInteger(endV) || !Number.isInteger(stepV) || startV <= 0 || endV < startV || stepV <= 0) return;
+    setInputs({ ...inputs, [key]: `${startV}~${endV}${stepV > 1 ? `:${stepV}` : ""}` });
+  }
+  return html`
+    <div class="col" style=${{ gap: 10 }}>
+      <div>
+        <div class="card-title" style=${{ fontSize: 13 }}>Parameter sweep</div>
+        <div class="card-sub">compact screening, then full artifacts for top Sharpe finalists</div>
+      </div>
+      ${specs.map(([key, label]) => html`
+        <div key=${key} class="field">
+          <div class="field-label">${label} values</div>
+          <input class="input mono" value=${inputs[key] || ""}
+            onChange=${(e) => setInputs({ ...inputs, [key]: e.target.value })}
+            placeholder="7~100"
+            style=${{ fontSize: 12 }} />
+          <div class="row" style=${{ gap: 6, marginTop: 6 }}>
+            <input class="input mono" type="number" min="1" placeholder="start"
+              value=${rangeDrafts[key]?.start || ""}
+              onChange=${(e) => updateDraft(key, "start", e.target.value)}
+              style=${{ minWidth: 0, fontSize: 11, padding: "4px 6px" }} />
+            <input class="input mono" type="number" min="1" placeholder="end"
+              value=${rangeDrafts[key]?.end || ""}
+              onChange=${(e) => updateDraft(key, "end", e.target.value)}
+              style=${{ minWidth: 0, fontSize: 11, padding: "4px 6px" }} />
+            <input class="input mono" type="number" min="1" placeholder="step"
+              value=${rangeDrafts[key]?.step || ""}
+              onChange=${(e) => updateDraft(key, "step", e.target.value)}
+              style=${{ width: 54, fontSize: 11, padding: "4px 6px" }} />
+            <button class="btn sm" onClick=${() => applyRange(key)} style=${{ padding: "4px 8px" }}>Apply</button>
+          </div>
+        </div>
+      `)}
+      <div class="grid" style=${{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div class="field">
+          <div class="field-label">Top percent</div>
+          <input class="input mono" type="number" min="1" max="100" value=${finalistTopPct}
+            onChange=${(e) => setFinalistTopPct(e.target.value)} />
+        </div>
+        <div class="field">
+          <div class="field-label">Max finalists</div>
+          <input class="input mono" type="number" min="0" max="100" value=${maxFinalists}
+            onChange=${(e) => setMaxFinalists(e.target.value)} />
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-label">Finalist validation</div>
+        <select class="select" value=${finalistValidation} onChange=${(e) => setFinalistValidation(e.target.value)}>
+          <option value="none">None</option>
+          <option value="wf">Walk-Forward</option>
+          <option value="cpcv">CPCV</option>
+          <option value="both">Both (WF + CPCV)</option>
+        </select>
+      </div>
+      <div class="field-hint">
+        ${parseError
+          ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
+          : html`${counts.valid}/${counts.total} valid combos - screening ${fmtDuration(screeningSeconds)} - finalists ${finalistCount} / ${fmtDuration(finalistSeconds)} - total ${fmtDuration(estimateSeconds)}`}
+      </div>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running"} onClick=${onRun}>
+        Run sweep
+      </button>
+      ${job && html`
+        <div class="row" style=${{ gap: 8, alignItems: "center" }}>
+          <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
+          <span class="field-hint">${job.message || ""}</span>
+        </div>
+        ${job.progress != null && html`
+          <div class="bar" style=${{ height: 6 }}>
+            <i style=${{ width: `${job.progress}%`, background: "var(--accent)" }}></i>
+          </div>
+        `}
+        ${job.estimate && html`
+          <div class="field-hint">
+            ${job.combination_count || 0} combos - screening ${fmtDuration(job.estimate.estimated_screening_seconds)} - finalist reruns ${fmtDuration(job.estimate.estimated_full_rerun_seconds)}
+          </div>
+        `}
+        ${job.status === "error" && html`
+          <pre style=${{ marginTop: 4, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 160, overflowY: "auto" }}>${job.message || ""}</pre>
+        `}
+      `}
+      ${topRows.length > 0 && html`
+        <div class="tbl-wrap" style=${{ maxHeight: 240 }}>
+          <table class="tbl" style=${{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>params</th>
+                <th>Sharpe</th>
+                <th>Return</th>
+                <th>MDD</th>
+                <th>Full</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topRows.slice(0, 8).map((row) => html`
+                <tr key=${row.trial}>
+                  <td>${row.rank}</td>
+                  <td class="mono">${Object.entries(row.params || {}).map(([k, v]) => `${k.replace("_window", "").replace("_span", "")}:${v}`).join(" ")}</td>
+                  <td>${fmtNum(row.sharpe, 2)}</td>
+                  <td>${fmtPct(row.total_return, 2)}</td>
+                  <td>${fmtPct(row.max_drawdown, 2)}</td>
+                  <td>
+                    ${row.finalist_run_id && html`
+                      <button class="btn sm" onClick=${() => {
+                        setSelectedRunId?.(row.finalist_run_id);
+                        setView?.("backtest");
+                      }}>Open</button>
+                    `}
+                  </td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+      `}
+      ${job?.artifacts?.summary_csv && html`
+        <div class="field-hint mono">${job.artifacts.summary_csv}</div>
+      `}
+      ${finalistRows.length > 0 && html`
+        <div class="field-hint">${finalistRows.filter((r) => r.status === "ok").length}/${finalistRows.length} finalist full backtests saved.</div>
+      `}
+    </div>
+  `;
+}
+
 function MarketDataCard() {
   const [coverage, setCoverage] = useConfigState(null);
   const [instruments, setInstruments] = useConfigState([]);
   const [fetchJob, setFetchJob] = useConfigState(null);
+  const [exportJob, setExportJob] = useConfigState(null);
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
   const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
-  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
+  const [exportForm, setExportForm] = useConfigState({ kind: "ohlcv", symbols: [], datasets: ["cme_btc_yfinance"], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
     .map((s) => listingMap[s])
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+  const exportKind = exportForm.kind || "ohlcv";
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
-  const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96 };
+  const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96, funding: 3, external: 1 };
   const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
-  const estRows = (exportForm.symbols || []).length * estDays * (ROWS_PER_DAY[exportForm.bar] || 24);
+  const selectedExportCount = exportKind === "external" ? (exportForm.datasets || []).length : (exportForm.symbols || []).length;
+  const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
   const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
   function fmtBytes(b) {
     if (b < 1024) return b + " B";
@@ -589,13 +963,19 @@ function MarketDataCard() {
     return (b / 1_073_741_824).toFixed(1) + " GB";
   }
   const coverageSymbols = [...new Set((coverage || [])
-    .filter((r) => r.bar === exportCoverageBar)
+    .filter((r) => exportKind === "funding" ? r.data_kind === "funding" : r.data_kind === "ohlcv" && r.bar === exportCoverageBar)
     .map((r) => r.inst_id)
     .filter(Boolean))]
     .sort();
   const exportSymbols = coverageSymbols.length
     ? coverageSymbols
     : (instruments.length ? instruments.map((i) => i.inst_id) : MOCK.SYMBOLS.filter((s) => s.includes("SWAP"))).sort();
+  const exportDatasets = [...new Set((coverage || [])
+    .filter((r) => r.data_kind === "external")
+    .map((r) => r.inst_id)
+    .filter(Boolean))]
+    .sort();
+  const externalOptions = exportDatasets.length ? exportDatasets : ["cme_btc_yfinance"];
 
   function refreshCoverage() {
     window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
@@ -641,17 +1021,40 @@ function MarketDataCard() {
       return { ...f, symbols: next };
     });
   }
+  function toggleExportDataset(dataset) {
+    setExportForm((f) => {
+      const datasets = f.datasets || [];
+      const next = datasets.includes(dataset)
+        ? datasets.filter((s) => s !== dataset)
+        : [...datasets, dataset];
+      return { ...f, datasets: next };
+    });
+  }
 
   function triggerExport() {
-    const symbols = (exportForm.symbols || []).join(",");
-    if (!symbols) return;
-    window.location.assign(window.API.dataExportUrl({
-      symbols,
+    const body = {
+      kind: exportKind,
       bar: exportForm.bar,
       start: exportForm.start,
       end: exportForm.end,
       format: exportForm.format,
-    }));
+    };
+    if (exportKind === "external") {
+      const datasets = (exportForm.datasets || []).join(",");
+      if (!datasets) return;
+      setExportJob({ status: "running", message: "Refreshing external dataset..." });
+      window.API.refreshExternalData({ dataset_ids: exportForm.datasets || [], start: exportForm.start, end: exportForm.end })
+        .then((job) => {
+          setExportJob({ status: "done", message: `${job.datasets?.[0]?.rows_fetched || 0} rows refreshed` });
+          window.location.assign(window.API.dataExportUrl({ ...body, datasets }));
+          refreshCoverage();
+        })
+        .catch((err) => setExportJob({ status: "error", message: err.message }));
+      return;
+    }
+    const symbols = (exportForm.symbols || []).join(",");
+    if (!symbols) return;
+    window.location.assign(window.API.dataExportUrl({ ...body, symbols }));
   }
 
   return html`
@@ -669,21 +1072,39 @@ function MarketDataCard() {
 
       ${showExportPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Export OHLCV Data</div>
-          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Export Market Data</div>
+          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
-              <div class="field-label">Perpetual symbols</div>
+              <div class="field-label">${exportKind === "external" ? "External datasets" : "Perpetual symbols"}</div>
               <button class="btn sm" style=${{ marginBottom: 4 }}
                 onClick=${() => {
-                  const allSelected = exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length;
-                  setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
+                  if (exportKind === "external") {
+                    const allSelected = externalOptions.length > 0 && (exportForm.datasets || []).length === externalOptions.length;
+                    setExportForm((f) => ({ ...f, datasets: allSelected ? [] : [...externalOptions] }));
+                  } else {
+                    const allSelected = exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length;
+                    setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
+                  }
                 }}>
-                ${exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length ? "Deselect All" : "Select All"}
+                ${(exportKind === "external"
+                  ? externalOptions.length > 0 && (exportForm.datasets || []).length === externalOptions.length
+                  : exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length) ? "Deselect All" : "Select All"}
               </button>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
                   <tbody>
-                    ${exportSymbols.map((symbol) => html`
+                    ${exportKind === "external" ? externalOptions.map((dataset) => html`
+                      <tr key=${dataset} style=${{ cursor: "pointer" }} onClick=${() => toggleExportDataset(dataset)}>
+                        <td style=${{ width: 28 }}>
+                          <input
+                            type="checkbox"
+                            checked=${(exportForm.datasets || []).includes(dataset)}
+                            onChange=${() => {}}
+                          />
+                        </td>
+                        <td class="mono">${dataset}</td>
+                      </tr>
+                    `) : exportSymbols.map((symbol) => html`
                       <tr key=${symbol} style=${{ cursor: "pointer" }} onClick=${() => toggleExportSymbol(symbol)}>
                         <td style=${{ width: 28 }}>
                           <input
@@ -699,13 +1120,23 @@ function MarketDataCard() {
                 </table>
               </div>
               <div class="field-hint">
-                ${(exportForm.symbols || []).length} selected${exportForm.bar === "1H" ? " - 1H exports are aggregated from 1m candles" : ""}
+                ${selectedExportCount} selected${exportKind === "ohlcv" && exportForm.bar === "1H" ? " - 1H exports are aggregated from 1m candles" : ""}
               </div>
               ${estRows > 0 && html`<div class="field-hint">Est. size: ~${fmtBytes(estBytes)}</div>`}
             </div>
             <div class="field">
+              <div class="field-label">Kind</div>
+              <select class="select mono" value=${exportKind}
+                onChange=${(e) => setExportForm((f) => ({ ...f, kind: e.target.value, symbols: [], datasets: e.target.value === "external" ? ["cme_btc_yfinance"] : [] }))}>
+                <option value="ohlcv">OHLCV</option>
+                <option value="funding">Funding</option>
+                <option value="external">External</option>
+              </select>
+            </div>
+            <div class="field">
               <div class="field-label">Bar</div>
               <select class="select mono" value=${exportForm.bar}
+                disabled=${exportKind !== "ohlcv"}
                 onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
                 ${["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
@@ -729,8 +1160,14 @@ function MarketDataCard() {
               </select>
             </div>
           </div>
+          ${exportJob && html`
+            <div class="row" style=${{ gap: 8, marginTop: 10, alignItems: "center" }}>
+              <span class=${`chip ${exportJob.status === "done" ? "profit" : exportJob.status === "error" ? "loss" : "warn"}`}>${exportJob.status}</span>
+              <span class="field-hint">${exportJob.message || ""}</span>
+            </div>
+          `}
           <button class="btn primary sm" style=${{ marginTop: 12 }}
-            disabled=${!(exportForm.symbols || []).length || exportForm.start >= exportForm.end}
+            disabled=${selectedExportCount < 1 || exportForm.start >= exportForm.end || exportJob?.status === "running"}
             onClick=${triggerExport}>
             Download Data
           </button>
