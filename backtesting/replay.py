@@ -313,11 +313,23 @@ def _to_ms_int(val) -> int:
     if val is None:
         return 0
     try:
-        if isinstance(val, pd.Timestamp):
-            return int(val.timestamp() * 1000)
-        return int(float(val))
+        if isinstance(val, pd.Timestamp) or not isinstance(val, (int, float, str)):
+            return int(pd.Timestamp(val).timestamp() * 1000)
+        raw = int(float(val))
+        magnitude = abs(raw)
+        if magnitude == 0:
+            return 0
+        if magnitude < 100_000_000_000:
+            return raw * 1000
+        if magnitude >= 100_000_000_000_000:
+            return raw // 1_000_000
+        return raw
     except (TypeError, ValueError, OSError):
         return 0
+
+
+def _timestamp_series_to_ms(series: pd.Series) -> pd.Series:
+    return series.map(_to_ms_int).astype("int64")
 
 
 def _bar_to_seconds(bar: str) -> int:
@@ -543,7 +555,7 @@ def load_l1_books(
             ts_ms = (
                 raw_ticks[ts_col].astype("int64")
                 if ts_col == "server_ts"
-                else (raw_ticks[ts_col].astype("int64") // 1_000_000)
+                else _timestamp_series_to_ms(raw_ticks[ts_col])
             )
             return pd.DataFrame({
                 "ts": ts_ms.astype("int64"),
@@ -557,7 +569,7 @@ def load_l1_books(
         stored_books = _load_parquet_frames(sorted(inst_dir.glob("*/books.parquet")))
         if not stored_books.empty:
             stored_books = _normalize_time_filter(stored_books, ts_col="ts", start=start, end=end)
-            stored_books["ts"] = stored_books["ts"].astype("int64") // 1_000_000
+            stored_books["ts"] = _timestamp_series_to_ms(stored_books["ts"])
             stored_books["inst_id"] = inst_id
             return stored_books[["ts", "inst_id", "bid_px_0", "bid_sz_0", "ask_px_0", "ask_sz_0"]]
 
@@ -610,7 +622,7 @@ def _synthetic_l1_from_candles(
     half_spread = mid * synthetic_spread_bps / 20_000.0
     size = data["vol"].astype(float).clip(lower=1.0) if "vol" in data.columns else 1.0
     return pd.DataFrame({
-        "ts": data["ts"].astype("int64") // 1_000_000,
+        "ts": _timestamp_series_to_ms(data["ts"]),
         "inst_id": inst_id,
         "bid_px_0": (mid - half_spread).astype(float),
         "bid_sz_0": size,
@@ -645,7 +657,7 @@ def load_funding_events(
             return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
         frame = funding.reset_index(names="ts")
         return pd.DataFrame({
-            "ts": frame["ts"].astype("int64") // 1_000_000,
+            "ts": _timestamp_series_to_ms(frame["ts"]),
             "inst_id": inst_id,
             "funding_rate": frame["rate"].astype(float),
             "next_funding_time": frame.get("nextFundingTime", 0),
@@ -658,7 +670,7 @@ def load_funding_events(
     funding = pq.read_table(path).to_pandas()
     funding = _normalize_time_filter(funding, ts_col="ts", start=start, end=end)
     return pd.DataFrame({
-        "ts": funding["ts"].astype("int64") // 1_000_000,
+        "ts": _timestamp_series_to_ms(funding["ts"]),
         "inst_id": inst_id,
         "funding_rate": funding["rate"].astype(float),
         "next_funding_time": funding.get("nextFundingTime", 0),
@@ -681,9 +693,10 @@ class HistoricalEventFeed:
         combined: list[tuple[int, int, Event]] = []
 
         for row in self.feature_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = FeaturePayload(
                 dataset_id=str(row.dataset_id),
-                ts=int(row.ts),
+                ts=ts_ms,
                 observed_at=_to_ms_int(getattr(row, "observed_at", None)) or None,
                 published_at=_to_ms_int(getattr(row, "published_at", None)) or None,
                 value_num=(
@@ -705,23 +718,25 @@ class HistoricalEventFeed:
                 ),
                 quality_status=str(getattr(row, "quality_status", "raw") or "raw"),
             )
-            combined.append((int(row.ts), 0, Event(EvtType.FEATURE, payload=payload)))
+            combined.append((ts_ms, 0, Event(EvtType.FEATURE, payload=payload)))
 
         for row in self.market_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = MarketPayload(
                 inst_id=row.inst_id,
-                ts=int(row.ts),
+                ts=ts_ms,
                 bids=[[f"{float(row.bid_px_0):.10f}", f"{float(row.bid_sz_0):.10f}"]],
                 asks=[[f"{float(row.ask_px_0):.10f}", f"{float(row.ask_sz_0):.10f}"]],
                 seq_id=0,
                 channel="books",
             )
-            combined.append((int(row.ts), 1, Event(EvtType.MARKET, payload=payload)))
+            combined.append((ts_ms, 1, Event(EvtType.MARKET, payload=payload)))
 
         for row in self.funding_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = MarketPayload(
                 inst_id=row.inst_id,
-                ts=int(row.ts),
+                ts=ts_ms,
                 bids=[],
                 asks=[],
                 seq_id=0,
@@ -735,7 +750,7 @@ class HistoricalEventFeed:
                     else None
                 ),
             )
-            combined.append((int(row.ts), 2, Event(EvtType.FUNDING, payload=payload)))
+            combined.append((ts_ms, 2, Event(EvtType.FUNDING, payload=payload)))
 
         combined.sort(key=lambda item: (item[0], item[1]))
         for _, _, event in combined:

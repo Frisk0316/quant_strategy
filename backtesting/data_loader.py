@@ -548,13 +548,22 @@ def load_feature_events(
     frame["published_at"] = pd.to_datetime(frame.get("published_at"), utc=True, errors="coerce")
     frame = frame.dropna(subset=["observed_at"])
     event_ts = frame["published_at"].where(frame["published_at"].notna(), frame["observed_at"])
-    frame["ts"] = event_ts.astype("int64") // 1_000_000
+    frame["ts"] = event_ts.map(_timestamp_to_ms).astype("int64")
     frame["dataset_id"] = dataset_id
     frame["fields"] = frame["fields"].apply(lambda value: value if isinstance(value, dict) else {})
     return frame[[
         "ts", "dataset_id", "observed_at", "published_at", "value_num",
         "value_text", "fields", "quality_status",
     ]].sort_values("ts")
+
+
+def _timestamp_to_ms(value: Any) -> int:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return int(ts.timestamp() * 1000)
 
 
 def asof_join_features(

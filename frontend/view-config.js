@@ -18,7 +18,15 @@ const STRATEGY_PARAM_DEFAULTS = {
   ema_crossover: { fast_span: 20, slow_span: 50 },
   macd_crossover: { fast_span: 12, slow_span: 26, signal_span: 9 },
   fear_greed_sentiment: { dataset_id: "fear_greed_btc", max_age_seconds: 172800, extreme_fear_label: "Extreme Fear", extreme_fear_threshold: 25, exit_value_threshold: 51 },
-  cme_gap_fill: { dataset_id: "cme_btc1_continuous", max_age_seconds: 604800, min_gap_bps: 10, max_hold_days: 5 },
+  cme_gap_fill: {
+    dataset_id: "cme_btc_yfinance",
+    max_age_seconds: 604800,
+    min_gap_bps: 25,
+    max_hold_days: 2,
+    stop_loss_bps_mult: 1.5,
+    max_gap_bps: 0,
+    allow_direction: "long_only",
+  },
 };
 
 const todayUtc = new Date();
@@ -510,10 +518,13 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
       ["exit_value_threshold", "51", "numeric exit", "Numeric Fear & Greed value at or above this threshold exits an existing position."],
     ],
     cme_gap_fill: [
-      ["dataset_id", "cme_btc1_continuous", "external dataset", "External CME BTC futures dataset id. Missing or stale observations suppress trading signals."],
+      ["dataset_id", "cme_btc_yfinance", "external dataset", "External BTC futures dataset id. cme_btc_yfinance is research-only proxy; cme_btc1_continuous requires official data ingest."],
       ["max_age_seconds", "604800", "feature TTL", "Maximum age for the as-of CME observation before it is treated as stale."],
-      ["min_gap_bps", "10", "gap threshold", "Minimum weekend CME gap size in basis points before the strategy considers an entry."],
-      ["max_hold_days", "5", "max hold", "Maximum holding time in days before a gap-fill position exits by timeout."],
+      ["min_gap_bps", "25", "gap threshold", "Minimum weekend CME gap size in basis points before the strategy considers an entry."],
+      ["max_hold_days", "2", "max hold", "Maximum holding time in days before a gap-fill position exits by timeout."],
+      ["stop_loss_bps_mult", "1.5", "stop multiple", "Stop-loss distance as a multiple of gap_bps from the OKX entry anchor. 0 disables stop-loss."],
+      ["max_gap_bps", "0", "upper gap filter", "Optional upper bound for oversized gaps. 0 disables the upper-bound filter."],
+      ["allow_direction", "long_only", "direction filter", "long_only trades only down-gaps. This default is regime-fitted to BTC 2024-26 and needs bear-regime walk-forward."],
     ],
     ohlcv_rotation: [
       ["top_k", "3", "max simultaneous positions", "Max instruments held at once. Each gets equal weight (1/n), capped at max_position_weight=0.35."],
@@ -541,7 +552,7 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
             <div style=${{ flex: 1, fontSize: 12 }} class="mono" title=${short}>${k}</div>
             <input class="input mono" value=${editable ? (activeParams[k] ?? v) : v} disabled=${!editable}
               onChange=${(e) => setParams({ ...activeParams, [k]: parseParam(e.target.value) })}
-              style=${{ width: 100, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
+              style=${{ width: 156, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
           </div>
           <div class="field-hint" style=${{ fontSize: 11 }}>${full}</div>
         </div>
@@ -648,7 +659,7 @@ function MarketDataCard() {
       <div class="card-h">
         <div>
           <div class="card-title">Market Data Coverage</div>
-          <div class="card-sub">OHLCV and funding rates stored in TimescaleDB</div>
+          <div class="card-sub">OHLCV, funding rates, and external feature observations stored in TimescaleDB</div>
         </div>
         <div class="row" style=${{ gap: 8 }}>
           <button class="btn sm" onClick=${() => setShowExportPanel((v) => !v)}>Export CSV</button>
@@ -802,7 +813,7 @@ function MarketDataCard() {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Symbol</th><th>Bar</th><th class="num">First date</th>
+              <th>Dataset / Symbol</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
               <th class="num">Gaps</th>
             </tr>
@@ -811,7 +822,9 @@ function MarketDataCard() {
             ${(coverage || []).map((row, i) => html`
               <tr key=${i}>
                 <td class="mono">${row.inst_id}</td>
+                <td>${row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")}</td>
                 <td class="mono">${row.bar}</td>
+                <td class="mono">${row.provider || "-"}</td>
                 <td class="num mono">${row.first_ts ? new Date(row.first_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num mono">${row.last_ts ? new Date(row.last_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num">${(row.row_count || 0).toLocaleString()}</td>
@@ -821,7 +834,7 @@ function MarketDataCard() {
               </tr>
             `)}
             ${(!coverage || !coverage.length) && html`
-              <tr><td colSpan=${6} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" to load historical data.</td></tr>
+              <tr><td colSpan=${8} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
             `}
           </tbody>
         </table>

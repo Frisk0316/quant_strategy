@@ -90,9 +90,14 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
                 ORDER BY inst_id
                 """
             )
-            return [{**dict(r), "gap_count": 0} for r in rows] + [
-                {**dict(r), "gap_count": 0} for r in fr
-            ]
+            external = await _fetch_external_coverage(conn)
+            return [
+                {**dict(r), "gap_count": 0, "data_kind": "ohlcv", "provider": "canonical"}
+                for r in rows
+            ] + [
+                {**dict(r), "gap_count": 0, "data_kind": "funding", "provider": "okx"}
+                for r in fr
+            ] + external
         finally:
             await conn.close()
 
@@ -487,6 +492,43 @@ def _request_symbols(req: FetchRequest) -> list[str]:
         symbols.append(req.symbol)
     seen = set()
     return [s for s in symbols if s and not (s in seen or seen.add(s))]
+
+
+async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT
+                d.dataset_id AS inst_id,
+                COALESCE(d.frequency, 'external') AS bar,
+                MIN(o.observed_at) AS first_ts,
+                MAX(o.observed_at) AS last_ts,
+                COUNT(o.observed_at) AS row_count,
+                d.provider,
+                d.value_kind,
+                d.frequency,
+                d.source_url,
+                d.attribution,
+                COALESCE((d.metadata->>'research_only')::boolean, false) AS research_only
+            FROM external_datasets d
+            LEFT JOIN external_observations o
+              ON o.dataset_id = d.dataset_id
+            GROUP BY
+                d.dataset_id, d.provider, d.value_kind, d.frequency,
+                d.source_url, d.attribution, d.metadata
+            ORDER BY d.dataset_id
+            """
+        )
+    except Exception:
+        return []
+    return [
+        {
+            **dict(row),
+            "gap_count": 0,
+            "data_kind": "external",
+        }
+        for row in rows
+    ]
 
 
 def _instrument_map(raw: list[dict]) -> dict[str, dict]:

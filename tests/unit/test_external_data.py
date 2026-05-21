@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 import pandas as pd
 import pytest
 
-from backtesting.data_loader import asof_join_features
+from backtesting import data_loader
+from backtesting.data_loader import asof_join_features, load_feature_events
 from okx_quant.data.external_clients.fear_greed import FearGreedClient
 from okx_quant.data.external_clients.fred import FREDClient
 from okx_quant.data.external_clients.nasdaq_data_link import NasdaqDataLinkClient
@@ -131,3 +132,23 @@ def test_asof_join_features_marks_fresh_stale_and_missing():
     assert bool(joined.iloc[1]["fng_fresh"]) is True
     assert joined.iloc[1]["fng_value_text"] == "A"
     assert bool(joined.iloc[2]["fng_stale"]) is True
+
+
+def test_load_feature_events_uses_millisecond_event_timestamps(monkeypatch):
+    observations = pd.DataFrame({
+        "observed_at": pd.to_datetime(["2024-01-02 00:00Z"]),
+        "published_at": pd.to_datetime(["2024-01-03 00:00Z"]),
+        "value_num": [43500.0],
+        "value_text": [None],
+        "fields": [{"open": 43000.0}],
+        "quality_status": ["raw"],
+    })
+    monkeypatch.setattr(
+        data_loader,
+        "load_external_observations",
+        lambda *args, **kwargs: observations,
+    )
+
+    events = load_feature_events("cme_btc_yfinance", backend="postgres", dsn="postgresql://unused")
+
+    assert events.iloc[0]["ts"] == int(pd.Timestamp("2024-01-03 00:00Z").timestamp() * 1000)

@@ -191,6 +191,7 @@ class _ActiveGap:
     entry_side: Optional[str] = None
     okx_entry_anchor_price: Optional[float] = None
     okx_target_price: Optional[float] = None
+    exit_requested: bool = False
 
 
 class CMEGapFillStrategy(Strategy):
@@ -273,6 +274,8 @@ class CMEGapFillStrategy(Strategy):
         if gap is None:
             return None
         if self._in_position:
+            if gap.exit_requested:
+                return None
             target = gap.okx_target_price
             if target is not None and self._target_touched(gap.direction, price, target):
                 return self._gap_signal(gap, price, "exit", "target_fill")
@@ -334,6 +337,7 @@ class CMEGapFillStrategy(Strategy):
             gap.entry_side = side
         else:
             side = "buy" if gap.direction == "short" else "sell"
+            gap.exit_requested = True
         return SignalPayload(
             strategy=self.name,
             inst_id=self.symbol,

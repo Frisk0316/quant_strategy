@@ -247,32 +247,61 @@ Deflated Sharpe Ratio checks before promotion.
     daily signal*. It is **explicitly not a real-time weekend gap-fill
     strategy**. Treat any reported PnL as a daily-cadence research reference,
     not an executable edge.
-- **Signal source (official, blocked):** `cme_btc1_continuous` (Nasdaq Data
-  Link), daily OHLCV. `CHRIS/CME_BTC1` was discontinued by Nasdaq Data Link in
-  2022-03; ingest against it produces zero rows.
-- **Signal source (research proxy, currently wired):** `cme_btc_yfinance`,
-  built from Yahoo Finance `BTC=F` daily OHLC. This is **a research-only
-  unofficial proxy** for CME BTC futures, not the official CME settle and not
-  comparable in fidelity. Numbers from this proxy can only be used for
-  directional sanity checks. **They are not admissible as deployment or
-  promotion evidence** and any artefact derived from `cme_btc_yfinance` must
-  carry `source: research_proxy_only` in its `research_status` block. See
-  Research Feature Data Caveats below.
-- **Execution:** Maker-preferred on OKX; reuses long/flat exit close sizing.
-  Signals carry `metadata["research_only"] = True` and `enabled: false`.
-- **Applicable instruments:** OKX BTC-USDT-SWAP as the trading venue; CME BTC
-  futures (continuous, back-adjusted) as the signal source.
-- **Expected edge (research proxy run, 2026-05-19, yfinance):** 112 gaps over
-  2024-01-01 → 2026-05-19, fill probability 82.1%, median time-to-fill 0 days.
-  But the reverse-gap trade simulation on OKX 1H bars with 12 bps round-trip
-  cost shows **negative total return (-33.3%), Sharpe -0.52, max drawdown
-  -49.2%** despite a 76% win rate, because 27 timeout trades sum -12,978 bps
-  vs. 82 target-fill trades summing +9,791 bps. The asymmetric
-  capped-win / uncapped-loss payoff under `max_hold_days=5` and no stop-loss
-  is the structural problem — not the gap signal itself. Up-gaps (short BTC)
-  account for -4,072 bps, against the long-run BTC drift in this window. See
-  the "Strategy improvements" subsection below for stop-loss / dust-bucket
-  filter mitigations.
+- **Signal source (official, budget-blocked):** `cme_btc1_continuous` (Nasdaq
+  Data Link), daily OHLCV. `CHRIS/CME_BTC1` was discontinued by Nasdaq Data
+  Link in 2022-03; replacement official feeds (CME DataMine, Databento
+  `GLBX.MDP3`, Polygon CME feed) are paid subscriptions and **not currently
+  provisioned under this project's budget**. Treat as aspirational; no near-
+  term plan to subscribe.
+- **Signal source (operating under budget constraint):** `cme_btc_yfinance`,
+  built from Yahoo Finance `BTC=F` daily OHLC. This is the **operating signal
+  source** for this strategy under the current budget, not a temporary
+  placeholder waiting for an official feed. It remains an **unofficial proxy
+  for CME BTC futures** — not the official CME settle and not comparable in
+  fidelity. Numbers can be used for directional sanity checks and parameter
+  iteration; **they are not admissible as deployment or promotion evidence**
+  and any artefact must carry `source: research_proxy_only` in its
+  `research_status` block. See Research Feature Data Caveats below.
+- **Execution venue and instrument:** The actual trading venue is **OKX
+  BTC-USDT-SWAP** (perpetual swap, USDT-margined), maker-preferred, reusing
+  the long/flat exit close sizing. The strategy is **cross-venue**: CME BTC
+  futures (or its yfinance proxy) provides the *signal*, and we trade the
+  USDT-quoted crypto perp on OKX. We do **not** trade CME BTC futures
+  themselves — the broader project trades only crypto / USDT pairs on OKX,
+  and this strategy is BTC-specific only because the CME gap signal is
+  BTC-specific. Signals carry `metadata["research_only"] = True` and the
+  strategy is `enabled: false` in `config/strategies.yaml`.
+- **Applicable instruments:** Trading venue is **OKX BTC-USDT-SWAP**; signal
+  source is CME BTC futures daily OHLC (currently the yfinance proxy). The
+  cross-venue setup is *signal-to-trade*, not arbitrage — there is no
+  position taken on CME.
+- **Expected edge (research proxy, two in-sample runs, yfinance,
+  2024-01-01 → 2026-05-19):**
+  - **Baseline run** (`min_gap_bps=10`, `max_hold_days=5`, no stop-loss,
+    `allow_direction=both`): 112 gaps, fill probability 82.1%, 109 trades.
+    Total return **-33.3%**, Sharpe -0.52, max drawdown -49.2%, win rate
+    76% but PF 0.78 — 27 timeouts sum -12,978 bps vs. 82 target-fills
+    +9,791 bps. The capped-win / uncapped-loss payoff is the structural
+    flaw.
+  - **Post-fix run** (`min_gap_bps=25`, `max_hold_days=2`,
+    `stop_loss_bps_mult=1.5`, `allow_direction=both`): 99 trades, total
+    return **-28.1%**, Sharpe -0.82, max drawdown -37.0%, win rate 55.6%,
+    PF 0.71. Stop-loss capped tail damage (worst -980 bps vs prior
+    -2,059) but converted 35/82 prior target-fills into stop-loss losses
+    (sum -8,094 bps), so the run remains net negative.
+  - **Direction breakdown of the post-fix run:** down-gaps (long BTC)
+    +803 bps over 46 trades, win 63%, PF 1.24; up-gaps (short BTC)
+    **-3,799 bps** over 53 trades, win 49%, PF 0.45. The short side
+    fights BTC's 2024-2026 long-run drift and is the dominant drag.
+- **Methodology note on prior in-sample envelopes (lesson learned):** An
+  earlier Claude review estimated that a 1.5× stop-loss would flip the run
+  to **+3,308 bps positive**. That estimate was wrong because it only
+  re-priced the 27 timeout trades and assumed all 82 target-fill trades
+  remained untouched. The real bar-by-bar simulator triggers stop-loss on
+  intra-trade adverse high/low excursions, converting many fills into
+  earlier stop-outs. Any future in-sample envelope on this style of
+  exit-replacement must walk every bar of every trade, not just re-cap
+  existing exit reasons.
 - **Status of CME-evidence claims:** None of the above numbers are admissible
   as deployment evidence because they are derived from a research proxy
   (`cme_btc_yfinance`), not from the official CME settle series.
@@ -293,35 +322,104 @@ Deflated Sharpe Ratio checks before promotion.
     re-implemented on minute-resolution CME data with `publish_lag_minutes`
     semantics, which is a separate research item.
 
-- **Strategy improvements (research plan, pending Codex implementation):**
-  In-sample analysis of the 109-trade yfinance-proxy run (2024-01 → 2026-05)
-  shows the negative expectancy is driven entirely by the long-tail timeout
-  trades; the gap signal itself has a positive raw fill probability.
-  Recommended structural changes (effects are **in-sample only** — must be
-  re-validated walk-forward / CPCV before any deployment claim):
-  - **P0 stop-loss**: cap adverse move at `stop_loss_bps_mult × gap_bps`.
-    In-sample: a 1.5× stop flips the run from -3,187 bps to +3,308 bps and
-    caps worst trade from -2,059 bps to -925 bps. Stop has a clean physical
-    interpretation — if price has moved further against entry than the
-    original gap, the mean-reversion thesis is broken.
-  - **P0 dust-bucket exclusion**: raise `min_gap_bps` from 10 to 25. Gaps
-    under 25 bps have edge ≤ 12 bps round-trip cost on the proxy run.
-  - **P1 hold-time cap**: drop `max_hold_days` default from 5 to 2. Median
-    in-sample fill happens at 7h; 73% of fills land in the first day.
-  - **P1 direction filter**: optional `allow_direction` toggle (default
-    `both`). Up-gaps (short BTC) account for -4,072 bps in the proxy run,
-    but this may be a regime artefact of BTC's 2024-2026 drift, so the
-    filter is off by default and gated on walk-forward evidence.
-  - **Not deployment-ready even after these fixes**: improvements above are
-    in-sample fits on a research-proxy dataset. They reduce blow-up risk and
-    move expectancy from clearly negative to positive on the in-sample
-    window, but do not constitute validated alpha.
+- **Status of structural changes (already implemented in code):**
+  Stop-loss (`stop_loss_bps_mult=1.5`), dust-bucket exclusion
+  (`min_gap_bps=25`), and shortened hold (`max_hold_days=2`) are now in
+  `CMEGapFillStrategy` and `analyze_cme_gaps.py`. They cap tail damage and
+  shrink hold time, but on this yfinance proxy they do **not** flip the run
+  positive when both directions are traded — they merely move the loss
+  from -33% to -28% with a different exit-reason mix.
+- **Default-direction decision (Route B, 2026-05-19, default flipped in
+  commit `655af31`):** Because up-gaps (short BTC) were -3,799 bps versus
+  down-gaps (long BTC) +803 bps in the post-fix `both`-directions run, the
+  research default is now **`allow_direction="long_only"`** in
+  `CMEGapFillParams`, `config/strategies.yaml`, `CMEGapFillStrategy`,
+  `detect_weekend_gaps`, `simulate_reverse_gap_trades`, and the
+  `analyze_cme_gaps.py` CLI. Regression tests in
+  `tests/unit/test_external_feature_strategies.py
+  ::test_cme_gap_fill_default_skips_up_gaps_and_trades_down_gaps` and
+  `tests/unit/test_cme_gap_analysis.py
+  ::test_simulate_reverse_gap_trades_default_excludes_short_side` lock the
+  default behaviour.
+  - **Re-run on default config**
+    (`results/cme_gap_research_long_only_default.json`, 2026-05-19):
+    47 down-gaps detected, 46 trades, 26 target-fills / 13 stop-losses /
+    7 timeouts. Total return **+7.09%**, annualised +3.07%, Sharpe +0.35,
+    max drawdown -14.7%, win rate 63.0%, PF 1.24, worst trade -980 bps.
+  - **Route B is still explicitly regime-fitted to BTC 2024-26; bear-regime
+    walk-forward remains required before any promotion claim.** `long_only`
+    aligns with BTC's 2024-2026 multi-year uptrend. A bear regime that
+    systematically gaps up after weekend de-risking would invert the
+    result. Any walk-forward or CPCV evaluation must include at least one
+    extended bear or sideways regime; if `long_only` fails on that
+    segment, the default must revert to "do not deploy" and the strategy
+    retired. See AI_HANDOFF Known Bug #15 and Next Step 6d.
+  - **Even with `long_only`, this is not validated alpha.** +7.09% over 46
+    trades / 2.4 years averages ~+15 bps per trade — only ~3 bps above the
+    12 bps round-trip cost — with a single -980 bps worst trade. The edge
+    is razor-thin; one bad trade erases months. Promotion ADR must state
+    this explicitly.
+- **Not deployment-ready under any direction setting.** The structural
+  fixes reduce blow-up risk but do not constitute validated alpha on a
+  research proxy. **Live trading would ideally require** (a) an official
+  CME signal source (not yfinance), (b) walk-forward / CPCV pass on
+  bear-regime data, (c) DSR ≥ 0.95. **Operating reality under current
+  budget**: gate (a) is not on the roadmap, so the practical path is to
+  run gates (b) and (c) on the yfinance proxy and accept the elevated
+  source-fidelity risk in any promotion ADR. If a promotion ADR is opened
+  on the proxy alone, it must explicitly attest to the signal-source
+  fidelity gap and require post-promotion ground-truth monitoring against
+  any later official feed.
+- **Exit throttle (`exit_requested`):** After the strategy emits its first
+  exit signal for an active gap (target / stop / timeout), it sets
+  `gap.exit_requested = True` and the in-position branch early-returns on
+  every subsequent `on_market` call until the fill confirmation arrives via
+  `on_fill` (which clears `_in_position` and `_active_gap`). This aligns the
+  replay strategy with the analyzer's one-entry-one-exit-per-gap baseline
+  assumption. Without the throttle the strategy would re-emit an exit signal
+  every bar that still satisfies target/stop/timeout — each one carries
+  `cancel_existing=True` and would cancel-and-replace the pending exit,
+  diverging materially from the analyzer's single round-trip model.
+  Regression test: `test_cme_gap_fill_does_not_repeat_exit_signal_while_exit_order_pending`
+  in `tests/unit/test_external_feature_strategies.py`. Known orphan risk:
+  if the exit order is cancelled or rejected externally before any fill,
+  the strategy stays `_in_position=True` with `exit_requested=True` and
+  will not re-emit — same shape as the MA/MACD long-flat baseline,
+  acceptable for v1 research.
+- **Analyzer ↔ replay measurement divergence (must be acknowledged in any
+  comparison):**
+  - The analyzer (`simulate_reverse_gap_trades`) uses each OKX bar's
+    **`high` / `low`** to check target / stop touches. The replay engine
+    feeds the strategy a single L1 book event per bar synthesised from the
+    bar **close** via `_synthetic_l1_from_candles`, so the strategy's
+    `_target_touched` / `_stop_loss_touched` only see the close mid. On
+    1H bars the intra-bar range is routinely 20-100 bps, so many trades
+    the analyzer counts as `target_fill` (winners) become `timeout` in
+    replay (small to large losses) — replay is systematically more
+    negative than the analyzer on the same gap signal.
+  - **Secondary divergence sources:** funding payments (perp pays funding
+    every 8h; analyzer ignores), maker queue / partial-fill mechanics
+    (replay `ReplayExecutionModel.queue_fill_fraction` vs analyzer's
+    instant-fill-at-level assumption), entry-price reference (analyzer
+    bar `open` vs replay close mid), and broker-modelled fees / slippage
+    vs analyzer's flat 12 bps round-trip.
+  - **Interpretation rule for artefacts:** the analyzer JSON
+    (`cme_gap_research_long_only_default.json`) is an **upper bound**
+    under an idealised execution model. The replay artefact is a
+    **coarse close-mid approximation** that biases toward timeouts and
+    under-states the signal. The true tradable expectancy sits between
+    them and cannot be estimated without either (i) feeding bar
+    high/low into the replay's market events (changes strategy
+    semantics, separate research item) or (ii) shadow trading on OKX
+    for ground truth. **Neither artefact is admissible as deployment
+    evidence in isolation.**
 - **Fit with existing system:** Implemented in
   `src/okx_quant/strategies/external_features.py::CMEGapFillStrategy`.
   Offline analysis lives in `scripts/analyze_cme_gaps.py`.
-- **Backtest path:** Replay with `--strategy cme_gap_fill` once a working CME
-  source is wired; also rerun `analyze_cme_gaps.py` for fill-probability
-  diagnostics with roll-day and holiday filters in place.
+- **Backtest path:** Replay with `--strategy cme_gap_fill` on the current
+  yfinance proxy; rerun `analyze_cme_gaps.py` for fill-probability
+  diagnostics with roll-day and holiday filters in place. Any comparison
+  table between the two outputs must cite the divergence note above.
 
 ## Research Feature Data Caveats
 
@@ -375,13 +473,15 @@ acknowledge them.
   proposed live run.
 - **TTL:** `max_age_seconds=172800` (48h) tolerates one missed publication.
 
-### `cme_btc1_continuous` (Nasdaq Data Link CME BTC Futures, official, blocked)
+### `cme_btc1_continuous` (Nasdaq Data Link CME BTC Futures, official, budget-blocked)
 
-- **Status: source replacement required.** `CHRIS/CME_BTC1` was discontinued by
-  Nasdaq Data Link in 2022-03; the current adapter target returns no data.
-  No CME-based research result is reproducible against the official source
-  until it is replaced (paid CME DataMine, Databento `GLBX.MDP3`, Polygon CME
-  feed, or equivalent).
+- **Status: budget-blocked, no near-term plan.** `CHRIS/CME_BTC1` was
+  discontinued by Nasdaq Data Link in 2022-03; replacement official feeds
+  (paid CME DataMine, Databento `GLBX.MDP3`, Polygon CME feed, or equivalent)
+  are all paid subscriptions and **not currently provisioned under this
+  project's budget**. There is no active roadmap item to subscribe. Treat
+  this entry as aspirational; the operating signal source for the strategy
+  is `cme_btc_yfinance` below.
 - **Cadence:** Intended daily settle. Real-time / intraday gap-fill is **not**
   supported by this dataset; see Strategy 10 caveats.
 - **Continuous-contract artefact:** Back-adjustment introduces synthetic
@@ -392,14 +492,17 @@ acknowledge them.
   analyzer now anchor targets on OKX entry mid, not on the absolute CME
   `prev_close`.
 
-### `cme_btc_yfinance` (Yahoo Finance `BTC=F`, research proxy ONLY)
+### `cme_btc_yfinance` (Yahoo Finance `BTC=F`, operating signal source under budget)
 
-- **Status: research-only proxy for an officially-blocked dataset.** Wired in
-  2026-05 because the official CME and Nasdaq Data Link sources are paid and
-  not currently provisioned. Yahoo's `BTC=F` is Yahoo's representation of CME
-  BTC futures front-month continuous quotes; it is **not** CME's official
-  settle and is not provided under a market-data licence suitable for
-  production.
+- **Status: operating signal source under current budget; not interim.**
+  Wired in 2026-05 because the official CME and Nasdaq Data Link sources are
+  paid subscriptions that this project has not provisioned. There is no
+  near-term plan to upgrade. **The strategy operates on this proxy
+  indefinitely under current budget**, and any research / parameter
+  iteration / walk-forward must be done on this proxy. Yahoo's `BTC=F` is
+  Yahoo's representation of CME BTC futures front-month continuous quotes;
+  it is **not** CME's official settle and is not provided under a market-
+  data licence suitable for production trading attribution.
 - **Hard rule:** Numbers derived from this dataset are admissible only as
   preliminary directional sanity checks. They are **never** admissible as
   deployment, shadow-promotion, or live-trading evidence. Any artefact must
@@ -416,11 +519,20 @@ acknowledge them.
     trade-date convention in all cases.
 - **Use as a research proxy:** OK for measuring (a) is there a stable
   weekend-gap fill rate? (b) does a stop-loss / dust-bucket / direction
-  filter materially improve the payoff distribution? (c) is the gap signal
-  worth pursuing once an official source is provisioned? Not OK for
-  measuring backtest PnL that anyone will rely on.
-- **Replacement plan:** Once an official CME source is provisioned, re-run
-  every yfinance-derived analysis side-by-side; treat directional agreement
+  filter materially improve the payoff distribution? (c) does the gap
+  signal survive walk-forward / CPCV on different regimes within this
+  proxy window? OK to run parameter studies, walk-forward, and CPCV
+  *on the proxy itself*. **Not** OK as deployment / promotion / shadow
+  evidence, and not OK for measuring backtest PnL that anyone will rely
+  on as a tradable expectation.
+- **Trading venue separation:** This dataset is a *signal*, not a trading
+  venue. The strategy that consumes it trades **OKX BTC-USDT-SWAP**, not
+  CME futures. The broader project trades crypto / USDT pairs only.
+  Quote delay / continuous stitching / Yahoo adjustments on `BTC=F` affect
+  the *signal* fidelity, not the trading instrument.
+- **If an official CME source is later provisioned (no current plan):**
+  re-run every yfinance-derived analysis side-by-side; treat directional
+  agreement
   as a sanity check, not as confirmation of edge.
 
 ## Strategies Rejected For Now
