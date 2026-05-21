@@ -819,6 +819,304 @@ def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _as_record_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(row) for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows = value.get("rows") or value.get("records") or value.get("data")
+        if isinstance(rows, list):
+            return [dict(row) for row in rows if isinstance(row, dict)]
+    return []
+
+
+def _first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is not None and value != "":
+            return value
+    return default
+
+
+def _visual_float(value: Any, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _visual_time_values(value: Any) -> tuple[int | None, str]:
+    if value is None or value == "":
+        return None, ""
+    try:
+        if isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
+            raw = float(value)
+            unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
+            ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
+        else:
+            ts = pd.to_datetime(value, utc=True, errors="coerce")
+    except Exception:
+        return None, str(value)
+    if pd.isna(ts):
+        return None, str(value)
+    return int(ts.timestamp() * 1000), ts.isoformat()
+
+
+def _result_visual_symbols(
+    result: dict[str, Any] | None,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    symbols: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, str) and value and _SAFE_SYMBOL_RE.match(value) and value not in symbols:
+            symbols.append(value)
+
+    if result:
+        for value in result.get("symbols") or []:
+            add(value)
+        metrics = result.get("metrics") or {}
+        for key in ("loaded_symbols", "universe", "skipped_symbols"):
+            for value in metrics.get(key) or []:
+                add(value)
+        for key in ("symbol", "benchmark", "perp_symbol", "spot_symbol"):
+            add(result.get(key))
+        validation = result.get("validation") or {}
+        for source in validation.get("daily_winner_data_sources") or []:
+            if isinstance(source, dict):
+                add(source.get("inst_id"))
+        for row in result.get("trades") or []:
+            if isinstance(row, dict):
+                add(_first_present(row, ["inst_id", "symbol"]))
+
+    for rows in (fills or [], trades or []):
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict):
+                add(_first_present(row, ["inst_id", "symbol"]))
+
+    return symbols
+
+
+def _downsample_records(records: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Return at most n evenly-spaced records, always including first and last."""
+    if n <= 0 or len(records) <= n:
+        return records
+    step = len(records) / n
+    indices = set(int(i * step) for i in range(n))
+    indices.add(len(records) - 1)
+    return [records[i] for i in sorted(indices)]
+
+
+def _downsample_records_by_symbol(records: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Downsample price records per instrument so multi-symbol charts remain visible."""
+    if n <= 0 or len(records) <= n:
+        return records
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for row in records:
+        symbol = str(row.get("inst_id") or "")
+        if symbol not in groups:
+            groups[symbol] = []
+            order.append(symbol)
+        groups[symbol].append(row)
+    if len(groups) <= 1:
+        return _downsample_records(records, n)
+
+    per_symbol = max(1, n)
+    sampled: list[dict[str, Any]] = []
+    for symbol in order:
+        sampled.extend(_downsample_records(groups[symbol], per_symbol))
+    sampled.sort(key=lambda row: (str(row.get("ts") or row.get("datetime") or ""), row.get("inst_id") or ""))
+    return sampled
+
+
+def _data_source_exchange(result: dict[str, Any] | None) -> str:
+    source = (result or {}).get("data_source") or {}
+    return _normalize_exchange(source.get("primary_exchange") if isinstance(source, dict) else None)
+
+
+def _fallback_price_series_from_result(
+    result: dict[str, Any],
+    *,
+    symbol: str | None = None,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Rebuild chart OHLCV from the configured candle store when artifacts are absent."""
+    from backtesting import data_loader
+
+    selected = [symbol] if symbol else _result_visual_symbols(result, fills=fills, trades=trades)
+    if not selected:
+        return []
+
+    bar = result.get("bar") or "1H"
+    start = result.get("start") or result.get("start_date") or None
+    end = result.get("end") or result.get("end_date") or None
+    data_dir = str(result.get("data_dir") or "data/ticks")
+    backend, dsn = _resolve_candle_backend()
+    exchange = _data_source_exchange(result)
+
+    attempts: list[tuple[str, str | None]] = []
+    if dsn:
+        attempts.append(("market", exchange))
+        attempts.append(("postgres", None))
+    attempts.append((backend, exchange if backend == "market" else None))
+    attempts.append(("parquet", None))
+
+    deduped_attempts: list[tuple[str, str | None]] = []
+    for attempt in attempts:
+        if attempt not in deduped_attempts:
+            deduped_attempts.append(attempt)
+
+    rows: list[dict[str, Any]] = []
+    for inst_id in selected:
+        df = pd.DataFrame()
+        for load_backend, load_exchange in deduped_attempts:
+            try:
+                df = data_loader.load_candles(
+                    inst_id=inst_id,
+                    bar=bar,
+                    data_dir=data_dir,
+                    start=start,
+                    end=end,
+                    backend=load_backend,  # type: ignore[arg-type]
+                    dsn=dsn,
+                    exchange=load_exchange,
+                )
+            except Exception:
+                df = pd.DataFrame()
+            if not df.empty:
+                break
+        if df.empty:
+            continue
+        for ts_value, candle in df.sort_index().iterrows():
+            ts_ms, dt = _visual_time_values(ts_value)
+            if ts_ms is None:
+                continue
+            rows.append({
+                "ts": ts_ms,
+                "datetime": dt,
+                "inst_id": inst_id,
+                "open": _visual_float(candle.get("open"), float("nan")),
+                "high": _visual_float(candle.get("high"), float("nan")),
+                "low": _visual_float(candle.get("low"), float("nan")),
+                "close": _visual_float(candle.get("close"), float("nan")),
+                "vol": _visual_float(candle.get("vol"), 0.0),
+            })
+    return _json_sanitize(rows)
+
+
+def _fallback_execution_markers_from_records(
+    *,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+    result: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Build chart markers from fills, or from trade entry/exit rows for non-replay runs."""
+    strategies = (result or {}).get("strategies") or [(result or {}).get("strategy") or ""]
+    default_strategy = next((strat for strat in strategies if strat), "")
+
+    def marker(
+        *,
+        source: dict[str, Any],
+        ts_value: Any,
+        inst_id: str,
+        side: str,
+        price: Any,
+        qty: Any = None,
+        pnl: Any = None,
+        text_prefix: str | None = None,
+    ) -> dict[str, Any] | None:
+        ts_ms, dt = _visual_time_values(ts_value)
+        if ts_ms is None or not inst_id:
+            return None
+        side_l = str(side or "buy").lower()
+        px = _visual_float(price, 0.0)
+        qty_f = _visual_float(qty, 0.0)
+        fee = _visual_float(source.get("fee"), 0.0)
+        notional = _visual_float(_first_present(source, ["notional_usd", "notional"]), abs(px * qty_f) if qty_f else 0.0)
+        pnl_value = _visual_float(pnl, float("nan"))
+        marker_position = "belowBar" if side_l == "buy" else "aboveBar"
+        marker_shape = "arrowUp" if side_l == "buy" else "arrowDown"
+        label = text_prefix or side_l.upper()
+        pnl_text = f" | PnL: {pnl_value:.4g}" if math.isfinite(pnl_value) else ""
+        marker_text = f"{label} @ {px:,.6g}{pnl_text}"
+        return {
+            "ts": ts_ms,
+            "datetime": dt,
+            "inst_id": inst_id,
+            "strategy": source.get("strategy") or default_strategy,
+            "side": side_l,
+            "price": px,
+            "qty": qty_f,
+            "fee": fee,
+            "notional_usd": notional,
+            "net_realized_pnl": pnl_value if math.isfinite(pnl_value) else None,
+            "day_pnl": None,
+            "position_after": source.get("position_after", source.get("size_after")),
+            "marker_position": marker_position,
+            "marker_shape": marker_shape,
+            "marker_text": marker_text,
+        }
+
+    markers: list[dict[str, Any]] = []
+    for fill in fills or []:
+        if not isinstance(fill, dict):
+            continue
+        state = str(fill.get("state") or fill.get("status") or "filled").lower()
+        if state and state not in {"filled", "partially_filled", "fill"}:
+            continue
+        inst_id = str(_first_present(fill, ["inst_id", "symbol"], ""))
+        row = marker(
+            source=fill,
+            ts_value=_first_present(fill, ["ts", "datetime", "time"]),
+            inst_id=inst_id,
+            side=str(_first_present(fill, ["side"], "buy")),
+            price=_first_present(fill, ["fill_px", "price", "px", "avg_px"]),
+            qty=_first_present(fill, ["fill_sz", "qty", "sz"]),
+            pnl=_first_present(fill, ["net_realized_pnl", "pnl", "pnl_usd"]),
+        )
+        if row:
+            markers.append(row)
+    if markers:
+        return _json_sanitize(sorted(markers, key=lambda row: (row.get("ts") or 0, row.get("inst_id") or "")))
+
+    for trade in trades or []:
+        if not isinstance(trade, dict):
+            continue
+        inst_id = str(_first_present(trade, ["inst_id", "symbol"], ""))
+        entry_side = str(_first_present(trade, ["side", "entry_side"], "buy")).lower()
+        exit_side = "sell" if entry_side == "buy" else "buy"
+        entry = marker(
+            source=trade,
+            ts_value=_first_present(trade, ["entry_ts", "entry_time", "datetime", "ts"]),
+            inst_id=inst_id,
+            side=entry_side,
+            price=_first_present(trade, ["entry_price", "price"]),
+            qty=_first_present(trade, ["qty", "size", "entry_qty"]),
+            text_prefix="ENTRY",
+        )
+        if entry:
+            markers.append(entry)
+        exit_ts = _first_present(trade, ["exit_ts", "exit_time", "close_ts"])
+        exit_price = _first_present(trade, ["exit_price", "close_price"])
+        if exit_ts is not None and exit_ts != "" and exit_price is not None and exit_price != "":
+            exit_row = marker(
+                source=trade,
+                ts_value=exit_ts,
+                inst_id=inst_id,
+                side=exit_side,
+                price=exit_price,
+                qty=_first_present(trade, ["qty", "size", "exit_qty"]),
+                pnl=_first_present(trade, ["net_realized_pnl", "net_return", "pnl", "pnl_usd"]),
+                text_prefix="EXIT",
+            )
+            if exit_row:
+                markers.append(exit_row)
+    return _json_sanitize(sorted(markers, key=lambda row: (row.get("ts") or 0, row.get("inst_id") or "")))
+
+
 def _run_backtest_job(
     job_id: str,
     req: RunBacktestRequest,
@@ -1053,6 +1351,25 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         except Exception:
             return None
 
+    async def _read_result_payload(run_id: str) -> dict[str, Any]:
+        payload = await _read_db_artifact(run_id, "result")
+        if payload is not None:
+            return _normalize_daily_winner_payload(payload)
+        return _normalize_daily_winner_payload(_read_json(_run_dir(run_id) / "result.json"))
+
+    async def _read_records_artifact(run_id: str, artifact_type: str, filename: str) -> list[dict[str, Any]]:
+        payload = await _read_db_artifact(run_id, artifact_type)
+        records = _as_record_list(payload)
+        if records:
+            return records
+        d = results_dir / Path(run_id).name
+        if not d.is_dir():
+            return []
+        path = d / filename
+        if not path.exists():
+            return []
+        return _as_record_list(_read_csv(path))
+
     # ------------------------------------------------------------------
     # List all runs
     # ------------------------------------------------------------------
@@ -1281,11 +1598,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/{run_id}")
     async def get_run(run_id: str):
         """Return the full result.json for a run."""
-        payload = await _read_db_artifact(run_id, "result")
-        if payload is not None:
-            return _normalize_daily_winner_payload(payload)
-        d = _run_dir(run_id)
-        return _normalize_daily_winner_payload(_read_json(d / "result.json"))
+        return await _read_result_payload(run_id)
 
     # ------------------------------------------------------------------
     # Metrics
@@ -1474,10 +1787,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/execution-markers")
     async def get_execution_markers(run_id: str):
-        payload = await _read_db_artifact(run_id, "execution_markers")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "execution_markers.csv")
+        records = await _read_records_artifact(run_id, "execution_markers", "execution_markers.csv")
+        if records:
+            return records
+        result = await _read_result_payload(run_id)
+        fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+        trades = await _read_records_artifact(run_id, "trades", "trades.csv")
+        if not trades:
+            trades = _as_record_list(result.get("trades"))
+        return _fallback_execution_markers_from_records(
+            fills=fills,
+            trades=trades,
+            result=result,
+        )
 
     @router.get("/{run_id}/price-series")
     async def get_price_series(
@@ -1485,16 +1807,58 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         symbol: str | None = Query(default=None),
         n: int = Query(default=0, ge=0),
     ):
-        payload = await _read_db_artifact(run_id, "price_series")
-        if payload is not None:
-            records = payload
-        else:
-            records = _read_csv(_run_dir(run_id) / "price_series.csv")
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+        records = await _read_records_artifact(run_id, "price_series", "price_series.csv")
+        result: dict[str, Any] | None = None
+        fills: list[dict[str, Any]] = []
+        trades: list[dict[str, Any]] = []
+
+        async def _load_visual_context() -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+            nonlocal result, fills, trades
+            if result is None:
+                result = await _read_result_payload(run_id)
+            if not fills:
+                fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+            if not trades:
+                trades = await _read_records_artifact(run_id, "trades", "trades.csv")
+                if not trades:
+                    trades = _as_record_list(result.get("trades"))
+            return result, fills, trades
+
+        if symbol:
             records = [row for row in records if row.get("inst_id") == symbol]
-        return _downsample_records(records, n)
+            if not records:
+                result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+                records = _fallback_price_series_from_result(
+                    result_ctx,
+                    symbol=symbol,
+                    fills=fills_ctx,
+                    trades=trades_ctx,
+                )
+            return _downsample_records(records, n)
+
+        if records:
+            result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+            expected_symbols = _result_visual_symbols(result_ctx, fills=fills_ctx, trades=trades_ctx)
+            available_symbols = {str(row.get("inst_id") or "") for row in records}
+            missing_symbols = [inst_id for inst_id in expected_symbols if inst_id not in available_symbols]
+            if missing_symbols:
+                fallback_rows = _fallback_price_series_from_result(
+                    result_ctx,
+                    fills=fills_ctx,
+                    trades=trades_ctx,
+                )
+                records.extend(row for row in fallback_rows if row.get("inst_id") in missing_symbols)
+        else:
+            result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+            records = _fallback_price_series_from_result(
+                result_ctx,
+                fills=fills_ctx,
+                trades=trades_ctx,
+            )
+        return _downsample_records_by_symbol(records, n)
 
     @router.get("/{run_id}/indicators")
     async def get_indicators(
