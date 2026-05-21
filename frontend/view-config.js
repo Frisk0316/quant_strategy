@@ -38,6 +38,29 @@ const RISK_OVERRIDE_DEFAULTS = {
   max_pos_pct_equity: "",
   max_leverage: "",
 };
+const RISK_OVERRIDE_SPECS = [
+  {
+    key: "max_order_notional_usd",
+    label: "Max order USD",
+    placeholder: "e.g. 5000",
+    step: "50",
+    help: "Per-order notional cap in USD. Orders above this amount are blocked as fat_finger; raising it can allow high-price exits and rebalances.",
+  },
+  {
+    key: "max_pos_pct_equity",
+    label: "Max pos pct",
+    placeholder: "e.g. 0.75",
+    step: "0.05",
+    help: "Max position notional as a fraction of equity. 0.30 means current position plus the new order cannot exceed 30% of equity, except reduce-only exits.",
+  },
+  {
+    key: "max_leverage",
+    label: "Max leverage",
+    placeholder: "e.g. 3",
+    step: "0.5",
+    help: "Research leverage ceiling, expressed as gross notional divided by equity. Kept with the copied risk config and dashboard parity; order blocking is mainly driven by max order USD and max pos pct.",
+  },
+];
 const SWEEP_PARAM_SPECS = {
   ma_crossover: [
     ["fast_window", "fast"],
@@ -587,21 +610,21 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             `}
             <div class="field" style=${{ gridColumn: "1 / -1" }}>
               <div class="field-label">Research risk overrides</div>
-              <div class="grid" style=${{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-                <input class="input mono" type="number" min="0" step="50"
-                  value=${riskOverrides.max_order_notional_usd}
-                  placeholder="max order USD"
-                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_order_notional_usd: e.target.value }))} />
-                <input class="input mono" type="number" min="0" step="0.05"
-                  value=${riskOverrides.max_pos_pct_equity}
-                  placeholder="max pos pct"
-                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_pos_pct_equity: e.target.value }))} />
-                <input class="input mono" type="number" min="0" step="0.5"
-                  value=${riskOverrides.max_leverage}
-                  placeholder="max leverage"
-                  onChange=${(e) => setRiskOverrides((v) => ({ ...v, max_leverage: e.target.value }))} />
+              <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                ${RISK_OVERRIDE_SPECS.map((spec) => html`
+                  <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
+                    <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
+                    <input class="input mono" type="number" min="0" step=${spec.step}
+                      value=${riskOverrides[spec.key]}
+                      placeholder=${spec.placeholder}
+                      title=${spec.help}
+                      aria-label=${spec.label}
+                      onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
+                    <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
+                  </div>
+                `)}
               </div>
-              <div class="field-hint">Research-only; live risk config is unchanged.</div>
+              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. Research-only; live risk config is unchanged.</div>
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
@@ -637,7 +660,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
           ${isTechnical && html`
             <div class="sep" style=${{ margin: "12px 0" }}></div>
             <${ParameterSweepPanel}
@@ -668,7 +691,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id, params: activeParams = {}, setParams = () => {} }) {
+function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, setParams = () => {} }) {
   const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
@@ -738,6 +761,15 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
     ],
   }[id] || [];
   const editable = PARAMETERIZED_STRATEGIES.has(id);
+  const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
+  const riskMaxPos = Number(riskOverrides.max_pos_pct_equity);
+  const riskMaxLeverage = Number(riskOverrides.max_leverage);
+  const hasRiskOverride = [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
+  const riskSummary = [
+    `max_order_notional: ${Number.isFinite(riskMaxOrder) && riskMaxOrder > 0 ? fmtUSD(riskMaxOrder, 0) : "$500"}`,
+    `max_pos_pct: ${Number.isFinite(riskMaxPos) && riskMaxPos > 0 ? fmtPct(riskMaxPos, 0) : "30%"}`,
+    `max_leverage: ${Number.isFinite(riskMaxLeverage) && riskMaxLeverage > 0 ? `${fmtNum(riskMaxLeverage, 1)}x` : "3.0x"}`,
+  ].join(" - ");
   function parseParam(value) {
     const num = Number(value);
     return value !== "" && Number.isFinite(num) ? num : value;
@@ -756,7 +788,7 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
         </div>
       `)}
       <div class="sep"></div>
-      <div class="field-hint">td_mode: cross - post_only: true - max_order_notional: $500${editable ? " - parameters are sent with this run" : ""}</div>
+      <div class="field-hint">td_mode: cross - post_only: true - ${riskSummary}${hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
     </div>
   `;
 }
