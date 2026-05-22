@@ -1168,7 +1168,7 @@ def _run_backtest_job(
         _run_jobs[job_id].update({
             "status": "running",
             "progress": 10,
-            "message": "Running replay backtest (loading data…)",
+            "message": "Starting replay backtest process",
             "command": " ".join(cmd),
         })
         env = os.environ.copy()
@@ -1199,8 +1199,11 @@ def _run_backtest_job(
                 stripped = line.strip()
                 if stripped.startswith("PROGRESS:"):
                     try:
-                        pct = int(stripped.split(":")[1])
+                        parts = stripped.split(":", 2)
+                        pct = int(parts[1])
                         _run_jobs[job_id]["progress"] = pct
+                        if len(parts) > 2 and parts[2].strip():
+                            _run_jobs[job_id]["message"] = parts[2].strip()
                     except (ValueError, IndexError):
                         pass
         finally:

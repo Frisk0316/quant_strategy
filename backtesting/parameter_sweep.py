@@ -283,7 +283,7 @@ def run_parameter_sweep(
         if progress_callback:
             progress_callback({
                 "progress": 5 + int((idx - 1) / total * 90),
-                "message": f"Running {idx}/{total}",
+                "message": f"Screening parameter set {idx}/{total}",
                 "current_params": params,
             })
         combo_started = time.perf_counter()

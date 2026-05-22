@@ -105,6 +105,31 @@ const fmtDuration = (seconds) => {
   if (s < 3600) return `${(s / 60).toFixed(1)}m`;
   return `${(s / 3600).toFixed(1)}h`;
 };
+const clampProgress = (value) => {
+  const n = Number(value);
+  if (!isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+};
+function ProgressStage({ job, style = {} }) {
+  if (!job || job.progress == null) return null;
+  const pct = clampProgress(job.progress);
+  const pctLabel = `${Math.round(pct)}%`;
+  const stage = job.message || (job.status === "done" ? "Complete" : job.status === "error" ? "Failed" : "Working");
+  const tone = job.status === "done" ? "profit" : job.status === "error" ? "loss" : "";
+  return html`
+    <div style=${{ flex: 1, minWidth: 180, ...style }}>
+      <div class="row" style=${{ justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 6 }}>
+        <div class="field-hint" style=${{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <span style=${{ color: "var(--text-muted)" }}>Stage:</span> ${stage}
+        </div>
+        <span class="mono" style=${{ fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>${pctLabel}</span>
+      </div>
+      <div class=${`bar ${tone}`} style=${{ height: 6 }}>
+        <i style=${{ width: `${pct}%` }}></i>
+      </div>
+    </div>
+  `;
+}
 function parseSweepValues(raw) {
   const out = [];
   String(raw || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((part) => {
@@ -631,21 +656,18 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(effectiveStart, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
-            <div class="row" style=${{ gap: 12, marginTop: 16, alignItems: "center" }}>
-              <span class=${`chip ${runJob.status === "done" ? "profit" : runJob.status === "error" ? "loss" : "warn"}`}>${runJob.status}</span>
-              <span class="field-hint">${runJob.message || ""}</span>
-              ${runJob.run_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>${runJob.run_id}</span>`}
-              ${runJob.progress != null && html`
-                <div class="bar" style=${{ flex: 1, height: 6 }}>
-                  <i style=${{ width: `${runJob.progress}%`, background: "var(--accent)" }}></i>
-                </div>
-              `}
-              ${runJob.status === "done" && runJob.run_id && setView && html`
-                <button class="btn primary sm" onClick=${() => {
-                  setSelectedRunId?.(runJob.run_id);
-                  setView("backtest");
-                }}>View Results →</button>
-              `}
+            <div class="col" style=${{ gap: 8, marginTop: 16 }}>
+              <div class="row" style=${{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <span class=${`chip ${runJob.status === "done" ? "profit" : runJob.status === "error" ? "loss" : "warn"}`}>${runJob.status}</span>
+                ${runJob.run_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${runJob.run_id}</span>`}
+                ${runJob.status === "done" && runJob.run_id && setView && html`
+                  <button class="btn primary sm" onClick=${() => {
+                    setSelectedRunId?.(runJob.run_id);
+                    setView("backtest");
+                  }}>View Results →</button>
+                `}
+              </div>
+              <${ProgressStage} job=${runJob} />
             </div>
             ${runJob.status === "error" && runJob.output && html`
               <pre style=${{ marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 200, overflowY: "auto" }}>${runJob.output}</pre>
@@ -905,13 +927,8 @@ function ParameterSweepPanel({
       ${job && html`
         <div class="row" style=${{ gap: 8, alignItems: "center" }}>
           <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
-          <span class="field-hint">${job.message || ""}</span>
         </div>
-        ${job.progress != null && html`
-          <div class="bar" style=${{ height: 6 }}>
-            <i style=${{ width: `${job.progress}%`, background: "var(--accent)" }}></i>
-          </div>
-        `}
+        <${ProgressStage} job=${job} style=${{ marginTop: 6 }} />
         ${job.estimate && html`
           <div class="field-hint">
             ${job.combination_count || 0} combos - screening ${fmtDuration(job.estimate.estimated_screening_seconds)} - finalist reruns ${fmtDuration(job.estimate.estimated_full_rerun_seconds)}
@@ -1257,12 +1274,7 @@ function MarketDataCard() {
               <span class=${`chip ${fetchJob.status === "done" ? "profit" : fetchJob.status === "error" ? "loss" : "warn"}`}>
                 ${fetchJob.status}
               </span>
-              <span class="field-hint">${fetchJob.message || ""}</span>
-              ${fetchJob.progress != null && html`
-                <div class="bar" style=${{ flex: 1, height: 6 }}>
-                  <i style=${{ width: `${fetchJob.progress}%`, background: "var(--accent)" }}></i>
-                </div>
-              `}
+              <${ProgressStage} job=${fetchJob} />
             </div>
           `}
           <button class="btn primary sm" style=${{ marginTop: 12 }}

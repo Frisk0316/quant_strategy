@@ -157,7 +157,7 @@ def main() -> None:
     elif selected_technical and args.symbol:
         cfg.system.symbols = args.symbol
 
-    print("PROGRESS:20", flush=True)
+    print("PROGRESS:20:Running replay backtest", flush=True)
     result = run_replay_backtest(
         strategy_names=args.strategy,
         cfg=cfg,
@@ -171,7 +171,13 @@ def main() -> None:
     result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
     if applied_risk_overrides:
         result.validation["research_risk_overrides"] = applied_risk_overrides
-    print("PROGRESS:85", flush=True)
+    if args.save_artifacts and args.validate:
+        stage = f"Running replay validation ({args.validate}) and saving artifacts"
+    elif args.save_artifacts:
+        stage = "Saving replay artifacts"
+    else:
+        stage = "Preparing replay summary"
+    print(f"PROGRESS:85:{stage}", flush=True)
 
     print("=" * 72)
     print("REPLAY BACKTEST SUMMARY")
