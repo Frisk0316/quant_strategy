@@ -38,6 +38,7 @@ function TradesView({ selectedRunId }) {
   const [side, setSide] = useTradesState("ALL");
   const [status, setStatus] = useTradesState("ALL");
   const [strat, setStrat] = useTradesState("ALL");
+  const [pair, setPair] = useTradesState("ALL");
   const [search, setSearch] = useTradesState("");
   const [rows, setRows] = useTradesState(null);
 
@@ -53,16 +54,18 @@ function TradesView({ selectedRunId }) {
 
   const data = rows ?? MOCK.trades.map(normalizeTrade);
   const strategies = [...new Set([...MOCK.STRATEGIES.map((s) => s.id), ...data.map((t) => t.strategy)].filter(Boolean))];
+  const tradingPairs = [...new Set(data.map((t) => t.symbol).filter((s) => s && s !== "-"))].sort();
 
   const filtered = useTradesMemo(() => {
     return data.filter((t) => {
+      if (pair !== "ALL" && t.symbol !== pair) return false;
       if (side !== "ALL" && t.side !== side) return false;
       if (status !== "ALL" && t.status !== status) return false;
       if (strat !== "ALL" && t.strategy !== strat) return false;
       if (search && !t.symbol.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [data, side, status, strat, search]);
+  }, [data, pair, side, status, strat, search]);
 
   const totalPnl = filtered.reduce((a, t) => a + (t.status === "FILLED" ? t.pnl : 0), 0);
   const totalFee = filtered.reduce((a, t) => a + t.fee, 0);
@@ -89,7 +92,11 @@ function TradesView({ selectedRunId }) {
         </div>
 
         <div class="row wrap" style=${{ gap: 12, marginBottom: 12 }}>
-          <input class="input" placeholder="Search symbol..." value=${search} onChange=${(e) => setSearch(e.target.value)} style=${{ width: 200 }} />
+          <input class="input" placeholder="Search trading pair..." value=${search} onChange=${(e) => setSearch(e.target.value)} style=${{ width: 200 }} />
+          <select class="select" value=${pair} onChange=${(e) => setPair(e.target.value)} style=${{ width: 190 }}>
+            <option value="ALL">All trading pairs</option>
+            ${tradingPairs.map((s) => html`<option key=${s} value=${s}>${s}</option>`)}
+          </select>
           <select class="select" value=${side} onChange=${(e) => setSide(e.target.value)} style=${{ width: 120 }}>
             <option value="ALL">Side ALL</option>
             <option>BUY</option>
@@ -111,7 +118,7 @@ function TradesView({ selectedRunId }) {
           <table class="tbl">
             <thead>
               <tr>
-                <th>ID</th><th>Timestamp (UTC)</th><th>Symbol</th><th>Side</th><th>Type</th>
+                <th>ID</th><th>Timestamp (UTC)</th><th>Trading Pair</th><th>Side</th><th>Type</th>
                 <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional</th>
                 <th class="num">Fee</th><th class="num">PnL</th><th>Status</th><th>Strategy</th>
               </tr>

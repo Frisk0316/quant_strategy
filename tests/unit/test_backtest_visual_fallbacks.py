@@ -21,6 +21,19 @@ def test_downsample_price_records_preserves_each_symbol():
     assert len([row for row in sampled if row["inst_id"] == "ETH-USDT-SWAP"]) >= 2
 
 
+def test_price_series_fallback_cache_returns_copies():
+    key = ("run-cache-test", "*")
+    routes._price_series_fallback_cache.clear()
+    routes._set_price_series_cache(key, [{"inst_id": "BTC-USDT-SWAP", "close": 100.0}])
+
+    rows = routes._get_price_series_cache(key)
+    assert rows == [{"inst_id": "BTC-USDT-SWAP", "close": 100.0}]
+    rows[0]["close"] = 999.0
+
+    assert routes._get_price_series_cache(key) == [{"inst_id": "BTC-USDT-SWAP", "close": 100.0}]
+    routes._price_series_fallback_cache.clear()
+
+
 def test_trade_fallback_builds_entry_and_exit_markers():
     markers = routes._fallback_execution_markers_from_records(
         result={"strategies": ["daily_winner"]},
@@ -40,6 +53,38 @@ def test_trade_fallback_builds_entry_and_exit_markers():
     assert [row["marker_text"].split()[0] for row in markers] == ["ENTRY", "EXIT"]
     assert all(row["inst_id"] == "BTC-USDT-SWAP" for row in markers)
     assert all(isinstance(row["ts"], int) for row in markers)
+
+
+def test_trade_fallback_uses_daily_winner_execution_rows_directly():
+    markers = routes._fallback_execution_markers_from_records(
+        result={"strategies": ["daily_winner"]},
+        trades=[
+            {
+                "inst_id": "BTC-USDT-SWAP",
+                "datetime": "2024-01-01T00:00:00Z",
+                "execution_phase": "entry",
+                "side": "buy",
+                "price": 42000.0,
+                "qty": 0.1,
+                "notional_usd": 4200.0,
+            },
+            {
+                "inst_id": "BTC-USDT-SWAP",
+                "datetime": "2024-01-02T00:00:00Z",
+                "execution_phase": "exit",
+                "side": "sell",
+                "price": 43000.0,
+                "qty": 0.1,
+                "notional_usd": 4300.0,
+                "pnl_usd": 100.0,
+            },
+        ],
+    )
+
+    assert [row["side"] for row in markers] == ["buy", "sell"]
+    assert [row["marker_text"].split()[0] for row in markers] == ["ENTRY", "EXIT"]
+    assert markers[0]["notional_usd"] == 4200.0
+    assert markers[1]["net_realized_pnl"] == 100.0
 
 
 def test_fill_fallback_takes_precedence_over_trade_markers():
@@ -118,6 +163,64 @@ def test_price_series_fallback_loads_all_result_symbols(monkeypatch):
     assert all({"ts", "datetime", "open", "high", "low", "close", "vol"} <= set(row) for row in rows)
 
 
+def test_price_series_fallback_prefers_known_daily_winner_loaded_backend(monkeypatch):
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_load_candles(
+        *,
+        inst_id,
+        bar,
+        data_dir,
+        start,
+        end,
+        backend,
+        dsn,
+        exchange,
+    ):
+        calls.append((backend, exchange))
+        if backend != "postgres":
+            return pd.DataFrame()
+        index = pd.to_datetime(["2024-01-01", "2024-01-02"])
+        return pd.DataFrame(
+            {
+                "open": [100.0, 101.0],
+                "high": [102.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [101.0, 102.0],
+                "vol": [10.0, 11.0],
+            },
+            index=index,
+        )
+
+    monkeypatch.setattr(routes, "_resolve_candle_backend", lambda: ("postgres", "postgresql://example/db"))
+    monkeypatch.setattr("backtesting.data_loader.load_candles", fake_load_candles)
+
+    rows = routes._fallback_price_series_from_result(
+        {
+            "strategies": ["daily_winner"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1D",
+            "start": "2024-01-01",
+            "end": "2024-01-03",
+            "data_source": {"primary_exchange": "binance"},
+            "validation": {
+                "daily_winner_data_sources": [
+                    {
+                        "inst_id": "BTC-USDT-SWAP",
+                        "attempts": [
+                            {"backend": "market", "exchange": "binance", "rows": 0},
+                            {"backend": "postgres", "exchange": None, "rows": 2},
+                        ],
+                    }
+                ]
+            },
+        }
+    )
+
+    assert len(rows) == 2
+    assert calls == [("postgres", None)]
+
+
 def test_price_series_route_backfills_symbols_missing_from_existing_artifact(tmp_path, monkeypatch):
     run_dir = tmp_path / "run1"
     run_dir.mkdir()
@@ -175,3 +278,66 @@ def test_price_series_route_backfills_symbols_missing_from_existing_artifact(tmp
 
     assert response.status_code == 200
     assert {row["inst_id"] for row in response.json()} == {"BTC-USDT-SWAP", "ETH-USDT-SWAP"}
+
+
+def test_get_run_backfills_parameters_from_config_for_legacy_results(tmp_path):
+    run_dir = tmp_path / "legacy_params"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        """
+        {
+          "run_id": "legacy_params",
+          "strategies": ["ema_crossover"],
+          "symbols": ["BTC-USDT-SWAP"],
+          "bar": "1H",
+          "start": "2024-01-01",
+          "end": "2024-01-02",
+          "metrics": {}
+        }
+        """,
+        encoding="utf-8",
+    )
+    (run_dir / "config.json").write_text(
+        """
+        {
+          "strategies": {
+            "ema_crossover": {
+              "symbols": ["BTC-USDT-SWAP"],
+              "fast_span": 8,
+              "slow_span": 21,
+              "indicator_db_warmup": false,
+              "td_mode": "cross"
+            }
+          },
+          "risk": {
+            "max_order_notional_usd": 2500.0,
+            "max_pos_pct_equity": 0.75,
+            "max_leverage": 3.0
+          },
+          "backtest": {
+            "order_latency_ms": 0,
+            "cancel_latency_ms": 200,
+            "queue_fill_fraction": 0.2,
+            "liquidate_on_end": true
+          },
+          "cli_args": {
+            "strategy_params": {"fast_span": 8, "slow_span": 21},
+            "risk_overrides": {"max_order_notional_usd": 2500.0}
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/legacy_params")
+
+    assert response.status_code == 200
+    params = response.json()["parameters"]
+    assert params["strategies"]["ema_crossover"]["fast_span"] == 8
+    assert params["risk"]["max_order_notional_usd"] == 2500.0
+    assert params["backtest"]["queue_fill_fraction"] == 0.2
+    assert params["overrides"]["strategy_params"]["slow_span"] == 21

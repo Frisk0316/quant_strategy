@@ -230,7 +230,7 @@ Deployment readiness:
 
 | 策略 | 目的 | 已知偏差（intentional，禁止「修正」） |
 | --- | --- | --- |
-| `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；fee model 為 None；無 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
+| `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；顯示用成本來自合併 `cost_rate`（fee+slip 不分開），不可視為純手續費 PnL；validation 必須顯式指定 `wf`/`cpcv`/`both`，`validation=none` 不自動生成 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
 
 ## 最小完成定義
 

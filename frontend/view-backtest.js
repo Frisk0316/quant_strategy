@@ -7,6 +7,15 @@ const { LineChart, TradePriceChart, IndicatorChart, adaptiveDateLabel, MAX_Y_ZOO
 
 const TECHNICAL_STRATEGIES_SET = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
 
+const PHASE2_IDLE_PARTS = {
+  equity: false,
+  ledger: false,
+  validation: false,
+  market: false,
+  risk: false,
+  indicators: false,
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -41,7 +50,7 @@ function runParametersText(run) {
   if (risk.max_pos_pct_equity != null) parts.push(`max pos ${(+risk.max_pos_pct_equity * 100).toFixed(0)}%`);
   if (risk.max_order_notional_usd != null) parts.push(`order $${(+risk.max_order_notional_usd).toLocaleString("en", { maximumFractionDigits: 0 })}`);
   if (risk.max_leverage != null) parts.push(`lev ${(+risk.max_leverage).toFixed(1)}x`);
-  return parts.length ? parts.join(" | ") : "??;
+  return parts.length ? parts.join(" | ") : "—";
 }
 function signedUsd(v, d = 2) {
   if (v == null || isNaN(+v)) return "—";
@@ -132,6 +141,25 @@ const SYMBOL_COLORS = [
 
 function symbolColor(symbol, index = 0) {
   return SYMBOL_COLORS[Math.abs(index) % SYMBOL_COLORS.length];
+}
+
+function validationModeFrom(validation, metrics, walkForward, cpcv) {
+  const windows = walkForward || [];
+  const combos = cpcv?.combos || [];
+  if (validation?.validation_mode) return validation.validation_mode;
+  if (validation?.validation_requested) return validation.validation_requested;
+  if (metrics?.validation_requested) return metrics.validation_requested;
+  return (windows.length || combos.length) ? "embedded" : "none";
+}
+
+function validationModeForRun(result) {
+  if (!result) return "none";
+  return validationModeFrom(
+    result.validation || {},
+    result.metrics || {},
+    result.walk_forward || result.walkForward || [],
+    result.cpcv || null,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +311,112 @@ function MetricValue({ value }) {
   return html`<span class="mono" style=${{ overflowWrap: "anywhere" }}>${text}</span>`;
 }
 
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasDisplayRows(value) {
+  return isPlainObject(value) && Object.keys(value).length > 0;
+}
+
+function parameterLabel(key) {
+  return String(key).replace(/_/g, " ");
+}
+
+function parameterValue(value) {
+  if (value == null || value === "") return "—";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
+    return Math.abs(value) >= 1000 ? value.toLocaleString("en", { maximumFractionDigits: 2 }) : String(value);
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function parameterGroupsForRun(run) {
+  const params = run?.parameters || {};
+  const groups = [];
+  const strategyParams = isPlainObject(params.strategies) ? params.strategies : {};
+  const names = (run?.strategies || [run?.strategy]).filter(Boolean);
+  for (const name of names) {
+    const values = strategyParams[name];
+    if (hasDisplayRows(values)) {
+      groups.push({ title: `${name} strategy`, rows: values });
+    }
+  }
+  if (hasDisplayRows(params.risk)) {
+    groups.push({ title: "Risk", rows: params.risk });
+  }
+  if (hasDisplayRows(params.backtest)) {
+    groups.push({ title: "Backtest Execution", rows: params.backtest });
+  }
+  const overrides = params.overrides || {};
+  if (hasDisplayRows(overrides.strategy_params)) {
+    groups.push({ title: "Strategy Overrides", rows: overrides.strategy_params });
+  }
+  if (hasDisplayRows(overrides.risk_overrides)) {
+    groups.push({ title: "Risk Overrides", rows: overrides.risk_overrides });
+  }
+  return groups;
+}
+
+function ParametersPanel({ run }) {
+  const groups = parameterGroupsForRun(run);
+  if (!groups.length) return null;
+  return html`
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <div class="card-title">Parameters</div>
+          <div class="card-sub">strategy, risk, and replay execution inputs</div>
+        </div>
+      </div>
+      <div class="param-group-grid">
+        ${groups.map((group) => html`
+          <div class="param-group" key=${group.title}>
+            <div class="param-group-title">${group.title}</div>
+            <div class="param-kv-grid">
+              ${Object.entries(group.rows).map(([key, value]) => html`
+                <div class="param-kv" key=${key}>
+                  <div class="param-key">${parameterLabel(key)}</div>
+                  <div class="param-value mono" title=${parameterValue(value)}>${parameterValue(value)}</div>
+                </div>
+              `)}
+            </div>
+          </div>
+        `)}
+      </div>
+    </div>
+  `;
+}
+
+function ExecutionQualitySummary({ metrics, parameters }) {
+  const partial = +(metrics.partial_fill_count ?? 0);
+  const pending = +(metrics.pending_fill_event_count ?? 0);
+  const realFills = +(metrics.real_fill_count ?? metrics.fill_count ?? 0);
+  const fillRate = metrics.fill_rate;
+  const queueFraction = parameters?.backtest?.queue_fill_fraction;
+  if (!partial && !pending && !(fillRate != null && +fillRate > 1)) return null;
+  return html`
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <div class="card-title">Execution Quality</div>
+          <div class="card-sub">partial fills are replay lifecycle states, not risk rejections</div>
+        </div>
+      </div>
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <${MetricCard} label="Partial Fills" value=${partial.toLocaleString()} sub=${realFills ? `${pct(partial / realFills)} of real fills` : "no real fills"} tone=${partial ? "down" : undefined} />
+        <${MetricCard} label="Pending Events" value=${pending.toLocaleString()} sub="unfilled at run end" tone=${pending ? "down" : undefined} />
+        <${MetricCard} label="Fill Rate" value=${pct(fillRate)} sub="unique filled orders / submitted orders" tone=${fillRate != null && +fillRate <= 1 ? "up" : "down"} />
+        <${MetricCard} label="Queue Fraction" value=${queueFraction == null ? "—" : pct(queueFraction)} sub="replay queue allocation" />
+      </div>
+    </div>
+  `;
+}
+
 // ---------------------------------------------------------------------------
 // Bankruptcy / anomaly banner
 // ---------------------------------------------------------------------------
@@ -355,7 +489,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [riskEvents, setRiskEvents] = useState([]);
   const [priceSeries, setPriceSeries] = useState([]);
   const [executionMarkers, setExecutionMarkers] = useState([]);
-  const [phase2Loading, setPhase2Loading] = useState(true);
+  const [, setPhase2Loading] = useState(true);
+  const [phase2Parts, setPhase2Parts] = useState(PHASE2_IDLE_PARTS);
   const [phase2Error, setPhase2Error] = useState(null);
 
   const [activeTab, setActiveTab] = useState("fills");
@@ -380,7 +515,23 @@ function RunDetailView({ runId, onBack, onDelete }) {
   // Phase 2: load heavy data after phase 1 completes
   useEffect(() => {
     if (!result) return;
+    let cancelled = false;
+    const activeStrategiesForLoad = result.strategies || (result.strategy ? [result.strategy] : []);
+    const shouldLoadValidation = validationModeForRun(result) !== "none";
+    const shouldLoadIndicators = activeStrategiesForLoad.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
+    const setPartDone = (key) => {
+      if (!cancelled) setPhase2Parts((prev) => ({ ...prev, [key]: false }));
+    };
+
     setPhase2Loading(true);
+    setPhase2Parts({
+      equity: true,
+      ledger: true,
+      validation: shouldLoadValidation,
+      market: true,
+      risk: true,
+      indicators: shouldLoadIndicators,
+    });
     setPhase2Error(null);
     setEquity([]);
     setFills([]);
@@ -395,35 +546,70 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setChartRanges(new Map());
     setChartYZooms(new Map());
     setVisibleSeries(new Map());
-    Promise.all([
-      window.API.fetchBacktestEquity(runId).catch(() => []),
-      window.API.fetchBacktestFills(runId).catch(() => []),
-      window.API.fetchBacktestTrades(runId).catch(() => []),
-      window.API.fetchWalkForward(runId).catch(() => []),
-      window.API.fetchCPCV(runId).catch(() => null),
-      window.API.fetchBacktestRiskEvents(runId).catch(() => []),
-      window.API.fetchBacktestPriceSeries(runId).catch(() => []),
-      window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
-      window.API.fetchBacktestIndicators?.(runId).catch(() => []) ?? Promise.resolve([]),
-    ]).then(([eq, fl, tr, wf, cv, re, ps, em, ind]) => {
-      setEquity(eq || []);
-      setFills(fl || []);
-      setTrades(tr || []);
-      setWalkForward(wf || []);
-      setCpcv(cv || null);
-      setRiskEvents(re || []);
-      setPriceSeries(ps || []);
-      setExecutionMarkers(em || []);
-      setIndicators(ind || []);
-      setSelectedChartSymbols([...new Set([
-        ...(result.symbols || []),
-        ...(ps || []).map((row) => row.inst_id).filter(Boolean),
-        ...(em || []).map((row) => row.inst_id).filter(Boolean),
-        ...(tr || []).map((row) => row.inst_id || row.symbol).filter(Boolean),
-        ...(fl || []).map((row) => row.inst_id || row.symbol).filter(Boolean),
-      ])].sort());
-    }).catch((e) => setPhase2Error(e.message))
-      .finally(() => setPhase2Loading(false));
+    const tasks = [];
+
+    tasks.push(
+      window.API.fetchBacktestEquity(runId)
+        .then((eq) => { if (!cancelled) setEquity(eq || []); })
+        .catch((e) => { if (!cancelled) { setEquity([]); setPhase2Error(e.message); } })
+        .finally(() => setPartDone("equity"))
+    );
+
+    tasks.push(
+      Promise.all([
+        window.API.fetchBacktestFills(runId).catch(() => []),
+        window.API.fetchBacktestTrades(runId).catch(() => []),
+      ]).then(([fl, tr]) => {
+        if (cancelled) return;
+        setFills(fl || []);
+        setTrades(tr || []);
+      }).finally(() => setPartDone("ledger"))
+    );
+
+    if (shouldLoadValidation) {
+      tasks.push(
+        Promise.all([
+          window.API.fetchWalkForward(runId).catch(() => []),
+          window.API.fetchCPCV(runId).catch(() => null),
+        ]).then(([wf, cv]) => {
+          if (cancelled) return;
+          setWalkForward(wf || []);
+          setCpcv(cv || null);
+        }).finally(() => setPartDone("validation"))
+      );
+    }
+
+    tasks.push(
+      window.API.fetchBacktestRiskEvents(runId)
+        .then((re) => { if (!cancelled) setRiskEvents(re || []); })
+        .catch(() => { if (!cancelled) setRiskEvents([]); })
+        .finally(() => setPartDone("risk"))
+    );
+
+    tasks.push(
+      Promise.all([
+        window.API.fetchBacktestPriceSeries(runId).catch(() => []),
+        window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
+      ]).then(([ps, em]) => {
+        if (cancelled) return;
+        setPriceSeries(ps || []);
+        setExecutionMarkers(em || []);
+      }).finally(() => setPartDone("market"))
+    );
+
+    if (shouldLoadIndicators) {
+      tasks.push(
+        (window.API.fetchBacktestIndicators?.(runId) ?? Promise.resolve([]))
+          .then((ind) => { if (!cancelled) setIndicators(ind || []); })
+          .catch(() => { if (!cancelled) setIndicators([]); })
+          .finally(() => setPartDone("indicators"))
+      );
+    }
+
+    Promise.allSettled(tasks).finally(() => {
+      if (!cancelled) setPhase2Loading(false);
+    });
+    return () => { cancelled = true; };
   }, [runId, result]);
 
   if (phase1Loading) return html`<div class="field-hint" style=${{ padding: 32 }}>Loading run ${runId}…</div>`;
@@ -431,6 +617,19 @@ function RunDetailView({ runId, onBack, onDelete }) {
   if (!result) return null;
 
   const m = result.metrics || {};
+  const equityLoading = phase2Parts.equity;
+  const ledgerLoading = phase2Parts.ledger;
+  const validationLoading = phase2Parts.validation;
+  const marketLoading = phase2Parts.market;
+  const riskLoading = phase2Parts.risk;
+  const bottomPanelLoading = activeTab === "risk" ? riskLoading : ledgerLoading;
+  const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
+  const isDailyWinnerRun = activeStrategies.includes("daily_winner");
+  const fundingNotModeled = isDailyWinnerRun || m.funding_mode === "not_modeled";
+  const totalCostLabel = isDailyWinnerRun ? "Total Costs" : "Total Fees";
+  const totalCostSub = isDailyWinnerRun
+    ? `Notional ${usd(m.fill_notional_usd)} (fee+slip)`
+    : `Notional ${usd(m.fill_notional_usd)}`;
   const strats = (result.strategies || []).join(", ") || result.strategy || "—";
   const symbols = (result.symbols || []).join(", ") || result.symbol || "—";
   const bar = result.bar || "—";
@@ -528,7 +727,6 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [drawdownRange, setDrawdownRange] = getChartRange("drawdown");
 
   // Technical-indicator strategies render per-symbol IndicatorChart cards.
-  const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
   const isTechnicalRun = activeStrategies.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
   const indicatorBySymbol = (() => {
     if (!isTechnicalRun || !indicators.length) return new Map();
@@ -597,6 +795,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <${AnomalyBanner} metrics=${m} />
 
+      <${ParametersPanel} run=${result} />
+
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${MetricCard} label="Total Return" value=${pct(m.total_return)} tone=${+m.total_return >= 0 ? "up" : "down"} sub=${`Min equity: ${usd(m.min_equity)}`} />
         <${MetricCard} label="Sharpe (ann.)" value=${n(m.sharpe)} sub=${`Sortino ${n(m.sortino)}`} tone=${+m.sharpe >= 1 ? "up" : +m.sharpe >= 0.5 ? undefined : "down"} />
@@ -607,11 +807,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${MetricCard} label="PSR" value=${n(m.psr)} sub="prob Sharpe > 0" />
         <${MetricCard} label="Orders / Fills" value=${`${m.submitted_order_count ?? m.order_count ?? "—"} / ${m.orders_filled_count ?? m.real_fill_count ?? m.fill_count ?? "—"}`} sub=${`Fill rate ${pct(m.fill_rate)}`} />
-        <${MetricCard} label="Total Fees" value=${usd(m.total_fees)} sub=${`Notional ${usd(m.fill_notional_usd)}`} />
-        <${MetricCard} label="Funding P&L" value=${(+m.funding_cashflow >= 0 ? "+" : "") + usd(m.funding_cashflow)} tone=${+m.funding_cashflow >= 0 ? "up" : "down"} sub=${`${m.funding_settlement_count ?? 0} settlements`} />
+        <${MetricCard} label=${totalCostLabel} value=${usd(m.total_fees)} sub=${totalCostSub} />
+        <${MetricCard}
+          label="Funding P&L"
+          value=${fundingNotModeled ? "N/A" : (+m.funding_cashflow >= 0 ? "+" : "") + usd(m.funding_cashflow)}
+          tone=${fundingNotModeled ? undefined : +m.funding_cashflow >= 0 ? "up" : "down"}
+          sub=${fundingNotModeled ? "not modeled for daily_winner" : `${m.funding_settlement_count ?? 0} settlements`}
+        />
       </div>
 
-      <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} loading=${phase2Loading} />
+      <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} validation=${result.validation} loading=${validationLoading} />
+
+      <${ExecutionQualitySummary} metrics=${m} parameters=${result.parameters || {}} />
 
       <div class="card">
         <div class="card-h">
@@ -619,11 +826,11 @@ function RunDetailView({ runId, onBack, onDelete }) {
             <div class="card-title">Trades / Orders</div>
             <div class="card-sub">round trips and execution rows for the selected run</div>
           </div>
-          ${phase2Loading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading...</div>`}
+          ${ledgerLoading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading...</div>`}
         </div>
-        ${phase2Loading
+        ${ledgerLoading
           ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading trades and orders...</div>`
-          : html`<${TradesOrdersTable} trades=${filteredTrades} fills=${filteredFills} selectedSymbols=${effectiveSelectedChartSymbols} />`
+          : html`<${TradesOrdersTable} trades=${trades} fills=${fills} />`
         }
       </div>
 
@@ -632,11 +839,11 @@ function RunDetailView({ runId, onBack, onDelete }) {
           <div>
             <div class="card-title">Price + Trade Markers</div>
             <div class="card-sub">
-              ${phase2Loading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
+              ${marketLoading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
             </div>
           </div>
         </div>
-        ${phase2Loading
+        ${marketLoading
           ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
           : html`
             <div class="chart-stack">
@@ -803,12 +1010,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
           <div>
             <div class="card-title">Equity curve</div>
             <div class="card-sub">
-              ${phase2Loading ? "Loading…" : eqValues.length > 0 ? `${eqValues.length.toLocaleString()} samples · initial $5,000` : "No equity data"}
+              ${equityLoading ? "Loading…" : eqValues.length > 0 ? `${eqValues.length.toLocaleString()} samples · initial $5,000` : "No equity data"}
             </div>
           </div>
           ${m.bankrupt && html`<${StatusBadge} ok=${false}>Bankrupt<//>`}
         </div>
-        ${phase2Loading
+        ${equityLoading
           ? html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>Loading equity curve…</div>`
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
@@ -846,7 +1053,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
           </div>
           <span class="chip loss">Max ${pct(m.max_drawdown)}</span>
         </div>
-        ${phase2Loading
+        ${equityLoading
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
             ? html`
@@ -906,16 +1113,16 @@ function RunDetailView({ runId, onBack, onDelete }) {
               >${label}</button>
             `)}
           </div>
-          ${phase2Loading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading…</div>`}
+          ${bottomPanelLoading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading…</div>`}
         </div>
 
         ${(activeTab === "fills" || activeTab === "all_fills") && (
-          phase2Loading
+          ledgerLoading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading fills data…</div>`
             : html`<${FillsTable} rows=${activeTab === "fills" ? realFills : filteredFills} tradesMap=${tradesMap} />`
         )}
         ${activeTab === "risk" && (
-          phase2Loading
+          riskLoading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading risk events…</div>`
             : html`<${RiskEventsTable} rows=${filteredRiskEvents} />`
         )}
@@ -985,9 +1192,11 @@ function IndicatorSeriesPillBar({ visible, labels, hasMacd, onToggle }) {
   `;
 }
 
-function ValidationSummary({ walkForward, cpcv, metrics, loading }) {
+function ValidationSummary({ walkForward, cpcv, metrics, validation, loading }) {
   const windows = walkForward || [];
   const combos = cpcv?.combos || [];
+  const validationMode = validationModeFrom(validation || {}, metrics || {}, windows, cpcv);
+  if (!loading && validationMode === "none" && !windows.length && !combos.length) return null;
   const oos = windows.map((w) => +w.oos_sharpe || 0);
   const meanOos = oos.length ? oos.reduce((a, b) => a + b, 0) / oos.length : null;
   return html`
@@ -1046,8 +1255,12 @@ function normalizeLedgerTrade(t, i) {
   const price = +(t.price ?? t.entry_price ?? t.fill_px ?? t.px ?? 0);
   const qty = +(t.qty ?? t.fill_sz ?? t.sz ?? 0);
   const fee = +(t.fee ?? 0);
-  const pnlRaw = t.pnl_usd ?? t.net_realized_pnl ?? t.realized_pnl ?? t.pnl ?? t.net_return ?? 0;
-  const pnl = +(pnlRaw ?? 0);
+  const isExecutionRow = !!t.execution_phase || t.type === "validation_synthetic_fill";
+  const pnlKeys = isExecutionRow
+    ? ["pnl_usd", "net_realized_pnl", "realized_pnl", "pnl"]
+    : ["pnl_usd", "net_realized_pnl", "realized_pnl", "pnl", "net_return"];
+  const pnlKey = pnlKeys.find((key) => Object.prototype.hasOwnProperty.call(t, key) && t[key] != null && t[key] !== "");
+  const pnl = pnlKey ? +t[pnlKey] : 0;
   return {
     id: t.id ?? t.cl_ord_id ?? i,
     ts,
@@ -1059,6 +1272,7 @@ function normalizeLedgerTrade(t, i) {
     notional: tradeNotional(t, price, qty),
     fee,
     pnl,
+    hasPnl: !!pnlKey && Number.isFinite(pnl),
     status: String(t.status || t.state || "FILLED").toUpperCase(),
     strategy: t.strategy || "-",
     exit_ts: t.exit_ts,
@@ -1067,27 +1281,54 @@ function normalizeLedgerTrade(t, i) {
 }
 
 function formatLedgerPnl(t) {
+  if (!t.hasPnl) return "-";
   if (t.notional === 0 && Math.abs(t.pnl) < 1) return pct(t.pnl);
   return (t.pnl >= 0 ? "+" : "") + usd(t.pnl);
 }
 
-function TradesOrdersTable({ trades, fills, selectedSymbols }) {
+function TradesOrdersTable({ trades, fills }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  useEffect(() => setPage(1), [(selectedSymbols || []).join("|")]);
+  const [sideFilter, setSideFilter] = useState("ALL");
   const tradeRows = (trades || []).map(normalizeLedgerTrade);
   const fillRows = (fills || []).map(normalizeLedgerTrade);
-  const rows = tradeRows.length ? tradeRows : fillRows;
+  const baseRows = tradeRows.length ? tradeRows : fillRows;
+  const tradingPairs = [...new Set(
+    [...tradeRows, ...fillRows].map((row) => row.symbol).filter((symbol) => symbol && symbol !== "-")
+  )].sort();
+  const [pairFilter, setPairFilter] = useState("ALL");
+  useEffect(() => setPage(1), [sideFilter, pairFilter]);
+  useEffect(() => {
+    if (pairFilter !== "ALL" && !tradingPairs.includes(pairFilter)) setPairFilter("ALL");
+  }, [tradingPairs.join("|"), pairFilter]);
+  const rows = baseRows.filter((row) => {
+    if (sideFilter !== "ALL" && row.side !== sideFilter) return false;
+    if (pairFilter !== "ALL" && row.symbol !== pairFilter) return false;
+    return true;
+  });
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
-  if (!rows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders for the selected markets.</div>`;
+  const showExit = rows.some((row) => row.exit_ts);
+  const emptyColSpan = showExit ? 13 : 12;
+  if (!baseRows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders for this run.</div>`;
   return html`
     <div>
       <div class="row wrap" style=${{ gap: 12, alignItems: "center", marginBottom: 12 }}>
         <div class="field-hint" style=${{ flex: 1 }}>
-          Showing ${((safePage - 1) * pageSize + 1).toLocaleString()}-${Math.min(safePage * pageSize, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}
+          ${rows.length
+            ? `Showing ${((safePage - 1) * pageSize + 1).toLocaleString()}-${Math.min(safePage * pageSize, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}`
+            : `No rows match the current filters in ${baseRows.length.toLocaleString()} trades / orders`}
         </div>
+        <select class="select" value=${pairFilter} onChange=${(e) => setPairFilter(e.target.value)} style=${{ width: 190 }}>
+          <option value="ALL">All trading pairs</option>
+          ${tradingPairs.map((symbol) => html`<option key=${symbol} value=${symbol}>${symbol}</option>`)}
+        </select>
+        <select class="select" value=${sideFilter} onChange=${(e) => setSideFilter(e.target.value)} style=${{ width: 130 }}>
+          <option value="ALL">All sides</option>
+          <option value="BUY">Buy only</option>
+          <option value="SELL">Sell only</option>
+        </select>
         <select class="select" value=${pageSize} onChange=${(e) => { setPageSize(+e.target.value); setPage(1); }} style=${{ width: 140 }}>
           ${[25, 50, 100, 250, 500].map((size) => html`<option key=${size} value=${size}>${size} / page</option>`)}
         </select>
@@ -1099,7 +1340,7 @@ function TradesOrdersTable({ trades, fills, selectedSymbols }) {
         <table class="tbl">
           <thead>
             <tr>
-              <th>ID</th><th>Timestamp (UTC)</th><th>Exit</th><th>Symbol</th><th>Side</th><th>Type</th>
+              <th>ID</th><th>Timestamp (UTC)</th>${showExit && html`<th>Exit</th>`}<th>Trading Pair</th><th>Side</th><th>Type</th>
               <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional (USDT)</th>
               <th class="num">Fee</th><th class="num">PnL</th><th>Status</th><th>Strategy</th>
             </tr>
@@ -1109,7 +1350,7 @@ function TradesOrdersTable({ trades, fills, selectedSymbols }) {
               <tr key=${`${t.id}-${i}`}>
                 <td class="mono" style=${{ color: "var(--text-muted)" }}>${t.id}</td>
                 <td class="mono">${fmtDt(t.ts)}</td>
-                <td class="mono">${t.exit_ts ? fmtDt(t.exit_ts).slice(0, 10) : "-"}</td>
+                ${showExit && html`<td class="mono">${t.exit_ts ? fmtDt(t.exit_ts).slice(0, 10) : "-"}</td>`}
                 <td class="mono">${t.symbol}</td>
                 <td><span class="chip" style=${{ color: t.side === "BUY" ? "var(--profit)" : "var(--loss)", background: t.side === "BUY" ? "var(--profit-soft)" : "var(--loss-soft)", borderColor: "transparent" }}>${t.side}</span></td>
                 <td class="mono" title=${t.note || ""} style=${{ color: "var(--text-muted)" }}>${t.type}</td>
@@ -1117,11 +1358,12 @@ function TradesOrdersTable({ trades, fills, selectedSymbols }) {
                 <td class="num">${n(t.qty, 4)}</td>
                 <td class="num">${usd(t.notional)}</td>
                 <td class="num" style=${{ color: "var(--text-muted)" }}>${usd(t.fee, 4)}</td>
-                <td class="num" style=${{ color: t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? formatLedgerPnl(t) : "-"}</td>
+                <td class="num" style=${{ color: !t.hasPnl ? "var(--text-muted)" : t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? formatLedgerPnl(t) : "-"}</td>
                 <td><span class=${`chip ${t.status === "FILLED" ? "profit" : t.status === "REJECTED" ? "loss" : "warn"}`} style=${{ fontSize: 10 }}>${t.status}</span></td>
                 <td class="mono" style=${{ color: "var(--text-subtle)", fontSize: 11 }}>${t.strategy}</td>
               </tr>
             `)}
+            ${!rows.length && html`<tr><td colSpan=${emptyColSpan} class="field-hint" style=${{ textAlign: "center", padding: 16 }}>No trades match the current filters.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1145,7 +1387,7 @@ function FillsTable({ rows, tradesMap }) {
           <thead>
             <tr>
               <th>Datetime (UTC)</th>
-              <th>Symbol</th>
+              <th>Trading Pair</th>
               <th>Side</th>
               <th class="num">Fill px</th>
               <th class="num">Qty</th>
@@ -1183,7 +1425,7 @@ function FillsTable({ rows, tradesMap }) {
                   </td>
                   <td>
                     <span class=${`chip ${state === "filled" ? "profit" : state === "partially_filled" ? "warn" : ""}`} style=${{ fontSize: 10 }}>
-                      ${state.toUpperCase().replace("_", " ")}
+                      ${state.toUpperCase().replace(/_/g, " ")}
                     </span>
                   </td>
                   <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)" }}>${f.strategy || "—"}</td>
@@ -1206,7 +1448,7 @@ function RiskEventsTable({ rows }) {
         <thead>
           <tr>
             <th>Datetime (UTC)</th>
-            <th>Symbol</th>
+            <th>Trading Pair</th>
             <th>Side</th>
             <th class="num">Notional</th>
             <th>Reason</th>
@@ -1314,7 +1556,7 @@ function RunListView({ onSelect, onDelete }) {
               <tr>
                 <th>Run ID</th>
                 <th>Strategy</th>
-                <th>Symbols</th>
+                <th>Trading Pairs</th>
                 <th>Parameters</th>
                 <th>Bar</th>
                 <th>Period</th>

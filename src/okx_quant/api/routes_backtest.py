@@ -36,6 +36,18 @@ from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 _run_jobs: dict[str, dict[str, Any]] = {}
 _sweep_jobs: dict[str, dict[str, Any]] = {}
+_price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+
+def _get_price_series_cache(key: tuple[str, str]) -> list[dict[str, Any]] | None:
+    rows = _price_series_fallback_cache.get(key)
+    return [dict(row) for row in rows] if rows is not None else None
+
+
+def _set_price_series_cache(key: tuple[str, str], rows: list[dict[str, Any]]) -> None:
+    if len(_price_series_fallback_cache) >= 16 and key not in _price_series_fallback_cache:
+        _price_series_fallback_cache.clear()
+    _price_series_fallback_cache[key] = [dict(row) for row in rows]
 
 
 def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
@@ -529,43 +541,31 @@ def _build_daily_winner_result_json(
         returns_df.reset_index().to_json(orient="records", date_format="iso", force_ascii=False)
     )
 
-    trades = result.trades.copy()
-    if not trades.empty:
-        trades["strategy"] = "daily_winner"
-        trades["side"] = "buy"
-        trades["status"] = "FILLED"
-        trades["type"] = "validation_round_trip"
-        trades["datetime"] = trades["entry_ts"]
-        trades["ts"] = trades["entry_ts"]
-        trades["price"] = trades["entry_price"]
-        trades["qty"] = 0.0
-        trades["notional"] = 0.0
-        trades["fee"] = 0.0
-        trades["pnl"] = trades["net_return"]
-    trades_records = json.loads(
-        trades.to_json(orient="records", date_format="iso", force_ascii=False)
+    round_trips = result.trades.copy()
+    round_trip_records = json.loads(
+        round_trips.to_json(orient="records", date_format="iso", force_ascii=False)
     )
-    for i, record in enumerate(trades_records):
-        record["id"] = i
-        record["pnl_usd"] = None
-        record["note"] = "validation-only round trip; quantity/notional are not modeled"
+    for i, record in enumerate(round_trip_records):
+        record["id"] = record.get("id", i)
+        record["round_trip_id"] = record.get("round_trip_id", i)
+        record["strategy"] = "daily_winner"
+        record["type"] = "validation_round_trip"
+    trades_records = _daily_winner_execution_rows(
+        round_trip_records,
+        equity_records=equity_records,
+        initial_equity=req.initial_equity or 5000.0,
+    )
 
     metrics = dict(result.metrics)
-    trade_count = metrics.get("number_of_trades", 0)
-    metrics.setdefault("profit_factor", 0.0)
-    metrics.setdefault("order_count", trade_count * 2)
-    metrics.setdefault("fill_count", trade_count * 2)
-    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
-    metrics.setdefault("orders_filled_count", trade_count * 2)
-    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    _daily_winner_apply_execution_metrics(metrics, round_trip_records, trades_records)
     metrics.setdefault("bankrupt", False)
-    metrics.setdefault("total_fees", 0.0)
-    metrics.setdefault("fill_notional_usd", 0.0)
     metrics.setdefault("funding_cashflow", 0.0)
     metrics.setdefault("funding_settlement_count", 0)
+    metrics.setdefault("funding_mode", "not_modeled")
     metrics["loaded_symbols"] = loaded_symbols
     metrics["skipped_symbols"] = skipped_symbols
     metrics = {key: _json_safe(value) for key, value in metrics.items()}
+    validation_mode = _daily_winner_validation_mode(req.validation)
 
     return {
         "run_id": run_id,
@@ -579,13 +579,169 @@ def _build_daily_winner_result_json(
         "parameters": _request_parameters(req),
         "equity": equity_records,
         "returns": returns_records,
+        "round_trips": round_trip_records,
         "trades": trades_records,
         "artifacts": {},
         "validation": {
             "validation_only": True,
+            "validation_mode": validation_mode,
+            "validation_requested": validation_mode,
             "daily_winner_data_sources": data_sources or [],
         },
     }
+
+
+def _daily_winner_validation_mode(mode: str | None) -> str:
+    return mode if mode in {"wf", "cpcv", "both"} else "none"
+
+
+def _daily_winner_float(value: Any, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _daily_winner_equity_seed(
+    equity_records: list[dict[str, Any]] | None,
+    initial_equity: float | None,
+) -> float:
+    for row in equity_records or []:
+        value = row.get("equity_usd", row.get("equity"))
+        equity = _daily_winner_float(value, float("nan"))
+        if math.isfinite(equity) and equity > 0:
+            return equity
+    return _daily_winner_float(initial_equity, 5000.0)
+
+
+def _daily_winner_sort_key(row: dict[str, Any]) -> pd.Timestamp:
+    value = row.get("entry_ts") or row.get("datetime") or row.get("ts") or row.get("exit_ts")
+    ts = pd.to_datetime(value, utc=True, errors="coerce")
+    if pd.isna(ts):
+        return pd.Timestamp("2262-01-01", tz="UTC")
+    return ts
+
+
+def _daily_winner_execution_rows(
+    round_trips: list[dict[str, Any]],
+    *,
+    equity_records: list[dict[str, Any]] | None = None,
+    initial_equity: float | None = None,
+) -> list[dict[str, Any]]:
+    """Expand daily_winner round trips into synthetic buy/sell execution rows."""
+    rows: list[dict[str, Any]] = []
+    current_equity = _daily_winner_equity_seed(equity_records, initial_equity)
+    ordered = sorted((dict(row) for row in round_trips or []), key=_daily_winner_sort_key)
+    for i, trade in enumerate(ordered):
+        inst_id = str(trade.get("inst_id") or trade.get("symbol") or "")
+        entry_ts = trade.get("entry_ts") or trade.get("datetime") or trade.get("ts")
+        exit_ts = trade.get("exit_ts") or trade.get("close_ts")
+        entry_price = _daily_winner_float(trade.get("entry_price", trade.get("price")), 0.0)
+        exit_price = _daily_winner_float(trade.get("exit_price", trade.get("close_price", entry_price)), 0.0)
+        if not inst_id or entry_price <= 0 or exit_price <= 0:
+            continue
+
+        entry_equity = _daily_winner_float(trade.get("entry_equity"), current_equity)
+        if entry_equity <= 0:
+            entry_equity = current_equity
+        cost_rate = abs(_daily_winner_float(trade.get("cost_rate"), 0.0))
+        gross_return = _daily_winner_float(trade.get("gross_return"), exit_price / entry_price - 1.0)
+        net_return = _daily_winner_float(trade.get("net_return"), gross_return - cost_rate)
+        qty = entry_equity / entry_price if entry_price > 0 else 0.0
+        entry_notional = abs(qty * entry_price)
+        exit_notional = abs(qty * exit_price)
+        total_cost = abs(entry_equity * cost_rate)
+        entry_fee = total_cost / 2.0
+        exit_fee = total_cost / 2.0
+        pnl_usd = entry_equity * net_return
+        exit_equity = entry_equity + pnl_usd
+        round_trip_id = int(_daily_winner_float(trade.get("round_trip_id", trade.get("id", i)), i))
+
+        base = {
+            "inst_id": inst_id,
+            "symbol": inst_id,
+            "strategy": "daily_winner",
+            "status": "FILLED",
+            "type": "validation_synthetic_fill",
+            "round_trip_id": round_trip_id,
+            "entry_ts": entry_ts,
+            "exit_ts": exit_ts,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "qty": qty,
+            "fill_sz": qty,
+            "gross_return": gross_return,
+            "net_return": net_return,
+            "cost_rate": cost_rate,
+            "holding_minutes": trade.get("holding_minutes", 1440),
+        }
+        rows.append({
+            **base,
+            "id": round_trip_id * 2,
+            "execution_phase": "entry",
+            "side": "buy",
+            "datetime": entry_ts,
+            "ts": entry_ts,
+            "price": entry_price,
+            "fill_px": entry_price,
+            "notional": entry_notional,
+            "notional_usd": entry_notional,
+            "fee": entry_fee,
+            "pnl": None,
+            "pnl_usd": None,
+            "net_realized_pnl": None,
+            "position_after": qty,
+            "entry_equity": entry_equity,
+            "exit_equity": None,
+            "note": "validation-only synthetic BUY leg; quantity/notional inferred from full-equity daily allocation",
+        })
+        rows.append({
+            **base,
+            "id": round_trip_id * 2 + 1,
+            "execution_phase": "exit",
+            "side": "sell",
+            "datetime": exit_ts,
+            "ts": exit_ts,
+            "price": exit_price,
+            "fill_px": exit_price,
+            "notional": exit_notional,
+            "notional_usd": exit_notional,
+            "fee": exit_fee,
+            "pnl": pnl_usd,
+            "pnl_usd": pnl_usd,
+            "net_realized_pnl": pnl_usd,
+            "position_after": 0.0,
+            "entry_equity": entry_equity,
+            "exit_equity": exit_equity,
+            "note": "validation-only synthetic SELL leg; PnL shown on exit; funding is not modeled",
+        })
+        current_equity = exit_equity
+    return _json_sanitize(rows)
+
+
+def _daily_winner_is_execution_row(row: dict[str, Any]) -> bool:
+    if row.get("execution_phase") in {"entry", "exit"}:
+        return True
+    return str(row.get("type") or "") == "validation_synthetic_fill"
+
+
+def _daily_winner_apply_execution_metrics(
+    metrics: dict[str, Any],
+    round_trips: list[dict[str, Any]],
+    execution_rows: list[dict[str, Any]],
+) -> None:
+    trade_count = int(metrics.get("number_of_trades") or len(round_trips) or len(execution_rows) // 2)
+    fill_count = len(execution_rows) if execution_rows else trade_count * 2
+    metrics.setdefault("profit_factor", 0.0)
+    metrics["number_of_trades"] = trade_count
+    metrics["order_count"] = fill_count
+    metrics["fill_count"] = fill_count
+    metrics["real_fill_count"] = fill_count
+    metrics["orders_filled_count"] = fill_count
+    metrics["fill_rate"] = 1.0 if fill_count else 0.0
+    metrics["total_fees"] = float(sum(_daily_winner_float(row.get("fee"), 0.0) for row in execution_rows))
+    metrics["fill_notional_usd"] = float(sum(_daily_winner_float(row.get("notional_usd", row.get("notional")), 0.0) for row in execution_rows))
 
 
 def _json_safe(value: Any) -> Any:
@@ -742,15 +898,21 @@ def _attach_daily_winner_validation(
     returns: pd.Series,
     mode: str | None,
 ) -> None:
-    if mode in {"wf", "both"}:
-        payload["walk_forward"] = _daily_winner_walk_forward(returns)
-    cpcv = _daily_winner_cpcv(returns)
-    if mode in {"cpcv", "both"} and cpcv:
-        payload["cpcv"] = cpcv
+    validation_mode = _daily_winner_validation_mode(mode)
+    validation = payload.setdefault("validation", {})
+    validation["validation_only"] = True
+    validation["validation_mode"] = validation_mode
+    validation["validation_requested"] = validation_mode
     metrics = payload.setdefault("metrics", {})
-    metrics.setdefault("psr", cpcv.get("psr") if cpcv else 0.0)
-    metrics.setdefault("dsr", cpcv.get("dsr") if cpcv else 0.0)
     metrics["validation_only"] = True
+    metrics["validation_requested"] = validation_mode
+    if validation_mode in {"wf", "both"}:
+        payload["walk_forward"] = _daily_winner_walk_forward(returns)
+    cpcv = _daily_winner_cpcv(returns) if validation_mode in {"cpcv", "both"} else None
+    if cpcv:
+        payload["cpcv"] = cpcv
+        metrics["psr"] = cpcv.get("psr")
+        metrics["dsr"] = cpcv.get("dsr")
 
 
 def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -783,54 +945,64 @@ def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
         return_series = _daily_winner_return_series(equity)
 
     if not return_series.empty:
-        from okx_quant.analytics.dsr import psr
         from okx_quant.analytics.performance import sharpe
 
         metrics["sharpe"] = sharpe(return_series, periods=365)
-        metrics.setdefault("psr", psr(np.asarray(return_series, dtype=float)))
-        metrics.setdefault("dsr", 0.0)
-        if "walk_forward" not in normalized:
-            normalized["walk_forward"] = _daily_winner_walk_forward(return_series)
-        if "cpcv" not in normalized:
-            cpcv = _daily_winner_cpcv(return_series)
-            if cpcv:
-                normalized["cpcv"] = cpcv
-                metrics["psr"] = cpcv.get("psr", metrics.get("psr"))
-                metrics["dsr"] = cpcv.get("dsr", metrics.get("dsr"))
 
-    trade_count = int(metrics.get("number_of_trades") or len(normalized.get("trades") or []))
-    metrics.setdefault("profit_factor", 0.0)
-    metrics.setdefault("order_count", trade_count * 2)
-    metrics.setdefault("fill_count", trade_count * 2)
-    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
-    metrics.setdefault("orders_filled_count", trade_count * 2)
-    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    validation = dict(normalized.get("validation") or {})
+    inferred_validation = "none"
+    has_wf = bool(normalized.get("walk_forward") or normalized.get("walkForward"))
+    has_cpcv = bool(normalized.get("cpcv"))
+    if has_wf and has_cpcv:
+        inferred_validation = "both"
+    elif has_wf:
+        inferred_validation = "wf"
+    elif has_cpcv:
+        inferred_validation = "cpcv"
+    validation_mode = _daily_winner_validation_mode(
+        validation.get("validation_mode")
+        or validation.get("validation_requested")
+        or metrics.get("validation_requested")
+        or inferred_validation
+    )
+    validation["validation_only"] = True
+    validation["validation_mode"] = validation_mode
+    validation["validation_requested"] = validation_mode
+    normalized["validation"] = validation
+
+    cpcv = normalized.get("cpcv") if isinstance(normalized.get("cpcv"), dict) else None
+    if cpcv:
+        metrics["psr"] = cpcv.get("psr", metrics.get("psr"))
+        metrics["dsr"] = cpcv.get("dsr", metrics.get("dsr"))
+    elif validation_mode == "none":
+        metrics.pop("psr", None)
+        metrics.pop("dsr", None)
+
+    raw_trades = [dict(row) for row in normalized.get("trades") or [] if isinstance(row, dict)]
+    round_trips = [dict(row) for row in normalized.get("round_trips") or [] if isinstance(row, dict)]
+    if not round_trips and raw_trades and not any(_daily_winner_is_execution_row(row) for row in raw_trades):
+        round_trips = raw_trades
+    execution_rows = (
+        _daily_winner_execution_rows(round_trips, equity_records=equity)
+        if round_trips
+        else raw_trades
+    )
+    if round_trips:
+        for i, row in enumerate(round_trips):
+            row.setdefault("id", i)
+            row.setdefault("round_trip_id", i)
+            row.setdefault("strategy", "daily_winner")
+            row.setdefault("type", "validation_round_trip")
+    normalized["round_trips"] = round_trips
+    normalized["trades"] = execution_rows
+    _daily_winner_apply_execution_metrics(metrics, round_trips, execution_rows)
     metrics.setdefault("bankrupt", False)
-    metrics.setdefault("total_fees", 0.0)
-    metrics.setdefault("fill_notional_usd", 0.0)
     metrics.setdefault("funding_cashflow", 0.0)
     metrics.setdefault("funding_settlement_count", 0)
+    metrics.setdefault("funding_mode", "not_modeled")
     metrics["validation_only"] = True
+    metrics["validation_requested"] = validation_mode
     normalized["metrics"] = {key: _json_safe(value) for key, value in metrics.items()}
-
-    trades = []
-    for i, trade in enumerate(normalized.get("trades") or []):
-        row = dict(trade)
-        entry_ts = row.get("entry_ts") or row.get("datetime") or row.get("ts")
-        row.setdefault("id", i)
-        row.setdefault("datetime", entry_ts)
-        row.setdefault("ts", entry_ts)
-        row.setdefault("status", "FILLED")
-        row.setdefault("type", "validation_round_trip")
-        row.setdefault("price", row.get("entry_price", 0.0))
-        row.setdefault("qty", 0.0)
-        row.setdefault("notional", 0.0)
-        row.setdefault("fee", 0.0)
-        row.setdefault("pnl", row.get("net_return", 0.0))
-        row.setdefault("pnl_usd", None)
-        row.setdefault("note", "validation-only round trip; quantity/notional are not modeled")
-        trades.append(row)
-    normalized["trades"] = trades
     return normalized
 
 
@@ -951,6 +1123,38 @@ def _data_source_exchange(result: dict[str, Any] | None) -> str:
     return _normalize_exchange(source.get("primary_exchange") if isinstance(source, dict) else None)
 
 
+def _dedupe_price_attempts(attempts: list[tuple[str, str | None]]) -> list[tuple[str, str | None]]:
+    deduped: list[tuple[str, str | None]] = []
+    for attempt in attempts:
+        if attempt not in deduped:
+            deduped.append(attempt)
+    return deduped
+
+
+def _preferred_price_series_attempts(
+    result: dict[str, Any],
+    inst_id: str,
+    default_attempts: list[tuple[str, str | None]],
+) -> list[tuple[str, str | None]]:
+    """Prefer candle backends that are known to have loaded this daily_winner run."""
+    validation = result.get("validation") or {}
+    sources = validation.get("daily_winner_data_sources") or []
+    preferred: list[tuple[str, str | None]] = []
+    for source in sources:
+        if not isinstance(source, dict) or source.get("inst_id") != inst_id:
+            continue
+        for attempt in source.get("attempts") or []:
+            if not isinstance(attempt, dict) or _visual_float(attempt.get("rows"), 0.0) <= 0:
+                continue
+            backend = str(attempt.get("backend") or "").lower()
+            if backend not in {"market", "postgres", "parquet"}:
+                continue
+            exchange = attempt.get("exchange") if backend == "market" else None
+            preferred.append((backend, str(exchange) if exchange else None))
+        break
+    return _dedupe_price_attempts(preferred + default_attempts) if preferred else default_attempts
+
+
 def _fallback_price_series_from_result(
     result: dict[str, Any],
     *,
@@ -978,16 +1182,11 @@ def _fallback_price_series_from_result(
         attempts.append(("postgres", None))
     attempts.append((backend, exchange if backend == "market" else None))
     attempts.append(("parquet", None))
+    deduped_attempts = _dedupe_price_attempts(attempts)
 
-    deduped_attempts: list[tuple[str, str | None]] = []
-    for attempt in attempts:
-        if attempt not in deduped_attempts:
-            deduped_attempts.append(attempt)
-
-    rows: list[dict[str, Any]] = []
-    for inst_id in selected:
+    def load_symbol_rows(inst_id: str) -> list[dict[str, Any]]:
         df = pd.DataFrame()
-        for load_backend, load_exchange in deduped_attempts:
+        for load_backend, load_exchange in _preferred_price_series_attempts(result, inst_id, deduped_attempts):
             try:
                 df = data_loader.load_candles(
                     inst_id=inst_id,
@@ -1004,12 +1203,13 @@ def _fallback_price_series_from_result(
             if not df.empty:
                 break
         if df.empty:
-            continue
+            return []
+        symbol_rows: list[dict[str, Any]] = []
         for ts_value, candle in df.sort_index().iterrows():
             ts_ms, dt = _visual_time_values(ts_value)
             if ts_ms is None:
                 continue
-            rows.append({
+            symbol_rows.append({
                 "ts": ts_ms,
                 "datetime": dt,
                 "inst_id": inst_id,
@@ -1019,6 +1219,12 @@ def _fallback_price_series_from_result(
                 "close": _visual_float(candle.get("close"), float("nan")),
                 "vol": _visual_float(candle.get("vol"), 0.0),
             })
+        return symbol_rows
+
+    rows: list[dict[str, Any]] = []
+    for inst_id in selected:
+        rows.extend(load_symbol_rows(inst_id))
+    rows.sort(key=lambda row: (row.get("ts") or 0, row.get("inst_id") or ""))
     return _json_sanitize(rows)
 
 
@@ -1101,6 +1307,22 @@ def _fallback_execution_markers_from_records(
         if not isinstance(trade, dict):
             continue
         inst_id = str(_first_present(trade, ["inst_id", "symbol"], ""))
+        phase = str(trade.get("execution_phase") or "").lower()
+        if phase in {"entry", "exit"} or str(trade.get("type") or "") == "validation_synthetic_fill":
+            side = str(_first_present(trade, ["side"], "buy")).lower()
+            row = marker(
+                source=trade,
+                ts_value=_first_present(trade, ["ts", "datetime", "time"]),
+                inst_id=inst_id,
+                side=side,
+                price=_first_present(trade, ["fill_px", "price", "px", "avg_px"]),
+                qty=_first_present(trade, ["fill_sz", "qty", "sz"]),
+                pnl=_first_present(trade, ["net_realized_pnl", "pnl_usd", "pnl"]),
+                text_prefix="EXIT" if phase == "exit" or side == "sell" else "ENTRY",
+            )
+            if row:
+                markers.append(row)
+            continue
         entry_side = str(_first_present(trade, ["side", "entry_side"], "buy")).lower()
         exit_side = "sell" if entry_side == "buy" else "buy"
         entry = marker(
@@ -1358,6 +1580,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         strategy_names = (data.get("strategies") or [data.get("strategy") or ""])
         strategies_cfg = config.get("strategies") or {}
         risk_cfg = config.get("risk") or {}
+        backtest_cfg = config.get("backtest") if isinstance(config.get("backtest"), dict) else {}
         cli_args = config.get("cli_args") or {}
         return {
             "strategies": {
@@ -1369,6 +1592,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                 key: risk_cfg.get(key)
                 for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
                 if key in risk_cfg
+            },
+            "backtest": {
+                key: backtest_cfg.get(key)
+                for key in ("order_latency_ms", "cancel_latency_ms", "queue_fill_fraction", "liquidate_on_end")
+                if key in backtest_cfg
             },
             "overrides": {
                 "strategy_params": cli_args.get("strategy_params") or {},
@@ -1415,8 +1643,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def _read_result_payload(run_id: str) -> dict[str, Any]:
         payload = await _read_db_artifact(run_id, "result")
         if payload is not None:
-            return _normalize_daily_winner_payload(payload)
-        return _normalize_daily_winner_payload(_read_json(_run_dir(run_id) / "result.json"))
+            result_payload = _normalize_daily_winner_payload(payload)
+        else:
+            result_payload = _normalize_daily_winner_payload(_read_json(_run_dir(run_id) / "result.json"))
+        if not result_payload.get("parameters"):
+            run_dir = results_dir / Path(run_id).name
+            if run_dir.is_dir():
+                result_payload["parameters"] = _parameters_from_config(run_dir, result_payload)
+        return result_payload
 
     async def _read_records_artifact(run_id: str, artifact_type: str, filename: str) -> list[dict[str, Any]]:
         payload = await _read_db_artifact(run_id, artifact_type)
@@ -1875,6 +2109,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+        clean_run_id = Path(run_id).name
         records = await _read_records_artifact(run_id, "price_series", "price_series.csv")
         result: dict[str, Any] | None = None
         fills: list[dict[str, Any]] = []
@@ -1895,13 +2130,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if symbol:
             records = [row for row in records if row.get("inst_id") == symbol]
             if not records:
-                result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
-                records = _fallback_price_series_from_result(
-                    result_ctx,
-                    symbol=symbol,
-                    fills=fills_ctx,
-                    trades=trades_ctx,
-                )
+                cache_key = (clean_run_id, symbol)
+                cached = _get_price_series_cache(cache_key)
+                if cached is not None:
+                    records = cached
+                else:
+                    result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+                    records = _fallback_price_series_from_result(
+                        result_ctx,
+                        symbol=symbol,
+                        fills=fills_ctx,
+                        trades=trades_ctx,
+                    )
+                    _set_price_series_cache(cache_key, records)
             return _downsample_records(records, n)
 
         if records:
@@ -1917,12 +2158,18 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                 )
                 records.extend(row for row in fallback_rows if row.get("inst_id") in missing_symbols)
         else:
-            result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
-            records = _fallback_price_series_from_result(
-                result_ctx,
-                fills=fills_ctx,
-                trades=trades_ctx,
-            )
+            cache_key = (clean_run_id, "*")
+            cached = _get_price_series_cache(cache_key)
+            if cached is not None:
+                records = cached
+            else:
+                result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+                records = _fallback_price_series_from_result(
+                    result_ctx,
+                    fills=fills_ctx,
+                    trades=trades_ctx,
+                )
+                _set_price_series_cache(cache_key, records)
         return _downsample_records_by_symbol(records, n)
 
     @router.get("/{run_id}/indicators")

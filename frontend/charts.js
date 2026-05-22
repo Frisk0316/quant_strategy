@@ -151,7 +151,7 @@ function adaptiveDateLabel(value, rangeMs) {
   const hours = 60 * 60 * 1000;
   const minutes = 60 * 1000;
   if (!Number.isFinite(rangeMs)) return day;
-  if (rangeMs >= 730 * days) return iso.slice(0, 4);
+  if (rangeMs >= 365 * days) return iso.slice(0, 7);
   if (rangeMs >= 90 * days) return iso.slice(0, 7);
   if (rangeMs >= 3 * days) return day;
   if (rangeMs >= 6 * hours) return `${iso.slice(5, 10)} ${time.slice(0, 5)}`;
@@ -164,6 +164,41 @@ function visibleRangeMs(timestamps, visibleStart, visibleEnd) {
   const startMs = tsToMs(timestamps[visibleStart]);
   const endMs = tsToMs(timestamps[visibleEnd]);
   return Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.abs(endMs - startMs) : NaN;
+}
+
+function calendarTickIndices(timestamps, visibleStart, visibleEnd, maxTicks = 5) {
+  const fallback = uniqueTicks(visibleEnd - visibleStart + 1, maxTicks).map((rel) => visibleStart + rel);
+  const startMs = tsToMs(timestamps?.[visibleStart]);
+  const endMs = tsToMs(timestamps?.[visibleEnd]);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return fallback;
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const rangeMs = endMs - startMs;
+  if (rangeMs < 60 * dayMs) return fallback;
+
+  const stepMonths = rangeMs >= 730 * dayMs ? 6 : rangeMs >= 365 * dayMs ? 3 : 1;
+  const start = new Date(startMs);
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cursor.getTime() < startMs) cursor.setUTCMonth(cursor.getUTCMonth() + stepMonths);
+
+  const targets = [];
+  while (cursor.getTime() <= endMs && targets.length < maxTicks * 3) {
+    targets.push(cursor.getTime());
+    cursor.setUTCMonth(cursor.getUTCMonth() + stepMonths);
+  }
+  if (!targets.length) return fallback;
+
+  const ticks = [];
+  let scan = visibleStart;
+  for (const target of targets) {
+    while (scan <= visibleEnd && tsToMs(timestamps[scan]) < target) scan += 1;
+    if (scan <= visibleEnd) ticks.push(scan);
+  }
+  const unique = [...new Set(ticks)].filter((idx) => idx >= visibleStart && idx <= visibleEnd);
+  if (unique.length > maxTicks) {
+    return uniqueTicks(unique.length, maxTicks).map((rel) => unique[rel]);
+  }
+  return unique.length ? unique : fallback;
 }
 
 function defaultTooltipValue(v) {
@@ -452,7 +487,7 @@ function LineChart({
   const ticks = 4;
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => y0 + (i / ticks) * (y1 - y0));
   const xTicks = hasXLabels
-    ? uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel)
+    ? calendarTickIndices(xLabels, visibleStart, visibleEnd, Math.min(5, visibleLen))
     : [];
   const tickRangeMs = supportsTimeRange ? visibleRangeMs(xLabels, visibleStart, visibleEnd) : NaN;
 
@@ -734,7 +769,7 @@ function TradePriceChart({
   const xScale = (i) => padL + ((i - visibleStart) / Math.max(visibleLen - 1, 1)) * innerW;
   const yScale = (v) => padT + (1 - (v - y0) / (y1 - y0)) * innerH;
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
-  const xTicks = uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel);
+  const xTicks = calendarTickIndices(sortedKeys, visibleStart, visibleEnd, Math.min(5, visibleLen));
   const tickRangeMs = visibleRangeMs(sortedKeys, visibleStart, visibleEnd);
   const overviewValues = sortedKeys.map((_, idx) => {
     for (const s of series) {
@@ -1067,7 +1102,7 @@ function IndicatorChart({
   }
 
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + (i / 4) * (y1 - y0));
-  const xTicks = uniqueTicks(visibleLen, Math.min(5, visibleLen)).map((rel) => visibleStart + rel);
+  const xTicks = calendarTickIndices(timestamps || [], visibleStart, visibleEnd, Math.min(5, visibleLen));
   const tickRangeMs = visibleRangeMs(timestamps || [], visibleStart, visibleEnd);
   const overviewValues = (allSeries[0]?.values || prices || []).slice(0, tsLen);
 

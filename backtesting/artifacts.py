@@ -718,11 +718,18 @@ def _build_run_parameters(cfg: Any, args: Any, strategy_names: list[str]) -> dic
         for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
         if risk is not None and hasattr(risk, key)
     }
+    backtest = getattr(cfg, "backtest", None)
+    backtest_params = {
+        key: getattr(backtest, key)
+        for key in ("order_latency_ms", "cancel_latency_ms", "queue_fill_fraction", "liquidate_on_end")
+        if backtest is not None and hasattr(backtest, key)
+    }
     cli_strategy_params = _maybe_json_obj(getattr(args, "strategy_params", None)) if args else None
     cli_risk_overrides = _maybe_json_obj(getattr(args, "risk_overrides", None)) if args else None
     return _scrub_secrets({
         "strategies": strategy_params,
         "risk": risk_params,
+        "backtest": backtest_params,
         "overrides": {
             "strategy_params": cli_strategy_params or {},
             "risk_overrides": cli_risk_overrides or {},

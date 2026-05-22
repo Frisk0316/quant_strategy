@@ -8,6 +8,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backtesting"))
@@ -20,6 +22,7 @@ from okx_quant.api.routes_backtest import (
     _attach_daily_winner_validation,
     _build_daily_winner_result_json,
     _normalize_daily_winner_payload,
+    make_backtest_router,
 )
 
 
@@ -125,7 +128,56 @@ def test_daily_winner_api_payload_preserves_frontend_schema() -> None:
     assert payload["metrics"]["profit_factor"] == 0.0
     assert payload["metrics"]["fill_count"] == 4
     assert payload["metrics"]["total_fees"] == 0.0
+    assert len(payload["round_trips"]) == 2
+    assert len(payload["trades"]) == 4
+    assert [row["side"] for row in payload["trades"][:2]] == ["buy", "sell"]
+    assert payload["trades"][0]["notional"] > 0
+    assert payload["trades"][0]["pnl_usd"] is None
+    assert payload["trades"][1]["pnl_usd"] is not None
     assert payload["trades"][0]["datetime"].startswith("2024-01-02")
+    assert payload["validation"]["validation_mode"] == "none"
+    assert "walk_forward" not in payload
+    assert "cpcv" not in payload
+
+
+def test_daily_winner_api_payload_models_synthetic_execution_costs() -> None:
+    dfs = {
+        "BTC-USDT-SWAP": _daily_df([100, 100], [110, 101]),
+        "ETH-USDT-SWAP": _daily_df([100, 100], [101, 100]),
+    }
+    backtest_result = run_daily_winner_backtest(
+        dfs,
+        DailyWinnerParams(universe=list(dfs), fee_bps=2.0, slippage_bps=3.0, initial_equity=1000.0),
+    )
+    req = RunBacktestRequest(
+        strategy="daily_winner",
+        universe=list(dfs),
+        start="2024-01-01",
+        end="2024-01-02",
+        initial_equity=1000.0,
+    )
+
+    payload = _build_daily_winner_result_json(
+        run_id="schema_daily_winner_costs",
+        req=req,
+        result=backtest_result,
+        loaded_symbols=list(dfs),
+        skipped_symbols=[],
+    )
+
+    buy, sell = payload["trades"]
+    expected_pnl = 1000.0 * backtest_result.trades.iloc[0]["net_return"]
+    assert buy["execution_phase"] == "entry"
+    assert sell["execution_phase"] == "exit"
+    assert buy["qty"] > 0
+    assert buy["notional"] == pytest.approx(1000.0)
+    assert buy["fee"] > 0
+    assert sell["fee"] > 0
+    assert sell["pnl_usd"] == pytest.approx(expected_pnl)
+    assert payload["metrics"]["total_fees"] == pytest.approx(buy["fee"] + sell["fee"])
+    assert payload["metrics"]["fill_notional_usd"] == pytest.approx(buy["notional"] + sell["notional"])
+    assert payload["metrics"]["funding_cashflow"] == 0.0
+    assert payload["metrics"]["funding_mode"] == "not_modeled"
 
 
 def test_daily_winner_api_payload_can_embed_validation_summaries() -> None:
@@ -151,6 +203,7 @@ def test_daily_winner_api_payload_can_embed_validation_summaries() -> None:
     assert payload["cpcv"]["combos"]
     assert "psr" in payload["metrics"]
     assert payload["metrics"]["validation_only"] is True
+    assert payload["validation"]["validation_mode"] == "both"
 
 
 def test_daily_winner_payload_normalizer_repairs_legacy_inline_result() -> None:
@@ -163,7 +216,17 @@ def test_daily_winner_payload_normalizer_repairs_legacy_inline_result() -> None:
             {"ts": "2024-01-02T00:00:00.000", "equity": 5050.0, "drawdown": 0.0},
         ],
         "returns": [{"ts": "2024-01-02T00:00:00.000", "return": 0.01}],
-        "trades": [{"inst_id": "BTC-USDT-SWAP", "entry_ts": "2024-01-02T00:00:00.000", "net_return": 0.01}],
+        "trades": [
+            {
+                "inst_id": "BTC-USDT-SWAP",
+                "entry_ts": "2024-01-02T00:00:00.000",
+                "exit_ts": "2024-01-03T00:00:00.000",
+                "entry_price": 100.0,
+                "exit_price": 101.0,
+                "cost_rate": 0.001,
+                "net_return": 0.009,
+            }
+        ],
     }
 
     repaired = _normalize_daily_winner_payload(payload)
@@ -171,8 +234,56 @@ def test_daily_winner_payload_normalizer_repairs_legacy_inline_result() -> None:
     assert repaired["equity"][0]["datetime"] == "2024-01-01"
     assert repaired["equity"][1]["return"] == pytest.approx(0.01)
     assert repaired["metrics"]["fill_count"] == 2
-    assert repaired["metrics"]["total_fees"] == 0.0
+    assert repaired["metrics"]["total_fees"] > 0.0
+    assert repaired["metrics"]["fill_notional_usd"] > 0.0
+    assert repaired["validation"]["validation_mode"] == "none"
+    assert "walk_forward" not in repaired
+    assert "cpcv" not in repaired
+    assert len(repaired["round_trips"]) == 1
+    assert len(repaired["trades"]) == 2
+    assert [row["side"] for row in repaired["trades"]] == ["buy", "sell"]
     assert repaired["trades"][0]["datetime"] == "2024-01-02T00:00:00.000"
+    assert repaired["trades"][1]["pnl_usd"] == pytest.approx(45.0)
+
+
+def test_daily_winner_validation_routes_do_not_generate_when_none(tmp_path) -> None:
+    run_dir = tmp_path / "run_none"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        """
+        {
+          "run_id": "run_none",
+          "strategies": ["daily_winner"],
+          "symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+          "bar": "1D",
+          "start": "2024-01-01",
+          "end": "2024-01-03",
+          "metrics": {"number_of_trades": 1},
+          "equity": [
+            {"ts": "2024-01-01T00:00:00.000", "equity": 5000.0},
+            {"ts": "2024-01-02T00:00:00.000", "equity": 5050.0}
+          ],
+          "returns": [{"ts": "2024-01-02T00:00:00.000", "return": 0.01}],
+          "trades": [
+            {
+              "inst_id": "BTC-USDT-SWAP",
+              "entry_ts": "2024-01-02T00:00:00.000",
+              "exit_ts": "2024-01-03T00:00:00.000",
+              "entry_price": 100.0,
+              "exit_price": 101.0,
+              "net_return": 0.01
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    app = FastAPI()
+    app.include_router(make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    assert client.get("/api/backtest/run_none/walk-forward").json() == []
+    assert client.get("/api/backtest/run_none/cpcv").json() is None
 
 
 def test_load_candles_derives_1d_from_1m_parquet(tmp_path) -> None:

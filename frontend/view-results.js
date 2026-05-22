@@ -115,7 +115,7 @@ function RunPicker({ onSelect }) {
               <tr>
                 <th>Run ID</th>
                 <th>Strategy</th>
-                <th>Symbols</th>
+                <th>Trading Pairs</th>
                 <th>Parameters</th>
                 <th>Bar</th>
                 <th>Period</th>
