@@ -197,6 +197,12 @@ def main() -> None:
         validation_results = None
         if args.validate:
             print(f"Running replay validation: {args.validate}")
+
+            def _print_validation_progress(update: dict) -> None:
+                pct = int(update.get("progress", 85))
+                message = str(update.get("message") or "Running replay validation")
+                print(f"PROGRESS:{pct}:{message}", flush=True)
+
             validation_results = run_replay_validations(
                 strategy_names=args.strategy,
                 cfg=cfg,
@@ -207,7 +213,9 @@ def main() -> None:
                 periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
                 mode=args.validate,
                 liquidate_on_end=args.liquidate_on_end,
+                progress_callback=_print_validation_progress,
             )
+            print("PROGRESS:99:Saving replay artifacts", flush=True)
         run_dir = save_backtest_artifacts(
             result=result,
             cfg=cfg,

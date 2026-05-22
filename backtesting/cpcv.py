@@ -183,6 +183,7 @@ class CPCV:
         strategy_fn: Callable[[pd.DataFrame, pd.DataFrame], pd.Series],
         periods: int = 365,
         n_trials: int | None = None,
+        progress_callback: Callable[[dict], None] | None = None,
     ) -> dict:
         """
         Run CPCV evaluation and compute OOS combination/path metrics.
@@ -204,10 +205,16 @@ class CPCV:
         combo_groups = list(combinations(range(self.n_splits), self.k_test))
         combo_results = []
 
-        for test_groups in combo_groups:
+        for i, test_groups in enumerate(combo_groups):
             train_idx, test_idx = self._apply_purge_and_embargo(n, groups, test_groups)
             train_data = df.iloc[train_idx]
             test_data = df.iloc[test_idx]
+            if progress_callback:
+                progress_callback({
+                    "current": i + 1,
+                    "total": len(combo_groups),
+                    "test_groups": test_groups,
+                })
             strategy_result = strategy_fn(train_data, test_data)
             normalized_returns = self._coerce_oos_returns(test_data, strategy_result)
 

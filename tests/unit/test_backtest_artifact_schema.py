@@ -23,6 +23,7 @@ REQUIRED_RESULT_KEYS = {
     "start",
     "end",
     "metrics",
+    "parameters",
     "artifacts",
 }
 
@@ -162,6 +163,11 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
     )
     cfg = SimpleNamespace(
         storage=SimpleNamespace(timescale_dsn=None, candle_backend="parquet"),
+        risk=SimpleNamespace(
+            max_order_notional_usd=500.0,
+            max_pos_pct_equity=0.30,
+            max_leverage=3.0,
+        ),
     )
     args = SimpleNamespace(strategy=["schema"], start="2024-01-01", end="2024-01-02", bar="1H")
 
@@ -186,6 +192,9 @@ def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, mo
 
     assert REQUIRED_RESULT_KEYS <= set(result_payload)
     assert REQUIRED_METRIC_KEYS <= set(result_payload["metrics"])
+    assert result_payload["parameters"]["risk"]["max_order_notional_usd"] == 500.0
+    assert result_payload["parameters"]["risk"]["max_pos_pct_equity"] == 0.30
+    assert result_payload["parameters"]["risk"]["max_leverage"] == 3.0
     assert result_payload["validation"]["liquidate_on_end"] is True
     assert result_payload["validation"]["terminal_positions_closed"] is True
     assert REQUIRED_FILL_COLUMNS <= set(fills.columns)

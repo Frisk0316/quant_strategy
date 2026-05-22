@@ -14,6 +14,35 @@ function n(v, d = 2) { return v == null || isNaN(+v) ? "—" : (+v).toFixed(d); 
 function pct(v) { return v == null || isNaN(+v) ? "—" : ((+v) * 100).toFixed(2) + "%"; }
 function usd(v, d = 2) { return v == null || isNaN(+v) ? "—" : "$" + Math.abs(+v).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 function fmtDt(s) { if (!s) return "—"; try { return new Date(s).toISOString().slice(0, 19).replace("T", " "); } catch { return s; } }
+function parseObj(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function runParametersText(run) {
+  const params = run?.parameters || {};
+  const strategyParams = params.strategies || {};
+  const overrideParams = parseObj(params.overrides?.strategy_params);
+  const names = (run?.strategies || [run?.strategy]).filter(Boolean);
+  const parts = [];
+  for (const name of names) {
+    const p = { ...(strategyParams[name] || {}), ...(names.length === 1 ? overrideParams : {}) };
+    if (name === "ma_crossover" && (p.fast_window || p.slow_window)) parts.push(`MA ${p.fast_window ?? "?"}/${p.slow_window ?? "?"}`);
+    else if (name === "ema_crossover" && (p.fast_span || p.slow_span)) parts.push(`EMA ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}`);
+    else if (name === "macd_crossover" && (p.fast_span || p.slow_span || p.signal_span)) parts.push(`MACD ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}/${p.signal_span ?? "?"}`);
+  }
+  const risk = { ...(params.risk || {}), ...parseObj(params.overrides?.risk_overrides) };
+  if (risk.max_pos_pct_equity != null) parts.push(`max pos ${(+risk.max_pos_pct_equity * 100).toFixed(0)}%`);
+  if (risk.max_order_notional_usd != null) parts.push(`order $${(+risk.max_order_notional_usd).toLocaleString("en", { maximumFractionDigits: 0 })}`);
+  if (risk.max_leverage != null) parts.push(`lev ${(+risk.max_leverage).toFixed(1)}x`);
+  return parts.length ? parts.join(" | ") : "??;
+}
 function signedUsd(v, d = 2) {
   if (v == null || isNaN(+v)) return "—";
   const sign = +v < 0 ? "-" : "";
@@ -1286,6 +1315,7 @@ function RunListView({ onSelect, onDelete }) {
                 <th>Run ID</th>
                 <th>Strategy</th>
                 <th>Symbols</th>
+                <th>Parameters</th>
                 <th>Bar</th>
                 <th>Period</th>
                 <th class="num">Return</th>
@@ -1314,6 +1344,9 @@ function RunListView({ onSelect, onDelete }) {
                     </td>
                     <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>
                       ${(r.symbols || [r.symbol]).filter(Boolean).join(", ")}
+                    </td>
+                    <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      ${runParametersText(r)}
                     </td>
                     <td class="mono">${r.bar || "—"}</td>
                     <td class="mono" style=${{ fontSize: 11 }}>

@@ -62,6 +62,7 @@ class WalkForward:
         df: pd.DataFrame,
         strategy_fn: Callable[[pd.DataFrame, pd.DataFrame], pd.Series],
         periods: int = 365,
+        progress_callback: Callable[[dict], None] | None = None,
     ) -> pd.DataFrame:
         """
         Run walk-forward evaluation.
@@ -75,7 +76,18 @@ class WalkForward:
             DataFrame with IS/OOS Sharpe per window.
         """
         results = []
-        for i, (is_data, oos_data) in enumerate(self.split(df)):
+        windows = list(self.split(df))
+        total = len(windows)
+        for i, (is_data, oos_data) in enumerate(windows):
+            if progress_callback:
+                progress_callback({
+                    "current": i + 1,
+                    "total": total,
+                    "is_start": is_data.index[0],
+                    "is_end": is_data.index[-1],
+                    "oos_start": oos_data.index[0],
+                    "oos_end": oos_data.index[-1],
+                })
             raw_result = strategy_fn(is_data, oos_data)
             oos_returns = extract_returns(raw_result)
             results.append({

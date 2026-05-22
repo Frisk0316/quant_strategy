@@ -354,6 +354,7 @@ def _post_process_ohlcv_rotation(
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
+        "parameters": _request_parameters(req),
         "artifacts": artifact_refs,
     }
     (out_dir / "result.json").write_text(
@@ -575,6 +576,7 @@ def _build_daily_winner_result_json(
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
+        "parameters": _request_parameters(req),
         "equity": equity_records,
         "returns": returns_records,
         "trades": trades_records,
@@ -605,6 +607,19 @@ def _json_sanitize(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_json_sanitize(v) for v in value]
     return _json_safe(value)
+
+
+def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
+    return _json_sanitize({
+        "strategies": {
+            req.strategy: req.strategy_params or {},
+        },
+        "risk": req.risk_overrides or {},
+        "overrides": {
+            "strategy_params": req.strategy_params or {},
+            "risk_overrides": req.risk_overrides or {},
+        },
+    })
 
 
 def _daily_winner_return_series(records: list[dict[str, Any]]) -> pd.Series:
@@ -1318,6 +1333,49 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         df = pd.read_csv(path)
         return json.loads(df.to_json(orient="records", force_ascii=False))
 
+    def _metadata_dict(value: Any) -> dict:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    def _parameters_from_config(run_dir: Path, data: dict) -> dict:
+        params = data.get("parameters")
+        if isinstance(params, dict) and params:
+            return params
+        config_path = run_dir / "config.json"
+        if not config_path.exists():
+            return {}
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        strategy_names = (data.get("strategies") or [data.get("strategy") or ""])
+        strategies_cfg = config.get("strategies") or {}
+        risk_cfg = config.get("risk") or {}
+        cli_args = config.get("cli_args") or {}
+        return {
+            "strategies": {
+                name: strategies_cfg.get(name)
+                for name in strategy_names
+                if name and isinstance(strategies_cfg.get(name), dict)
+            },
+            "risk": {
+                key: risk_cfg.get(key)
+                for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
+                if key in risk_cfg
+            },
+            "overrides": {
+                "strategy_params": cli_args.get("strategy_params") or {},
+                "risk_overrides": cli_args.get("risk_overrides") or {},
+            },
+        }
+
     def _downsample_records(records: list[dict], n: int) -> list[dict]:
         """Return at most n evenly-spaced records, always including first and last."""
         if n <= 0 or len(records) <= n:
@@ -1409,6 +1467,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         "max_drawdown": metrics.get("max_drawdown"),
                         "order_count": metrics.get("order_count"),
                         "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
+                        "parameters": _parameters_from_config(run_dir, data),
                     }
                 except Exception:
                     pass
@@ -1455,6 +1514,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     item.pop("sort_created_at", None)
                     item["start"] = item.get("start_date")
                     item["end"] = item.get("end_date")
+                    metadata = _metadata_dict(item.get("metadata"))
+                    existing = merged.get(item["run_id"], {})
+                    item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
                     merged[item["run_id"]] = item
         except Exception:
             pass

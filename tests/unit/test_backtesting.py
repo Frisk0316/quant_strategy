@@ -396,6 +396,7 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
             trade_log=pd.DataFrame(),
         )
 
+    progress_updates = []
     validation = run_replay_validations(
         strategy_names=["pairs_trading"],
         cfg=cfg,
@@ -407,6 +408,7 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
         cpcv_embargo_pct=0.0,
         cpcv_purge_size=0,
         runner=runner,
+        progress_callback=progress_updates.append,
     )
 
     assert validation["walk_forward"]
@@ -414,6 +416,8 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
     assert validation["cpcv"]["n_combinations"] == 3
     assert len(validation["cpcv"]["combos"]) == 3
     assert "dsr" in validation["cpcv"]
+    assert any(update["message"].startswith("Walk-Forward window") for update in progress_updates)
+    assert any(update["message"].startswith("CPCV combination") for update in progress_updates)
 
 
 def _gate_result(metrics: dict) -> ReplayBacktestResult:

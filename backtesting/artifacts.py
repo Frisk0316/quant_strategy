@@ -273,6 +273,9 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
             return
 
         metrics = meta.get("metrics", {})
+        metadata = {
+            "parameters": meta.get("parameters", {}),
+        }
 
         def _parse_date(value: Any) -> Any:
             if not value:
@@ -308,12 +311,15 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     """
                 )
                 await conn.execute(
+                    "ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'"
+                )
+                await conn.execute(
                     """
                     INSERT INTO backtest_runs
                       (run_id, created_at, strategies, symbols, bar, start_date, end_date,
                        artifact_dir, total_return, sharpe, max_drawdown, order_count,
-                       real_fill_count, fill_rate, bankrupt)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                       real_fill_count, fill_rate, bankrupt, metadata)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)
                     ON CONFLICT (run_id) DO UPDATE SET
                         created_at = EXCLUDED.created_at,
                         strategies = EXCLUDED.strategies,
@@ -328,7 +334,8 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                         order_count = EXCLUDED.order_count,
                         real_fill_count = EXCLUDED.real_fill_count,
                         fill_rate = EXCLUDED.fill_rate,
-                        bankrupt = EXCLUDED.bankrupt
+                        bankrupt = EXCLUDED.bankrupt,
+                        metadata = EXCLUDED.metadata
                     """,
                     run_id,
                     datetime.now(tz=timezone.utc),
@@ -345,6 +352,7 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     metrics.get("real_fill_count", metrics.get("fill_count", metrics.get("orders_filled_count"))),
                     metrics.get("fill_rate"),
                     bool(metrics.get("bankrupt", False)),
+                    json.dumps(metadata, allow_nan=False),
                 )
             finally:
                 await conn.close()
@@ -679,6 +687,49 @@ def _resolve_indicator_params(cfg: Any, strategy_name: str) -> Optional[dict]:
     return dumped if isinstance(dumped, dict) else None
 
 
+def _build_run_parameters(cfg: Any, args: Any, strategy_names: list[str]) -> dict[str, Any]:
+    """Capture the active research parameters that produced this result."""
+    def _maybe_json_obj(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else value
+        except Exception:
+            return value
+
+    strategies_obj = getattr(cfg, "strategies", None)
+    strategy_params: dict[str, Any] = {}
+    if strategies_obj is not None:
+        for name in strategy_names:
+            sub = getattr(strategies_obj, name, None)
+            if sub is None:
+                continue
+            try:
+                dumped = sub.model_dump() if hasattr(sub, "model_dump") else dict(sub)
+            except Exception:
+                dumped = {}
+            if isinstance(dumped, dict):
+                strategy_params[name] = _scrub_secrets(dumped)
+
+    risk = getattr(cfg, "risk", None)
+    risk_params = {
+        key: getattr(risk, key)
+        for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
+        if risk is not None and hasattr(risk, key)
+    }
+    cli_strategy_params = _maybe_json_obj(getattr(args, "strategy_params", None)) if args else None
+    cli_risk_overrides = _maybe_json_obj(getattr(args, "risk_overrides", None)) if args else None
+    return _scrub_secrets({
+        "strategies": strategy_params,
+        "risk": risk_params,
+        "overrides": {
+            "strategy_params": cli_strategy_params or {},
+            "risk_overrides": cli_risk_overrides or {},
+        },
+    })
+
+
 def _indicator_lookback_bars(strategy_name: str, params: dict) -> int:
     if not bool(params.get("indicator_db_warmup", False)):
         return 0
@@ -964,6 +1015,7 @@ def save_backtest_artifacts(
     end_s = end or getattr(args, "end", None)
     bar_s = bar or getattr(args, "bar", "1H")
     run_id_final = build_run_id(strats, start_s, end_s, bar_s, run_id)
+    run_parameters = _build_run_parameters(cfg, args, strats)
 
     # Resolve DSN: prefer cfg.storage.timescale_dsn (populated by load_config from
     # DATABASE_URL env var when YAML omits it), fall back to env var directly.
@@ -1243,6 +1295,7 @@ def save_backtest_artifacts(
             "primary_exchange": "binance",
         },
         "metrics": metrics,
+        "parameters": run_parameters,
         "artifacts": artifact_refs,
     }
     validation_payload = dict(result_validation)

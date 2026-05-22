@@ -1897,6 +1897,7 @@ def run_replay_validations(
     n_trials: int = 1,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run replay-backed WF/CPCV validation and return result.json-ready data."""
     from backtesting.cpcv import CPCV
@@ -1923,9 +1924,35 @@ def run_replay_validations(
         "validation_frame_end": df.index[-1].isoformat(),
     }
 
+    def _emit(progress: int, message: str, **extra: Any) -> None:
+        if progress_callback:
+            progress_callback({
+                "progress": max(85, min(99, int(progress))),
+                "message": message,
+                **extra,
+            })
+
+    has_wf = validate_mode in {"wf", "both"}
+    has_cpcv = validate_mode in {"cpcv", "both"}
+    wf_start, wf_end = (86, 93) if has_cpcv else (86, 99)
+    cpcv_start, cpcv_end = (94, 99) if has_wf else (86, 99)
+
     replay_runner = runner or run_replay_backtest
     if validate_mode in {"wf", "both"}:
         wf = WalkForward(is_days=wf_is_days, oos_days=wf_oos_days)
+
+        def _wf_progress(update: dict[str, Any]) -> None:
+            current = int(update.get("current") or 1)
+            total = max(int(update.get("total") or 1), 1)
+            pct = wf_start + int((current - 1) / total * max(wf_end - wf_start, 1))
+            _emit(
+                pct,
+                f"Walk-Forward window {current}/{total}",
+                phase="walk_forward",
+                current=current,
+                total=total,
+            )
+
         wf_results = wf.evaluate(
             df,
             make_replay_strategy_fn(
@@ -1939,6 +1966,7 @@ def run_replay_validations(
                 runner=replay_runner,
             ),
             periods=periods,
+            progress_callback=_wf_progress,
         )
         validation["walk_forward"] = _summarize_walk_forward(wf_results)
 
@@ -1949,6 +1977,21 @@ def run_replay_validations(
             embargo_pct=cpcv_embargo_pct,
             purge_size=cpcv_purge_size,
         )
+
+        def _cpcv_progress(update: dict[str, Any]) -> None:
+            current = int(update.get("current") or 1)
+            total = max(int(update.get("total") or 1), 1)
+            pct = cpcv_start + int((current - 1) / total * max(cpcv_end - cpcv_start, 1))
+            groups = update.get("test_groups")
+            group_label = f" groups {list(groups)}" if groups is not None else ""
+            _emit(
+                pct,
+                f"CPCV combination {current}/{total}{group_label}",
+                phase="cpcv",
+                current=current,
+                total=total,
+            )
+
         cpcv_results = cpcv.evaluate(
             df,
             make_replay_strategy_fn(
@@ -1963,6 +2006,7 @@ def run_replay_validations(
             ),
             periods=periods,
             n_trials=n_trials,
+            progress_callback=_cpcv_progress,
         )
         validation["cpcv"] = _summarize_cpcv(cpcv_results, cpcv_n_splits, cpcv_k_test)
 
