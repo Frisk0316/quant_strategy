@@ -1,0 +1,130 @@
+---
+status: current
+type: reference
+owner: human
+created: 2026-05-22
+---
+
+# Results Validation Manifest
+
+This manifest classifies every current `results/**/*.json` artifact without
+modifying the frozen artifacts themselves. It follows the Validation Status
+Convention in
+[`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention).
+
+Checked count: 101 JSON files under `results/`.
+
+Allowed statuses are `naive_backtest`, `in_sample`, `hold_out`,
+`walk_forward`, and `cpcv`.
+
+Conservative rule used here: unless an artifact has explicit provenance from
+`WalkForward.evaluate()`, `CPCV.evaluate()`, a frozen-before-evaluation hold-out
+split, or documented proof that parameters were frozen before this dataset was
+downloaded or inspected, it is `in_sample`. No current artifact has enough
+documentary proof for `naive_backtest`, so all current rows remain
+`in_sample`. IS-only artifacts are research records and must not be used as
+promotion evidence.
+
+| Path | validation_status | Rationale |
+|---|---|---|
+| `results/calibration/summary_20260510T181530.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260513T053225.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260513T073306.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260513T085305.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260513T145544.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260513T150336.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T021033.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T021158.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T032018.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T040814.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T050912.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T051339.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260514T054330.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260515T064818.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/calibration/summary_20260517T012522.json` | `in_sample` | Calibration summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/cme_gap_research.json` | `in_sample` | CME gap round 1 in the three-round selection process that culminated in Route B; metrics were inspected before later rule changes, so this is IS-only. |
+| `results/cme_gap_research_long_only_default.json` | `in_sample` | CME gap round 3 Route B long_only default selected after prior metrics and direction split review; +7.09% is IS-only selection-biased research. |
+| `results/cme_gap_research_with_stop.json` | `in_sample` | CME gap round 2 in the three-round selection process before Route B; stop/dust/hold changes followed metric review, so this is IS-only. |
+| `results/codex_btc_ma_smoke_ux_files/config.json` | `in_sample` | MA smoke-run config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_files/data_coverage.json` | `in_sample` | MA smoke-run data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_files/metrics.json` | `in_sample` | MA smoke-run metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_files/result.json` | `in_sample` | MA smoke-run result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_warmup/config.json` | `in_sample` | MA warmup smoke config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_warmup/data_coverage.json` | `in_sample` | MA warmup smoke data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_warmup/metrics.json` | `in_sample` | MA warmup smoke metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_btc_ma_smoke_ux_warmup/result.json` | `in_sample` | MA warmup smoke result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_ma_1d_position_limit_files/config.json` | `in_sample` | MA 1D position-limit research config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_ma_1d_position_limit_files/data_coverage.json` | `in_sample` | MA 1D position-limit research data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_ma_1d_position_limit_files/metrics.json` | `in_sample` | MA 1D position-limit research metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_ma_1d_position_limit_files/result.json` | `in_sample` | MA 1D position-limit research result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_macd_1d_position_limit_files/config.json` | `in_sample` | MACD 1D position-limit research config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_macd_1d_position_limit_files/data_coverage.json` | `in_sample` | MACD 1D position-limit research data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_macd_1d_position_limit_files/metrics.json` | `in_sample` | MACD 1D position-limit research metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_final_macd_1d_position_limit_files/result.json` | `in_sample` | MACD 1D position-limit research result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_ma_position_limit_files/config.json` | `in_sample` | MA position-limit fix verification config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_ma_position_limit_files/data_coverage.json` | `in_sample` | MA position-limit fix verification data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_ma_position_limit_files/metrics.json` | `in_sample` | MA position-limit fix verification metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_ma_position_limit_files/result.json` | `in_sample` | MA position-limit fix verification result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_macd_position_limit_files/config.json` | `in_sample` | MACD position-limit fix verification config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_macd_position_limit_files/data_coverage.json` | `in_sample` | MACD position-limit fix verification data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_macd_position_limit_files/metrics.json` | `in_sample` | MACD position-limit fix verification metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_fix_macd_position_limit_files/result.json` | `in_sample` | MACD position-limit fix verification result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_ma_1d_position_limit_files/config.json` | `in_sample` | MA review-fix position-limit config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_ma_1d_position_limit_files/data_coverage.json` | `in_sample` | MA review-fix position-limit data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_ma_1d_position_limit_files/metrics.json` | `in_sample` | MA review-fix position-limit metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_ma_1d_position_limit_files/result.json` | `in_sample` | MA review-fix position-limit result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_macd_1d_position_limit_files/config.json` | `in_sample` | MACD review-fix position-limit config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_macd_1d_position_limit_files/data_coverage.json` | `in_sample` | MACD review-fix position-limit data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_macd_1d_position_limit_files/metrics.json` | `in_sample` | MACD review-fix position-limit metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_reviewfix_macd_1d_position_limit_files/result.json` | `in_sample` | MACD review-fix position-limit result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_smoke_ma_crossover/config.json` | `in_sample` | MA crossover smoke config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_smoke_ma_crossover/data_coverage.json` | `in_sample` | MA crossover smoke data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_smoke_ma_crossover/metrics.json` | `in_sample` | MA crossover smoke metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_smoke_ma_crossover/result.json` | `in_sample` | MA crossover smoke result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_validation/codex_btc_ma_files_smoke/config.json` | `in_sample` | MA artifact-file smoke config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_validation/codex_btc_ma_files_smoke/data_coverage.json` | `in_sample` | MA artifact-file smoke data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_validation/codex_btc_ma_files_smoke/metrics.json` | `in_sample` | MA artifact-file smoke metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_validation/codex_btc_ma_files_smoke/result.json` | `in_sample` | MA artifact-file smoke result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_btc_ma_1h_daily_reset/config.json` | `in_sample` | MA 1H daily-reset verification config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_btc_ma_1h_daily_reset/data_coverage.json` | `in_sample` | MA 1H daily-reset verification data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_btc_ma_1h_daily_reset/metrics.json` | `in_sample` | MA 1H daily-reset verification metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_btc_ma_1h_daily_reset/result.json` | `in_sample` | MA 1H daily-reset verification result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_claude_fix/result.json` | `in_sample` | Verification result for a fix; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_claude_fix/summary.json` | `in_sample` | Verification summary for a fix; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_diagnostics/summary.json` | `in_sample` | Diagnostics summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_final/result.json` | `in_sample` | Final verification result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_final/summary.json` | `in_sample` | Final verification summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/codex_verify_remove_volume_filter/summary.json` | `in_sample` | Volume-filter verification summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/daily_winner_db_smoke/summary.json` | `in_sample` | Daily winner DB smoke summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/parameter_sweeps/ui_sweep_ma_crossover_0310e405.json` | `in_sample` | Parameter sweep summary; sweep metrics are selection inputs and have no explicit frozen hold-out, WalkForward, or CPCV provenance. |
+| `results/parameter_sweeps/ui_sweep_ma_crossover_0a497e06.json` | `in_sample` | Parameter sweep summary; sweep metrics are selection inputs and have no explicit frozen hold-out, WalkForward, or CPCV provenance. |
+| `results/parameter_sweeps/ui_sweep_ma_crossover_a95cea7f.json` | `in_sample` | Parameter sweep summary; sweep metrics are selection inputs and have no explicit frozen hold-out, WalkForward, or CPCV provenance. |
+| `results/replay_pairs_trading_20240101_20240131_1m_20260510_073926/config.json` | `in_sample` | Pairs replay config companion; replay provenance alone is not WalkForward, CPCV, or frozen hold-out. |
+| `results/replay_pairs_trading_20240101_20240131_1m_20260510_073926/data_coverage.json` | `in_sample` | Pairs replay data coverage companion; replay provenance alone is not WalkForward, CPCV, or frozen hold-out. |
+| `results/replay_pairs_trading_20240101_20240131_1m_20260510_073926/metrics.json` | `in_sample` | Pairs replay metrics companion; replay provenance alone is not WalkForward, CPCV, or frozen hold-out. |
+| `results/replay_pairs_trading_20240101_20240131_1m_20260510_073926/result.json` | `in_sample` | Pairs replay result; replay provenance alone is not WalkForward, CPCV, or frozen hold-out. |
+| `results/test_rot_1h/summary.json` | `in_sample` | OHLCV rotation test summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/test_rot_verify/summary.json` | `in_sample` | OHLCV rotation verification summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/test_rot_verify_after_review/result.json` | `in_sample` | OHLCV rotation post-review result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/test_rot_verify_after_review/summary.json` | `in_sample` | OHLCV rotation post-review summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_daily_winner_477b293b/result.json` | `in_sample` | UI daily winner result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_daily_winner_8f902021/result.json` | `in_sample` | UI daily winner result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_daily_winner_f2f07c25/result.json` | `in_sample` | UI daily winner result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_daily_winner_json_smoke/result.json` | `in_sample` | UI daily winner JSON smoke result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_daily_winner_smoke/result.json` | `in_sample` | UI daily winner smoke result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_funding_carry_ac454742/config.json` | `in_sample` | UI funding carry config companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_funding_carry_ac454742/data_coverage.json` | `in_sample` | UI funding carry data coverage companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_funding_carry_ac454742/metrics.json` | `in_sample` | UI funding carry metrics companion; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_funding_carry_ac454742/result.json` | `in_sample` | UI funding carry result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_003141c9/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_003141c9/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_161f30c6/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_161f30c6/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_258581eb/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_258581eb/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_2c5c057d/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_2c5c057d/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_94b3dceb/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_94b3dceb/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_e636f8c1/result.json` | `in_sample` | UI OHLCV rotation result; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |
+| `results/ui_ohlcv_rotation_e636f8c1/summary.json` | `in_sample` | UI OHLCV rotation summary; no explicit frozen hold-out, WalkForward, or CPCV provenance in artifact notes. |

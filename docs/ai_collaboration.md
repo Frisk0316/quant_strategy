@@ -141,8 +141,8 @@ Deployment readiness:
 1. 資料時間區間、時區與 symbol 對齊。
 2. 沒有用未來資料產生當下 signal。
 3. OKX maker/taker fee、spread、slippage、missed fill 或 maker-only 約束有被納入。
-4. Walk-forward 或 CPCV 沒有 train/test leakage。
-5. DSR/PSR 或等價的過擬合檢查有被記錄。
+4. Walk-forward 或 CPCV 沒有 train/test leakage；每筆 backtest artifact 必須附帶 `validation_status`，判定規則見 [`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention)。
+5. DSR/PSR 或等價的過擬合檢查有被記錄；promotion 需 DSR >= 0.95、PSR >= 0.95，且 `n_trials` 誠實申報。
 6. Trade log、fill log、equity curve 可以重現。
 7. 策略參數來自文件或 config，不是隱藏在 notebook/chat 裡。
 
@@ -150,12 +150,14 @@ Deployment readiness:
 
 任何 live 之前必須完成以下階段：
 
-1. Historical backtest
-2. Walk-forward 或 CPCV
-3. Replay 或 shadow 檢查
-4. OKX demo
-5. 小資金 live
-6. 才能擴大資金
+| Stage | Requirement |
+| --- | --- |
+| Historical backtest | 必須有可重現 artifact 與 `validation_status`；`in_sample` 或 `naive_backtest` 不得勾選此 gate、不得引用為 edge evidence、不得作為 promotion 依據。 |
+| Walk-forward 或 CPCV | 必須由 `validation_status: walk_forward` 或 `validation_status: cpcv` artifact 滿足；不得有 train/test leakage。CPCV 必須誠實申報 `n_trials`，且 DSR >= 0.95、PSR >= 0.95。 |
+| Replay 或 shadow 檢查 | 必須使用同碼 replay 或 shadow 對照，並保留 fill log、order log、equity curve、fees、funding cashflow。 |
+| OKX demo | 需要使用者批准，且 demo 期間風控、告警、rollback 可驗證。 |
+| 小資金 live | 需要使用者再次批准，使用明確資金上限與 kill switch。 |
+| 擴大資金 | 只能在前述階段均通過、Claude/使用者複核後進行。 |
 
 部署前檢查：
 

@@ -546,14 +546,50 @@ acknowledge them.
 | Short BTC/ETH options volatility on OKX | Liquidity, tail risk, and missing options hedging infrastructure. |
 | Broad altcoin residual basket live trading | Needs robust universe filters, delisting handling, and cost validation first. |
 
+## Validation Status Convention
+
+Every backtest artifact must declare exactly one validation status before it is
+used in promotion discussion, handoff notes, or strategy comparison. The label
+describes how the reported metrics were produced; it does not change the
+artifact schema or imply live readiness.
+
+| Status | Fit/eval separation | Parameters adjusted on this dataset? | Deployment meaning |
+|---|---|---|---|
+| `naive_backtest` | No | No, and commit history or accompanying notes prove parameters were frozen before this dataset was downloaded or inspected. | Not OOS evidence. |
+| `in_sample` | No | Yes, or cannot prove no. | Not OOS evidence. |
+| `hold_out` | Yes, single split | Only on the IS segment; the OOS segment was frozen before inspection. | May be cited with scope limits. |
+| `walk_forward` | Yes, rolling | Programmatic fit per window via `backtesting/walk_forward.py::WalkForward.evaluate()`. | May be cited if replay/cost/leakage gates pass. |
+| `cpcv` | Yes, combinatorial purged | Programmatic fit per combination via `backtesting/cpcv.py::CPCV.evaluate()`, with honest `n_trials` recorded. | May be cited if DSR/PSR and replay/cost/leakage gates pass. |
+
+Classification process:
+
+1. If the artifact was produced by `WalkForward.evaluate()`, mark it
+   `walk_forward`.
+2. Else if it was produced by `CPCV.evaluate()`, mark it `cpcv`.
+3. Else if the accompanying notes explicitly state a frozen-before-evaluation
+   hold-out split, mark it `hold_out`.
+4. Else if there is commit-history or documentary evidence that parameters were
+   frozen before this dataset was downloaded or inspected, mark it
+   `naive_backtest`.
+5. Otherwise mark it `in_sample`.
+
+The default under uncertainty is intentionally conservative: inability to prove
+that parameters were frozen before the dataset was downloaded or inspected
+means the artifact is `in_sample`, not `naive_backtest`. Single-period
+backtests and parameter sweeps are therefore IS-only unless proven otherwise.
+`naive_backtest` and `in_sample` have the same deployment limitation: neither is
+OOS evidence, neither may be cited as edge evidence, and neither may satisfy a
+promotion gate without follow-up `hold_out`, `walk_forward`, or `cpcv`
+validation.
+
 ## Promotion Checklist
 
 | Requirement | Threshold |
 |---|---|
 | Data quality | No unexplained gaps in the test window; timestamps aligned. |
 | Cost model | OKX maker/taker fees, spread, slippage, and missed fills included. |
-| Validation | Walk-forward or CPCV; no shared IS/OOS boundary leakage. |
-| Overfit control | DSR >= 0.95 before promotion. |
+| Validation | Each artifact declares `validation_status`; promotion evidence requires walk-forward, CPCV, or documented hold-out with no shared IS/OOS boundary leakage. |
+| Overfit control | DSR >= 0.95 and PSR >= 0.95 before promotion; `n_trials` must be reported honestly. |
 | Risk | Max order notional, drawdown stops, and circuit breakers active. |
 | Execution | Maker-only by default; taker usage explicitly justified for risk exits. |
 | ct_val provenance | `validation.ct_val_all_authoritative = true` (every symbol's ctVal from `db`, `config_override`, or `spot_unit`). |
