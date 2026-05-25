@@ -1019,7 +1019,7 @@ function IndicatorChart({
   markers = [],
   height = 320,
   macdHeight = 110,
-  color = "var(--accent)",
+  color = "var(--text)",
   fastColor = "#2563eb",
   slowColor = "#dc2626",
   visibleSeries = null,

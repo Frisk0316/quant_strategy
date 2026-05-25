@@ -80,6 +80,12 @@ const SWEEP_ROWS_PER_DAY = {
   "1m": 1440, "3m": 480, "5m": 288, "15m": 96,
   "30m": 48, "1H": 24, "2H": 12, "4H": 6, "1D": 1,
 };
+const SWEEP_SECONDS_PER_EVENT = {
+  ma_crossover: 0.0018,
+  ema_crossover: 0.00020,
+  macd_crossover: 0.00025,
+};
+const DERIVABLE_FROM_1M_BARS = new Set(["3m", "5m", "15m", "30m", "1H", "2H", "4H", "6H", "12H", "1D"]);
 
 const todayUtc = new Date();
 todayUtc.setUTCHours(0, 0, 0, 0);
@@ -116,6 +122,14 @@ function ProgressStage({ job, style = {} }) {
   const pctLabel = `${Math.round(pct)}%`;
   const stage = job.message || (job.status === "done" ? "Complete" : job.status === "error" ? "Failed" : "Working");
   const tone = job.status === "done" ? "profit" : job.status === "error" ? "loss" : "";
+  const timingParts = [];
+  if (job.elapsed_seconds != null) timingParts.push(`elapsed ${fmtDuration(job.elapsed_seconds)}`);
+  if (job.estimated_remaining_seconds != null && job.status === "running") {
+    timingParts.push(`remaining ${fmtDuration(job.estimated_remaining_seconds)}`);
+  }
+  if (job.completed_trials != null && job.total_trials != null) {
+    timingParts.push(`${job.completed_trials}/${job.total_trials} trials`);
+  }
   return html`
     <div style=${{ flex: 1, minWidth: 180, ...style }}>
       <div class="row" style=${{ justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 6 }}>
@@ -127,6 +141,9 @@ function ProgressStage({ job, style = {} }) {
       <div class=${`bar ${tone}`} style=${{ height: 6 }}>
         <i style=${{ width: `${pct}%` }}></i>
       </div>
+      ${timingParts.length > 0 && html`
+        <div class="field-hint mono" style=${{ marginTop: 4, fontSize: 11 }}>${timingParts.join(" - ")}</div>
+      `}
     </div>
   `;
 }
@@ -180,7 +197,8 @@ function estimateSweepSeconds(strategy, grid, bar, start, end, symbols) {
   const { valid } = countValidSweepCombos(strategy, grid);
   const days = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const rows = days * (SWEEP_ROWS_PER_DAY[bar] || 24) * Math.max(1, symbols.length);
-  return Math.max(0.6, 0.35 + rows * 0.00008) * Math.max(1, valid);
+  const perEvent = SWEEP_SECONDS_PER_EVENT[strategy] || 0.00025;
+  return Math.max(0.6, 0.35 + rows * perEvent) * Math.max(1, valid);
 }
 function estimateValidationMultiplier(start, end, validation) {
   if (!validation || validation === "none") return 1;
@@ -198,6 +216,32 @@ function cleanRiskOverrides(raw = {}) {
     const num = Number(value);
     if (Number.isFinite(num) && num > 0) out[key] = num;
   });
+  return out;
+}
+function isDbOhlcvTradingPairRow(row) {
+  return (row?.data_kind || "ohlcv") === "ohlcv"
+    && Number(row?.row_count || 0) > 0
+    && typeof row?.inst_id === "string"
+    && row.inst_id.includes("SWAP");
+}
+function coverageSupportsBar(rowBar, targetBar) {
+  return rowBar === targetBar || (rowBar === "1m" && DERIVABLE_FROM_1M_BARS.has(targetBar));
+}
+function dbTradingPairsForBar(coverageRows, targetBar) {
+  return [...new Set((coverageRows || [])
+    .filter((row) => isDbOhlcvTradingPairRow(row) && coverageSupportsBar(row.bar, targetBar))
+    .map((row) => row.inst_id))]
+    .sort();
+}
+function dbTradingPairStartMap(coverageRows, targetBar) {
+  const out = {};
+  (coverageRows || [])
+    .filter((row) => isDbOhlcvTradingPairRow(row) && coverageSupportsBar(row.bar, targetBar))
+    .forEach((row) => {
+      const date = fmtDate(row.first_ts);
+      if (!date || date === "-") return;
+      if (!out[row.inst_id] || date < out[row.inst_id]) out[row.inst_id] = date;
+    });
   return out;
 }
 
@@ -223,7 +267,7 @@ function KPI({ label, value, sub, tone, spark, sparkMode = "area", hint }) {
 }
 
 function RunBacktestView({ setView, setSelectedRunId }) {
-  const [instruments, setInstruments] = useConfigState([]);
+  const [dataCoverage, setDataCoverage] = useConfigState(null);
   const [strategy, setStrategy] = useConfigState("funding_carry");
   const [symbol, setSymbol] = useConfigState("BTC-USDT-SWAP");
   const [spotSymbol, setSpotSymbol] = useConfigState("BTC-USDT");
@@ -245,18 +289,23 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
   const [sweepParams, setSweepParams] = useConfigState(SWEEP_PARAM_DEFAULTS);
   const [riskOverrides, setRiskOverrides] = useConfigState(RISK_OVERRIDE_DEFAULTS);
+  const [fillAllSignals, setFillAllSignals] = useConfigState(false);
   const [sweepFinalistValidation, setSweepFinalistValidation] = useConfigState("none");
   const [sweepTopPct, setSweepTopPct] = useConfigState(10);
   const [sweepMaxFinalists, setSweepMaxFinalists] = useConfigState(20);
   const [sweepJob, setSweepJob] = useConfigState(null);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
-  const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const isRotation = strategy === "ohlcv_rotation";
   const isDailyWinner = strategy === "daily_winner";
   const isTechnical = TECHNICAL_STRATEGIES.has(strategy);
   const hasStrategyParams = PARAMETERIZED_STRATEGIES.has(strategy);
   const isBasketStrategy = isRotation || isDailyWinner || isTechnical;
+  const selectedBar = isDailyWinner ? "1D" : bar;
+  const tradingPairOptions = dbTradingPairsForBar(dataCoverage || [], selectedBar);
+  const tradingPairOptionsKey = tradingPairOptions.join("|");
+  const tradingPairSet = new Set(tradingPairOptions);
+  const tradingPairStartMap = dbTradingPairStartMap(dataCoverage || [], selectedBar);
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
     : isTechnical
@@ -264,28 +313,60 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     : isBasketStrategy
     ? rotUniverse
     : [symbol].filter((s) => s && s.includes("SWAP"));
-  const startMin = selectedSwapSymbols
-    .map((s) => listingMap[s])
-    .filter(Boolean)
-    .sort()
-    .at(-1) || "";
-  const effectiveStart = startMin && start < startMin ? startMin : start;
-  const estimateDays = Math.max(1, (new Date(end) - new Date(effectiveStart)) / 86_400_000);
+  const selectedTradingPairsValid = tradingPairOptions.length > 0
+    && selectedSwapSymbols.length > 0
+    && selectedSwapSymbols.every((s) => tradingPairSet.has(s));
+  const selectedCoverageWarnings = [...new Set(selectedSwapSymbols)]
+    .map((s) => ({ instId: s, firstDate: tradingPairStartMap[s] }))
+    .filter((row) => row.instId && row.firstDate && start && start < row.firstDate)
+    .sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.instId.localeCompare(b.instId));
+  const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
-  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(effectiveStart, end, isRotation ? "none" : validation);
+  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
 
   useConfigEffect(() => {
-    window.API.fetchDataInstruments()
-      .then((rows) => {
-        setInstruments(rows || []);
-        const swapSymbols = (rows || []).map((r) => r.inst_id).filter(Boolean);
-        if (swapSymbols.length) {
-          window.MOCK.SYMBOLS = [...new Set([...window.MOCK.SYMBOLS, ...swapSymbols])];
-        }
-      })
-      .catch(() => setInstruments([]));
+    window.API.fetchDataCoverage()
+      .then((rows) => setDataCoverage(rows || []))
+      .catch(() => setDataCoverage([]));
   }, []);
+
+  useConfigEffect(() => {
+    if (dataCoverage == null) return;
+    if (!tradingPairOptions.length) {
+      setSymbol("");
+      setSymbolX("");
+      setSymbolY("");
+      setRotBenchmark("");
+      setRotUniverse([]);
+      setTechnicalSymbols([]);
+      return;
+    }
+    const first = tradingPairOptions[0];
+    const currentX = tradingPairSet.has(symbolX) ? symbolX : first;
+    const second = tradingPairOptions.find((s) => s !== currentX) || currentX;
+
+    if (!tradingPairSet.has(symbol)) setSymbol(first);
+    if (!tradingPairSet.has(symbolX)) setSymbolX(first);
+    if (!tradingPairSet.has(symbolY) || (strategy === "pairs_trading" && tradingPairOptions.length > 1 && symbolY === currentX)) {
+      setSymbolY(second);
+    }
+    if (!tradingPairSet.has(rotBenchmark)) setRotBenchmark(first);
+    setRotUniverse((current) => {
+      const values = current || [];
+      if (!values.length) return current;
+      const valid = values.filter((s) => tradingPairSet.has(s));
+      if (valid.length === values.length) return current;
+      return valid.length ? valid : tradingPairOptions.slice(0, Math.min(3, tradingPairOptions.length));
+    });
+    setTechnicalSymbols((current) => {
+      const values = current || [];
+      if (!values.length) return current;
+      const valid = values.filter((s) => tradingPairSet.has(s));
+      if (valid.length === values.length) return current;
+      return valid.length ? valid : [first];
+    });
+  }, [dataCoverage, selectedBar, strategy, symbol, symbolX, symbolY, rotBenchmark, tradingPairOptionsKey]);
 
   // Reconnect to any in-progress job after page refresh
   useConfigEffect(() => {
@@ -310,8 +391,32 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   }, []);
 
   useConfigEffect(() => {
-    if (startMin && start < startMin) setStart(startMin);
-  }, [startMin, start]);
+    const savedJobId = localStorage.getItem("activeSweepJobId");
+    if (!savedJobId) return;
+    window.API.fetchBacktestSweepStatus(savedJobId).then((s) => {
+      if (s && s.status === "running") {
+        setSweepJob(s);
+        const iv = setInterval(() => {
+          window.API.fetchBacktestSweepStatus(savedJobId).then((st) => {
+            setSweepJob(st);
+            if (st.status === "done" || st.status === "error") {
+              clearInterval(iv);
+              localStorage.removeItem("activeSweepJobId");
+            }
+          }).catch((err) => {
+            setSweepJob({ status: "error", progress: 100, message: err.message });
+            clearInterval(iv);
+            localStorage.removeItem("activeSweepJobId");
+          });
+        }, 2000);
+      } else if (s && (s.status === "done" || s.status === "error")) {
+        setSweepJob(s);
+        localStorage.removeItem("activeSweepJobId");
+      } else {
+        localStorage.removeItem("activeSweepJobId");
+      }
+    }).catch(() => localStorage.removeItem("activeSweepJobId"));
+  }, []);
 
   useConfigEffect(() => {
     if (isDailyWinner && bar !== "1D") {
@@ -330,7 +435,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       strategy,
       bar: isDailyWinner ? "1D" : bar,
       periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
-      start: startMin && start < startMin ? startMin : start,
+      start,
       end,
       symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isTechnical ? technicalSymbols : isBasketStrategy ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
@@ -346,6 +451,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       initial_equity: +equity || 5000,
       strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
       risk_overrides: cleanRiskOverrides(riskOverrides),
+      fill_all_signals: fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -374,13 +480,14 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         strategy,
         bar,
         periods,
-        start: startMin && start < startMin ? startMin : start,
+        start,
         end,
         symbols: technicalSymbols,
         initial_equity: +equity || 5000,
         parameter_grid: parameterGrid,
         max_combinations: 5000,
         risk_overrides: cleanRiskOverrides(riskOverrides),
+        fill_all_signals: fillAllSignals,
         run_finalists: true,
         finalist_top_pct: Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
         max_finalists: Math.max(0, Math.min(100, Number(sweepMaxFinalists) || 20)),
@@ -389,16 +496,24 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       setSweepJob({ status: "running", progress: 0, message: "Submitting parameter sweep..." });
       window.API.triggerBacktestSweep(body).then((job) => {
         setSweepJob(job);
+        localStorage.setItem("activeSweepJobId", job.job_id);
         const iv = setInterval(() => {
           window.API.fetchBacktestSweepStatus(job.job_id).then((s) => {
             setSweepJob(s);
-            if (s.status === "done" || s.status === "error") clearInterval(iv);
+            if (s.status === "done" || s.status === "error") {
+              clearInterval(iv);
+              localStorage.removeItem("activeSweepJobId");
+            }
           }).catch((err) => {
             setSweepJob({ status: "error", message: err.message });
             clearInterval(iv);
+            localStorage.removeItem("activeSweepJobId");
           });
         }, 2000);
-      }).catch((err) => setSweepJob({ status: "error", message: err.message }));
+      }).catch((err) => {
+        setSweepJob({ status: "error", message: err.message });
+        localStorage.removeItem("activeSweepJobId");
+      });
     } catch (err) {
       setSweepJob({ status: "error", message: err.message });
     }
@@ -411,11 +526,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
           <div class="card-h">
             <div>
               <div class="card-title">Backtest configuration</div>
-              <div class="card-sub">strategy, symbol, bar, and date window</div>
+              <div class="card-sub">strategy, trading pair, bar, and date window</div>
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -430,11 +545,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             ${isDailyWinner ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -442,21 +557,21 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${rotUniverse.length} instruments selected - one round trip per complete day.</div>
+                  <div class="field-hint">${rotUniverse.length} trading pairs selected - one round trip per complete day.</div>
                 </div>
               <//>
             ` : strategy === "ohlcv_rotation" ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -464,16 +579,16 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${rotUniverse.length} instruments selected — re-ranked every ${rotRebalanceMin} bars, top-${rotTopK} held</div>
+                  <div class="field-hint">${rotUniverse.length} trading pairs selected — re-ranked every ${rotRebalanceMin} bars, top-${rotTopK} held</div>
                 </div>
                 <div class="field">
                   <div class="field-label">Benchmark</div>
                   <select class="select mono" value=${rotBenchmark} onChange=${(e) => setRotBenchmark(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Regime filter: go flat when benchmark is below its 240-min EMA.</div>
                 </div>
@@ -496,19 +611,19 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             ` : isTechnical ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Symbols (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <button class="btn sm" style=${{ marginBottom: 4 }}
                     onClick=${() => {
-                      const all = MOCK.SYMBOLS.filter((s) => s.includes("SWAP"));
+                      const all = tradingPairOptions;
                       const allSelected = all.length > 0 && technicalSymbols.length === all.length;
                       setTechnicalSymbols(allSelected ? [] : [...all]);
                     }}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length > 0 && technicalSymbols.length === MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length ? "Deselect All" : "Select All"}
+                    ${tradingPairOptions.length > 0 && technicalSymbols.length === tradingPairOptions.length ? "Deselect All" : "Select All"}
                   </button>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setTechnicalSymbols((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -516,47 +631,47 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${technicalSymbols.length} instruments selected - long/flat crossover backtest.</div>
+                  <div class="field-hint">${technicalSymbols.length} trading pairs selected - long/flat crossover backtest.</div>
                 </div>
               <//>
             ` : strategy === "pairs_trading" ? html`
               <${Fragment}>
                 <div class="field">
-                  <div class="field-label">Reference symbol (X)</div>
+                  <div class="field-label">Reference Trading Pair (X)</div>
                   <select class="select mono" value=${symbolX} onChange=${(e) => setSymbolX(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Reference leg for hedge ratio and spread signal, e.g. BTC-USDT-SWAP.</div>
                 </div>
                 <div class="field">
-                  <div class="field-label">Trade/spread symbol (Y)</div>
+                  <div class="field-label">Trade/spread Trading Pair (Y)</div>
                   <select class="select mono" value=${symbolY} onChange=${(e) => setSymbolY(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Dependent leg traded against X, e.g. ETH, LTC, SOL, or other available swaps.</div>
                 </div>
                 ${symbolX === symbolY && html`
                   <div class="field-hint" style=${{ gridColumn: "1 / -1", color: "var(--loss)" }}>
-                    Pair Trading requires two different symbols.
+                    Pair Trading requires two different trading pairs.
                   </div>
                 `}
               <//>
             ` : html`
               <div class="field">
-                <div class="field-label">${strategy === "funding_carry" ? "Perp symbol" : "Symbol"}</div>
+                <div class="field-label">${strategy === "funding_carry" ? "Perp Trading Pair" : "Trading Pair"}</div>
                 <select class="select mono" value=${symbol} onChange=${(e) => setSymbol(e.target.value)}>
-                  ${MOCK.SYMBOLS.filter((s) => strategy !== "funding_carry" || s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                  ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                 </select>
                 <div class="field-hint">OKX instrument id</div>
               </div>
             `}
             ${strategy === "funding_carry" && html`
               <div class="field">
-                <div class="field-label">Spot hedge symbol</div>
+                <div class="field-label">Spot hedge trading pair</div>
                 <input class="input mono" value=${spotSymbol} onChange=${(e) => setSpotSymbol(e.target.value)} />
                 <div class="field-hint">Spot leg used for delta-neutral funding carry.</div>
               </div>
@@ -588,8 +703,13 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="field">
               <div class="field-label">Start</div>
-              <input class="input mono" type="date" value=${start} min=${startMin || undefined} onChange=${(e) => setStart(startMin && e.target.value < startMin ? startMin : e.target.value)} />
-              ${startMin && html`<div class="field-hint">min: ${startMin} (latest listing date among selected symbols)</div>`}
+              <input class="input mono" type="date" value=${start} onChange=${(e) => setStart(e.target.value)} />
+              ${selectedCoverageWarnings.length > 0 && html`
+                <div class="field-hint" style=${{ color: "var(--warn)", marginTop: 6 }}>
+                  No DB data before first candle:
+                  ${selectedCoverageWarnings.map((row) => `${row.instId} starts ${row.firstDate}`).join("; ")}
+                </div>
+              `}
             </div>
             <div class="field">
               <div class="field-label">End</div>
@@ -649,11 +769,20 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                   </div>
                 `)}
               </div>
+              <label class="row" style=${{ gap: 8, marginTop: 10, alignItems: "flex-start" }}>
+                <input type="checkbox" checked=${fillAllSignals}
+                  onChange=${(e) => setFillAllSignals(e.target.checked)}
+                  style=${{ marginTop: 2 }} />
+                <span>
+                  <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
+                  <span class="field-hint">Research-only idealized execution: bypasses capacity caps and fills every submitted signal order.</span>
+                </span>
+              </label>
               <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. Research-only; live risk config is unchanged.</div>
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
-            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(effectiveStart, end, isRotation ? "none" : validation)} passes)
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
             <div class="col" style=${{ gap: 8, marginTop: 16 }}>
@@ -682,7 +811,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} fillAllSignals=${fillAllSignals} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
           ${isTechnical && html`
             <div class="sep" style=${{ margin: "12px 0" }}></div>
             <${ParameterSweepPanel}
@@ -690,7 +819,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               inputs=${sweepParams[strategy] || {}}
               setInputs=${(next) => setSweepParams((all) => ({ ...all, [strategy]: next }))}
               bar=${bar}
-              start=${startMin && start < startMin ? startMin : start}
+              start=${start}
               end=${end}
               symbols=${technicalSymbols}
               job=${sweepJob}
@@ -713,7 +842,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, setParams = () => {} }) {
+function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fillAllSignals = false, setParams = () => {} }) {
   const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
@@ -777,7 +906,7 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, set
       ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight. Controls the vol_filter_pass_pct diagnostic metric."],
     ],
     daily_winner: [
-      ["selection", "yesterday_return", "ranking signal", "Ranks the selected universe by yesterday's daily close/open return, then trades the strongest symbol today."],
+      ["selection", "yesterday_return", "ranking signal", "Ranks the selected universe by yesterday's daily close/open return, then trades the strongest trading pair today."],
       ["holding_period", "1 day", "forced round trip", "Buys today's open and exits at today's daily close, producing one expected trade per complete day."],
       ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
@@ -786,11 +915,12 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, set
   const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
   const riskMaxPos = Number(riskOverrides.max_pos_pct_equity);
   const riskMaxLeverage = Number(riskOverrides.max_leverage);
-  const hasRiskOverride = [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
+  const hasRiskOverride = fillAllSignals || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
   const riskSummary = [
     `max_order_notional: ${Number.isFinite(riskMaxOrder) && riskMaxOrder > 0 ? fmtUSD(riskMaxOrder, 0) : "$500"}`,
     `max_pos_pct: ${Number.isFinite(riskMaxPos) && riskMaxPos > 0 ? fmtPct(riskMaxPos, 0) : "30%"}`,
     `max_leverage: ${Number.isFinite(riskMaxLeverage) && riskMaxLeverage > 0 ? `${fmtNum(riskMaxLeverage, 1)}x` : "3.0x"}`,
+    `fill_all_signals: ${fillAllSignals ? "on" : "off"}`,
   ].join(" - ");
   function parseParam(value) {
     const num = Number(value);
@@ -1002,9 +1132,6 @@ function MarketDataCard() {
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
   const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96, funding: 3, external: 1 };
   const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
-  const selectedExportCount = exportKind === "external" ? (exportForm.datasets || []).length : (exportForm.symbols || []).length;
-  const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
-  const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
   function fmtBytes(b) {
     if (b < 1024) return b + " B";
     if (b < 1_048_576) return (b / 1024).toFixed(1) + " KB";
@@ -1018,13 +1145,18 @@ function MarketDataCard() {
     .sort();
   const exportSymbols = coverageSymbols.length
     ? coverageSymbols
-    : (instruments.length ? instruments.map((i) => i.inst_id) : MOCK.SYMBOLS.filter((s) => s.includes("SWAP"))).sort();
+    : [];
   const exportDatasets = [...new Set((coverage || [])
     .filter((r) => r.data_kind === "external")
     .map((r) => r.inst_id)
     .filter(Boolean))]
     .sort();
   const externalOptions = exportDatasets.length ? exportDatasets : ["cme_btc_yfinance"];
+  const selectedExportSymbols = (exportForm.symbols || []).filter((s) => exportSymbols.includes(s));
+  const selectedExportDatasets = (exportForm.datasets || []).filter((d) => externalOptions.includes(d));
+  const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
+  const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
+  const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
 
   function refreshCoverage() {
     window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
@@ -1089,10 +1221,10 @@ function MarketDataCard() {
       format: exportForm.format,
     };
     if (exportKind === "external") {
-      const datasets = (exportForm.datasets || []).join(",");
+      const datasets = selectedExportDatasets.join(",");
       if (!datasets) return;
       setExportJob({ status: "running", message: "Refreshing external dataset..." });
-      window.API.refreshExternalData({ dataset_ids: exportForm.datasets || [], start: exportForm.start, end: exportForm.end })
+      window.API.refreshExternalData({ dataset_ids: selectedExportDatasets, start: exportForm.start, end: exportForm.end })
         .then((job) => {
           setExportJob({ status: "done", message: `${job.datasets?.[0]?.rows_fetched || 0} rows refreshed` });
           window.location.assign(window.API.dataExportUrl({ ...body, datasets }));
@@ -1101,7 +1233,7 @@ function MarketDataCard() {
         .catch((err) => setExportJob({ status: "error", message: err.message }));
       return;
     }
-    const symbols = (exportForm.symbols || []).join(",");
+    const symbols = selectedExportSymbols.join(",");
     if (!symbols) return;
     window.location.assign(window.API.dataExportUrl({ ...body, symbols }));
   }
@@ -1124,20 +1256,20 @@ function MarketDataCard() {
           <div class="card-title" style=${{ marginBottom: 12 }}>Export Market Data</div>
           <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
-              <div class="field-label">${exportKind === "external" ? "External datasets" : "Perpetual symbols"}</div>
+              <div class="field-label">${exportKind === "external" ? "External datasets" : "Trading pairs"}</div>
               <button class="btn sm" style=${{ marginBottom: 4 }}
                 onClick=${() => {
                   if (exportKind === "external") {
-                    const allSelected = externalOptions.length > 0 && (exportForm.datasets || []).length === externalOptions.length;
+                    const allSelected = externalOptions.length > 0 && selectedExportDatasets.length === externalOptions.length;
                     setExportForm((f) => ({ ...f, datasets: allSelected ? [] : [...externalOptions] }));
                   } else {
-                    const allSelected = exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length;
+                    const allSelected = exportSymbols.length > 0 && selectedExportSymbols.length === exportSymbols.length;
                     setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
                   }
                 }}>
                 ${(exportKind === "external"
-                  ? externalOptions.length > 0 && (exportForm.datasets || []).length === externalOptions.length
-                  : exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length) ? "Deselect All" : "Select All"}
+                  ? externalOptions.length > 0 && selectedExportDatasets.length === externalOptions.length
+                  : exportSymbols.length > 0 && selectedExportSymbols.length === exportSymbols.length) ? "Deselect All" : "Select All"}
               </button>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
@@ -1153,7 +1285,7 @@ function MarketDataCard() {
                         </td>
                         <td class="mono">${dataset}</td>
                       </tr>
-                    `) : exportSymbols.map((symbol) => html`
+                    `) : exportSymbols.length ? exportSymbols.map((symbol) => html`
                       <tr key=${symbol} style=${{ cursor: "pointer" }} onClick=${() => toggleExportSymbol(symbol)}>
                         <td style=${{ width: 28 }}>
                           <input
@@ -1164,7 +1296,7 @@ function MarketDataCard() {
                         </td>
                         <td class="mono">${symbol}</td>
                       </tr>
-                    `)}
+                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${exportForm.bar}.</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -1228,7 +1360,7 @@ function MarketDataCard() {
           <div class="card-title" style=${{ marginBottom: 12 }}>Fetch 1m OHLCV from OKX</div>
           <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
-              <div class="field-label">USDT swap symbols</div>
+              <div class="field-label">USDT swap trading pairs</div>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
                   <tbody>
@@ -1261,7 +1393,7 @@ function MarketDataCard() {
               <div class="field-label">Start</div>
               <input class="input mono" type="date" value=${fetchForm.start}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, start: e.target.value }))} />
-              ${latestSelectedListing && html`<div class="field-hint">symbols listed after start auto-fetch from their listing date; latest selected listing: ${latestSelectedListing}</div>`}
+              ${latestSelectedListing && html`<div class="field-hint">trading pairs listed after start auto-fetch from their listing date; latest selected listing: ${latestSelectedListing}</div>`}
             </div>
             <div class="field">
               <div class="field-label">End</div>
@@ -1294,7 +1426,7 @@ function MarketDataCard() {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Dataset / Symbol</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
+              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
               <th class="num">Gaps</th>
             </tr>
