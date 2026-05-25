@@ -61,6 +61,10 @@ function runParametersText(run) {
   return parts.length ? parts.join(" | ") : "—";
 }
 
+function runSymbols(run) {
+  return (run?.symbols || [run?.symbol]).filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Compact run picker shown when no run is selected
 // ---------------------------------------------------------------------------
@@ -131,7 +135,11 @@ function RunPicker({ onSelect }) {
                 <tr key=${r.run_id} style=${{ cursor: "pointer" }} onClick=${() => onSelect(r.run_id)}>
                   <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${r.run_id}</td>
                   <td class="mono" style=${{ fontSize: 12 }}>${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}</td>
-                  <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>${(r.symbols || [r.symbol]).filter(Boolean).join(", ")}</td>
+                  <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
+                    ${runSymbols(r).length
+                      ? runSymbols(r).map((symbol, index, symbols) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
+                      : "—"}
+                  </td>
                   <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${runParametersText(r)}</td>
                   <td class="mono">${r.bar || "—"}</td>
                   <td class="mono" style=${{ fontSize: 11 }}>${r.start ? r.start.slice(0, 10) : "—"} → ${r.end ? r.end.slice(0, 10) : "—"}</td>

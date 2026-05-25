@@ -1283,7 +1283,7 @@ function normalizeLedgerTrade(t, i) {
 function formatLedgerPnl(t) {
   if (!t.hasPnl) return "-";
   if (t.notional === 0 && Math.abs(t.pnl) < 1) return pct(t.pnl);
-  return (t.pnl >= 0 ? "+" : "") + usd(t.pnl);
+  return (t.pnl >= 0 ? "+" : "") + signedUsd(t.pnl);
 }
 
 function TradesOrdersTable({ trades, fills }) {
@@ -1421,7 +1421,7 @@ function FillsTable({ rows, tradesMap }) {
                   <td class="num">${usd(f.notional_usd)}</td>
                   <td class="num" style=${{ color: "var(--text-muted)" }}>${usd(f.fee, 4)}</td>
                   <td class="num" style=${{ color: showPnl ? (pnlVal >= 0 ? "var(--profit)" : "var(--loss)") : "var(--text-muted)" }}>
-                    ${showPnl ? (pnlVal >= 0 ? "+" : "") + usd(pnlVal) : "—"}
+                    ${showPnl ? (pnlVal >= 0 ? "+" : "") + signedUsd(pnlVal) : "—"}
                   </td>
                   <td>
                     <span class=${`chip ${state === "filled" ? "profit" : state === "partially_filled" ? "warn" : ""}`} style=${{ fontSize: 10 }}>
@@ -1572,6 +1572,7 @@ function RunListView({ onSelect, onDelete }) {
             <tbody>
               ${runs.map((r) => {
                 const bankrupt = r.total_return != null && Math.abs(+r.max_drawdown) > 1;
+                const symbols = (r.symbols || [r.symbol]).filter(Boolean);
                 return html`
                   <tr
                     key=${r.run_id}
@@ -1584,8 +1585,10 @@ function RunListView({ onSelect, onDelete }) {
                     <td class="mono" style=${{ fontSize: 12 }}>
                       ${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}
                     </td>
-                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>
-                      ${(r.symbols || [r.symbol]).filter(Boolean).join(", ")}
+                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
+                      ${symbols.length
+                        ? symbols.map((symbol, index) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
+                        : "—"}
                     </td>
                     <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       ${runParametersText(r)}

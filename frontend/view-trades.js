@@ -10,6 +10,18 @@ const fmt = window.fmt;
 const MOCK = window.MOCK;
 const { LineChart } = window.Charts;
 
+function signedUsd(v, d = 2) {
+  if (v == null || !isFinite(v)) return "-";
+  const value = +v;
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${fmt.num(Math.abs(value), d)}`;
+}
+
+function pnlUsd(v, d = 2) {
+  if (v == null || !isFinite(v)) return "-";
+  return `${+v > 0 ? "+" : ""}${signedUsd(v, d)}`;
+}
+
 function normalizeTrade(t, i) {
   const ts = t.datetime || t.ts || Date.now();
   const side = String(t.side || "").toUpperCase();
@@ -74,7 +86,7 @@ function TradesView({ selectedRunId }) {
     <div class="col" style=${{ gap: "var(--gap-lg)" }}>
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${KPI} label="Filtered trades" value=${filtered.length.toLocaleString()} sub=${`of ${data.length}`} />
-        <${KPI} label="Net PnL" value=${fmt.usd(totalPnl)} tone=${totalPnl >= 0 ? "up" : "down"} />
+        <${KPI} label="Net PnL" value=${pnlUsd(totalPnl)} tone=${totalPnl >= 0 ? "up" : "down"} />
         <${KPI} label="Fees paid" value=${fmt.usd(totalFee)} sub="post_only maker execution" />
         <${KPI} label="Fill rate" value=${fmt.pct(filtered.filter((t) => t.status === "FILLED").length / Math.max(filtered.length, 1))} sub=${selectedRunId ? selectedRunId.slice(-8) : "MOCK fallback"} />
       </div>
@@ -137,7 +149,7 @@ function TradesView({ selectedRunId }) {
                   <td class="num">${fmt.num(t.qty, 4)}</td>
                   <td class="num">${fmt.usd(t.notional)}</td>
                   <td class="num" style=${{ color: "var(--text-muted)" }}>${fmt.usd(t.fee, 3)}</td>
-                  <td class="num" style=${{ color: t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? fmt.usd(t.pnl) : "-"}</td>
+                  <td class="num" style=${{ color: t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? pnlUsd(t.pnl) : "-"}</td>
                   <td><span class=${`chip ${t.status === "FILLED" ? "profit" : t.status === "REJECTED" ? "loss" : "warn"}`} style=${{ fontSize: 10 }}>${t.status}</span></td>
                   <td class="mono" style=${{ color: "var(--text-subtle)", fontSize: 11 }}>${t.strategy}</td>
                 </tr>
@@ -278,7 +290,7 @@ function CompareView({ selectedRunId }) {
             height=${280}
             xLabels=${allTs}
             tooltipLabelFormatter=${(value) => fmt.date(value)}
-            tooltipValueFormatter=${(value) => fmt.usd(value)}
+            tooltipValueFormatter=${(value) => pnlUsd(value)}
           />
           ${hoverIdx != null && allTs[hoverIdx] && html`
             <div style=${{ position: "absolute", top: 8, left: 16, background: "var(--surface-2)",
@@ -291,7 +303,7 @@ function CompareView({ selectedRunId }) {
                 const pnl = p?.pnl;
                 return html`
                   <div key=${id}>
-                    <span style=${{ color: COLORS[i % COLORS.length] }}>●</span> ${id.slice(-8)}: ${p?.cumReturn != null ? fmt.pct(p.cumReturn) : "-"} · PnL ${pnl != null ? fmt.usd(pnl) : "-"}
+                    <span style=${{ color: COLORS[i % COLORS.length] }}>●</span> ${id.slice(-8)}: ${p?.cumReturn != null ? fmt.pct(p.cumReturn) : "-"} · PnL ${pnl != null ? pnlUsd(pnl) : "-"}
                   </div>
                 `;
               })}
