@@ -30,6 +30,7 @@ from backtesting.replay import (
     run_replay_backtest,
     run_replay_validations,
 )
+from backtesting.research_controls import FILL_ALL_MAX_ORDER_NOTIONAL_USD, FILL_ALL_MAX_POS_PCT_EQUITY
 from backtesting.replay_validation import (
     ASMMReplayParamGrid,
     evaluate_replay_asmm_cpcv,
@@ -194,6 +195,7 @@ def test_load_config_reads_backtest_execution_defaults():
     assert cfg.backtest.order_latency_ms == 0
     assert cfg.backtest.cancel_latency_ms == 200
     assert cfg.backtest.queue_fill_fraction == pytest.approx(0.20)
+    assert cfg.backtest.fill_all_signals is False
 
 
 def test_walk_forward_split_has_no_boundary_overlap():
@@ -570,6 +572,42 @@ def test_save_backtest_artifacts_writes_validation_to_result_json(tmp_path, monk
     assert payload["walk_forward"][0]["oos_sharpe"] == pytest.approx(1.23)
     assert payload["cpcv"]["dsr"] == pytest.approx(0.97)
     assert payload["validation"]["validation_frame_rows"] == 2
+
+
+def test_save_backtest_artifacts_mirrors_fill_all_signals_to_idealized_fill(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKTEST_ARTIFACT_MODE", "files")
+    cfg = AppConfig(
+        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
+        strategies=StrategiesConfig(),
+        risk=RiskConfig(),
+        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
+    )
+    result = ReplayBacktestResult(
+        returns=pd.Series([0.0, 0.001], index=[1_704_067_200_000, 1_704_070_800_000]),
+        equity_curve=pd.Series([10_000.0, 10_010.0], index=[1_704_067_200_000, 1_704_070_800_000]),
+        metrics={"sharpe": 1.0},
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+        validation={"fill_all_signals": True},
+    )
+
+    run_dir = save_backtest_artifacts(
+        result=result,
+        cfg=cfg,
+        args=SimpleNamespace(strategy=["as_market_maker"], start="2024-01-01", end="2024-01-02", bar="1H"),
+        output_dir=str(tmp_path),
+        run_id="idealized_fill_result",
+        strategy_names=["as_market_maker"],
+        start="2024-01-01",
+        end="2024-01-02",
+        bar="1H",
+    )
+
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    assert payload["validation"]["fill_all_signals"] is True
+    assert payload["validation"]["idealized_fill"] is True
 
 
 def test_indicator_series_uses_warmup_candles_before_trimming(monkeypatch):
@@ -1154,6 +1192,40 @@ def test_run_replay_backtest_cli_passes_no_liquidate_on_end(monkeypatch, minimal
     cli.main()
 
     assert calls["liquidate_on_end"] is False
+
+
+def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_cfg):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"bankrupt": False, "fill_rate": 0.0},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_replay_backtest.py", "--strategy", "as_market_maker", "--fill-all-signals"],
+    )
+
+    cli.main()
+
+    cfg = calls["cfg"]
+    assert cfg.backtest.fill_all_signals is True
+    assert cfg.backtest.queue_fill_fraction == pytest.approx(1.0)
+    assert cfg.risk.max_order_notional_usd >= FILL_ALL_MAX_ORDER_NOTIONAL_USD
+    assert cfg.risk.max_pos_pct_equity >= FILL_ALL_MAX_POS_PCT_EQUITY
 
 
 def test_replay_feed_builder_tolerates_empty_requested_data(tmp_path):

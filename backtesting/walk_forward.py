@@ -17,6 +17,19 @@ from okx_quant.analytics.performance import sharpe
 from backtesting.result_utils import extract_returns
 
 
+def _result_validation(result: object) -> dict:
+    if isinstance(result, dict):
+        validation = result.get("validation", {})
+    else:
+        validation = getattr(result, "validation", {})
+    return validation if isinstance(validation, dict) else {}
+
+
+def _is_idealized_fill_result(result: object) -> bool:
+    validation = _result_validation(result)
+    return bool(validation.get("idealized_fill") or validation.get("fill_all_signals"))
+
+
 class WalkForward:
     def __init__(
         self,
@@ -76,6 +89,7 @@ class WalkForward:
             DataFrame with IS/OOS Sharpe per window.
         """
         results = []
+        idealized_fill = False
         windows = list(self.split(df))
         total = len(windows)
         for i, (is_data, oos_data) in enumerate(windows):
@@ -89,6 +103,7 @@ class WalkForward:
                     "oos_end": oos_data.index[-1],
                 })
             raw_result = strategy_fn(is_data, oos_data)
+            idealized_fill = idealized_fill or _is_idealized_fill_result(raw_result)
             oos_returns = extract_returns(raw_result)
             results.append({
                 "window": i,
@@ -101,4 +116,7 @@ class WalkForward:
                 "oos_n": len(oos_returns),
                 "result": raw_result,
             })
-        return pd.DataFrame(results)
+        frame = pd.DataFrame(results)
+        if idealized_fill:
+            frame.attrs["validation"] = {"idealized_fill": True}
+        return frame

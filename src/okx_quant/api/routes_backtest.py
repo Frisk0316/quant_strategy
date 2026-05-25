@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,43 @@ from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 _run_jobs: dict[str, dict[str, Any]] = {}
 _sweep_jobs: dict[str, dict[str, Any]] = {}
 _price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+IDEALIZED_FILL_WARNING = (
+    "fill_all_signals=true: research-only artefact, not admissible as edge / "
+    "promotion / live-readiness evidence (see docs/ai_collaboration.md Deployment Gate)."
+)
+
+
+def _contains_idealized_fill_flag(value: Any) -> bool:
+    if isinstance(value, dict):
+        if bool(value.get("idealized_fill")) or bool(value.get("fill_all_signals")):
+            return True
+        return any(_contains_idealized_fill_flag(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_idealized_fill_flag(v) for v in value)
+    return False
+
+
+def _attach_idealized_fill_warning(payload: dict[str, Any], source: Any | None = None) -> dict[str, Any]:
+    if not _contains_idealized_fill_flag(source if source is not None else payload):
+        return payload
+    warnings = list(payload.get("warnings") or [])
+    if "idealized_fill" not in warnings:
+        warnings.append("idealized_fill")
+    payload["warnings"] = warnings
+    validation_warnings = list(payload.get("validation_warnings") or [])
+    if IDEALIZED_FILL_WARNING not in validation_warnings:
+        validation_warnings.append(IDEALIZED_FILL_WARNING)
+    payload["validation_warnings"] = validation_warnings
+    validation = payload.get("validation")
+    if isinstance(validation, dict):
+        validation["idealized_fill"] = True
+    return payload
 
 
 def _get_price_series_cache(key: tuple[str, str]) -> list[dict[str, Any]] | None:
@@ -165,6 +203,7 @@ class RunBacktestRequest(BaseModel):
     data_dir: str = "data/ticks"
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     risk_overrides: dict[str, Any] = Field(default_factory=dict)
+    fill_all_signals: bool = False
 
 
 class ParameterSweepRequest(BaseModel):
@@ -182,6 +221,7 @@ class ParameterSweepRequest(BaseModel):
     max_combinations: int = Field(default=5000, ge=1, le=10000)
     liquidate_on_end: bool | None = None
     risk_overrides: dict[str, Any] = Field(default_factory=dict)
+    fill_all_signals: bool = False
     run_finalists: bool = True
     finalist_top_pct: float = Field(default=0.10, gt=0.0, le=1.0)
     max_finalists: int = Field(default=20, ge=0, le=100)
@@ -240,6 +280,8 @@ def _run_ohlcv_rotation_job(
             "--output-dir", str(out_dir),
             "--universe",
         ] + list(req.universe or [])
+        if req.fill_all_signals:
+            cmd.append("--fill-all-signals")
         if backend == "postgres" and dsn:
             cmd.extend(["--dsn", dsn])
         cmd.extend(["--exchange", exchange])
@@ -276,11 +318,22 @@ def _run_ohlcv_rotation_job(
             return
         _run_jobs[job_id].update({"progress": 90, "message": "Post-processing results…"})
         _post_process_ohlcv_rotation(out_dir, run_id, req)
+        warning_fields: dict[str, Any] = {}
+        result_path = out_dir / "result.json"
+        if result_path.exists():
+            try:
+                warning_fields = _attach_idealized_fill_warning(
+                    {},
+                    json.loads(result_path.read_text(encoding="utf-8")),
+                )
+            except Exception:
+                warning_fields = {}
         _run_jobs[job_id].update({
             "status": "done",
             "progress": 100,
             "message": "Backtest complete",
             "output": output[-4000:],
+            **warning_fields,
         })
     except Exception as exc:
         _run_jobs[job_id].update({
@@ -307,6 +360,12 @@ def _post_process_ohlcv_rotation(
     metrics.setdefault("fill_count", trade_count)
     metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
     metrics.setdefault("bankrupt", False)
+    validation = {}
+    if req.fill_all_signals:
+        validation = {
+            "fill_all_signals": True,
+            "idealized_fill": True,
+        }
 
     if equity_path.exists():
         eq_df = pd.read_csv(equity_path, index_col=0, parse_dates=True)
@@ -369,6 +428,9 @@ def _post_process_ohlcv_rotation(
         "parameters": _request_parameters(req),
         "artifacts": artifact_refs,
     }
+    if validation:
+        result["validation"] = validation
+    _attach_idealized_fill_warning(result)
     (out_dir / "result.json").write_text(
         json.dumps(result, allow_nan=False, indent=2),
         encoding="utf-8",
@@ -771,6 +833,9 @@ def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
             req.strategy: req.strategy_params or {},
         },
         "risk": req.risk_overrides or {},
+        "backtest": {
+            "fill_all_signals": bool(req.fill_all_signals),
+        },
         "overrides": {
             "strategy_params": req.strategy_params or {},
             "risk_overrides": req.risk_overrides or {},
@@ -1400,6 +1465,8 @@ def _run_backtest_job(
             cmd.extend(["--strategy-params", json.dumps(req.strategy_params)])
         if req.risk_overrides:
             cmd.extend(["--risk-overrides", json.dumps(req.risk_overrides)])
+        if req.fill_all_signals:
+            cmd.append("--fill-all-signals")
         cmd.extend(["--exchange", _normalize_exchange(req.exchange)])
 
         _run_jobs[job_id].update({
@@ -1456,11 +1523,22 @@ def _run_backtest_job(
                 "output": output[-4000:],
             })
             return
+        warning_fields: dict[str, Any] = {}
+        result_path = results_dir / run_id / "result.json"
+        if result_path.exists():
+            try:
+                warning_fields = _attach_idealized_fill_warning(
+                    {},
+                    json.loads(result_path.read_text(encoding="utf-8")),
+                )
+            except Exception:
+                warning_fields = {}
         _run_jobs[job_id].update({
             "status": "done",
             "progress": 100,
             "message": "Backtest complete",
             "output": output[-4000:],
+            **warning_fields,
         })
     except Exception as exc:
         _run_jobs[job_id].update({
@@ -1483,6 +1561,7 @@ def _run_parameter_sweep_job(
         def _on_progress(update: dict[str, Any]) -> None:
             _sweep_jobs[job_id].update({
                 "status": "running",
+                "updated_at": _utc_now_iso(),
                 **update,
             })
 
@@ -1502,6 +1581,7 @@ def _run_parameter_sweep_job(
             max_combinations=req.max_combinations,
             liquidate_on_end=req.liquidate_on_end,
             risk_overrides=req.risk_overrides,
+            fill_all_signals=req.fill_all_signals,
             run_finalists=req.run_finalists,
             finalist_top_pct=req.finalist_top_pct,
             max_finalists=req.max_finalists,
@@ -1509,10 +1589,15 @@ def _run_parameter_sweep_job(
             full_output_dir=results_dir,
             progress_callback=_on_progress,
         )
+        warning_fields = _attach_idealized_fill_warning({}, summary)
+        if req.fill_all_signals and not warning_fields:
+            warning_fields = _attach_idealized_fill_warning({}, {"idealized_fill": True})
         _sweep_jobs[job_id].update({
             "status": "done",
             "progress": 100,
             "message": "Parameter sweep complete",
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
             "sweep_id": summary["sweep_id"],
             "artifacts": summary.get("artifacts", {}),
             "top_results": summary.get("top_results", [])[:10],
@@ -1521,12 +1606,15 @@ def _run_parameter_sweep_job(
             "skipped_count": summary.get("skipped_count", 0),
             "finalist_results": summary.get("finalist_results", []),
             "elapsed_seconds": summary.get("elapsed_seconds"),
+            **warning_fields,
         })
     except Exception as exc:
         _sweep_jobs[job_id].update({
             "status": "error",
             "progress": 100,
             "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
         })
 
 
@@ -1595,7 +1683,13 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             },
             "backtest": {
                 key: backtest_cfg.get(key)
-                for key in ("order_latency_ms", "cancel_latency_ms", "queue_fill_fraction", "liquidate_on_end")
+                for key in (
+                    "order_latency_ms",
+                    "cancel_latency_ms",
+                    "queue_fill_fraction",
+                    "liquidate_on_end",
+                    "fill_all_signals",
+                )
                 if key in backtest_cfg
             },
             "overrides": {
@@ -1650,7 +1744,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             run_dir = results_dir / Path(run_id).name
             if run_dir.is_dir():
                 result_payload["parameters"] = _parameters_from_config(run_dir, result_payload)
-        return result_payload
+        return _attach_idealized_fill_warning(result_payload)
 
     async def _read_records_artifact(run_id: str, artifact_type: str, filename: str) -> list[dict[str, Any]]:
         payload = await _read_db_artifact(run_id, artifact_type)
@@ -1688,7 +1782,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     if not (run_dir / "returns.csv").exists() and not data.get("returns"):
                         continue
                     run_id = data.get("run_id", run_dir.name)
-                    merged[run_id] = {
+                    merged[run_id] = _attach_idealized_fill_warning({
                         "run_id": run_id,
                         "created_at": data.get("created_at"),
                         "strategies": data.get("strategies", [data.get("strategy", "")]),
@@ -1702,7 +1796,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         "order_count": metrics.get("order_count"),
                         "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
                         "parameters": _parameters_from_config(run_dir, data),
-                    }
+                    }, data)
                 except Exception:
                     pass
 
@@ -1751,7 +1845,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     metadata = _metadata_dict(item.get("metadata"))
                     existing = merged.get(item["run_id"], {})
                     item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
-                    merged[item["run_id"]] = item
+                    merged[item["run_id"]] = _attach_idealized_fill_warning(item, metadata)
         except Exception:
             pass
 
@@ -1854,6 +1948,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "status": "running",
             "progress": 0,
             "message": "Parameter sweep queued",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
             "combination_count": len(combinations),
             "skipped_count": len(skipped),
             "finalist_count": finalist_count,

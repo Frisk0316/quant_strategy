@@ -255,6 +255,16 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _contains_idealized_fill_flag(value: Any) -> bool:
+    if isinstance(value, dict):
+        if bool(value.get("idealized_fill")) or bool(value.get("fill_all_signals")):
+            return True
+        return any(_contains_idealized_fill_flag(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_idealized_fill_flag(v) for v in value)
+    return False
+
+
 def _df_records(df: pd.DataFrame) -> list[dict]:
     if df.empty:
         return []
@@ -275,6 +285,7 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
         metrics = meta.get("metrics", {})
         metadata = {
             "parameters": meta.get("parameters", {}),
+            "validation": meta.get("validation", {}),
         }
 
         def _parse_date(value: Any) -> Any:
@@ -721,7 +732,13 @@ def _build_run_parameters(cfg: Any, args: Any, strategy_names: list[str]) -> dic
     backtest = getattr(cfg, "backtest", None)
     backtest_params = {
         key: getattr(backtest, key)
-        for key in ("order_latency_ms", "cancel_latency_ms", "queue_fill_fraction", "liquidate_on_end")
+        for key in (
+            "order_latency_ms",
+            "cancel_latency_ms",
+            "queue_fill_fraction",
+            "liquidate_on_end",
+            "fill_all_signals",
+        )
         if backtest is not None and hasattr(backtest, key)
     }
     cli_strategy_params = _maybe_json_obj(getattr(args, "strategy_params", None)) if args else None
@@ -1048,6 +1065,10 @@ def save_backtest_artifacts(
     rejected_log: list[dict] = getattr(result, "rejected_log", [])
     cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
     result_validation: dict[str, Any] = dict(getattr(result, "validation", {}) or {})
+    if "fill_all_signals" in result_validation or "idealized_fill" in result_validation:
+        result_validation["idealized_fill"] = bool(
+            result_validation.get("idealized_fill") or result_validation.get("fill_all_signals")
+        )
     if validation_results and "cpcv" in validation_results:
         cpcv_payload = validation_results.get("cpcv") or {}
         if _is_finite_number(cpcv_payload.get("dsr")):
@@ -1316,6 +1337,8 @@ def save_backtest_artifacts(
             for key, value in validation_results.items()
             if key not in {"walk_forward", "cpcv"}
         })
+        if _contains_idealized_fill_flag(validation_results):
+            validation_payload["idealized_fill"] = True
     if indicator_warmup_sources:
         validation_payload.setdefault("indicator_warmup_sources", indicator_warmup_sources)
     if validation_payload:

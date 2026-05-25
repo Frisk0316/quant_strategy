@@ -1,3 +1,10 @@
+import json
+
+import pandas as pd
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backtesting.cpcv import CPCV
 from backtesting.parameter_sweep import (
     _attach_finalist_status,
     _estimate_finalist_count,
@@ -6,7 +13,9 @@ from backtesting.parameter_sweep import (
     expand_parameter_grid,
     rank_sweep_rows,
 )
-from backtesting.research_controls import apply_research_risk_overrides
+from backtesting.research_controls import apply_fill_all_signal_controls, apply_research_risk_overrides
+from backtesting.walk_forward import WalkForward
+from okx_quant.api import routes_backtest as routes
 from okx_quant.core.config import load_config
 
 
@@ -105,6 +114,27 @@ def test_estimate_sweep_runtime_scales_with_bar_and_combinations():
     assert one_minute["estimated_total_seconds"] > one_hour["estimated_total_seconds"]
 
 
+def test_estimate_sweep_runtime_accounts_for_ma_rolling_cost():
+    ma = estimate_sweep_runtime(
+        strategy="ma_crossover",
+        bar="1H",
+        start="2024-01-01",
+        end="2026-05-22",
+        symbols=["BTC-USDT-SWAP"],
+        combinations=1,
+    )
+    ema = estimate_sweep_runtime(
+        strategy="ema_crossover",
+        bar="1H",
+        start="2024-01-01",
+        end="2026-05-22",
+        symbols=["BTC-USDT-SWAP"],
+        combinations=1,
+    )
+
+    assert ma["estimated_seconds_per_trial"] > ema["estimated_seconds_per_trial"] * 5
+
+
 def test_finalist_count_and_status_are_attached_to_ranked_rows():
     assert _estimate_finalist_count(
         4371,
@@ -136,3 +166,80 @@ def test_research_risk_overrides_copy_config_without_mutating_base():
     assert updated.risk.max_order_notional_usd == 2500.0
     assert updated.risk.max_pos_pct_equity == 0.75
     assert cfg.risk.max_order_notional_usd == original
+
+
+def test_fill_all_signal_controls_copy_config_without_mutating_base():
+    cfg = load_config(require_secrets=False)
+
+    updated, controls = apply_fill_all_signal_controls(cfg, True)
+
+    assert controls["enabled"] is True
+    assert updated.backtest.fill_all_signals is True
+    assert updated.backtest.queue_fill_fraction == 1.0
+    assert updated.risk.max_order_notional_usd > cfg.risk.max_order_notional_usd
+    assert updated.risk.max_pos_pct_equity > cfg.risk.max_pos_pct_equity
+    assert cfg.backtest.fill_all_signals is False
+
+
+def test_cpcv_propagates_idealized_fill_from_any_window():
+    idx = pd.date_range("2024-01-01", periods=8, freq="1D")
+    df = pd.DataFrame({"ret": [0.001] * len(idx)}, index=idx)
+
+    def strategy_fn(_train_data, test_data):
+        return {
+            "returns": pd.Series([0.001] * len(test_data), index=test_data.index),
+            "validation": {"fill_all_signals": test_data.index[0] == idx[0]},
+        }
+
+    result = CPCV(n_splits=4, k_test=1, embargo_pct=0.0, purge_size=0).evaluate(df, strategy_fn)
+
+    assert result["validation"]["idealized_fill"] is True
+
+
+def test_walk_forward_propagates_idealized_fill_from_any_window():
+    idx = pd.date_range("2024-01-01", periods=8, freq="1D")
+    df = pd.DataFrame({"ret": [0.001] * len(idx)}, index=idx)
+    calls = 0
+
+    def strategy_fn(_is_data, oos_data):
+        nonlocal calls
+        calls += 1
+        return {
+            "returns": pd.Series([0.001] * len(oos_data), index=oos_data.index),
+            "validation": {"idealized_fill": calls == 1},
+        }
+
+    result = WalkForward(is_days=2, oos_days=2).evaluate(df, strategy_fn)
+
+    assert result.attrs["validation"]["idealized_fill"] is True
+
+
+def test_backtest_api_surfaces_idealized_fill_warning(tmp_path):
+    run_dir = tmp_path / "idealized_fill_run"
+    run_dir.mkdir()
+    (run_dir / "returns.csv").write_text("ts,return\n1,0.001\n", encoding="utf-8")
+    (run_dir / "result.json").write_text(
+        json.dumps({
+            "run_id": "idealized_fill_run",
+            "created_at": "2024-01-01T00:00:00Z",
+            "strategies": ["as_market_maker"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1H",
+            "start": "2024-01-01",
+            "end": "2024-01-02",
+            "metrics": {"sharpe": 1.0},
+            "returns": [{"ts": 1, "return": 0.001}],
+            "validation": {"fill_all_signals": True, "idealized_fill": True},
+        }),
+        encoding="utf-8",
+    )
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    detail = client.get("/api/backtest/idealized_fill_run").json()
+    runs = client.get("/api/backtest/runs").json()
+
+    assert "idealized_fill" in detail["warnings"]
+    assert "not admissible" in detail["validation_warnings"][0]
+    assert "idealized_fill" in runs[0]["warnings"]
