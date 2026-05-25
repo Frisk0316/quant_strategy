@@ -20,6 +20,11 @@ from loguru import logger
 from backtesting.data_loader import load_candles as load_ohlcv_candles
 from backtesting.data_loader import load_feature_events as load_external_feature_events
 from backtesting.data_loader import load_funding as load_funding_rates
+from backtesting.research_controls import (
+    FILL_ALL_MAX_ORDER_NOTIONAL_USD,
+    FILL_ALL_MAX_POS_PCT_EQUITY,
+    FILL_ALL_STALE_QUOTE_PCT,
+)
 from okx_quant.analytics.dsr import psr
 from okx_quant.analytics.performance import summary
 from okx_quant.core.bus import EventBus
@@ -1016,16 +1021,24 @@ class ReplayBacktestEngine:
             max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
         )
         dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
+        fill_all_signals = bool(getattr(self._cfg.backtest, "fill_all_signals", False))
+        max_order_notional_usd = self._cfg.risk.max_order_notional_usd
+        max_pos_pct_equity = self._cfg.risk.max_pos_pct_equity
+        stale_quote_pct = self._cfg.risk.stale_quote_pct
+        if fill_all_signals:
+            max_order_notional_usd = max(max_order_notional_usd, FILL_ALL_MAX_ORDER_NOTIONAL_USD)
+            max_pos_pct_equity = max(max_pos_pct_equity, FILL_ALL_MAX_POS_PCT_EQUITY)
+            stale_quote_pct = max(stale_quote_pct, FILL_ALL_STALE_QUOTE_PCT)
         risk_guard = RiskGuard(
             equity_fn=positions.get_equity,
             drawdown_tracker=dd_tracker,
-            max_order_notional_usd=self._cfg.risk.max_order_notional_usd,
-            max_pos_pct_equity=self._cfg.risk.max_pos_pct_equity,
+            max_order_notional_usd=max_order_notional_usd,
+            max_pos_pct_equity=max_pos_pct_equity,
             max_leverage=self._cfg.risk.max_leverage,
             max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
             soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
             hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
-            stale_quote_pct=self._cfg.risk.stale_quote_pct,
+            stale_quote_pct=stale_quote_pct,
         )
         for strategy in strategies:
             risk_guard.register_strategy(strategy.name)
@@ -1035,6 +1048,7 @@ class ReplayBacktestEngine:
             order_latency_ms=self._cfg.backtest.order_latency_ms,
             cancel_latency_ms=self._cfg.backtest.cancel_latency_ms,
             queue_fill_fraction=self._cfg.backtest.queue_fill_fraction,
+            fill_all_on_submit=fill_all_signals,
         )
         portfolio_mgr = PortfolioManager(
             bus=bus,
@@ -1052,7 +1066,7 @@ class ReplayBacktestEngine:
             ),
             RateLimiter(),
         )
-        exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=self._cfg.risk.stale_quote_pct)
+        exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=stale_quote_pct)
         recorder = ReplayRecorder(initial_equity=self._cfg.system.equity_usd)
         original_risk_check = risk_guard.check
         last_risk_day: str | None = None
@@ -1087,7 +1101,7 @@ class ReplayBacktestEngine:
                         notional_usd=order.notional_usd,
                         reason=f"allowed_reduce_only_bypass:{bypass_reason}",
                         current_position=current_pos_notional,
-                        position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
+                        position_limit=max_pos_pct_equity * positions.get_equity(),
                         current_equity=positions.get_equity(),
                         metadata={"reduce_only": True},
                     )
@@ -1112,7 +1126,7 @@ class ReplayBacktestEngine:
                 notional_usd=order.notional_usd,
                 reason=block_reason,
                 current_position=current_pos_notional,
-                position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
+                position_limit=max_pos_pct_equity * positions.get_equity(),
                 current_equity=positions.get_equity(),
             )
             return False
@@ -1226,6 +1240,14 @@ class ReplayBacktestEngine:
             ts=last_event_ts,
             liquidate_on_end=self._liquidate_on_end,
         )
+        terminal_validation["fill_all_signals"] = fill_all_signals
+        if fill_all_signals:
+            terminal_validation["fill_all_signals_controls"] = {
+                "max_order_notional_usd": max_order_notional_usd,
+                "max_pos_pct_equity": max_pos_pct_equity,
+                "stale_quote_pct": stale_quote_pct,
+                "execution_model": "fill_all_on_submit",
+            }
         feature_validation = self._collect_feature_validation(strategies)
         if feature_validation:
             terminal_validation["external_features"] = feature_validation

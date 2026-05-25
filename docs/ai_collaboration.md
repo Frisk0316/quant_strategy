@@ -154,6 +154,7 @@ Deployment readiness:
 | --- | --- |
 | Historical backtest | 必須有可重現 artifact 與 `validation_status`；`in_sample` 或 `naive_backtest` 不得勾選此 gate、不得引用為 edge evidence、不得作為 promotion 依據。 |
 | Walk-forward 或 CPCV | 必須由 `validation_status: walk_forward` 或 `validation_status: cpcv` artifact 滿足；不得有 train/test leakage。CPCV 必須誠實申報 `n_trials`，且 DSR >= 0.95、PSR >= 0.95。 |
+| Idealized fill 排除 | 任何 `result.validation.fill_all_signals == true`（或同義的 `result.validation.idealized_fill == true`）的 artifact，不論 `validation_status` 為何，皆 **不得勾選任何 Deployment Gate stage**、不得引用為 edge evidence、不得作為 promotion 依據。`fill_all_signals` 是 research-only 的 capacity / execution sensitivity 工具，禁止當作 live readiness 證據；理由與排除清單見 `research/strategy_synthesis.md#validation-status-convention`。 |
 | Replay 或 shadow 檢查 | 必須使用同碼 replay 或 shadow 對照，並保留 fill log、order log、equity curve、fees、funding cashflow。 |
 | OKX demo | 需要使用者批准，且 demo 期間風控、告警、rollback 可驗證。 |
 | 小資金 live | 需要使用者再次批准，使用明確資金上限與 kill switch。 |

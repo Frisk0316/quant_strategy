@@ -365,6 +365,7 @@ def run_ohlcv_rotation_backtest(
     row_score = scores_at_reb.copy()
     ranks = row_score.rank(axis=1, ascending=False, method="min")
     top_k_pass = ranks <= params.top_k
+    entry_rank_pass = valid_score if params.fill_all_signals else top_k_pass
     rf_pass = features["return_fast"].reindex(reb_ts) > 0 if len(reb_ts) else pd.DataFrame()
     rs_pass = features["return_slow"].reindex(reb_ts) > 0 if len(reb_ts) else pd.DataFrame()
     vol_threshold_pass = (
@@ -375,7 +376,7 @@ def run_ohlcv_rotation_backtest(
     rh_reb = features["rolling_high"].reindex(reb_ts) if len(reb_ts) else pd.DataFrame()
     ema_reb = features["ema"].reindex(reb_ts) if len(reb_ts) else pd.DataFrame()
     breakout_pass = (close_reb > rh_reb) & (close_reb > ema_reb)
-    all_entry_filters = top_k_pass & rf_pass & rs_pass & breakout_pass
+    all_entry_filters = entry_rank_pass & rf_pass & rs_pass & breakout_pass
 
     opportunity_bars = regime_reb.astype(bool) & score_available_reb.reindex(regime_reb.index).fillna(False)
     active_rebalance_count = int(regime_reb.sum()) if len(regime_reb) else 0
@@ -395,6 +396,8 @@ def run_ohlcv_rotation_backtest(
     primary_bottleneck = min(bottleneck_candidates, key=bottleneck_candidates.get)
 
     metrics["rebalance_count"] = int(len(target_weights_reb))
+    metrics["fill_all_signals_enabled"] = bool(params.fill_all_signals)
+    metrics["entry_cap_mode"] = "all_signals" if params.fill_all_signals else "top_k"
     metrics["score_coverage_all_bars_pct"] = _safe_mean_bool(score_available_all)
     metrics["score_coverage_at_reb_pct"] = _safe_mean_bool(score_available_reb)
     metrics["score_coverage_pct"] = metrics["score_coverage_at_reb_pct"]

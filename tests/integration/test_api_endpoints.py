@@ -69,3 +69,54 @@ async def test_backtest_runs_endpoint(client):
     response = await client.get("/api/backtest/runs")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+@pytest.mark.asyncio
+async def test_parameter_sweep_endpoint_marks_job_done(client, monkeypatch):
+    from okx_quant.api import routes_backtest
+
+    def fake_run_parameter_sweep(**kwargs):
+        progress_callback = kwargs.get("progress_callback")
+        if progress_callback:
+            progress_callback({
+                "progress": 55,
+                "message": "Screened parameter set 1/1",
+                "completed_trials": 1,
+                "total_trials": 1,
+                "elapsed_seconds": 0.1,
+                "estimated_remaining_seconds": 0.0,
+            })
+        return {
+            "sweep_id": kwargs["sweep_id"],
+            "artifacts": {"summary_json": "results/parameter_sweeps/fake.json"},
+            "top_results": [{"rank": 1, "trial": 1, "params": {"fast_window": 7, "slow_window": 21}}],
+            "completed_count": 1,
+            "failed_count": 0,
+            "skipped_count": 0,
+            "finalist_results": [],
+            "elapsed_seconds": 0.1,
+        }
+
+    monkeypatch.setattr(routes_backtest, "run_parameter_sweep", fake_run_parameter_sweep)
+
+    response = await client.post(
+        "/api/backtest/sweep",
+        json={
+            "strategy": "ma_crossover",
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1H",
+            "start": "2024-01-01",
+            "end": "2024-01-02",
+            "parameter_grid": {"fast_window": [7], "slow_window": [21]},
+            "run_finalists": False,
+        },
+    )
+
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+    status = await client.get(f"/api/backtest/sweep/status/{job_id}")
+    payload = status.json()
+    assert payload["status"] == "done"
+    assert payload["progress"] == 100
+    assert payload["completed_count"] == 1
+    assert payload["finished_at"]

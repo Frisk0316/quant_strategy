@@ -13,6 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting.replay import run_replay_backtest, run_replay_validations
 from backtesting.research_controls import (
+    apply_fill_all_signal_controls,
     apply_research_risk_overrides,
     summarize_risk_events,
 )
@@ -60,6 +61,8 @@ def main() -> None:
                         help="JSON object with strategy-specific parameter overrides")
     parser.add_argument("--risk-overrides", default=None,
                         help="JSON object with research-only risk overrides for this replay")
+    parser.add_argument("--fill-all-signals", action="store_true",
+                        help="Research-only: bypass execution/capacity caps and fill every submitted signal order")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
     parser.add_argument("--save-artifacts", action="store_true",
                         help="Save all backtest artifacts to --output-dir/<run_id>/")
@@ -84,6 +87,7 @@ def main() -> None:
     cfg = load_config(require_secrets=False)
     risk_overrides = json.loads(args.risk_overrides) if args.risk_overrides else {}
     cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
+    cfg, applied_fill_all_controls = apply_fill_all_signal_controls(cfg, args.fill_all_signals)
     if args.exchange:
         cfg.storage = cfg.storage.model_copy(update={"primary_exchange": args.exchange})
     if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
@@ -171,6 +175,8 @@ def main() -> None:
     result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
     if applied_risk_overrides:
         result.validation["research_risk_overrides"] = applied_risk_overrides
+    if applied_fill_all_controls:
+        result.validation["research_fill_all_signals"] = applied_fill_all_controls
     if args.save_artifacts and args.validate:
         stage = f"Running replay validation ({args.validate}) and saving artifacts"
     elif args.save_artifacts:

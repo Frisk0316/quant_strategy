@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rebalance-minutes", type=int, default=60)
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--rank-exit-buffer", type=int, default=6)
+    parser.add_argument(
+        "--fill-all-signals",
+        action="store_true",
+        help="Research-only: ignore top-k/position caps and hold every instrument passing entry filters",
+    )
     parser.add_argument("--lookback-fast", type=int, default=60)
     parser.add_argument("--lookback-slow", type=int, default=240)
     parser.add_argument("--volume-z-window", type=int, default=60)
@@ -131,6 +136,7 @@ def main() -> None:
         rebalance_minutes=args.rebalance_minutes,
         top_k=args.top_k,
         rank_exit_buffer=args.rank_exit_buffer,
+        fill_all_signals=args.fill_all_signals,
         lookback_fast_minutes=args.lookback_fast,
         lookback_slow_minutes=args.lookback_slow,
         volume_z_window_minutes=args.volume_z_window,

@@ -322,6 +322,32 @@ def test_replay_execution_model_rejects_post_only_crossing_order():
     assert model.rejected_log[-1]["reason"] == "post_only_cross"
 
 
+def test_replay_execution_model_fill_all_on_submit_bypasses_post_only_cross():
+    model = ReplayExecutionModel(
+        instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01}},
+        fill_all_on_submit=True,
+    )
+    model.on_market(make_market_payload(ts=1, bid_px=99.0, ask_px=101.0))
+
+    fill = model.submit({
+        "cl_ord_id": "cross-filled",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "buy",
+        "sz": "2",
+        "px": "101.0",
+        "strategy": "test",
+        "metadata": {},
+    })
+
+    assert fill is not None
+    assert fill.state == "filled"
+    assert fill.fill_sz == pytest.approx(2.0)
+    assert fill.metadata["notional_usd"] == pytest.approx(2.02)
+    assert fill.metadata["execution_model"] == "fill_all_on_submit"
+    assert model.resting_orders == {}
+    assert model.rejected_log == []
+
+
 def test_replay_execution_model_partially_fills_resting_order():
     model = ReplayExecutionModel(
         instrument_specs={"BTC-USDT-SWAP": {"ctVal": 0.01}},

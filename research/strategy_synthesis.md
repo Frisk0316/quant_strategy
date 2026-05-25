@@ -582,13 +582,47 @@ OOS evidence, neither may be cited as edge evidence, and neither may satisfy a
 promotion gate without follow-up `hold_out`, `walk_forward`, or `cpcv`
 validation.
 
+### Idealized-fill exclusion (research-only `fill_all_signals`)
+
+The `fill_all_signals` research mode (CLI flag, API request field, frontend
+"Fill all signals" checkbox, and per-strategy parameter on `ohlcv_rotation`) is
+**capacity / execution sensitivity analysis only**. When enabled it raises
+`max_order_notional_usd` to 1e12, `max_pos_pct_equity` to 1e6, `stale_quote_pct`
+to 1e6, sets `queue_fill_fraction = 1.0` with zero latency, switches the replay
+broker to `fill_all_on_submit`, and (for `ohlcv_rotation`) bypasses `top_k`,
+`rank_exit_buffer`, and the `max_position_weight` cap. The resulting PnL,
+fill log, and equity curve do not correspond to any reachable live execution
+path.
+
+Admissibility rule (applies retroactively to all current and future artefacts):
+
+- Any artefact where `result.validation.fill_all_signals == true` (equivalently
+  `result.validation.idealized_fill == true`, written by
+  `backtesting/artifacts.py`) is **not OOS evidence, not edge evidence, and
+  not promotion evidence**, regardless of its `validation_status`.
+- This applies even when `validation_status` is `walk_forward` or `cpcv`:
+  WF / CPCV on top of idealized fills measures only signal-side fit, not
+  execution-reachable PnL.
+- Such artefacts may **only** be used to answer:
+  (a) "If every signal were instantly fillable at the bar reference price,
+       what is the upper bound on PnL / turnover / capacity utilisation?"
+  (b) "Is the realistic-fill backtest being constrained by execution
+       (queue / latency / risk caps) versus by signal quality?"
+- Promotion ADRs and the `docs/ai_collaboration.md` Deployment Gate explicitly
+  exclude such artefacts; see the **Idealized fill 排除** row in that table.
+
+A correctly-classified `fill_all_signals` artefact therefore carries:
+`validation_status` *(IS / hold-out / WF / CPCV per the table above)* **plus**
+`idealized_fill: true`. Both fields must be reported together; citing the
+`validation_status` without `idealized_fill` is a governance violation.
+
 ## Promotion Checklist
 
 | Requirement | Threshold |
 |---|---|
 | Data quality | No unexplained gaps in the test window; timestamps aligned. |
 | Cost model | OKX maker/taker fees, spread, slippage, and missed fills included. |
-| Validation | Each artifact declares `validation_status`; promotion evidence requires walk-forward, CPCV, or documented hold-out with no shared IS/OOS boundary leakage. |
+| Validation | Each artifact declares `validation_status`; promotion evidence requires walk-forward, CPCV, or documented hold-out with no shared IS/OOS boundary leakage. Artefacts with `idealized_fill: true` (i.e. produced under `fill_all_signals`) are inadmissible regardless of `validation_status` — see Idealized-fill exclusion above. |
 | Overfit control | DSR >= 0.95 and PSR >= 0.95 before promotion; `n_trials` must be reported honestly. |
 | Risk | Max order notional, drawdown stops, and circuit breakers active. |
 | Execution | Maker-only by default; taker usage explicitly justified for risk exits. |

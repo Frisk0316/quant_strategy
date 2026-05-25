@@ -353,6 +353,34 @@ class TestEntryRules:
             "volume_z threshold should not hard-block entries; volume should affect ranking via score"
         )
 
+    def test_fill_all_signals_ignores_top_k_and_position_weight_cap(self) -> None:
+        idx = pd.date_range("2024-01-01 01:00:00", periods=1, freq="1min")
+        inst_ids = ["A", "B", "C"]
+        scores = pd.DataFrame({"A": [3.0], "B": [2.0], "C": [1.0]}, index=idx)
+        features = {
+            "close": pd.DataFrame({inst: [12.0] for inst in inst_ids}, index=idx),
+            "ema": pd.DataFrame({inst: [10.0] for inst in inst_ids}, index=idx),
+            "rolling_high": pd.DataFrame({inst: [11.0] for inst in inst_ids}, index=idx),
+            "return_fast": pd.DataFrame({inst: [0.01] for inst in inst_ids}, index=idx),
+            "return_slow": pd.DataFrame({inst: [0.02] for inst in inst_ids}, index=idx),
+        }
+        regime = pd.Series(True, index=idx)
+        params = _minimal_params(inst_ids)
+        params.top_k = 1
+        params.max_position_weight = 0.35
+
+        capped = generate_target_weights(scores, features, regime, params, idx)
+
+        assert list(capped.columns[capped.iloc[0] > 0]) == ["A"]
+        assert capped.loc[idx[0], "A"] == pytest.approx(0.35)
+
+        params.fill_all_signals = True
+        uncapped = generate_target_weights(scores, features, regime, params, idx)
+
+        assert set(uncapped.columns[uncapped.iloc[0] > 0]) == set(inst_ids)
+        for inst in inst_ids:
+            assert uncapped.loc[idx[0], inst] == pytest.approx(1.0 / 3.0)
+
 
 # ---------------------------------------------------------------------------
 # 13.5 Exit Rule Test

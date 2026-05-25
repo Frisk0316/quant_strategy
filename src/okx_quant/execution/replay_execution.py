@@ -40,6 +40,7 @@ class ReplayExecutionModel:
     order_latency_ms: int = 0
     cancel_latency_ms: int = 0
     queue_fill_fraction: float = 1.0
+    fill_all_on_submit: bool = False
     default_ts: int = 0
     books: dict[str, dict[str, float]] = field(default_factory=dict)
     resting_orders: dict[str, RestingOrder] = field(default_factory=dict)
@@ -52,6 +53,9 @@ class ReplayExecutionModel:
         order = dict(order)
         order["cl_ord_id"] = cl_ord_id
         ts = self._current_ts(inst_id)
+
+        if self.fill_all_on_submit:
+            return self._full_fill(order, ts)
 
         if self._would_cross_book(order):
             self.rejected_log.append({
@@ -85,6 +89,39 @@ class ReplayExecutionModel:
             strategy=order.get("strategy", "sim"),
             state="pending",
             metadata=dict(order.get("metadata", {})),
+        )
+
+    def _full_fill(self, order: dict, ts: int) -> FillPayload:
+        inst_id = order["inst_id"]
+        fill_sz = float(order["sz"])
+        fill_px = float(order["px"])
+        ct_val_raw = self.instrument_specs.get(inst_id, {}).get("ctVal")
+        if ct_val_raw is None:
+            raise ValueError(f"Missing ctVal for {inst_id}")
+        ct_val = validate_ct_val(float(ct_val_raw), inst_id)
+        notional_usd = fill_px * fill_sz * ct_val
+        fee = notional_usd * self.maker_fee_rate
+        metadata = dict(order.get("metadata", {}))
+        metadata.update({
+            "notional_usd": notional_usd,
+            "fee_rate": self.maker_fee_rate,
+            "ct_val": ct_val,
+            "remaining_sz": 0.0,
+            "execution_model": "fill_all_on_submit",
+        })
+        return FillPayload(
+            cl_ord_id=order["cl_ord_id"],
+            ord_id=f"replay-{order['cl_ord_id']}",
+            inst_id=inst_id,
+            fill_px=fill_px,
+            fill_sz=fill_sz,
+            fee=fee,
+            fee_ccy="USDT",
+            side=order["side"],
+            ts=ts,
+            strategy=order.get("strategy", "sim"),
+            state="filled",
+            metadata=metadata,
         )
 
     def cancel(self, inst_id: str, cl_ord_id: str) -> bool:

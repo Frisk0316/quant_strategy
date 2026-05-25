@@ -12,6 +12,10 @@ RISK_OVERRIDE_KEYS = {
     "max_leverage",
 }
 
+FILL_ALL_MAX_ORDER_NOTIONAL_USD = 1_000_000_000_000.0
+FILL_ALL_MAX_POS_PCT_EQUITY = 1_000_000.0
+FILL_ALL_STALE_QUOTE_PCT = 1_000_000.0
+
 
 class ResearchControlError(ValueError):
     """Raised when a research-only override is invalid."""
@@ -51,6 +55,54 @@ def apply_research_risk_overrides(cfg: Any, raw: Any) -> tuple[Any, dict[str, fl
         raise ResearchControlError("config does not support risk overrides")
     next_cfg.risk = risk.model_copy(update=overrides)
     return next_cfg, overrides
+
+
+def apply_fill_all_signal_controls(cfg: Any, enabled: bool) -> tuple[Any, dict[str, Any]]:
+    """Return a copied config with idealized signal-fill controls applied.
+
+    This is intentionally a research/backtest-only convenience: it raises the
+    caps that commonly block signal-to-order conversion and switches the replay
+    execution lifecycle to an immediate full-fill model. Live/demo/shadow config
+    files remain unchanged unless the caller explicitly writes them.
+    """
+    if not enabled:
+        return cfg, {}
+
+    next_cfg = cfg.model_copy(deep=True) if hasattr(cfg, "model_copy") else cfg
+    risk = getattr(next_cfg, "risk", None)
+    backtest = getattr(next_cfg, "backtest", None)
+    if risk is None or not hasattr(risk, "model_copy"):
+        raise ResearchControlError("config does not support fill-all signal risk controls")
+    if backtest is None or not hasattr(backtest, "model_copy"):
+        raise ResearchControlError("config does not support fill-all signal backtest controls")
+
+    risk_updates = {
+        "max_order_notional_usd": max(
+            float(getattr(risk, "max_order_notional_usd", 0.0) or 0.0),
+            FILL_ALL_MAX_ORDER_NOTIONAL_USD,
+        ),
+        "max_pos_pct_equity": max(
+            float(getattr(risk, "max_pos_pct_equity", 0.0) or 0.0),
+            FILL_ALL_MAX_POS_PCT_EQUITY,
+        ),
+        "stale_quote_pct": max(
+            float(getattr(risk, "stale_quote_pct", 0.0) or 0.0),
+            FILL_ALL_STALE_QUOTE_PCT,
+        ),
+    }
+    backtest_updates = {
+        "fill_all_signals": True,
+        "order_latency_ms": 0,
+        "cancel_latency_ms": 0,
+        "queue_fill_fraction": 1.0,
+    }
+    next_cfg.risk = risk.model_copy(update=risk_updates)
+    next_cfg.backtest = backtest.model_copy(update=backtest_updates)
+    return next_cfg, {
+        "enabled": True,
+        "risk": risk_updates,
+        "backtest": backtest_updates,
+    }
 
 
 def summarize_risk_events(events: Any) -> dict[str, Any]:

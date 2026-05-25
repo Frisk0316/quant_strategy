@@ -28,6 +28,7 @@ from backtesting.replay import (
     run_replay_validations,
 )
 from backtesting.research_controls import (
+    apply_fill_all_signal_controls,
     apply_research_risk_overrides,
     summarize_risk_events,
 )
@@ -51,6 +52,15 @@ BAR_ROWS_PER_DAY = {
     "2H": 12,
     "4H": 6,
     "1D": 1,
+}
+
+SWEEP_BASE_SECONDS_PER_TRIAL = 0.35
+SWEEP_SECONDS_PER_EVENT = {
+    # MA recomputes pandas rolling windows on every bar, so it is materially
+    # slower than the incremental EMA/MACD implementations.
+    "ma_crossover": 0.0018,
+    "ema_crossover": 0.00020,
+    "macd_crossover": 0.00025,
 }
 
 RANK_METRICS = (
@@ -158,12 +168,11 @@ def estimate_sweep_runtime(
     finalist_validation: str | None = None,
 ) -> dict[str, Any]:
     """Return a conservative pre-run runtime estimate for a parameter sweep."""
-    del strategy
     days = _date_span_days(start, end)
     rows_per_symbol = max(1, int(days * BAR_ROWS_PER_DAY.get(bar, 24)))
     symbols_count = max(1, len(symbols))
     events_per_trial = rows_per_symbol * symbols_count
-    seconds_per_trial = max(0.6, 0.35 + events_per_trial * 0.00008)
+    seconds_per_trial = _estimate_seconds_per_trial(strategy, events_per_trial)
     screening_seconds = seconds_per_trial * max(1, combinations)
     replay_count = _validation_replay_count(days, finalist_validation)
     finalist_seconds = seconds_per_trial * max(0, finalist_count) * replay_count
@@ -211,6 +220,7 @@ def run_parameter_sweep(
     max_combinations: int = 5000,
     liquidate_on_end: bool | None = None,
     risk_overrides: dict[str, Any] | None = None,
+    fill_all_signals: bool = False,
     run_finalists: bool = True,
     finalist_top_pct: float = 0.10,
     max_finalists: int = 20,
@@ -236,6 +246,7 @@ def run_parameter_sweep(
         exchange=exchange,
     )
     cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
+    cfg, applied_fill_all_controls = apply_fill_all_signal_controls(cfg, fill_all_signals)
     effective_periods = periods or _annualization_periods(bar)
     finalist_count_estimate = _estimate_finalist_count(
         len(combinations),
@@ -254,6 +265,7 @@ def run_parameter_sweep(
         finalist_validation=finalist_validation,
     )
 
+    sweep_started = time.perf_counter()
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     sweep_id = sweep_id or f"sweep_{strategy}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -263,6 +275,7 @@ def run_parameter_sweep(
             "progress": 5,
             "message": "Loading historical feed",
             "estimate": estimate,
+            "elapsed_seconds": time.perf_counter() - sweep_started,
         })
 
     feed = build_feed_for_strategies(
@@ -277,14 +290,23 @@ def run_parameter_sweep(
     _check_data_coverage_gate(coverage)
 
     rows: list[dict[str, Any]] = []
-    started = time.perf_counter()
     total = len(combinations)
     for idx, params in enumerate(combinations, start=1):
         if progress_callback:
+            completed = idx - 1
             progress_callback({
                 "progress": 5 + int((idx - 1) / total * 90),
                 "message": f"Screening parameter set {idx}/{total}",
                 "current_params": params,
+                "completed_trials": completed,
+                "total_trials": total,
+                "elapsed_seconds": time.perf_counter() - sweep_started,
+                "estimated_remaining_seconds": _estimate_remaining_seconds(
+                    elapsed_seconds=time.perf_counter() - sweep_started,
+                    completed_trials=completed,
+                    total_trials=total,
+                    fallback_seconds=estimate["estimated_screening_seconds"],
+                ),
             })
         combo_started = time.perf_counter()
         try:
@@ -302,8 +324,26 @@ def run_parameter_sweep(
             result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
             if applied_risk_overrides:
                 result.validation["research_risk_overrides"] = applied_risk_overrides
+            if applied_fill_all_controls:
+                result.validation["research_fill_all_signals"] = applied_fill_all_controls
             elapsed = time.perf_counter() - combo_started
             rows.append(_summarize_trial(idx, params, result.metrics, result.validation, elapsed))
+            if progress_callback:
+                progress_callback({
+                    "progress": 5 + int(idx / total * 90),
+                    "message": f"Screened parameter set {idx}/{total}",
+                    "current_params": params,
+                    "completed_trials": idx,
+                    "total_trials": total,
+                    "trial_elapsed_seconds": elapsed,
+                    "elapsed_seconds": time.perf_counter() - sweep_started,
+                    "estimated_remaining_seconds": _estimate_remaining_seconds(
+                        elapsed_seconds=time.perf_counter() - sweep_started,
+                        completed_trials=idx,
+                        total_trials=total,
+                        fallback_seconds=estimate["estimated_screening_seconds"],
+                    ),
+                })
         except Exception as exc:  # noqa: BLE001 - keep the sweep moving and report failed combos.
             elapsed = time.perf_counter() - combo_started
             rows.append({
@@ -313,6 +353,22 @@ def run_parameter_sweep(
                 "error": str(exc),
                 "elapsed_seconds": elapsed,
             })
+            if progress_callback:
+                progress_callback({
+                    "progress": 5 + int(idx / total * 90),
+                    "message": f"Parameter set {idx}/{total} failed",
+                    "current_params": params,
+                    "completed_trials": idx,
+                    "total_trials": total,
+                    "trial_elapsed_seconds": elapsed,
+                    "elapsed_seconds": time.perf_counter() - sweep_started,
+                    "estimated_remaining_seconds": _estimate_remaining_seconds(
+                        elapsed_seconds=time.perf_counter() - sweep_started,
+                        completed_trials=idx,
+                        total_trials=total,
+                        fallback_seconds=estimate["estimated_screening_seconds"],
+                    ),
+                })
 
     completed_rows = [row for row in rows if row.get("status") == "ok"]
     ranked = rank_sweep_rows(completed_rows)
@@ -331,6 +387,7 @@ def run_parameter_sweep(
         sweep_id=sweep_id,
         liquidate_on_end=liquidate_on_end,
         risk_overrides=applied_risk_overrides,
+        fill_all_controls=applied_fill_all_controls,
         run_finalists=run_finalists,
         finalist_top_pct=finalist_top_pct,
         max_finalists=max_finalists,
@@ -338,7 +395,7 @@ def run_parameter_sweep(
         progress_callback=progress_callback,
     )
     _attach_finalist_status(ranked, finalist_results)
-    elapsed_total = time.perf_counter() - started
+    elapsed_total = time.perf_counter() - sweep_started
 
     summary = {
         "sweep_id": sweep_id,
@@ -357,6 +414,7 @@ def run_parameter_sweep(
         "elapsed_seconds": elapsed_total,
         "estimate": estimate,
         "research_risk_overrides": applied_risk_overrides,
+        "research_fill_all_signals": applied_fill_all_controls,
         "finalist_top_pct": finalist_top_pct,
         "max_finalists": max_finalists,
         "finalist_validation": finalist_validation or "none",
@@ -405,6 +463,25 @@ def _validation_replay_count(days: float, mode: str | None) -> int:
     return count
 
 
+def _estimate_seconds_per_trial(strategy: str, events_per_trial: int) -> float:
+    coefficient = SWEEP_SECONDS_PER_EVENT.get(strategy, 0.00025)
+    return max(0.6, SWEEP_BASE_SECONDS_PER_TRIAL + events_per_trial * coefficient)
+
+
+def _estimate_remaining_seconds(
+    *,
+    elapsed_seconds: float,
+    completed_trials: int,
+    total_trials: int,
+    fallback_seconds: float,
+) -> float:
+    remaining_trials = max(0, total_trials - completed_trials)
+    if completed_trials <= 0:
+        return max(0.0, fallback_seconds)
+    avg_seconds = max(0.0, elapsed_seconds) / max(1, completed_trials)
+    return max(0.0, avg_seconds * remaining_trials)
+
+
 def _estimate_finalist_count(
     total: int,
     *,
@@ -432,6 +509,7 @@ def _run_finalist_backtests(
     sweep_id: str,
     liquidate_on_end: bool | None,
     risk_overrides: dict[str, float],
+    fill_all_controls: dict[str, Any],
     run_finalists: bool,
     finalist_top_pct: float,
     max_finalists: int,
@@ -480,6 +558,8 @@ def _run_finalist_backtests(
             result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
             if risk_overrides:
                 result.validation["research_risk_overrides"] = risk_overrides
+            if fill_all_controls:
+                result.validation["research_fill_all_signals"] = fill_all_controls
 
             validation_results = None
             if finalist_validation and finalist_validation != "none":
