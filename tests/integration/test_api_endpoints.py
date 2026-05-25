@@ -75,7 +75,10 @@ async def test_backtest_runs_endpoint(client):
 async def test_parameter_sweep_endpoint_marks_job_done(client, monkeypatch):
     from okx_quant.api import routes_backtest
 
+    seen_kwargs = {}
+
     def fake_run_parameter_sweep(**kwargs):
+        seen_kwargs.update(kwargs)
         progress_callback = kwargs.get("progress_callback")
         if progress_callback:
             progress_callback({
@@ -108,6 +111,7 @@ async def test_parameter_sweep_endpoint_marks_job_done(client, monkeypatch):
             "start": "2024-01-01",
             "end": "2024-01-02",
             "parameter_grid": {"fast_window": [7], "slow_window": [21]},
+            "fill_all_signals": True,
             "run_finalists": False,
         },
     )
@@ -120,3 +124,5 @@ async def test_parameter_sweep_endpoint_marks_job_done(client, monkeypatch):
     assert payload["progress"] == 100
     assert payload["completed_count"] == 1
     assert payload["finished_at"]
+    assert seen_kwargs["fill_all_signals"] is True
+    assert "idealized_fill" in payload["warnings"]

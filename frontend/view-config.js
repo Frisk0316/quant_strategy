@@ -830,6 +830,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               setFinalistTopPct=${setSweepTopPct}
               maxFinalists=${sweepMaxFinalists}
               setMaxFinalists=${setSweepMaxFinalists}
+              fillAllSignals=${fillAllSignals}
+              setFillAllSignals=${setFillAllSignals}
               setView=${setView}
               setSelectedRunId=${setSelectedRunId}
             />
@@ -961,6 +963,8 @@ function ParameterSweepPanel({
   setFinalistTopPct = () => {},
   maxFinalists = 20,
   setMaxFinalists = () => {},
+  fillAllSignals = false,
+  setFillAllSignals = () => {},
   setView,
   setSelectedRunId,
 }) {
@@ -1046,6 +1050,15 @@ function ParameterSweepPanel({
           <option value="both">Both (WF + CPCV)</option>
         </select>
       </div>
+      <label class="row" style=${{ gap: 8, alignItems: "flex-start" }}>
+        <input type="checkbox" checked=${fillAllSignals}
+          onChange=${(e) => setFillAllSignals(e.target.checked)}
+          style=${{ marginTop: 2 }} />
+        <span>
+          <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
+          <span class="field-hint">Ignore market/risk caps for this sweep; research-only idealized execution.</span>
+        </span>
+      </label>
       <div class="field-hint">
         ${parseError
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`

@@ -979,7 +979,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 `}
               </div>
             `}
-            <div class="chart-wrap">
+            <div class="chart-wrap fluid">
               <${IndicatorChart}
                 symbol=${sym}
                 timestamps=${timestamps}

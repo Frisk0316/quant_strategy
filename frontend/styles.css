@@ -201,6 +201,7 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .card.tight { padding: var(--pad-tight); }
 .chart-wrap { max-width: 960px; width: 100%; overflow: hidden; }
+.chart-wrap.fluid { max-width: none; }
 .chart-wrap svg { touch-action: none; user-select: none; }
 .chart-stack {
   display: flex;
