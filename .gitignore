@@ -28,3 +28,6 @@ results/calibration/
 # Runtime logs (*.log already covered, add compressed variants)
 logs/
 *.log.gz
+
+# Local research workspaces and alpha labs are not shared via GitHub.
+research/
