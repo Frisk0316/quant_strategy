@@ -628,6 +628,7 @@ A correctly-classified `fill_all_signals` artefact therefore carries:
 | Execution | Maker-only by default; taker usage explicitly justified for risk exits. |
 | ct_val provenance | `validation.ct_val_all_authoritative = true` (every symbol's ctVal from `db`, `config_override`, or `spot_unit`). |
 | Reduce-only audit (per ADR-0006) | Shadow run produced at least one `allowed_reduce_only_bypass:*` event sample for reviewer inspection (or a documented attestation that none occurred in the window). |
+| Differential validation review | For `ma_crossover` / `ema_crossover` / `macd_crossover` artifacts, reviewer MUST inspect `engines.<engine>.comparison.actionable_mismatch_counts.{trade_execution,pnl_semantics,metrics}` (advisory scopes) in `validation/<validation_id>/validation_result.json`. Non-zero advisory-scope mismatches are admissible as a promotion ADR rejection reason even when the Differential validation Deployment Gate is PASS; the ADR author may not request to disregard them on the basis that the scope is advisory. Differential gate PASS only attests signal-logic equivalence to a reference engine — it does not attest PnL, trade, or metric correctness, and does not substitute for ct_val provenance, Idealized-fill exclusion, or Walk-forward/CPCV. For non-technical strategies the gate is `not_applicable`; the promotion ADR must instead attest "no external reference engine applies" and name the substitute validation per `docs/ai_collaboration.md`. |
 
 ### External-Feature Coverage Gate
 

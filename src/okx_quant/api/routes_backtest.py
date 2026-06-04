@@ -37,6 +37,7 @@ from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 _run_jobs: dict[str, dict[str, Any]] = {}
 _sweep_jobs: dict[str, dict[str, Any]] = {}
+_validation_jobs: dict[str, dict[str, Any]] = {}
 _price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
 
@@ -226,6 +227,18 @@ class ParameterSweepRequest(BaseModel):
     finalist_top_pct: float = Field(default=0.10, gt=0.0, le=1.0)
     max_finalists: int = Field(default=20, ge=0, le=100)
     finalist_validation: str | None = None
+
+
+class DifferentialValidationRequest(BaseModel):
+    engines: list[str] = Field(default_factory=lambda: ["vectorbt", "backtrader", "nautilus"])
+    validation_id: str | None = None
+
+
+class StrategyDifferentialValidationRequest(BaseModel):
+    strategy: str
+    engines: list[str] = Field(default_factory=lambda: ["vectorbt", "backtrader", "nautilus"])
+    validation_id: str | None = None
+    fixture_run_id: str | None = None
 
 
 def _run_ohlcv_rotation_job(
@@ -1618,6 +1631,91 @@ def _run_parameter_sweep_job(
         })
 
 
+def _run_differential_validation_job(
+    job_id: str,
+    run_id: str,
+    run_dir: Path,
+    engines: list[str],
+    validation_id: str | None,
+) -> None:
+    try:
+        from backtesting.differential_validation import run_differential_validation
+
+        _validation_jobs[job_id].update({
+            "status": "running",
+            "progress": 20,
+            "message": "Running differential validation",
+            "updated_at": _utc_now_iso(),
+        })
+        summary = run_differential_validation(
+            run_dir=run_dir,
+            engines=engines,
+            validation_id=validation_id,
+        )
+        _validation_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": f"Differential validation {summary.get('status', 'complete')}",
+            "validation_id": summary.get("validation_id"),
+            "summary": summary,
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+    except Exception as exc:
+        _validation_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+
+
+def _run_strategy_differential_validation_job(
+    job_id: str,
+    results_dir: Path,
+    strategy: str,
+    fixture_run_id: str | None,
+    engines: list[str],
+    validation_id: str | None,
+) -> None:
+    try:
+        from backtesting.differential_validation import run_strategy_differential_validation
+
+        _validation_jobs[job_id].update({
+            "status": "running",
+            "progress": 20,
+            "message": "Running strategy validation",
+            "updated_at": _utc_now_iso(),
+        })
+        summary = run_strategy_differential_validation(
+            results_dir=results_dir,
+            strategy=strategy,
+            engines=engines,
+            fixture_run_id=fixture_run_id,
+            validation_id=validation_id,
+        )
+        _validation_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": f"Strategy validation {summary.get('status', 'complete')}",
+            "validation_id": summary.get("validation_id"),
+            "strategy": summary.get("strategy"),
+            "fixture_run_id": summary.get("fixture_run_id"),
+            "summary": summary,
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+    except Exception as exc:
+        _validation_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+
+
 def make_backtest_router(results_dir: Path) -> APIRouter:
     router = APIRouter()
 
@@ -1985,6 +2083,158 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         except Exception:
             pass
         return {"deleted": run_id}
+
+    # ------------------------------------------------------------------
+    # Differential validation
+    # ------------------------------------------------------------------
+
+    @router.get("/strategy-validation/fixtures")
+    async def list_strategy_validation_fixtures(strategy: str | None = None):
+        from backtesting.differential_validation import list_strategy_validation_fixtures
+
+        return list_strategy_validation_fixtures(results_dir, strategy)
+
+    @router.post("/strategy-validation/run")
+    async def run_strategy_differential_validation_endpoint(
+        req: StrategyDifferentialValidationRequest,
+        bg: BackgroundTasks,
+    ):
+        from backtesting.differential_validation import ENGINE_NAMES
+
+        strategy = Path(req.strategy).name
+        if not strategy:
+            raise HTTPException(status_code=400, detail="strategy is required")
+        engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
+        if not engines:
+            engines = ["vectorbt", "backtrader", "nautilus"]
+        unknown = sorted(set(engines) - ENGINE_NAMES)
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unsupported engine(s): {', '.join(unknown)}")
+        job_id = f"stratval_{uuid.uuid4().hex[:10]}"
+        _validation_jobs[job_id] = {
+            "job_id": job_id,
+            "strategy": strategy,
+            "fixture_run_id": req.fixture_run_id,
+            "validation_id": req.validation_id,
+            "engines": engines,
+            "status": "queued",
+            "progress": 0,
+            "message": "Queued strategy validation",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        bg.add_task(
+            _run_strategy_differential_validation_job,
+            job_id,
+            results_dir,
+            strategy,
+            req.fixture_run_id,
+            engines,
+            req.validation_id,
+        )
+        return _validation_jobs[job_id]
+
+    @router.get("/strategy-validation")
+    async def list_strategy_validations(strategy: str | None = None):
+        from backtesting.differential_validation import list_strategy_validation_results
+
+        return list_strategy_validation_results(results_dir, strategy)
+
+    @router.get("/strategy-validation/{strategy}")
+    async def list_strategy_validations_for_strategy(strategy: str):
+        from backtesting.differential_validation import list_strategy_validation_results
+
+        return list_strategy_validation_results(results_dir, strategy)
+
+    @router.get("/strategy-validation/{strategy}/{validation_id}")
+    async def get_strategy_validation(strategy: str, validation_id: str):
+        from backtesting.differential_validation import read_strategy_validation_result
+
+        try:
+            return read_strategy_validation_result(results_dir, strategy, validation_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Strategy validation result not found")
+
+    @router.get("/strategy-validation/{strategy}/{validation_id}/artifact/{artifact_name}")
+    async def get_strategy_validation_artifact(
+        strategy: str,
+        validation_id: str,
+        artifact_name: str,
+    ):
+        from backtesting.differential_validation import read_strategy_validation_artifact
+
+        try:
+            return read_strategy_validation_artifact(results_dir, strategy, validation_id, artifact_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Strategy validation artifact not found")
+
+    @router.post("/{run_id}/differential-validation/run")
+    async def run_differential_validation_endpoint(
+        run_id: str,
+        req: DifferentialValidationRequest,
+        bg: BackgroundTasks,
+    ):
+        from backtesting.differential_validation import ENGINE_NAMES
+
+        d = _run_dir(run_id)
+        engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
+        if not engines:
+            engines = ["vectorbt", "backtrader", "nautilus"]
+        unknown = sorted(set(engines) - ENGINE_NAMES)
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unsupported engine(s): {', '.join(unknown)}")
+        job_id = f"diffval_{uuid.uuid4().hex[:10]}"
+        _validation_jobs[job_id] = {
+            "job_id": job_id,
+            "run_id": run_id,
+            "validation_id": req.validation_id,
+            "engines": engines,
+            "status": "queued",
+            "progress": 0,
+            "message": "Queued differential validation",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        bg.add_task(_run_differential_validation_job, job_id, run_id, d, engines, req.validation_id)
+        return _validation_jobs[job_id]
+
+    @router.get("/differential-validation/jobs")
+    async def list_differential_validation_jobs():
+        return list(_validation_jobs.values())
+
+    @router.get("/differential-validation/status/{job_id}")
+    async def get_differential_validation_status(job_id: str):
+        if job_id not in _validation_jobs:
+            raise HTTPException(status_code=404, detail="Differential validation job not found")
+        return _validation_jobs[job_id]
+
+    @router.get("/{run_id}/differential-validation")
+    async def list_differential_validations(run_id: str):
+        from backtesting.differential_validation import list_validation_results
+
+        return list_validation_results(_run_dir(run_id))
+
+    @router.get("/{run_id}/differential-validation/{validation_id}")
+    async def get_differential_validation(run_id: str, validation_id: str):
+        from backtesting.differential_validation import read_validation_result
+
+        try:
+            return read_validation_result(_run_dir(run_id), validation_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Differential validation result not found")
+
+    @router.get("/{run_id}/differential-validation/{validation_id}/artifact/{artifact_name}")
+    async def get_differential_validation_artifact(
+        run_id: str,
+        validation_id: str,
+        artifact_name: str,
+    ):
+        from backtesting.differential_validation import read_validation_artifact
+
+        try:
+            return read_validation_artifact(_run_dir(run_id), validation_id, artifact_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Differential validation artifact not found")
 
     # ------------------------------------------------------------------
     # Single run — full result.json
