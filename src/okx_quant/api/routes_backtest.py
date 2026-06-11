@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,15 +22,146 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from backtesting.parameter_sweep import (
+    ParameterSweepError,
+    estimate_sweep_runtime,
+    expand_parameter_grid,
+    run_parameter_sweep,
+)
+from backtesting.research_controls import ResearchControlError, sanitize_risk_overrides
+from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
+
 _run_jobs: dict[str, dict[str, Any]] = {}
+_sweep_jobs: dict[str, dict[str, Any]] = {}
+_validation_jobs: dict[str, dict[str, Any]] = {}
+_price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+IDEALIZED_FILL_WARNING = (
+    "fill_all_signals=true: research-only artefact, not admissible as edge / "
+    "promotion / live-readiness evidence (see docs/ai_collaboration.md Deployment Gate)."
+)
+
+
+def _contains_idealized_fill_flag(value: Any) -> bool:
+    if isinstance(value, dict):
+        if bool(value.get("idealized_fill")) or bool(value.get("fill_all_signals")):
+            return True
+        return any(_contains_idealized_fill_flag(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_idealized_fill_flag(v) for v in value)
+    return False
+
+
+def _attach_idealized_fill_warning(payload: dict[str, Any], source: Any | None = None) -> dict[str, Any]:
+    if not _contains_idealized_fill_flag(source if source is not None else payload):
+        return payload
+    warnings = list(payload.get("warnings") or [])
+    if "idealized_fill" not in warnings:
+        warnings.append("idealized_fill")
+    payload["warnings"] = warnings
+    validation_warnings = list(payload.get("validation_warnings") or [])
+    if IDEALIZED_FILL_WARNING not in validation_warnings:
+        validation_warnings.append(IDEALIZED_FILL_WARNING)
+    payload["validation_warnings"] = validation_warnings
+    validation = payload.get("validation")
+    if isinstance(validation, dict):
+        validation["idealized_fill"] = True
+    return payload
+
+
+def _get_price_series_cache(key: tuple[str, str]) -> list[dict[str, Any]] | None:
+    rows = _price_series_fallback_cache.get(key)
+    return [dict(row) for row in rows] if rows is not None else None
+
+
+def _set_price_series_cache(key: tuple[str, str], rows: list[dict[str, Any]]) -> None:
+    if len(_price_series_fallback_cache) >= 16 and key not in _price_series_fallback_cache:
+        _price_series_fallback_cache.clear()
+    _price_series_fallback_cache[key] = [dict(row) for row in rows]
+
+
+def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
+    """Best-effort TCP probe that the DSN's host:port accepts connections.
+
+    A full `asyncpg.connect()` would be authoritative but is slow when the DB
+    is down (TCP retries can take 5–30s). A simple TCP-level probe is fast and
+    catches the common "DB process not running" case which the docs/handoff
+    treat as the trigger for parquet fallback.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(dsn)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 5432
+    except Exception:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
+
+
+def _resolve_candle_backend() -> tuple[str, str | None]:
+    """Resolve the candle backend the backtest subprocesses should use.
+
+    Returns (backend, dsn). Prefers `cfg.storage.candle_backend` from
+    config/settings.yaml. Falls back to parquet when the DSN is missing OR
+    unreachable so backtests don't crash on ConnectionRefusedError when the
+    DB process is not running.
+    """
+    backend = "parquet"
+    dsn: str | None = None
+    try:
+        from okx_quant.core.config import load_config
+
+        cfg = load_config(require_secrets=False)
+        backend = (getattr(cfg.storage, "candle_backend", "parquet") or "parquet").lower()
+        dsn = getattr(cfg.storage, "timescale_dsn", None)
+    except Exception:
+        pass
+    if not dsn:
+        dsn = os.environ.get("DATABASE_URL")
+    if backend == "postgres":
+        if not dsn or not _dsn_reachable(dsn):
+            backend = "parquet"
+            dsn = None
+    return backend, dsn
+
+
 _SAFE_DATA_DIR_RE = re.compile(r"^[\w./\-]+$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$")
 _SAFE_SYMBOL_RE = re.compile(r"^[A-Z0-9\-]+$")
+_ALLOWED_EXCHANGES = {"binance", "okx", "bybit", "coinbase", "kraken"}
+
+
+def _normalize_exchange(value: str | None) -> str:
+    """Validate the per-run exchange selection against the allowed set.
+
+    Falls back to cfg.storage.primary_exchange when the input is missing or
+    not whitelisted, so a stale frontend can't ask for a non-existent venue.
+    """
+    candidate = (value or "").strip().lower()
+    if candidate in _ALLOWED_EXCHANGES:
+        return candidate
+    try:
+        from okx_quant.core.config import load_config
+        cfg = load_config(require_secrets=False)
+        cfg_value = (getattr(cfg.storage, "primary_exchange", None) or "binance").lower()
+    except Exception:
+        cfg_value = "binance"
+    return cfg_value if cfg_value in _ALLOWED_EXCHANGES else "binance"
 DEFAULT_DAILY_WINNER_UNIVERSE = [
     "BTC-USDT-SWAP",
     "ETH-USDT-SWAP",
@@ -60,6 +192,9 @@ class RunBacktestRequest(BaseModel):
     end: str | None = None
     run_id: str | None = None
     validation: str | None = Field(default=None, alias="validate")
+    # Exchange whose data the backtest should consume. Must match the live-target
+    # exchange for deployment promotion (see ai_collaboration.md deployment gates).
+    exchange: str | None = None
     universe: list[str] = []
     benchmark: str = "BTC-USDT-SWAP"
     rebalance_minutes: int = 60
@@ -68,6 +203,42 @@ class RunBacktestRequest(BaseModel):
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
     strategy_params: dict[str, Any] = Field(default_factory=dict)
+    risk_overrides: dict[str, Any] = Field(default_factory=dict)
+    fill_all_signals: bool = False
+
+
+class ParameterSweepRequest(BaseModel):
+    strategy: str
+    symbols: list[str] = []
+    bar: str = "1H"
+    periods: int | None = None
+    start: str | None = None
+    end: str | None = None
+    sweep_id: str | None = None
+    exchange: str | None = None
+    initial_equity: float = 5000.0
+    data_dir: str = "data/ticks"
+    parameter_grid: dict[str, Any] = Field(default_factory=dict)
+    max_combinations: int = Field(default=5000, ge=1, le=10000)
+    liquidate_on_end: bool | None = None
+    risk_overrides: dict[str, Any] = Field(default_factory=dict)
+    fill_all_signals: bool = False
+    run_finalists: bool = True
+    finalist_top_pct: float = Field(default=0.10, gt=0.0, le=1.0)
+    max_finalists: int = Field(default=20, ge=0, le=100)
+    finalist_validation: str | None = None
+
+
+class DifferentialValidationRequest(BaseModel):
+    engines: list[str] = Field(default_factory=lambda: ["vectorbt", "backtrader", "nautilus"])
+    validation_id: str | None = None
+
+
+class StrategyDifferentialValidationRequest(BaseModel):
+    strategy: str
+    engines: list[str] = Field(default_factory=lambda: ["vectorbt", "backtrader", "nautilus"])
+    validation_id: str | None = None
+    fixture_run_id: str | None = None
 
 
 def _run_ohlcv_rotation_job(
@@ -82,35 +253,39 @@ def _run_ohlcv_rotation_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
 
-        # Pre-validate parquet availability for benchmark + universe.
-        data_dir = _resolve_data_dir(req.data_dir)
-        _BAR_RESAMPLE = {"1H", "2H", "4H", "6H", "12H", "1D"}
-        missing: list[str] = []
-        for inst in list(req.universe or []) + [req.benchmark or "BTC-USDT-SWAP"]:
-            inst_dir = data_dir / inst.replace("-", "_")
-            has_bar = (inst_dir / f"candles_{bar}.parquet").exists()
-            has_1m = (inst_dir / "candles_1m.parquet").exists()
-            can_derive = bar in _BAR_RESAMPLE and has_1m
-            if not has_bar and not can_derive:
-                available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
-                missing.append(f"{inst}: no candles_{bar}.parquet — available: {available or 'none'}")
+        backend, dsn = _resolve_candle_backend()
+        exchange = _normalize_exchange(req.exchange)
         benchmark = req.benchmark or "BTC-USDT-SWAP"
-        if any(benchmark in m for m in missing):
-            _run_jobs[job_id].update({
-                "status": "error",
-                "progress": 100,
-                "message": f"Data not available for benchmark '{benchmark}' at bar='{bar}'",
-                "output": "\n".join(missing),
-            })
-            return
+
+        if backend == "parquet":
+            # Pre-validate parquet availability for benchmark + universe.
+            data_dir = _resolve_data_dir(req.data_dir)
+            _BAR_RESAMPLE = {"1H", "2H", "4H", "6H", "12H", "1D"}
+            missing: list[str] = []
+            for inst in list(req.universe or []) + [benchmark]:
+                inst_dir = data_dir / inst.replace("-", "_")
+                has_bar = (inst_dir / f"candles_{bar}.parquet").exists()
+                has_1m = (inst_dir / "candles_1m.parquet").exists()
+                can_derive = bar in _BAR_RESAMPLE and has_1m
+                if not has_bar and not can_derive:
+                    available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
+                    missing.append(f"{inst}: no candles_{bar}.parquet — available: {available or 'none'}")
+            if any(benchmark in m for m in missing):
+                _run_jobs[job_id].update({
+                    "status": "error",
+                    "progress": 100,
+                    "message": f"Data not available for benchmark '{benchmark}' at bar='{bar}'",
+                    "output": "\n".join(missing),
+                })
+                return
 
         cmd = [
             sys.executable,
             str(script),
-            "--backend", "parquet",
+            "--backend", backend,
             "--data-dir", req.data_dir or "data/ticks",
             "--bar", bar,
-            "--benchmark", req.benchmark or "BTC-USDT-SWAP",
+            "--benchmark", benchmark,
             "--rebalance-minutes", str(req.rebalance_minutes or 60),
             "--top-k", str(req.top_k or 3),
             "--rank-exit-buffer", str(req.rank_exit_buffer or 6),
@@ -118,6 +293,11 @@ def _run_ohlcv_rotation_job(
             "--output-dir", str(out_dir),
             "--universe",
         ] + list(req.universe or [])
+        if req.fill_all_signals:
+            cmd.append("--fill-all-signals")
+        if backend == "postgres" and dsn:
+            cmd.extend(["--dsn", dsn])
+        cmd.extend(["--exchange", exchange])
         if req.start:
             cmd.extend(["--start", req.start])
         if req.end:
@@ -151,11 +331,22 @@ def _run_ohlcv_rotation_job(
             return
         _run_jobs[job_id].update({"progress": 90, "message": "Post-processing results…"})
         _post_process_ohlcv_rotation(out_dir, run_id, req)
+        warning_fields: dict[str, Any] = {}
+        result_path = out_dir / "result.json"
+        if result_path.exists():
+            try:
+                warning_fields = _attach_idealized_fill_warning(
+                    {},
+                    json.loads(result_path.read_text(encoding="utf-8")),
+                )
+            except Exception:
+                warning_fields = {}
         _run_jobs[job_id].update({
             "status": "done",
             "progress": 100,
             "message": "Backtest complete",
             "output": output[-4000:],
+            **warning_fields,
         })
     except Exception as exc:
         _run_jobs[job_id].update({
@@ -182,6 +373,12 @@ def _post_process_ohlcv_rotation(
     metrics.setdefault("fill_count", trade_count)
     metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
     metrics.setdefault("bankrupt", False)
+    validation = {}
+    if req.fill_all_signals:
+        validation = {
+            "fill_all_signals": True,
+            "idealized_fill": True,
+        }
 
     if equity_path.exists():
         eq_df = pd.read_csv(equity_path, index_col=0, parse_dates=True)
@@ -241,8 +438,12 @@ def _post_process_ohlcv_rotation(
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
+        "parameters": _request_parameters(req),
         "artifacts": artifact_refs,
     }
+    if validation:
+        result["validation"] = validation
+    _attach_idealized_fill_warning(result)
     (out_dir / "result.json").write_text(
         json.dumps(result, allow_nan=False, indent=2),
         encoding="utf-8",
@@ -267,6 +468,10 @@ def _run_daily_winner_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         universe = list(dict.fromkeys(req.universe or DEFAULT_DAILY_WINNER_UNIVERSE))
         dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+        exchange = _normalize_exchange(req.exchange)
+        # daily_winner is Postgres-only; if an exchange is selected, switch from
+        # the canonical "postgres" view to the per-exchange "market" view.
+        load_backend = "market" if exchange else "postgres"
 
         _run_jobs[job_id].update({
             "status": "running",
@@ -275,20 +480,59 @@ def _run_daily_winner_job(
         })
         dfs: dict[str, pd.DataFrame] = {}
         skipped: list[str] = []
+        data_sources: list[dict[str, Any]] = []
         for i, inst in enumerate(universe):
+            attempts: list[dict[str, Any]] = []
             df = load_candles(
                 inst_id=inst,
                 bar="1D",
                 data_dir=req.data_dir or "data/ticks",
                 start=req.start,
                 end=req.end,
-                backend="postgres",
+                backend=load_backend,
                 dsn=dsn,
+                exchange=exchange if load_backend == "market" else None,
             )
+            attempts.append({
+                "backend": load_backend,
+                "exchange": exchange if load_backend == "market" else None,
+                "rows": int(len(df)),
+            })
+            if df.empty and load_backend == "market":
+                df = load_candles(
+                    inst_id=inst,
+                    bar="1D",
+                    data_dir=req.data_dir or "data/ticks",
+                    start=req.start,
+                    end=req.end,
+                    backend="postgres",
+                    dsn=dsn,
+                    exchange=None,
+                )
+                attempts.append({
+                    "backend": "postgres",
+                    "exchange": None,
+                    "rows": int(len(df)),
+                    "fallback": "canonical_1m_or_1d",
+                })
             if df.empty:
                 skipped.append(inst)
+                data_sources.append({
+                    "inst_id": inst,
+                    "status": "skipped",
+                    "attempts": attempts,
+                    "reason": "empty daily OHLCV after market/canonical fallback",
+                })
                 continue
             dfs[inst] = df
+            data_sources.append({
+                "inst_id": inst,
+                "status": "loaded",
+                "rows": int(len(df)),
+                "first_ts": str(df.index.min()) if not df.empty else None,
+                "last_ts": str(df.index.max()) if not df.empty else None,
+                "attempts": attempts,
+            })
             _run_jobs[job_id]["progress"] = 10 + int((i + 1) / max(len(universe), 1) * 45)
 
         if len(dfs) < 2:
@@ -316,6 +560,7 @@ def _run_daily_winner_job(
             result=result,
             loaded_symbols=list(dfs.keys()),
             skipped_symbols=skipped,
+            data_sources=data_sources,
         )
         _attach_daily_winner_validation(result_json, result.daily_returns, req.validation)
         result_json = _json_sanitize(result_json)
@@ -347,6 +592,7 @@ def _build_daily_winner_result_json(
     result: Any,
     loaded_symbols: list[str],
     skipped_symbols: list[str],
+    data_sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the ADR-0002-compatible inline result payload for daily_winner."""
     equity_df = result.equity_curve.to_frame("equity")
@@ -370,43 +616,31 @@ def _build_daily_winner_result_json(
         returns_df.reset_index().to_json(orient="records", date_format="iso", force_ascii=False)
     )
 
-    trades = result.trades.copy()
-    if not trades.empty:
-        trades["strategy"] = "daily_winner"
-        trades["side"] = "buy"
-        trades["status"] = "FILLED"
-        trades["type"] = "validation_round_trip"
-        trades["datetime"] = trades["entry_ts"]
-        trades["ts"] = trades["entry_ts"]
-        trades["price"] = trades["entry_price"]
-        trades["qty"] = 0.0
-        trades["notional"] = 0.0
-        trades["fee"] = 0.0
-        trades["pnl"] = trades["net_return"]
-    trades_records = json.loads(
-        trades.to_json(orient="records", date_format="iso", force_ascii=False)
+    round_trips = result.trades.copy()
+    round_trip_records = json.loads(
+        round_trips.to_json(orient="records", date_format="iso", force_ascii=False)
     )
-    for i, record in enumerate(trades_records):
-        record["id"] = i
-        record["pnl_usd"] = None
-        record["note"] = "validation-only round trip; quantity/notional are not modeled"
+    for i, record in enumerate(round_trip_records):
+        record["id"] = record.get("id", i)
+        record["round_trip_id"] = record.get("round_trip_id", i)
+        record["strategy"] = "daily_winner"
+        record["type"] = "validation_round_trip"
+    trades_records = _daily_winner_execution_rows(
+        round_trip_records,
+        equity_records=equity_records,
+        initial_equity=req.initial_equity or 5000.0,
+    )
 
     metrics = dict(result.metrics)
-    trade_count = metrics.get("number_of_trades", 0)
-    metrics.setdefault("profit_factor", 0.0)
-    metrics.setdefault("order_count", trade_count * 2)
-    metrics.setdefault("fill_count", trade_count * 2)
-    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
-    metrics.setdefault("orders_filled_count", trade_count * 2)
-    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    _daily_winner_apply_execution_metrics(metrics, round_trip_records, trades_records)
     metrics.setdefault("bankrupt", False)
-    metrics.setdefault("total_fees", 0.0)
-    metrics.setdefault("fill_notional_usd", 0.0)
     metrics.setdefault("funding_cashflow", 0.0)
     metrics.setdefault("funding_settlement_count", 0)
+    metrics.setdefault("funding_mode", "not_modeled")
     metrics["loaded_symbols"] = loaded_symbols
     metrics["skipped_symbols"] = skipped_symbols
     metrics = {key: _json_safe(value) for key, value in metrics.items()}
+    validation_mode = _daily_winner_validation_mode(req.validation)
 
     return {
         "run_id": run_id,
@@ -417,11 +651,172 @@ def _build_daily_winner_result_json(
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
+        "parameters": _request_parameters(req),
         "equity": equity_records,
         "returns": returns_records,
+        "round_trips": round_trip_records,
         "trades": trades_records,
         "artifacts": {},
+        "validation": {
+            "validation_only": True,
+            "validation_mode": validation_mode,
+            "validation_requested": validation_mode,
+            "daily_winner_data_sources": data_sources or [],
+        },
     }
+
+
+def _daily_winner_validation_mode(mode: str | None) -> str:
+    return mode if mode in {"wf", "cpcv", "both"} else "none"
+
+
+def _daily_winner_float(value: Any, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _daily_winner_equity_seed(
+    equity_records: list[dict[str, Any]] | None,
+    initial_equity: float | None,
+) -> float:
+    for row in equity_records or []:
+        value = row.get("equity_usd", row.get("equity"))
+        equity = _daily_winner_float(value, float("nan"))
+        if math.isfinite(equity) and equity > 0:
+            return equity
+    return _daily_winner_float(initial_equity, 5000.0)
+
+
+def _daily_winner_sort_key(row: dict[str, Any]) -> pd.Timestamp:
+    value = row.get("entry_ts") or row.get("datetime") or row.get("ts") or row.get("exit_ts")
+    ts = pd.to_datetime(value, utc=True, errors="coerce")
+    if pd.isna(ts):
+        return pd.Timestamp("2262-01-01", tz="UTC")
+    return ts
+
+
+def _daily_winner_execution_rows(
+    round_trips: list[dict[str, Any]],
+    *,
+    equity_records: list[dict[str, Any]] | None = None,
+    initial_equity: float | None = None,
+) -> list[dict[str, Any]]:
+    """Expand daily_winner round trips into synthetic buy/sell execution rows."""
+    rows: list[dict[str, Any]] = []
+    current_equity = _daily_winner_equity_seed(equity_records, initial_equity)
+    ordered = sorted((dict(row) for row in round_trips or []), key=_daily_winner_sort_key)
+    for i, trade in enumerate(ordered):
+        inst_id = str(trade.get("inst_id") or trade.get("symbol") or "")
+        entry_ts = trade.get("entry_ts") or trade.get("datetime") or trade.get("ts")
+        exit_ts = trade.get("exit_ts") or trade.get("close_ts")
+        entry_price = _daily_winner_float(trade.get("entry_price", trade.get("price")), 0.0)
+        exit_price = _daily_winner_float(trade.get("exit_price", trade.get("close_price", entry_price)), 0.0)
+        if not inst_id or entry_price <= 0 or exit_price <= 0:
+            continue
+
+        entry_equity = _daily_winner_float(trade.get("entry_equity"), current_equity)
+        if entry_equity <= 0:
+            entry_equity = current_equity
+        cost_rate = abs(_daily_winner_float(trade.get("cost_rate"), 0.0))
+        gross_return = _daily_winner_float(trade.get("gross_return"), exit_price / entry_price - 1.0)
+        net_return = _daily_winner_float(trade.get("net_return"), gross_return - cost_rate)
+        qty = entry_equity / entry_price if entry_price > 0 else 0.0
+        entry_notional = abs(qty * entry_price)
+        exit_notional = abs(qty * exit_price)
+        total_cost = abs(entry_equity * cost_rate)
+        entry_fee = total_cost / 2.0
+        exit_fee = total_cost / 2.0
+        pnl_usd = entry_equity * net_return
+        exit_equity = entry_equity + pnl_usd
+        round_trip_id = int(_daily_winner_float(trade.get("round_trip_id", trade.get("id", i)), i))
+
+        base = {
+            "inst_id": inst_id,
+            "symbol": inst_id,
+            "strategy": "daily_winner",
+            "status": "FILLED",
+            "type": "validation_synthetic_fill",
+            "round_trip_id": round_trip_id,
+            "entry_ts": entry_ts,
+            "exit_ts": exit_ts,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "qty": qty,
+            "fill_sz": qty,
+            "gross_return": gross_return,
+            "net_return": net_return,
+            "cost_rate": cost_rate,
+            "holding_minutes": trade.get("holding_minutes", 1440),
+        }
+        rows.append({
+            **base,
+            "id": round_trip_id * 2,
+            "execution_phase": "entry",
+            "side": "buy",
+            "datetime": entry_ts,
+            "ts": entry_ts,
+            "price": entry_price,
+            "fill_px": entry_price,
+            "notional": entry_notional,
+            "notional_usd": entry_notional,
+            "fee": entry_fee,
+            "pnl": None,
+            "pnl_usd": None,
+            "net_realized_pnl": None,
+            "position_after": qty,
+            "entry_equity": entry_equity,
+            "exit_equity": None,
+            "note": "validation-only synthetic BUY leg; quantity/notional inferred from full-equity daily allocation",
+        })
+        rows.append({
+            **base,
+            "id": round_trip_id * 2 + 1,
+            "execution_phase": "exit",
+            "side": "sell",
+            "datetime": exit_ts,
+            "ts": exit_ts,
+            "price": exit_price,
+            "fill_px": exit_price,
+            "notional": exit_notional,
+            "notional_usd": exit_notional,
+            "fee": exit_fee,
+            "pnl": pnl_usd,
+            "pnl_usd": pnl_usd,
+            "net_realized_pnl": pnl_usd,
+            "position_after": 0.0,
+            "entry_equity": entry_equity,
+            "exit_equity": exit_equity,
+            "note": "validation-only synthetic SELL leg; PnL shown on exit; funding is not modeled",
+        })
+        current_equity = exit_equity
+    return _json_sanitize(rows)
+
+
+def _daily_winner_is_execution_row(row: dict[str, Any]) -> bool:
+    if row.get("execution_phase") in {"entry", "exit"}:
+        return True
+    return str(row.get("type") or "") == "validation_synthetic_fill"
+
+
+def _daily_winner_apply_execution_metrics(
+    metrics: dict[str, Any],
+    round_trips: list[dict[str, Any]],
+    execution_rows: list[dict[str, Any]],
+) -> None:
+    trade_count = int(metrics.get("number_of_trades") or len(round_trips) or len(execution_rows) // 2)
+    fill_count = len(execution_rows) if execution_rows else trade_count * 2
+    metrics.setdefault("profit_factor", 0.0)
+    metrics["number_of_trades"] = trade_count
+    metrics["order_count"] = fill_count
+    metrics["fill_count"] = fill_count
+    metrics["real_fill_count"] = fill_count
+    metrics["orders_filled_count"] = fill_count
+    metrics["fill_rate"] = 1.0 if fill_count else 0.0
+    metrics["total_fees"] = float(sum(_daily_winner_float(row.get("fee"), 0.0) for row in execution_rows))
+    metrics["fill_notional_usd"] = float(sum(_daily_winner_float(row.get("notional_usd", row.get("notional")), 0.0) for row in execution_rows))
 
 
 def _json_safe(value: Any) -> Any:
@@ -443,6 +838,22 @@ def _json_sanitize(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_json_sanitize(v) for v in value]
     return _json_safe(value)
+
+
+def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
+    return _json_sanitize({
+        "strategies": {
+            req.strategy: req.strategy_params or {},
+        },
+        "risk": req.risk_overrides or {},
+        "backtest": {
+            "fill_all_signals": bool(req.fill_all_signals),
+        },
+        "overrides": {
+            "strategy_params": req.strategy_params or {},
+            "risk_overrides": req.risk_overrides or {},
+        },
+    })
 
 
 def _daily_winner_return_series(records: list[dict[str, Any]]) -> pd.Series:
@@ -565,15 +976,21 @@ def _attach_daily_winner_validation(
     returns: pd.Series,
     mode: str | None,
 ) -> None:
-    if mode in {"wf", "both"}:
-        payload["walk_forward"] = _daily_winner_walk_forward(returns)
-    cpcv = _daily_winner_cpcv(returns)
-    if mode in {"cpcv", "both"} and cpcv:
-        payload["cpcv"] = cpcv
+    validation_mode = _daily_winner_validation_mode(mode)
+    validation = payload.setdefault("validation", {})
+    validation["validation_only"] = True
+    validation["validation_mode"] = validation_mode
+    validation["validation_requested"] = validation_mode
     metrics = payload.setdefault("metrics", {})
-    metrics.setdefault("psr", cpcv.get("psr") if cpcv else 0.0)
-    metrics.setdefault("dsr", cpcv.get("dsr") if cpcv else 0.0)
     metrics["validation_only"] = True
+    metrics["validation_requested"] = validation_mode
+    if validation_mode in {"wf", "both"}:
+        payload["walk_forward"] = _daily_winner_walk_forward(returns)
+    cpcv = _daily_winner_cpcv(returns) if validation_mode in {"cpcv", "both"} else None
+    if cpcv:
+        payload["cpcv"] = cpcv
+        metrics["psr"] = cpcv.get("psr")
+        metrics["dsr"] = cpcv.get("dsr")
 
 
 def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -606,55 +1023,413 @@ def _normalize_daily_winner_payload(payload: dict[str, Any]) -> dict[str, Any]:
         return_series = _daily_winner_return_series(equity)
 
     if not return_series.empty:
-        from okx_quant.analytics.dsr import psr
         from okx_quant.analytics.performance import sharpe
 
         metrics["sharpe"] = sharpe(return_series, periods=365)
-        metrics.setdefault("psr", psr(np.asarray(return_series, dtype=float)))
-        metrics.setdefault("dsr", 0.0)
-        if "walk_forward" not in normalized:
-            normalized["walk_forward"] = _daily_winner_walk_forward(return_series)
-        if "cpcv" not in normalized:
-            cpcv = _daily_winner_cpcv(return_series)
-            if cpcv:
-                normalized["cpcv"] = cpcv
-                metrics["psr"] = cpcv.get("psr", metrics.get("psr"))
-                metrics["dsr"] = cpcv.get("dsr", metrics.get("dsr"))
 
-    trade_count = int(metrics.get("number_of_trades") or len(normalized.get("trades") or []))
-    metrics.setdefault("profit_factor", 0.0)
-    metrics.setdefault("order_count", trade_count * 2)
-    metrics.setdefault("fill_count", trade_count * 2)
-    metrics.setdefault("real_fill_count", metrics.get("fill_count", trade_count * 2))
-    metrics.setdefault("orders_filled_count", trade_count * 2)
-    metrics.setdefault("fill_rate", 1.0 if trade_count else 0.0)
+    validation = dict(normalized.get("validation") or {})
+    inferred_validation = "none"
+    has_wf = bool(normalized.get("walk_forward") or normalized.get("walkForward"))
+    has_cpcv = bool(normalized.get("cpcv"))
+    if has_wf and has_cpcv:
+        inferred_validation = "both"
+    elif has_wf:
+        inferred_validation = "wf"
+    elif has_cpcv:
+        inferred_validation = "cpcv"
+    validation_mode = _daily_winner_validation_mode(
+        validation.get("validation_mode")
+        or validation.get("validation_requested")
+        or metrics.get("validation_requested")
+        or inferred_validation
+    )
+    validation["validation_only"] = True
+    validation["validation_mode"] = validation_mode
+    validation["validation_requested"] = validation_mode
+    normalized["validation"] = validation
+
+    cpcv = normalized.get("cpcv") if isinstance(normalized.get("cpcv"), dict) else None
+    if cpcv:
+        metrics["psr"] = cpcv.get("psr", metrics.get("psr"))
+        metrics["dsr"] = cpcv.get("dsr", metrics.get("dsr"))
+    elif validation_mode == "none":
+        metrics.pop("psr", None)
+        metrics.pop("dsr", None)
+
+    raw_trades = [dict(row) for row in normalized.get("trades") or [] if isinstance(row, dict)]
+    round_trips = [dict(row) for row in normalized.get("round_trips") or [] if isinstance(row, dict)]
+    if not round_trips and raw_trades and not any(_daily_winner_is_execution_row(row) for row in raw_trades):
+        round_trips = raw_trades
+    execution_rows = (
+        _daily_winner_execution_rows(round_trips, equity_records=equity)
+        if round_trips
+        else raw_trades
+    )
+    if round_trips:
+        for i, row in enumerate(round_trips):
+            row.setdefault("id", i)
+            row.setdefault("round_trip_id", i)
+            row.setdefault("strategy", "daily_winner")
+            row.setdefault("type", "validation_round_trip")
+    normalized["round_trips"] = round_trips
+    normalized["trades"] = execution_rows
+    _daily_winner_apply_execution_metrics(metrics, round_trips, execution_rows)
     metrics.setdefault("bankrupt", False)
-    metrics.setdefault("total_fees", 0.0)
-    metrics.setdefault("fill_notional_usd", 0.0)
     metrics.setdefault("funding_cashflow", 0.0)
     metrics.setdefault("funding_settlement_count", 0)
+    metrics.setdefault("funding_mode", "not_modeled")
     metrics["validation_only"] = True
+    metrics["validation_requested"] = validation_mode
     normalized["metrics"] = {key: _json_safe(value) for key, value in metrics.items()}
-
-    trades = []
-    for i, trade in enumerate(normalized.get("trades") or []):
-        row = dict(trade)
-        entry_ts = row.get("entry_ts") or row.get("datetime") or row.get("ts")
-        row.setdefault("id", i)
-        row.setdefault("datetime", entry_ts)
-        row.setdefault("ts", entry_ts)
-        row.setdefault("status", "FILLED")
-        row.setdefault("type", "validation_round_trip")
-        row.setdefault("price", row.get("entry_price", 0.0))
-        row.setdefault("qty", 0.0)
-        row.setdefault("notional", 0.0)
-        row.setdefault("fee", 0.0)
-        row.setdefault("pnl", row.get("net_return", 0.0))
-        row.setdefault("pnl_usd", None)
-        row.setdefault("note", "validation-only round trip; quantity/notional are not modeled")
-        trades.append(row)
-    normalized["trades"] = trades
     return normalized
+
+
+def _as_record_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(row) for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows = value.get("rows") or value.get("records") or value.get("data")
+        if isinstance(rows, list):
+            return [dict(row) for row in rows if isinstance(row, dict)]
+    return []
+
+
+def _first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is not None and value != "":
+            return value
+    return default
+
+
+def _visual_float(value: Any, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _visual_time_values(value: Any) -> tuple[int | None, str]:
+    if value is None or value == "":
+        return None, ""
+    try:
+        if isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
+            raw = float(value)
+            unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
+            ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
+        else:
+            ts = pd.to_datetime(value, utc=True, errors="coerce")
+    except Exception:
+        return None, str(value)
+    if pd.isna(ts):
+        return None, str(value)
+    return int(ts.timestamp() * 1000), ts.isoformat()
+
+
+def _result_visual_symbols(
+    result: dict[str, Any] | None,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    symbols: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, str) and value and _SAFE_SYMBOL_RE.match(value) and value not in symbols:
+            symbols.append(value)
+
+    if result:
+        for value in result.get("symbols") or []:
+            add(value)
+        metrics = result.get("metrics") or {}
+        for key in ("loaded_symbols", "universe", "skipped_symbols"):
+            for value in metrics.get(key) or []:
+                add(value)
+        for key in ("symbol", "benchmark", "perp_symbol", "spot_symbol"):
+            add(result.get(key))
+        validation = result.get("validation") or {}
+        for source in validation.get("daily_winner_data_sources") or []:
+            if isinstance(source, dict):
+                add(source.get("inst_id"))
+        for row in result.get("trades") or []:
+            if isinstance(row, dict):
+                add(_first_present(row, ["inst_id", "symbol"]))
+
+    for rows in (fills or [], trades or []):
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict):
+                add(_first_present(row, ["inst_id", "symbol"]))
+
+    return symbols
+
+
+def _downsample_records(records: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Return at most n evenly-spaced records, always including first and last."""
+    if n <= 0 or len(records) <= n:
+        return records
+    step = len(records) / n
+    indices = set(int(i * step) for i in range(n))
+    indices.add(len(records) - 1)
+    return [records[i] for i in sorted(indices)]
+
+
+def _downsample_records_by_symbol(records: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Downsample price records per instrument so multi-symbol charts remain visible."""
+    if n <= 0 or len(records) <= n:
+        return records
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for row in records:
+        symbol = str(row.get("inst_id") or "")
+        if symbol not in groups:
+            groups[symbol] = []
+            order.append(symbol)
+        groups[symbol].append(row)
+    if len(groups) <= 1:
+        return _downsample_records(records, n)
+
+    per_symbol = max(1, n)
+    sampled: list[dict[str, Any]] = []
+    for symbol in order:
+        sampled.extend(_downsample_records(groups[symbol], per_symbol))
+    sampled.sort(key=lambda row: (str(row.get("ts") or row.get("datetime") or ""), row.get("inst_id") or ""))
+    return sampled
+
+
+def _data_source_exchange(result: dict[str, Any] | None) -> str:
+    source = (result or {}).get("data_source") or {}
+    return _normalize_exchange(source.get("primary_exchange") if isinstance(source, dict) else None)
+
+
+def _dedupe_price_attempts(attempts: list[tuple[str, str | None]]) -> list[tuple[str, str | None]]:
+    deduped: list[tuple[str, str | None]] = []
+    for attempt in attempts:
+        if attempt not in deduped:
+            deduped.append(attempt)
+    return deduped
+
+
+def _preferred_price_series_attempts(
+    result: dict[str, Any],
+    inst_id: str,
+    default_attempts: list[tuple[str, str | None]],
+) -> list[tuple[str, str | None]]:
+    """Prefer candle backends that are known to have loaded this daily_winner run."""
+    validation = result.get("validation") or {}
+    sources = validation.get("daily_winner_data_sources") or []
+    preferred: list[tuple[str, str | None]] = []
+    for source in sources:
+        if not isinstance(source, dict) or source.get("inst_id") != inst_id:
+            continue
+        for attempt in source.get("attempts") or []:
+            if not isinstance(attempt, dict) or _visual_float(attempt.get("rows"), 0.0) <= 0:
+                continue
+            backend = str(attempt.get("backend") or "").lower()
+            if backend not in {"market", "postgres", "parquet"}:
+                continue
+            exchange = attempt.get("exchange") if backend == "market" else None
+            preferred.append((backend, str(exchange) if exchange else None))
+        break
+    return _dedupe_price_attempts(preferred + default_attempts) if preferred else default_attempts
+
+
+def _fallback_price_series_from_result(
+    result: dict[str, Any],
+    *,
+    symbol: str | None = None,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Rebuild chart OHLCV from the configured candle store when artifacts are absent."""
+    from backtesting import data_loader
+
+    selected = [symbol] if symbol else _result_visual_symbols(result, fills=fills, trades=trades)
+    if not selected:
+        return []
+
+    bar = result.get("bar") or "1H"
+    start = result.get("start") or result.get("start_date") or None
+    end = result.get("end") or result.get("end_date") or None
+    data_dir = str(result.get("data_dir") or "data/ticks")
+    backend, dsn = _resolve_candle_backend()
+    exchange = _data_source_exchange(result)
+
+    attempts: list[tuple[str, str | None]] = []
+    if dsn:
+        attempts.append(("market", exchange))
+        attempts.append(("postgres", None))
+    attempts.append((backend, exchange if backend == "market" else None))
+    attempts.append(("parquet", None))
+    deduped_attempts = _dedupe_price_attempts(attempts)
+
+    def load_symbol_rows(inst_id: str) -> list[dict[str, Any]]:
+        df = pd.DataFrame()
+        for load_backend, load_exchange in _preferred_price_series_attempts(result, inst_id, deduped_attempts):
+            try:
+                df = data_loader.load_candles(
+                    inst_id=inst_id,
+                    bar=bar,
+                    data_dir=data_dir,
+                    start=start,
+                    end=end,
+                    backend=load_backend,  # type: ignore[arg-type]
+                    dsn=dsn,
+                    exchange=load_exchange,
+                )
+            except Exception:
+                df = pd.DataFrame()
+            if not df.empty:
+                break
+        if df.empty:
+            return []
+        symbol_rows: list[dict[str, Any]] = []
+        for ts_value, candle in df.sort_index().iterrows():
+            ts_ms, dt = _visual_time_values(ts_value)
+            if ts_ms is None:
+                continue
+            symbol_rows.append({
+                "ts": ts_ms,
+                "datetime": dt,
+                "inst_id": inst_id,
+                "open": _visual_float(candle.get("open"), float("nan")),
+                "high": _visual_float(candle.get("high"), float("nan")),
+                "low": _visual_float(candle.get("low"), float("nan")),
+                "close": _visual_float(candle.get("close"), float("nan")),
+                "vol": _visual_float(candle.get("vol"), 0.0),
+            })
+        return symbol_rows
+
+    rows: list[dict[str, Any]] = []
+    for inst_id in selected:
+        rows.extend(load_symbol_rows(inst_id))
+    rows.sort(key=lambda row: (row.get("ts") or 0, row.get("inst_id") or ""))
+    return _json_sanitize(rows)
+
+
+def _fallback_execution_markers_from_records(
+    *,
+    fills: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+    result: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Build chart markers from fills, or from trade entry/exit rows for non-replay runs."""
+    strategies = (result or {}).get("strategies") or [(result or {}).get("strategy") or ""]
+    default_strategy = next((strat for strat in strategies if strat), "")
+
+    def marker(
+        *,
+        source: dict[str, Any],
+        ts_value: Any,
+        inst_id: str,
+        side: str,
+        price: Any,
+        qty: Any = None,
+        pnl: Any = None,
+        text_prefix: str | None = None,
+    ) -> dict[str, Any] | None:
+        ts_ms, dt = _visual_time_values(ts_value)
+        if ts_ms is None or not inst_id:
+            return None
+        side_l = str(side or "buy").lower()
+        px = _visual_float(price, 0.0)
+        qty_f = _visual_float(qty, 0.0)
+        fee = _visual_float(source.get("fee"), 0.0)
+        notional = _visual_float(_first_present(source, ["notional_usd", "notional"]), abs(px * qty_f) if qty_f else 0.0)
+        pnl_value = _visual_float(pnl, float("nan"))
+        marker_position = "belowBar" if side_l == "buy" else "aboveBar"
+        marker_shape = "arrowUp" if side_l == "buy" else "arrowDown"
+        label = text_prefix or side_l.upper()
+        pnl_text = f" | PnL: {pnl_value:.4g}" if math.isfinite(pnl_value) else ""
+        marker_text = f"{label} @ {px:,.6g}{pnl_text}"
+        return {
+            "ts": ts_ms,
+            "datetime": dt,
+            "inst_id": inst_id,
+            "strategy": source.get("strategy") or default_strategy,
+            "side": side_l,
+            "price": px,
+            "qty": qty_f,
+            "fee": fee,
+            "notional_usd": notional,
+            "net_realized_pnl": pnl_value if math.isfinite(pnl_value) else None,
+            "day_pnl": None,
+            "position_after": source.get("position_after", source.get("size_after")),
+            "marker_position": marker_position,
+            "marker_shape": marker_shape,
+            "marker_text": marker_text,
+        }
+
+    markers: list[dict[str, Any]] = []
+    for fill in fills or []:
+        if not isinstance(fill, dict):
+            continue
+        state = str(fill.get("state") or fill.get("status") or "filled").lower()
+        if state and state not in {"filled", "partially_filled", "fill"}:
+            continue
+        inst_id = str(_first_present(fill, ["inst_id", "symbol"], ""))
+        row = marker(
+            source=fill,
+            ts_value=_first_present(fill, ["ts", "datetime", "time"]),
+            inst_id=inst_id,
+            side=str(_first_present(fill, ["side"], "buy")),
+            price=_first_present(fill, ["fill_px", "price", "px", "avg_px"]),
+            qty=_first_present(fill, ["fill_sz", "qty", "sz"]),
+            pnl=_first_present(fill, ["net_realized_pnl", "pnl", "pnl_usd"]),
+        )
+        if row:
+            markers.append(row)
+    if markers:
+        return _json_sanitize(sorted(markers, key=lambda row: (row.get("ts") or 0, row.get("inst_id") or "")))
+
+    for trade in trades or []:
+        if not isinstance(trade, dict):
+            continue
+        inst_id = str(_first_present(trade, ["inst_id", "symbol"], ""))
+        phase = str(trade.get("execution_phase") or "").lower()
+        if phase in {"entry", "exit"} or str(trade.get("type") or "") == "validation_synthetic_fill":
+            side = str(_first_present(trade, ["side"], "buy")).lower()
+            row = marker(
+                source=trade,
+                ts_value=_first_present(trade, ["ts", "datetime", "time"]),
+                inst_id=inst_id,
+                side=side,
+                price=_first_present(trade, ["fill_px", "price", "px", "avg_px"]),
+                qty=_first_present(trade, ["fill_sz", "qty", "sz"]),
+                pnl=_first_present(trade, ["net_realized_pnl", "pnl_usd", "pnl"]),
+                text_prefix="EXIT" if phase == "exit" or side == "sell" else "ENTRY",
+            )
+            if row:
+                markers.append(row)
+            continue
+        entry_side = str(_first_present(trade, ["side", "entry_side"], "buy")).lower()
+        exit_side = "sell" if entry_side == "buy" else "buy"
+        entry = marker(
+            source=trade,
+            ts_value=_first_present(trade, ["entry_ts", "entry_time", "datetime", "ts"]),
+            inst_id=inst_id,
+            side=entry_side,
+            price=_first_present(trade, ["entry_price", "price"]),
+            qty=_first_present(trade, ["qty", "size", "entry_qty"]),
+            text_prefix="ENTRY",
+        )
+        if entry:
+            markers.append(entry)
+        exit_ts = _first_present(trade, ["exit_ts", "exit_time", "close_ts"])
+        exit_price = _first_present(trade, ["exit_price", "close_price"])
+        if exit_ts is not None and exit_ts != "" and exit_price is not None and exit_price != "":
+            exit_row = marker(
+                source=trade,
+                ts_value=exit_ts,
+                inst_id=inst_id,
+                side=exit_side,
+                price=exit_price,
+                qty=_first_present(trade, ["qty", "size", "exit_qty"]),
+                pnl=_first_present(trade, ["net_realized_pnl", "net_return", "pnl", "pnl_usd"]),
+                text_prefix="EXIT",
+            )
+            if exit_row:
+                markers.append(exit_row)
+    return _json_sanitize(sorted(markers, key=lambda row: (row.get("ts") or 0, row.get("inst_id") or "")))
 
 
 def _run_backtest_job(
@@ -701,11 +1476,16 @@ def _run_backtest_job(
             cmd.extend(["--min-apr-threshold", str(req.min_apr_threshold)])
         if req.strategy_params:
             cmd.extend(["--strategy-params", json.dumps(req.strategy_params)])
+        if req.risk_overrides:
+            cmd.extend(["--risk-overrides", json.dumps(req.risk_overrides)])
+        if req.fill_all_signals:
+            cmd.append("--fill-all-signals")
+        cmd.extend(["--exchange", _normalize_exchange(req.exchange)])
 
         _run_jobs[job_id].update({
             "status": "running",
             "progress": 10,
-            "message": "Running replay backtest (loading data…)",
+            "message": "Starting replay backtest process",
             "command": " ".join(cmd),
         })
         env = os.environ.copy()
@@ -736,8 +1516,11 @@ def _run_backtest_job(
                 stripped = line.strip()
                 if stripped.startswith("PROGRESS:"):
                     try:
-                        pct = int(stripped.split(":")[1])
+                        parts = stripped.split(":", 2)
+                        pct = int(parts[1])
                         _run_jobs[job_id]["progress"] = pct
+                        if len(parts) > 2 and parts[2].strip():
+                            _run_jobs[job_id]["message"] = parts[2].strip()
                     except (ValueError, IndexError):
                         pass
         finally:
@@ -753,17 +1536,183 @@ def _run_backtest_job(
                 "output": output[-4000:],
             })
             return
+        warning_fields: dict[str, Any] = {}
+        result_path = results_dir / run_id / "result.json"
+        if result_path.exists():
+            try:
+                warning_fields = _attach_idealized_fill_warning(
+                    {},
+                    json.loads(result_path.read_text(encoding="utf-8")),
+                )
+            except Exception:
+                warning_fields = {}
         _run_jobs[job_id].update({
             "status": "done",
             "progress": 100,
             "message": "Backtest complete",
             "output": output[-4000:],
+            **warning_fields,
         })
     except Exception as exc:
         _run_jobs[job_id].update({
             "status": "error",
             "progress": 100,
             "message": str(exc),
+        })
+
+
+def _run_parameter_sweep_job(
+    job_id: str,
+    req: ParameterSweepRequest,
+    sweep_id: str,
+    results_dir: Path,
+) -> None:
+    try:
+        symbols = [normalize_swap_symbol(symbol) for symbol in req.symbols]
+        data_dir = str(_resolve_data_dir(req.data_dir))
+
+        def _on_progress(update: dict[str, Any]) -> None:
+            _sweep_jobs[job_id].update({
+                "status": "running",
+                "updated_at": _utc_now_iso(),
+                **update,
+            })
+
+        summary = run_parameter_sweep(
+            strategy=req.strategy,
+            parameter_grid=req.parameter_grid,
+            symbols=symbols,
+            bar=req.bar,
+            periods=req.periods,
+            start=req.start,
+            end=req.end,
+            data_dir=data_dir,
+            output_dir=results_dir / "parameter_sweeps",
+            sweep_id=sweep_id,
+            initial_equity=req.initial_equity,
+            exchange=_normalize_exchange(req.exchange),
+            max_combinations=req.max_combinations,
+            liquidate_on_end=req.liquidate_on_end,
+            risk_overrides=req.risk_overrides,
+            fill_all_signals=req.fill_all_signals,
+            run_finalists=req.run_finalists,
+            finalist_top_pct=req.finalist_top_pct,
+            max_finalists=req.max_finalists,
+            finalist_validation=req.finalist_validation,
+            full_output_dir=results_dir,
+            progress_callback=_on_progress,
+        )
+        warning_fields = _attach_idealized_fill_warning({}, summary)
+        if req.fill_all_signals and not warning_fields:
+            warning_fields = _attach_idealized_fill_warning({}, {"idealized_fill": True})
+        _sweep_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Parameter sweep complete",
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+            "sweep_id": summary["sweep_id"],
+            "artifacts": summary.get("artifacts", {}),
+            "top_results": summary.get("top_results", [])[:10],
+            "completed_count": summary.get("completed_count", 0),
+            "failed_count": summary.get("failed_count", 0),
+            "skipped_count": summary.get("skipped_count", 0),
+            "finalist_results": summary.get("finalist_results", []),
+            "elapsed_seconds": summary.get("elapsed_seconds"),
+            **warning_fields,
+        })
+    except Exception as exc:
+        _sweep_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+
+
+def _run_differential_validation_job(
+    job_id: str,
+    run_id: str,
+    run_dir: Path,
+    engines: list[str],
+    validation_id: str | None,
+) -> None:
+    try:
+        from backtesting.differential_validation import run_differential_validation
+
+        _validation_jobs[job_id].update({
+            "status": "running",
+            "progress": 20,
+            "message": "Running differential validation",
+            "updated_at": _utc_now_iso(),
+        })
+        summary = run_differential_validation(
+            run_dir=run_dir,
+            engines=engines,
+            validation_id=validation_id,
+        )
+        _validation_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": f"Differential validation {summary.get('status', 'complete')}",
+            "validation_id": summary.get("validation_id"),
+            "summary": summary,
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+    except Exception as exc:
+        _validation_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+
+
+def _run_strategy_differential_validation_job(
+    job_id: str,
+    results_dir: Path,
+    strategy: str,
+    fixture_run_id: str | None,
+    engines: list[str],
+    validation_id: str | None,
+) -> None:
+    try:
+        from backtesting.differential_validation import run_strategy_differential_validation
+
+        _validation_jobs[job_id].update({
+            "status": "running",
+            "progress": 20,
+            "message": "Running strategy validation",
+            "updated_at": _utc_now_iso(),
+        })
+        summary = run_strategy_differential_validation(
+            results_dir=results_dir,
+            strategy=strategy,
+            engines=engines,
+            fixture_run_id=fixture_run_id,
+            validation_id=validation_id,
+        )
+        _validation_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": f"Strategy validation {summary.get('status', 'complete')}",
+            "validation_id": summary.get("validation_id"),
+            "strategy": summary.get("strategy"),
+            "fixture_run_id": summary.get("fixture_run_id"),
+            "summary": summary,
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+    except Exception as exc:
+        _validation_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
         })
 
 
@@ -791,6 +1740,61 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
         df = pd.read_csv(path)
         return json.loads(df.to_json(orient="records", force_ascii=False))
+
+    def _metadata_dict(value: Any) -> dict:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    def _parameters_from_config(run_dir: Path, data: dict) -> dict:
+        params = data.get("parameters")
+        if isinstance(params, dict) and params:
+            return params
+        config_path = run_dir / "config.json"
+        if not config_path.exists():
+            return {}
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        strategy_names = (data.get("strategies") or [data.get("strategy") or ""])
+        strategies_cfg = config.get("strategies") or {}
+        risk_cfg = config.get("risk") or {}
+        backtest_cfg = config.get("backtest") if isinstance(config.get("backtest"), dict) else {}
+        cli_args = config.get("cli_args") or {}
+        return {
+            "strategies": {
+                name: strategies_cfg.get(name)
+                for name in strategy_names
+                if name and isinstance(strategies_cfg.get(name), dict)
+            },
+            "risk": {
+                key: risk_cfg.get(key)
+                for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
+                if key in risk_cfg
+            },
+            "backtest": {
+                key: backtest_cfg.get(key)
+                for key in (
+                    "order_latency_ms",
+                    "cancel_latency_ms",
+                    "queue_fill_fraction",
+                    "liquidate_on_end",
+                    "fill_all_signals",
+                )
+                if key in backtest_cfg
+            },
+            "overrides": {
+                "strategy_params": cli_args.get("strategy_params") or {},
+                "risk_overrides": cli_args.get("risk_overrides") or {},
+            },
+        }
 
     def _downsample_records(records: list[dict], n: int) -> list[dict]:
         """Return at most n evenly-spaced records, always including first and last."""
@@ -828,6 +1832,31 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         except Exception:
             return None
 
+    async def _read_result_payload(run_id: str) -> dict[str, Any]:
+        payload = await _read_db_artifact(run_id, "result")
+        if payload is not None:
+            result_payload = _normalize_daily_winner_payload(payload)
+        else:
+            result_payload = _normalize_daily_winner_payload(_read_json(_run_dir(run_id) / "result.json"))
+        if not result_payload.get("parameters"):
+            run_dir = results_dir / Path(run_id).name
+            if run_dir.is_dir():
+                result_payload["parameters"] = _parameters_from_config(run_dir, result_payload)
+        return _attach_idealized_fill_warning(result_payload)
+
+    async def _read_records_artifact(run_id: str, artifact_type: str, filename: str) -> list[dict[str, Any]]:
+        payload = await _read_db_artifact(run_id, artifact_type)
+        records = _as_record_list(payload)
+        if records:
+            return records
+        d = results_dir / Path(run_id).name
+        if not d.is_dir():
+            return []
+        path = d / filename
+        if not path.exists():
+            return []
+        return _as_record_list(_read_csv(path))
+
     # ------------------------------------------------------------------
     # List all runs
     # ------------------------------------------------------------------
@@ -851,7 +1880,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     if not (run_dir / "returns.csv").exists() and not data.get("returns"):
                         continue
                     run_id = data.get("run_id", run_dir.name)
-                    merged[run_id] = {
+                    merged[run_id] = _attach_idealized_fill_warning({
                         "run_id": run_id,
                         "created_at": data.get("created_at"),
                         "strategies": data.get("strategies", [data.get("strategy", "")]),
@@ -864,7 +1893,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         "max_drawdown": metrics.get("max_drawdown"),
                         "order_count": metrics.get("order_count"),
                         "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
-                    }
+                        "parameters": _parameters_from_config(run_dir, data),
+                    }, data)
                 except Exception:
                     pass
 
@@ -910,7 +1940,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     item.pop("sort_created_at", None)
                     item["start"] = item.get("start_date")
                     item["end"] = item.get("end_date")
-                    merged[item["run_id"]] = item
+                    metadata = _metadata_dict(item.get("metadata"))
+                    existing = merged.get(item["run_id"], {})
+                    item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
+                    merged[item["run_id"]] = _attach_idealized_fill_warning(item, metadata)
         except Exception:
             pass
 
@@ -937,6 +1970,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "ma_crossover",
             "ema_crossover",
             "macd_crossover",
+            "fear_greed_sentiment",
+            "cme_gap_fill",
         }
         validate_allowed = {None, "wf", "cpcv", "both"}
         _validate_backtest_request(req)
@@ -978,6 +2013,59 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         """Return all in-memory job states so the frontend can reconnect after page refresh."""
         return list(_run_jobs.values())
 
+    @router.post("/sweep")
+    async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
+        _validate_parameter_sweep_request(req)
+        try:
+            combinations, skipped = expand_parameter_grid(
+                req.strategy,
+                req.parameter_grid,
+                max_combinations=req.max_combinations,
+            )
+        except ParameterSweepError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        symbols = [normalize_swap_symbol(symbol) for symbol in req.symbols]
+        finalist_count = 0
+        if req.run_finalists and req.max_finalists > 0:
+            finalist_count = min(req.max_finalists, max(1, math.ceil(len(combinations) * req.finalist_top_pct)))
+        estimate = estimate_sweep_runtime(
+            strategy=req.strategy,
+            bar=req.bar,
+            start=req.start,
+            end=req.end,
+            symbols=symbols,
+            combinations=len(combinations),
+            finalist_count=finalist_count,
+            finalist_validation=req.finalist_validation,
+        )
+        job_id = str(uuid.uuid4())[:8]
+        sweep_id = req.sweep_id or f"ui_sweep_{req.strategy}_{job_id}"
+        _sweep_jobs[job_id] = {
+            "job_id": job_id,
+            "sweep_id": sweep_id,
+            "status": "running",
+            "progress": 0,
+            "message": "Parameter sweep queued",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+            "combination_count": len(combinations),
+            "skipped_count": len(skipped),
+            "finalist_count": finalist_count,
+            "estimate": estimate,
+        }
+        bg.add_task(_run_parameter_sweep_job, job_id, req, sweep_id, results_dir)
+        return _sweep_jobs[job_id]
+
+    @router.get("/sweep/status/{job_id}")
+    async def get_parameter_sweep_status(job_id: str):
+        if job_id not in _sweep_jobs:
+            raise HTTPException(status_code=404, detail="Sweep job not found")
+        return _sweep_jobs[job_id]
+
+    @router.get("/sweep/jobs")
+    async def list_parameter_sweep_jobs():
+        return list(_sweep_jobs.values())
+
     @router.delete("/{run_id}")
     async def delete_run(run_id: str):
         d = results_dir / Path(run_id).name
@@ -997,17 +2085,165 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         return {"deleted": run_id}
 
     # ------------------------------------------------------------------
+    # Differential validation
+    # ------------------------------------------------------------------
+
+    @router.get("/strategy-validation/fixtures")
+    async def list_strategy_validation_fixtures(strategy: str | None = None):
+        from backtesting.differential_validation import list_strategy_validation_fixtures
+
+        return list_strategy_validation_fixtures(results_dir, strategy)
+
+    @router.post("/strategy-validation/run")
+    async def run_strategy_differential_validation_endpoint(
+        req: StrategyDifferentialValidationRequest,
+        bg: BackgroundTasks,
+    ):
+        from backtesting.differential_validation import ENGINE_NAMES
+
+        strategy = Path(req.strategy).name
+        if not strategy:
+            raise HTTPException(status_code=400, detail="strategy is required")
+        engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
+        if not engines:
+            engines = ["vectorbt", "backtrader", "nautilus"]
+        unknown = sorted(set(engines) - ENGINE_NAMES)
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unsupported engine(s): {', '.join(unknown)}")
+        job_id = f"stratval_{uuid.uuid4().hex[:10]}"
+        _validation_jobs[job_id] = {
+            "job_id": job_id,
+            "strategy": strategy,
+            "fixture_run_id": req.fixture_run_id,
+            "validation_id": req.validation_id,
+            "engines": engines,
+            "status": "queued",
+            "progress": 0,
+            "message": "Queued strategy validation",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        bg.add_task(
+            _run_strategy_differential_validation_job,
+            job_id,
+            results_dir,
+            strategy,
+            req.fixture_run_id,
+            engines,
+            req.validation_id,
+        )
+        return _validation_jobs[job_id]
+
+    @router.get("/strategy-validation")
+    async def list_strategy_validations(strategy: str | None = None):
+        from backtesting.differential_validation import list_strategy_validation_results
+
+        return list_strategy_validation_results(results_dir, strategy)
+
+    @router.get("/strategy-validation/{strategy}")
+    async def list_strategy_validations_for_strategy(strategy: str):
+        from backtesting.differential_validation import list_strategy_validation_results
+
+        return list_strategy_validation_results(results_dir, strategy)
+
+    @router.get("/strategy-validation/{strategy}/{validation_id}")
+    async def get_strategy_validation(strategy: str, validation_id: str):
+        from backtesting.differential_validation import read_strategy_validation_result
+
+        try:
+            return read_strategy_validation_result(results_dir, strategy, validation_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Strategy validation result not found")
+
+    @router.get("/strategy-validation/{strategy}/{validation_id}/artifact/{artifact_name}")
+    async def get_strategy_validation_artifact(
+        strategy: str,
+        validation_id: str,
+        artifact_name: str,
+    ):
+        from backtesting.differential_validation import read_strategy_validation_artifact
+
+        try:
+            return read_strategy_validation_artifact(results_dir, strategy, validation_id, artifact_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Strategy validation artifact not found")
+
+    @router.post("/{run_id}/differential-validation/run")
+    async def run_differential_validation_endpoint(
+        run_id: str,
+        req: DifferentialValidationRequest,
+        bg: BackgroundTasks,
+    ):
+        from backtesting.differential_validation import ENGINE_NAMES
+
+        d = _run_dir(run_id)
+        engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
+        if not engines:
+            engines = ["vectorbt", "backtrader", "nautilus"]
+        unknown = sorted(set(engines) - ENGINE_NAMES)
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unsupported engine(s): {', '.join(unknown)}")
+        job_id = f"diffval_{uuid.uuid4().hex[:10]}"
+        _validation_jobs[job_id] = {
+            "job_id": job_id,
+            "run_id": run_id,
+            "validation_id": req.validation_id,
+            "engines": engines,
+            "status": "queued",
+            "progress": 0,
+            "message": "Queued differential validation",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        bg.add_task(_run_differential_validation_job, job_id, run_id, d, engines, req.validation_id)
+        return _validation_jobs[job_id]
+
+    @router.get("/differential-validation/jobs")
+    async def list_differential_validation_jobs():
+        return list(_validation_jobs.values())
+
+    @router.get("/differential-validation/status/{job_id}")
+    async def get_differential_validation_status(job_id: str):
+        if job_id not in _validation_jobs:
+            raise HTTPException(status_code=404, detail="Differential validation job not found")
+        return _validation_jobs[job_id]
+
+    @router.get("/{run_id}/differential-validation")
+    async def list_differential_validations(run_id: str):
+        from backtesting.differential_validation import list_validation_results
+
+        return list_validation_results(_run_dir(run_id))
+
+    @router.get("/{run_id}/differential-validation/{validation_id}")
+    async def get_differential_validation(run_id: str, validation_id: str):
+        from backtesting.differential_validation import read_validation_result
+
+        try:
+            return read_validation_result(_run_dir(run_id), validation_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Differential validation result not found")
+
+    @router.get("/{run_id}/differential-validation/{validation_id}/artifact/{artifact_name}")
+    async def get_differential_validation_artifact(
+        run_id: str,
+        validation_id: str,
+        artifact_name: str,
+    ):
+        from backtesting.differential_validation import read_validation_artifact
+
+        try:
+            return read_validation_artifact(_run_dir(run_id), validation_id, artifact_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Differential validation artifact not found")
+
+    # ------------------------------------------------------------------
     # Single run — full result.json
     # ------------------------------------------------------------------
 
     @router.get("/{run_id}")
     async def get_run(run_id: str):
         """Return the full result.json for a run."""
-        payload = await _read_db_artifact(run_id, "result")
-        if payload is not None:
-            return _normalize_daily_winner_payload(payload)
-        d = _run_dir(run_id)
-        return _normalize_daily_winner_payload(_read_json(d / "result.json"))
+        return await _read_result_payload(run_id)
 
     # ------------------------------------------------------------------
     # Metrics
@@ -1196,10 +2432,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/execution-markers")
     async def get_execution_markers(run_id: str):
-        payload = await _read_db_artifact(run_id, "execution_markers")
-        if payload is not None:
-            return payload
-        return _read_csv(_run_dir(run_id) / "execution_markers.csv")
+        records = await _read_records_artifact(run_id, "execution_markers", "execution_markers.csv")
+        if records:
+            return records
+        result = await _read_result_payload(run_id)
+        fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+        trades = await _read_records_artifact(run_id, "trades", "trades.csv")
+        if not trades:
+            trades = _as_record_list(result.get("trades"))
+        return _fallback_execution_markers_from_records(
+            fills=fills,
+            trades=trades,
+            result=result,
+        )
 
     @router.get("/{run_id}/price-series")
     async def get_price_series(
@@ -1207,11 +2452,86 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         symbol: str | None = Query(default=None),
         n: int = Query(default=0, ge=0),
     ):
-        payload = await _read_db_artifact(run_id, "price_series")
+        if symbol:
+            if not _SAFE_SYMBOL_RE.match(symbol):
+                raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+        clean_run_id = Path(run_id).name
+        records = await _read_records_artifact(run_id, "price_series", "price_series.csv")
+        result: dict[str, Any] | None = None
+        fills: list[dict[str, Any]] = []
+        trades: list[dict[str, Any]] = []
+
+        async def _load_visual_context() -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+            nonlocal result, fills, trades
+            if result is None:
+                result = await _read_result_payload(run_id)
+            if not fills:
+                fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+            if not trades:
+                trades = await _read_records_artifact(run_id, "trades", "trades.csv")
+                if not trades:
+                    trades = _as_record_list(result.get("trades"))
+            return result, fills, trades
+
+        if symbol:
+            records = [row for row in records if row.get("inst_id") == symbol]
+            if not records:
+                cache_key = (clean_run_id, symbol)
+                cached = _get_price_series_cache(cache_key)
+                if cached is not None:
+                    records = cached
+                else:
+                    result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+                    records = _fallback_price_series_from_result(
+                        result_ctx,
+                        symbol=symbol,
+                        fills=fills_ctx,
+                        trades=trades_ctx,
+                    )
+                    _set_price_series_cache(cache_key, records)
+            return _downsample_records(records, n)
+
+        if records:
+            result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+            expected_symbols = _result_visual_symbols(result_ctx, fills=fills_ctx, trades=trades_ctx)
+            available_symbols = {str(row.get("inst_id") or "") for row in records}
+            missing_symbols = [inst_id for inst_id in expected_symbols if inst_id not in available_symbols]
+            if missing_symbols:
+                fallback_rows = _fallback_price_series_from_result(
+                    result_ctx,
+                    fills=fills_ctx,
+                    trades=trades_ctx,
+                )
+                records.extend(row for row in fallback_rows if row.get("inst_id") in missing_symbols)
+        else:
+            cache_key = (clean_run_id, "*")
+            cached = _get_price_series_cache(cache_key)
+            if cached is not None:
+                records = cached
+            else:
+                result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
+                records = _fallback_price_series_from_result(
+                    result_ctx,
+                    fills=fills_ctx,
+                    trades=trades_ctx,
+                )
+                _set_price_series_cache(cache_key, records)
+        return _downsample_records_by_symbol(records, n)
+
+    @router.get("/{run_id}/indicators")
+    async def get_indicators(
+        run_id: str,
+        symbol: str | None = Query(default=None),
+        n: int = Query(default=0, ge=0),
+    ):
+        payload = await _read_db_artifact(run_id, "indicator_series")
         if payload is not None:
             records = payload
         else:
-            records = _read_csv(_run_dir(run_id) / "price_series.csv")
+            indicator_path = _run_dir(run_id) / "indicator_series.csv"
+            if not indicator_path.exists():
+                return []
+            records = _read_csv(indicator_path)
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
@@ -1285,3 +2605,35 @@ def _validate_backtest_request(req: RunBacktestRequest) -> None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param: {key}")
         if not isinstance(value, (int, float, str, bool)) and value is not None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param value for: {key}")
+    try:
+        req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validate_parameter_sweep_request(req: ParameterSweepRequest) -> None:
+    _resolve_data_dir(req.data_dir)
+    if req.strategy not in {"ma_crossover", "ema_crossover", "macd_crossover"}:
+        raise HTTPException(status_code=400, detail="Parameter sweep supports MA, EMA, and MACD only")
+    if req.finalist_validation not in {None, "none", "wf", "cpcv", "both"}:
+        raise HTTPException(status_code=400, detail="Unsupported finalist validation mode")
+    if req.start and not _SAFE_DATE_RE.match(req.start):
+        raise HTTPException(status_code=400, detail="Invalid start date format")
+    if req.end and not _SAFE_DATE_RE.match(req.end):
+        raise HTTPException(status_code=400, detail="Invalid end date format")
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="Parameter sweep requires at least one symbol")
+    if len(req.symbols) > 50:
+        raise HTTPException(status_code=400, detail="Symbol list too large (max 50 symbols)")
+    for sym in req.symbols:
+        if not _SAFE_SYMBOL_RE.match(sym):
+            raise HTTPException(status_code=400, detail=f"Invalid symbol: {sym}")
+    for key, value in req.parameter_grid.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(key)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter: {key}")
+        if not isinstance(value, (int, float, str, list, tuple)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter value for: {key}")
+    try:
+        req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

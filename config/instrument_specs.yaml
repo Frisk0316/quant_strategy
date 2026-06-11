@@ -1,0 +1,79 @@
+# OKX SWAP instrument specifications (ctVal in base currency per contract).
+# Source: OKX public /api/v5/public/instruments endpoint, instType=SWAP.
+# Update by running `python scripts/refresh_instrument_specs.py` (or by hand).
+#
+# Used by backtesting.replay.ReplayBacktestEngine._default_instrument_specs as
+# a fallback when no DB-backed contract_value is available for a symbol.
+# Backtests fail loudly for any swap symbol missing from BOTH the DB and this
+# file, so add new symbols here before introducing them into a strategy.
+swaps:
+  BTC-USDT-SWAP:
+    ct_val: 0.01
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.1
+  ETH-USDT-SWAP:
+    ct_val: 0.01
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.01
+  SOL-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.001
+  BNB-USDT-SWAP:
+    ct_val: 0.1
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.01
+  XRP-USDT-SWAP:
+    ct_val: 100.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.0001
+  ADA-USDT-SWAP:
+    ct_val: 100.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.00001
+  DOGE-USDT-SWAP:
+    ct_val: 1000.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.00001
+  LINK-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.001
+  AVAX-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.001
+  DOT-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.001
+  LTC-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.01
+  BCH-USDT-SWAP:
+    ct_val: 0.1
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.01
+  ATOM-USDT-SWAP:
+    ct_val: 1.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.001
+  SHIB-USDT-SWAP:
+    ct_val: 1000000.0
+    min_size: 0.01
+    lot_size: 0.01
+    tick_size: 0.0000000001

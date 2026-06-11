@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -103,8 +105,58 @@ def test_risk_guard_blocks_are_visible_in_replay_result(minimal_cfg, btc_parquet
     )
 
     assert result.rejected_log
-    assert result.rejected_log[0]["reason"] == "risk_guard_block"
+    assert result.rejected_log[0]["reason"] == "stale_quote"
     assert result.risk_event_log
+
+
+def test_replay_records_allowed_reduce_only_bypass_event(minimal_cfg, tmp_path: Path):
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies.ma_crossover.fast_window = 2
+    cfg.strategies.ma_crossover.slow_window = 3
+    cfg.strategies.ma_crossover.symbols = ["BTC-USDT-SWAP"]
+    cfg.system.symbols = ["BTC-USDT-SWAP"]
+    cfg.risk.max_order_notional_usd = 50_000.0
+    cfg.risk.max_pos_pct_equity = 0.80
+    cfg.backtest.order_latency_ms = 0
+    cfg.backtest.cancel_latency_ms = 0
+    cfg.backtest.queue_fill_fraction = 1.0
+
+    data_dir = tmp_path / "ticks"
+    inst_dir = data_dir / "BTC_USDT_SWAP"
+    inst_dir.mkdir(parents=True)
+    prices = [10_000, 9_000, 8_000, 20_000, 19_000, 50_000, 49_000, 48_000, 47_000]
+    ts = pd.date_range("2024-01-01", periods=len(prices), freq="1h", tz="UTC")
+    pd.DataFrame({
+        "ts": ts,
+        "open": prices,
+        "high": [price * 1.01 for price in prices],
+        "low": [price * 0.99 for price in prices],
+        "close": prices,
+        "vol": [100_000] * len(prices),
+    }).to_parquet(inst_dir / "candles_1H.parquet", index=False)
+
+    result = run_replay_backtest(
+        strategy_names=["ma_crossover"],
+        cfg=cfg,
+        data_dir=str(data_dir),
+        bar="1H",
+    )
+
+    risk_events = (
+        result.risk_event_log.to_dict("records")
+        if hasattr(result.risk_event_log, "to_dict")
+        else list(result.risk_event_log)
+    )
+    assert risk_events
+    reasons = {event["reason"] for event in risk_events}
+    assert "allowed_reduce_only_bypass:position_limit" in reasons
+    event = next(
+        item for item in risk_events
+        if item["reason"] == "allowed_reduce_only_bypass:position_limit"
+    )
+    assert event["strategy"] == "ma_crossover"
+    assert event["side"] == "sell"
+    assert event["metadata"]["reduce_only"] is True
 
 
 def test_replay_default_specs_reject_non_btc_eth_pairs_without_metadata(minimal_cfg):
@@ -112,10 +164,10 @@ def test_replay_default_specs_reject_non_btc_eth_pairs_without_metadata(minimal_
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
-            "symbol_y": "SOL-USDT-SWAP",
-            "symbol_x": "ADA-USDT-SWAP",
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
         }
     )
 
-    with pytest.raises(ValueError, match="Missing ctVal for non-BTC/ETH swap"):
+    with pytest.raises(ValueError, match="Missing ctVal for swap"):
         ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])

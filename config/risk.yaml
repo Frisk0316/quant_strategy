@@ -34,3 +34,5 @@ backtest:
   order_latency_ms: 0
   cancel_latency_ms: 200
   queue_fill_fraction: 0.20
+  # Research-only idealized mode: bypass execution/capacity caps and fill every submitted signal order.
+  fill_all_signals: false

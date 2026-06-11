@@ -14,7 +14,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from backtesting.artifacts import save_backtest_artifacts
+from backtesting.artifacts import _build_indicator_series_df, save_backtest_artifacts
 from backtesting.cpcv import CPCV
 from backtesting.data_loader import compute_returns, load_funding
 from backtesting.replay import (
@@ -30,6 +30,7 @@ from backtesting.replay import (
     run_replay_backtest,
     run_replay_validations,
 )
+from backtesting.research_controls import FILL_ALL_MAX_ORDER_NOTIONAL_USD, FILL_ALL_MAX_POS_PCT_EQUITY
 from backtesting.replay_validation import (
     ASMMReplayParamGrid,
     evaluate_replay_asmm_cpcv,
@@ -103,16 +104,20 @@ def test_strategy_config_accepts_legacy_max_half_life_key():
 
 
 def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
+    """Symbols not in the bundled registry (config/instrument_specs.yaml) and
+    not BTC/ETH still raise — preserves the safety guard against silent ct_val
+    fallback for unfamiliar contracts.
+    """
     cfg = minimal_cfg.model_copy(deep=True)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
-            "symbol_y": "SOL-USDT-SWAP",
-            "symbol_x": "ADA-USDT-SWAP",
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
         }
     )
 
-    with pytest.raises(ValueError, match="Missing ctVal for non-BTC/ETH swap"):
+    with pytest.raises(ValueError, match="Missing ctVal for swap"):
         ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
 
 
@@ -132,12 +137,65 @@ def test_replay_default_specs_allow_btc_eth_swaps(minimal_cfg):
     assert engine._instrument_specs["BTC-USDT-SWAP"]["ctVal"] == pytest.approx(0.01)
 
 
+def test_replay_default_specs_resolve_registry_swaps(minimal_cfg):
+    """SOL/ADA are in config/instrument_specs.yaml so they should resolve
+    without falling back to BTC/ETH defaults or raising.
+    """
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "SOL-USDT-SWAP",
+            "symbol_x": "ADA-USDT-SWAP",
+        }
+    )
+
+    engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"])
+
+    assert engine._instrument_specs["SOL-USDT-SWAP"]["ctVal"] == pytest.approx(1.0)
+    assert engine._instrument_specs["ADA-USDT-SWAP"]["ctVal"] == pytest.approx(100.0)
+    # Provenance tracked per symbol. SOL/ADA come from the YAML registry, BTC/ETH would
+    # come from hardcoded fallback. Either way they are non-authoritative for live gating.
+    sources = engine._ct_val_sources
+    assert sources["SOL-USDT-SWAP"]["source"] == "registry"
+    assert sources["ADA-USDT-SWAP"]["source"] == "registry"
+    # Spot pairs are always exact unit ctVal — authoritative.
+    if cfg.system.spot_symbols:
+        spot_sym = next(iter(cfg.system.spot_symbols))
+        assert sources[spot_sym]["source"] == "spot_unit"
+
+
+def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
+    """Caller-supplied instrument_specs should be labeled as `config_override`
+    so the live-deployment gate treats them as authoritative.
+    """
+    cfg = minimal_cfg.model_copy(deep=True)
+    cfg.strategies = StrategiesConfig(
+        pairs_trading={
+            "enabled": True,
+            "symbol_y": "FOO-USDT-SWAP",
+            "symbol_x": "BAR-USDT-SWAP",
+        }
+    )
+    override = {
+        "FOO-USDT-SWAP": {"ctVal": 0.5, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+        "BAR-USDT-SWAP": {"ctVal": 2.0, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+    }
+    engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"], instrument_specs=override)
+
+    assert engine._ct_val_sources["FOO-USDT-SWAP"]["source"] == "config_override"
+    assert engine._ct_val_sources["FOO-USDT-SWAP"]["value"] == pytest.approx(0.5)
+    assert engine._ct_val_sources["BAR-USDT-SWAP"]["source"] == "config_override"
+    assert engine._ct_val_sources["BAR-USDT-SWAP"]["value"] == pytest.approx(2.0)
+
+
 def test_load_config_reads_backtest_execution_defaults():
     cfg = load_config(require_secrets=False)
 
     assert cfg.backtest.order_latency_ms == 0
     assert cfg.backtest.cancel_latency_ms == 200
     assert cfg.backtest.queue_fill_fraction == pytest.approx(0.20)
+    assert cfg.backtest.fill_all_signals is False
 
 
 def test_walk_forward_split_has_no_boundary_overlap():
@@ -340,6 +398,7 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
             trade_log=pd.DataFrame(),
         )
 
+    progress_updates = []
     validation = run_replay_validations(
         strategy_names=["pairs_trading"],
         cfg=cfg,
@@ -351,6 +410,7 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
         cpcv_embargo_pct=0.0,
         cpcv_purge_size=0,
         runner=runner,
+        progress_callback=progress_updates.append,
     )
 
     assert validation["walk_forward"]
@@ -358,6 +418,8 @@ def test_run_replay_validations_serializes_wf_and_cpcv(monkeypatch):
     assert validation["cpcv"]["n_combinations"] == 3
     assert len(validation["cpcv"]["combos"]) == 3
     assert "dsr" in validation["cpcv"]
+    assert any(update["message"].startswith("Walk-Forward window") for update in progress_updates)
+    assert any(update["message"].startswith("CPCV combination") for update in progress_updates)
 
 
 def _gate_result(metrics: dict) -> ReplayBacktestResult:
@@ -510,6 +572,194 @@ def test_save_backtest_artifacts_writes_validation_to_result_json(tmp_path, monk
     assert payload["walk_forward"][0]["oos_sharpe"] == pytest.approx(1.23)
     assert payload["cpcv"]["dsr"] == pytest.approx(0.97)
     assert payload["validation"]["validation_frame_rows"] == 2
+
+
+def test_save_backtest_artifacts_mirrors_fill_all_signals_to_idealized_fill(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKTEST_ARTIFACT_MODE", "files")
+    cfg = AppConfig(
+        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
+        strategies=StrategiesConfig(),
+        risk=RiskConfig(),
+        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
+    )
+    result = ReplayBacktestResult(
+        returns=pd.Series([0.0, 0.001], index=[1_704_067_200_000, 1_704_070_800_000]),
+        equity_curve=pd.Series([10_000.0, 10_010.0], index=[1_704_067_200_000, 1_704_070_800_000]),
+        metrics={"sharpe": 1.0},
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+        validation={"fill_all_signals": True},
+    )
+
+    run_dir = save_backtest_artifacts(
+        result=result,
+        cfg=cfg,
+        args=SimpleNamespace(strategy=["as_market_maker"], start="2024-01-01", end="2024-01-02", bar="1H"),
+        output_dir=str(tmp_path),
+        run_id="idealized_fill_result",
+        strategy_names=["as_market_maker"],
+        start="2024-01-01",
+        end="2024-01-02",
+        bar="1H",
+    )
+
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    assert payload["validation"]["fill_all_signals"] is True
+    assert payload["validation"]["idealized_fill"] is True
+
+
+def test_indicator_series_uses_warmup_candles_before_trimming(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=4, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * 4,
+        "close": [100.0, 101.0, 102.0, 103.0],
+    })
+    warm_ts = pd.date_range("2023-12-31 21:00:00+00:00", periods=3, freq="1h")
+    warm_df = pd.DataFrame({
+        "ts": warm_ts,
+        "inst_id": ["BTC-USDT-SWAP"] * 3,
+        "close": [97.0, 98.0, 99.0],
+    })
+
+    def fake_fetch(dsn, inst_ids, bar, start_ts, lookback_bars):
+        assert dsn == "postgres://unit"
+        assert inst_ids == ["BTC-USDT-SWAP"]
+        assert bar == "1H"
+        assert lookback_bars == 3
+        return {"BTC-USDT-SWAP": warm_df}
+
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", fake_fetch)
+    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={
+        "fast_window": 2,
+        "slow_window": 4,
+        "indicator_db_warmup": True,
+    }))
+
+    out = _build_indicator_series_df(price_df, cfg, ["ma_crossover"], dsn="postgres://unit", bar="1H")
+
+    assert len(out) == 4
+    assert out["ts"].tolist() == price_df["ts"].tolist()
+    assert np.isfinite(out["fast_value"]).all()
+    assert np.isfinite(out["slow_value"]).all()
+    assert out["slow_value"].iloc[0] == pytest.approx((97.0 + 98.0 + 99.0 + 100.0) / 4)
+    assert set(out["warmup_source"]) == {"db"}
+
+
+def test_indicator_series_trims_leading_rows_when_warmup_missing(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=6, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * 6,
+        "close": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0],
+    })
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", lambda *args, **kwargs: {})
+    cfg = SimpleNamespace(strategies=StrategiesConfig(ma_crossover={"fast_window": 3, "slow_window": 5}))
+
+    out = _build_indicator_series_df(price_df, cfg, ["ma_crossover"], dsn=None, bar="1H")
+
+    assert pd.Timestamp(out["ts"].iloc[0]) == ts[2]
+    assert np.isfinite(out["fast_value"].iloc[0])
+    assert pd.isna(out["slow_value"].iloc[0])
+    assert set(out["warmup_source"]) == {"cold"}
+    both_empty = out["fast_value"].isna() & out["slow_value"].isna()
+    assert not both_empty.iloc[0]
+
+
+def test_indicator_series_ema_macd_default_cold_start_does_not_fetch_db(monkeypatch):
+    ts = pd.date_range("2024-01-01 00:00:00+00:00", periods=8, freq="1h")
+    price_df = pd.DataFrame({
+        "ts": ts,
+        "datetime": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "inst_id": ["BTC-USDT-SWAP"] * len(ts),
+        "close": [100.0, 101.0, 103.0, 102.0, 104.0, 106.0, 105.0, 107.0],
+    })
+
+    def fail_fetch(*args, **kwargs):
+        raise AssertionError("DB warmup should be opt-in for indicator artifacts")
+
+    monkeypatch.setattr("backtesting.artifacts._fetch_warmup_candles", fail_fetch)
+    cfg = SimpleNamespace(strategies=StrategiesConfig(
+        ema_crossover={"fast_span": 2, "slow_span": 4},
+        macd_crossover={"fast_span": 2, "slow_span": 4, "signal_span": 2},
+    ))
+
+    out = _build_indicator_series_df(
+        price_df,
+        cfg,
+        ["ema_crossover", "macd_crossover"],
+        dsn="postgres://unit",
+        bar="1H",
+    )
+
+    assert set(out["strategy"]) == {"ema_crossover", "macd_crossover"}
+    assert set(out["warmup_source"]) == {"cold"}
+    for _, group in out.groupby("strategy"):
+        assert pd.Timestamp(group["ts"].iloc[0]) == ts[0]
+
+
+def test_save_artifacts_records_indicator_warmup_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKTEST_ARTIFACT_MODE", "files")
+    idx = pd.date_range("2024-01-01 00:00:00+00:00", periods=6, freq="1h")
+    result = SimpleNamespace(
+        equity_curve=pd.Series([10_000.0, 10_010.0], index=idx[:2]),
+        metrics={
+            "total_return": 0.001,
+            "sharpe": 0.5,
+            "max_drawdown": 0.0,
+            "profit_factor": 1.0,
+            "order_count": 0,
+            "fill_rate": 0.0,
+            "bankrupt": False,
+        },
+        order_log=pd.DataFrame(),
+        fill_log=pd.DataFrame(),
+        funding_log=pd.DataFrame(),
+        trade_log=pd.DataFrame(),
+        price_log=pd.DataFrame({
+            "ts": idx,
+            "inst_id": ["BTC-USDT-SWAP"] * len(idx),
+            "open": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0],
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0, 106.0],
+            "low": [99.0, 100.0, 101.0, 102.0, 103.0, 104.0],
+            "close": [100.0, 101.0, 103.0, 102.0, 104.0, 106.0],
+            "vol": [1.0] * len(idx),
+        }),
+        signal_log=[],
+        risk_event_log=[],
+        rejected_log=[],
+        cancel_log=[],
+        validation={},
+    )
+    cfg = SimpleNamespace(
+        storage=SimpleNamespace(timescale_dsn=None, candle_backend="parquet"),
+        strategies=StrategiesConfig(ema_crossover={"fast_span": 2, "slow_span": 4}),
+    )
+    args = SimpleNamespace(strategy=["ema_crossover"], start="2024-01-01", end="2024-01-02", bar="1H")
+
+    run_dir = save_backtest_artifacts(
+        result=result,
+        cfg=cfg,
+        args=args,
+        output_dir=str(tmp_path),
+        run_id="indicator_sources",
+        strategy_names=["ema_crossover"],
+        start="2024-01-01",
+        end="2024-01-02",
+        bar="1H",
+    )
+
+    indicators = pd.read_csv(run_dir / "indicator_series.csv")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+
+    assert set(indicators["warmup_source"]) == {"cold"}
+    assert payload["validation"]["indicator_warmup_sources"] == {
+        "ema_crossover": {"BTC-USDT-SWAP": "cold"}
+    }
 
 
 def test_replay_asmm_parameter_selection_uses_is_and_oos_windows():
@@ -678,6 +928,16 @@ def test_replay_backtest_funding_carry_runs_dual_leg(tmp_path):
     assert "dsr" in result.metrics
     assert result.metrics["dsr"] == pytest.approx(result.metrics["psr"])
     assert not result.returns.empty
+    # ct_val provenance must end up on result.validation so the deployment gate
+    # can audit where each symbol's ctVal came from. BTC comes from the YAML
+    # registry (non-authoritative), spot pair is spot_unit (authoritative);
+    # therefore ct_val_all_authoritative=False and gate_passed=False.
+    validation = result.validation or {}
+    assert "ct_val_sources" in validation
+    assert validation["ct_val_sources"]["BTC-USDT-SWAP"]["source"] in {"db", "registry", "hardcoded_btc_eth"}
+    assert validation["ct_val_sources"]["BTC-USDT"]["source"] == "spot_unit"
+    assert "ct_val_all_authoritative" in validation
+    assert "ct_val_gate_passed" in validation
 
 
 def test_replay_funding_falls_back_to_avg_entry_when_mark_price_missing(monkeypatch):
@@ -932,6 +1192,40 @@ def test_run_replay_backtest_cli_passes_no_liquidate_on_end(monkeypatch, minimal
     cli.main()
 
     assert calls["liquidate_on_end"] is False
+
+
+def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_cfg):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"bankrupt": False, "fill_rate": 0.0},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_replay_backtest.py", "--strategy", "as_market_maker", "--fill-all-signals"],
+    )
+
+    cli.main()
+
+    cfg = calls["cfg"]
+    assert cfg.backtest.fill_all_signals is True
+    assert cfg.backtest.queue_fill_fraction == pytest.approx(1.0)
+    assert cfg.risk.max_order_notional_usd >= FILL_ALL_MAX_ORDER_NOTIONAL_USD
+    assert cfg.risk.max_pos_pct_equity >= FILL_ALL_MAX_POS_PCT_EQUITY
 
 
 def test_replay_feed_builder_tolerates_empty_requested_data(tmp_path):

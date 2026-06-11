@@ -254,7 +254,8 @@
 2. AS 做市策略至少在一段 L2 歷史資料上跑過 queue-aware replay。
 3. Funding carry 與 pairs 一律以雙腿成交紀錄驗證，不接受單腿近似。
 4. CPCV / walk-forward 的 OOS 結果來自 replay，而非手寫 return proxy。
-5. shadow / demo 對照中，fill rate、slippage、latency 的誤差落在預設門檻內。
+5. 每筆 artifact 必須宣告 IS/OOS `validation_status`（`naive_backtest`, `in_sample`, `hold_out`, `walk_forward`, `cpcv`），並依 [`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention) 判定；`naive_backtest` 與 `in_sample` 皆不得作為 promotion evidence。
+6. shadow / demo 對照中，fill rate、slippage、latency 的誤差落在預設門檻內。
 
 ## 10. 優先順序建議
 

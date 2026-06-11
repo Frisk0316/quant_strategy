@@ -11,11 +11,81 @@ const BAR_PERIODS = {
   "30m": 17520, "1H": 8760, "2H": 4380, "4H": 2190, "1D": 365,
 };
 const TECHNICAL_STRATEGIES = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
+const EXTERNAL_STRATEGIES = new Set(["fear_greed_sentiment", "cme_gap_fill"]);
+const PARAMETERIZED_STRATEGIES = new Set([...TECHNICAL_STRATEGIES, ...EXTERNAL_STRATEGIES]);
 const STRATEGY_PARAM_DEFAULTS = {
   ma_crossover: { fast_window: 20, slow_window: 50 },
   ema_crossover: { fast_span: 20, slow_span: 50 },
   macd_crossover: { fast_span: 12, slow_span: 26, signal_span: 9 },
+  fear_greed_sentiment: { dataset_id: "fear_greed_btc", max_age_seconds: 172800, extreme_fear_label: "Extreme Fear", extreme_fear_threshold: 25, exit_value_threshold: 51 },
+  cme_gap_fill: {
+    dataset_id: "cme_btc_yfinance",
+    max_age_seconds: 604800,
+    min_gap_bps: 25,
+    max_hold_days: 2,
+    stop_loss_bps_mult: 1.5,
+    max_gap_bps: 0,
+    allow_direction: "long_only",
+  },
 };
+const SWEEP_PARAM_DEFAULTS = {
+  ma_crossover: { fast_window: "7~20", slow_window: "21~100" },
+  ema_crossover: { fast_span: "7~20", slow_span: "21~100" },
+  macd_crossover: { fast_span: "8, 12", slow_span: "21, 26, 50", signal_span: "9" },
+};
+const RISK_OVERRIDE_DEFAULTS = {
+  max_order_notional_usd: "",
+  max_pos_pct_equity: "",
+  max_leverage: "",
+};
+const RISK_OVERRIDE_SPECS = [
+  {
+    key: "max_order_notional_usd",
+    label: "Max order USD",
+    placeholder: "e.g. 5000",
+    step: "50",
+    help: "Per-order notional cap in USD. Orders above this amount are blocked as fat_finger; raising it can allow high-price exits and rebalances.",
+  },
+  {
+    key: "max_pos_pct_equity",
+    label: "Max pos pct",
+    placeholder: "e.g. 0.75",
+    step: "0.05",
+    help: "Max position notional as a fraction of equity. 0.30 means current position plus the new order cannot exceed 30% of equity, except reduce-only exits.",
+  },
+  {
+    key: "max_leverage",
+    label: "Max leverage",
+    placeholder: "e.g. 3",
+    step: "0.5",
+    help: "Research leverage ceiling, expressed as gross notional divided by equity. Kept with the copied risk config and dashboard parity; order blocking is mainly driven by max order USD and max pos pct.",
+  },
+];
+const SWEEP_PARAM_SPECS = {
+  ma_crossover: [
+    ["fast_window", "fast"],
+    ["slow_window", "slow"],
+  ],
+  ema_crossover: [
+    ["fast_span", "fast"],
+    ["slow_span", "slow"],
+  ],
+  macd_crossover: [
+    ["fast_span", "fast"],
+    ["slow_span", "slow"],
+    ["signal_span", "signal"],
+  ],
+};
+const SWEEP_ROWS_PER_DAY = {
+  "1m": 1440, "3m": 480, "5m": 288, "15m": 96,
+  "30m": 48, "1H": 24, "2H": 12, "4H": 6, "1D": 1,
+};
+const SWEEP_SECONDS_PER_EVENT = {
+  ma_crossover: 0.0018,
+  ema_crossover: 0.00020,
+  macd_crossover: 0.00025,
+};
+const DERIVABLE_FROM_1M_BARS = new Set(["3m", "5m", "15m", "30m", "1H", "2H", "4H", "6H", "12H", "1D"]);
 
 const todayUtc = new Date();
 todayUtc.setUTCHours(0, 0, 0, 0);
@@ -34,6 +104,146 @@ const fmtDate = (value) => {
   const d = typeof value === "number" ? new Date(value) : new Date(value);
   return isNaN(d.getTime()) ? String(value).slice(0, 10) : d.toISOString().slice(0, 10);
 };
+const fmtDuration = (seconds) => {
+  const s = Number(seconds);
+  if (!isFinite(s)) return "-";
+  if (s < 60) return `${s.toFixed(1)}s`;
+  if (s < 3600) return `${(s / 60).toFixed(1)}m`;
+  return `${(s / 3600).toFixed(1)}h`;
+};
+const clampProgress = (value) => {
+  const n = Number(value);
+  if (!isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+};
+function ProgressStage({ job, style = {} }) {
+  if (!job || job.progress == null) return null;
+  const pct = clampProgress(job.progress);
+  const pctLabel = `${Math.round(pct)}%`;
+  const stage = job.message || (job.status === "done" ? "Complete" : job.status === "error" ? "Failed" : "Working");
+  const tone = job.status === "done" ? "profit" : job.status === "error" ? "loss" : "";
+  const timingParts = [];
+  if (job.elapsed_seconds != null) timingParts.push(`elapsed ${fmtDuration(job.elapsed_seconds)}`);
+  if (job.estimated_remaining_seconds != null && job.status === "running") {
+    timingParts.push(`remaining ${fmtDuration(job.estimated_remaining_seconds)}`);
+  }
+  if (job.completed_trials != null && job.total_trials != null) {
+    timingParts.push(`${job.completed_trials}/${job.total_trials} trials`);
+  }
+  return html`
+    <div style=${{ flex: 1, minWidth: 180, ...style }}>
+      <div class="row" style=${{ justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 6 }}>
+        <div class="field-hint" style=${{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <span style=${{ color: "var(--text-muted)" }}>Stage:</span> ${stage}
+        </div>
+        <span class="mono" style=${{ fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>${pctLabel}</span>
+      </div>
+      <div class=${`bar ${tone}`} style=${{ height: 6 }}>
+        <i style=${{ width: `${pct}%` }}></i>
+      </div>
+      ${timingParts.length > 0 && html`
+        <div class="field-hint mono" style=${{ marginTop: 4, fontSize: 11 }}>${timingParts.join(" - ")}</div>
+      `}
+    </div>
+  `;
+}
+function parseSweepValues(raw) {
+  const out = [];
+  String(raw || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((part) => {
+    const m = part.match(/^(\d+(?:\.\d+)?)\s*(?:\.\.|~|-)\s*(\d+(?:\.\d+)?)(?::(\d+(?:\.\d+)?))?$/);
+    if (m) {
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      const step = Number(m[3] || 1);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(step) || start <= 0 || end < start || step <= 0) {
+        throw new Error(`Invalid range: ${part}`);
+      }
+      for (let v = start; v <= end; v += step) out.push(v);
+    } else {
+      const v = Number(part);
+      if (!Number.isInteger(v) || v <= 0) throw new Error(`Invalid value: ${part}`);
+      out.push(v);
+    }
+  });
+  return [...new Set(out)];
+}
+function buildSweepGrid(strategy, inputs) {
+  const specs = SWEEP_PARAM_SPECS[strategy] || [];
+  const grid = {};
+  specs.forEach(([key]) => {
+    const values = parseSweepValues(inputs?.[key]);
+    if (!values.length) throw new Error(`${key} cannot be empty`);
+    grid[key] = values;
+  });
+  return grid;
+}
+function countValidSweepCombos(strategy, grid) {
+  const keys = Object.keys(grid || {});
+  const total = keys.reduce((acc, key) => acc * (grid[key]?.length || 0), 1);
+  const fastKey = strategy === "ma_crossover" ? "fast_window" : "fast_span";
+  const slowKey = strategy === "ma_crossover" ? "slow_window" : "slow_span";
+  if (!grid?.[fastKey] || !grid?.[slowKey]) return { total, valid: total };
+  let valid = 0;
+  grid[fastKey].forEach((fast) => {
+    grid[slowKey].forEach((slow) => {
+      if (fast < slow) valid += keys
+        .filter((key) => key !== fastKey && key !== slowKey)
+        .reduce((acc, key) => acc * (grid[key]?.length || 0), 1);
+    });
+  });
+  return { total, valid };
+}
+function estimateSweepSeconds(strategy, grid, bar, start, end, symbols) {
+  const { valid } = countValidSweepCombos(strategy, grid);
+  const days = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
+  const rows = days * (SWEEP_ROWS_PER_DAY[bar] || 24) * Math.max(1, symbols.length);
+  const perEvent = SWEEP_SECONDS_PER_EVENT[strategy] || 0.00025;
+  return Math.max(0.6, 0.35 + rows * perEvent) * Math.max(1, valid);
+}
+function estimateValidationMultiplier(start, end, validation) {
+  if (!validation || validation === "none") return 1;
+  const days = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
+  const wfWindows = Math.max(0, Math.floor(Math.max(0, days - 30) / 7) + 1);
+  const cpcvCombos = 15;
+  return 1
+    + (validation === "wf" || validation === "both" ? wfWindows : 0)
+    + (validation === "cpcv" || validation === "both" ? cpcvCombos : 0);
+}
+function cleanRiskOverrides(raw = {}) {
+  const out = {};
+  Object.entries(raw || {}).forEach(([key, value]) => {
+    if (value === "" || value == null) return;
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) out[key] = num;
+  });
+  return out;
+}
+function isDbOhlcvTradingPairRow(row) {
+  return (row?.data_kind || "ohlcv") === "ohlcv"
+    && Number(row?.row_count || 0) > 0
+    && typeof row?.inst_id === "string"
+    && row.inst_id.includes("SWAP");
+}
+function coverageSupportsBar(rowBar, targetBar) {
+  return rowBar === targetBar || (rowBar === "1m" && DERIVABLE_FROM_1M_BARS.has(targetBar));
+}
+function dbTradingPairsForBar(coverageRows, targetBar) {
+  return [...new Set((coverageRows || [])
+    .filter((row) => isDbOhlcvTradingPairRow(row) && coverageSupportsBar(row.bar, targetBar))
+    .map((row) => row.inst_id))]
+    .sort();
+}
+function dbTradingPairStartMap(coverageRows, targetBar) {
+  const out = {};
+  (coverageRows || [])
+    .filter((row) => isDbOhlcvTradingPairRow(row) && coverageSupportsBar(row.bar, targetBar))
+    .forEach((row) => {
+      const date = fmtDate(row.first_ts);
+      if (!date || date === "-") return;
+      if (!out[row.inst_id] || date < out[row.inst_id]) out[row.inst_id] = date;
+    });
+  return out;
+}
 
 window.fmt = { pct: fmtPct, num: fmtNum, usd: fmtUSD, ts: fmtTs, date: fmtDate };
 
@@ -57,7 +267,7 @@ function KPI({ label, value, sub, tone, spark, sparkMode = "area", hint }) {
 }
 
 function RunBacktestView({ setView, setSelectedRunId }) {
-  const [instruments, setInstruments] = useConfigState([]);
+  const [dataCoverage, setDataCoverage] = useConfigState(null);
   const [strategy, setStrategy] = useConfigState("funding_carry");
   const [symbol, setSymbol] = useConfigState("BTC-USDT-SWAP");
   const [spotSymbol, setSpotSymbol] = useConfigState("BTC-USDT");
@@ -77,13 +287,25 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [rotTopK, setRotTopK] = useConfigState(3);
   const [rotRankExitBuffer, setRotRankExitBuffer] = useConfigState(6);
   const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
+  const [sweepParams, setSweepParams] = useConfigState(SWEEP_PARAM_DEFAULTS);
+  const [riskOverrides, setRiskOverrides] = useConfigState(RISK_OVERRIDE_DEFAULTS);
+  const [fillAllSignals, setFillAllSignals] = useConfigState(false);
+  const [sweepFinalistValidation, setSweepFinalistValidation] = useConfigState("none");
+  const [sweepTopPct, setSweepTopPct] = useConfigState(10);
+  const [sweepMaxFinalists, setSweepMaxFinalists] = useConfigState(20);
+  const [sweepJob, setSweepJob] = useConfigState(null);
   const periods = periodsOverride ?? BAR_PERIODS[bar] ?? 8760;
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
-  const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const isRotation = strategy === "ohlcv_rotation";
   const isDailyWinner = strategy === "daily_winner";
   const isTechnical = TECHNICAL_STRATEGIES.has(strategy);
+  const hasStrategyParams = PARAMETERIZED_STRATEGIES.has(strategy);
   const isBasketStrategy = isRotation || isDailyWinner || isTechnical;
+  const selectedBar = isDailyWinner ? "1D" : bar;
+  const tradingPairOptions = dbTradingPairsForBar(dataCoverage || [], selectedBar);
+  const tradingPairOptionsKey = tradingPairOptions.join("|");
+  const tradingPairSet = new Set(tradingPairOptions);
+  const tradingPairStartMap = dbTradingPairStartMap(dataCoverage || [], selectedBar);
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
     : isTechnical
@@ -91,23 +313,60 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     : isBasketStrategy
     ? rotUniverse
     : [symbol].filter((s) => s && s.includes("SWAP"));
-  const startMin = selectedSwapSymbols
-    .map((s) => listingMap[s])
-    .filter(Boolean)
-    .sort()
-    .at(-1) || "";
+  const selectedTradingPairsValid = tradingPairOptions.length > 0
+    && selectedSwapSymbols.length > 0
+    && selectedSwapSymbols.every((s) => tradingPairSet.has(s));
+  const selectedCoverageWarnings = [...new Set(selectedSwapSymbols)]
+    .map((s) => ({ instId: s, firstDate: tradingPairStartMap[s] }))
+    .filter((row) => row.instId && row.firstDate && start && start < row.firstDate)
+    .sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.instId.localeCompare(b.instId));
+  const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
+  const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
+  const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
+  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
 
   useConfigEffect(() => {
-    window.API.fetchDataInstruments()
-      .then((rows) => {
-        setInstruments(rows || []);
-        const swapSymbols = (rows || []).map((r) => r.inst_id).filter(Boolean);
-        if (swapSymbols.length) {
-          window.MOCK.SYMBOLS = [...new Set([...window.MOCK.SYMBOLS, ...swapSymbols])];
-        }
-      })
-      .catch(() => setInstruments([]));
+    window.API.fetchDataCoverage()
+      .then((rows) => setDataCoverage(rows || []))
+      .catch(() => setDataCoverage([]));
   }, []);
+
+  useConfigEffect(() => {
+    if (dataCoverage == null) return;
+    if (!tradingPairOptions.length) {
+      setSymbol("");
+      setSymbolX("");
+      setSymbolY("");
+      setRotBenchmark("");
+      setRotUniverse([]);
+      setTechnicalSymbols([]);
+      return;
+    }
+    const first = tradingPairOptions[0];
+    const currentX = tradingPairSet.has(symbolX) ? symbolX : first;
+    const second = tradingPairOptions.find((s) => s !== currentX) || currentX;
+
+    if (!tradingPairSet.has(symbol)) setSymbol(first);
+    if (!tradingPairSet.has(symbolX)) setSymbolX(first);
+    if (!tradingPairSet.has(symbolY) || (strategy === "pairs_trading" && tradingPairOptions.length > 1 && symbolY === currentX)) {
+      setSymbolY(second);
+    }
+    if (!tradingPairSet.has(rotBenchmark)) setRotBenchmark(first);
+    setRotUniverse((current) => {
+      const values = current || [];
+      if (!values.length) return current;
+      const valid = values.filter((s) => tradingPairSet.has(s));
+      if (valid.length === values.length) return current;
+      return valid.length ? valid : tradingPairOptions.slice(0, Math.min(3, tradingPairOptions.length));
+    });
+    setTechnicalSymbols((current) => {
+      const values = current || [];
+      if (!values.length) return current;
+      const valid = values.filter((s) => tradingPairSet.has(s));
+      if (valid.length === values.length) return current;
+      return valid.length ? valid : [first];
+    });
+  }, [dataCoverage, selectedBar, strategy, symbol, symbolX, symbolY, rotBenchmark, tradingPairOptionsKey]);
 
   // Reconnect to any in-progress job after page refresh
   useConfigEffect(() => {
@@ -132,8 +391,32 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   }, []);
 
   useConfigEffect(() => {
-    if (startMin && start < startMin) setStart(startMin);
-  }, [startMin, start]);
+    const savedJobId = localStorage.getItem("activeSweepJobId");
+    if (!savedJobId) return;
+    window.API.fetchBacktestSweepStatus(savedJobId).then((s) => {
+      if (s && s.status === "running") {
+        setSweepJob(s);
+        const iv = setInterval(() => {
+          window.API.fetchBacktestSweepStatus(savedJobId).then((st) => {
+            setSweepJob(st);
+            if (st.status === "done" || st.status === "error") {
+              clearInterval(iv);
+              localStorage.removeItem("activeSweepJobId");
+            }
+          }).catch((err) => {
+            setSweepJob({ status: "error", progress: 100, message: err.message });
+            clearInterval(iv);
+            localStorage.removeItem("activeSweepJobId");
+          });
+        }, 2000);
+      } else if (s && (s.status === "done" || s.status === "error")) {
+        setSweepJob(s);
+        localStorage.removeItem("activeSweepJobId");
+      } else {
+        localStorage.removeItem("activeSweepJobId");
+      }
+    }).catch(() => localStorage.removeItem("activeSweepJobId"));
+  }, []);
 
   useConfigEffect(() => {
     if (isDailyWinner && bar !== "1D") {
@@ -152,7 +435,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       strategy,
       bar: isDailyWinner ? "1D" : bar,
       periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
-      start: startMin && start < startMin ? startMin : start,
+      start,
       end,
       symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isTechnical ? technicalSymbols : isBasketStrategy ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
@@ -166,7 +449,9 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       top_k: isRotation ? rotTopK : undefined,
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
       initial_equity: +equity || 5000,
-      strategy_params: isTechnical ? (strategyParams[strategy] || {}) : {},
+      strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
+      risk_overrides: cleanRiskOverrides(riskOverrides),
+      fill_all_signals: fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -188,6 +473,52 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     }).catch((err) => setRunJob({ status: "error", message: err.message }));
   }
 
+  function triggerParameterSweep() {
+    try {
+      const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
+      const body = {
+        strategy,
+        bar,
+        periods,
+        start,
+        end,
+        symbols: technicalSymbols,
+        initial_equity: +equity || 5000,
+        parameter_grid: parameterGrid,
+        max_combinations: 5000,
+        risk_overrides: cleanRiskOverrides(riskOverrides),
+        fill_all_signals: fillAllSignals,
+        run_finalists: true,
+        finalist_top_pct: Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
+        max_finalists: Math.max(0, Math.min(100, Number(sweepMaxFinalists) || 20)),
+        finalist_validation: sweepFinalistValidation === "none" ? null : sweepFinalistValidation,
+      };
+      setSweepJob({ status: "running", progress: 0, message: "Submitting parameter sweep..." });
+      window.API.triggerBacktestSweep(body).then((job) => {
+        setSweepJob(job);
+        localStorage.setItem("activeSweepJobId", job.job_id);
+        const iv = setInterval(() => {
+          window.API.fetchBacktestSweepStatus(job.job_id).then((s) => {
+            setSweepJob(s);
+            if (s.status === "done" || s.status === "error") {
+              clearInterval(iv);
+              localStorage.removeItem("activeSweepJobId");
+            }
+          }).catch((err) => {
+            setSweepJob({ status: "error", message: err.message });
+            clearInterval(iv);
+            localStorage.removeItem("activeSweepJobId");
+          });
+        }, 2000);
+      }).catch((err) => {
+        setSweepJob({ status: "error", message: err.message });
+        localStorage.removeItem("activeSweepJobId");
+      });
+    } catch (err) {
+      setSweepJob({ status: "error", message: err.message });
+    }
+  }
+
   return html`
     <div class="col" style=${{ gap: "var(--gap-lg)" }}>
       <div class="row" style=${{ gap: "var(--gap-lg)", alignItems: "flex-start" }}>
@@ -195,11 +526,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
           <div class="card-h">
             <div>
               <div class="card-title">Backtest configuration</div>
-              <div class="card-sub">strategy, symbol, bar, and date window</div>
+              <div class="card-sub">strategy, trading pair, bar, and date window</div>
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -214,11 +545,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             ${isDailyWinner ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -226,21 +557,21 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${rotUniverse.length} instruments selected - one round trip per complete day.</div>
+                  <div class="field-hint">${rotUniverse.length} trading pairs selected - one round trip per complete day.</div>
                 </div>
               <//>
             ` : strategy === "ohlcv_rotation" ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Universe (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setRotUniverse((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -248,16 +579,16 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${rotUniverse.length} instruments selected — re-ranked every ${rotRebalanceMin} bars, top-${rotTopK} held</div>
+                  <div class="field-hint">${rotUniverse.length} trading pairs selected — re-ranked every ${rotRebalanceMin} bars, top-${rotTopK} held</div>
                 </div>
                 <div class="field">
                   <div class="field-label">Benchmark</div>
                   <select class="select mono" value=${rotBenchmark} onChange=${(e) => setRotBenchmark(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Regime filter: go flat when benchmark is below its 240-min EMA.</div>
                 </div>
@@ -280,19 +611,19 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             ` : isTechnical ? html`
               <${Fragment}>
                 <div class="field" style=${{ gridColumn: "1 / -1" }}>
-                  <div class="field-label">Symbols (perpetual swaps)</div>
+                  <div class="field-label">Trading Pairs (DB OHLCV)</div>
                   <button class="btn sm" style=${{ marginBottom: 4 }}
                     onClick=${() => {
-                      const all = MOCK.SYMBOLS.filter((s) => s.includes("SWAP"));
+                      const all = tradingPairOptions;
                       const allSelected = all.length > 0 && technicalSymbols.length === all.length;
                       setTechnicalSymbols(allSelected ? [] : [...all]);
                     }}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length > 0 && technicalSymbols.length === MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).length ? "Deselect All" : "Select All"}
+                    ${tradingPairOptions.length > 0 && technicalSymbols.length === tradingPairOptions.length ? "Deselect All" : "Select All"}
                   </button>
                   <div class="tbl-wrap" style=${{ maxHeight: 120 }}>
                     <table class="tbl" style=${{ fontSize: 12 }}>
                       <tbody>
-                        ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`
+                        ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`
                           <tr key=${s} style=${{ cursor: "pointer" }}
                               onClick=${() => setTechnicalSymbols((u) => u.includes(s) ? u.filter((x) => x !== s) : [...u, s])}>
                             <td style=${{ width: 28 }}>
@@ -300,47 +631,47 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                             </td>
                             <td class="mono">${s}</td>
                           </tr>
-                        `)}
+                        `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${selectedBar}.</td></tr>`}
                       </tbody>
                     </table>
                   </div>
-                  <div class="field-hint">${technicalSymbols.length} instruments selected - long/flat crossover backtest.</div>
+                  <div class="field-hint">${technicalSymbols.length} trading pairs selected - long/flat crossover backtest.</div>
                 </div>
               <//>
             ` : strategy === "pairs_trading" ? html`
               <${Fragment}>
                 <div class="field">
-                  <div class="field-label">Reference symbol (X)</div>
+                  <div class="field-label">Reference Trading Pair (X)</div>
                   <select class="select mono" value=${symbolX} onChange=${(e) => setSymbolX(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Reference leg for hedge ratio and spread signal, e.g. BTC-USDT-SWAP.</div>
                 </div>
                 <div class="field">
-                  <div class="field-label">Trade/spread symbol (Y)</div>
+                  <div class="field-label">Trade/spread Trading Pair (Y)</div>
                   <select class="select mono" value=${symbolY} onChange=${(e) => setSymbolY(e.target.value)}>
-                    ${MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                    ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                   </select>
                   <div class="field-hint">Dependent leg traded against X, e.g. ETH, LTC, SOL, or other available swaps.</div>
                 </div>
                 ${symbolX === symbolY && html`
                   <div class="field-hint" style=${{ gridColumn: "1 / -1", color: "var(--loss)" }}>
-                    Pair Trading requires two different symbols.
+                    Pair Trading requires two different trading pairs.
                   </div>
                 `}
               <//>
             ` : html`
               <div class="field">
-                <div class="field-label">${strategy === "funding_carry" ? "Perp symbol" : "Symbol"}</div>
+                <div class="field-label">${strategy === "funding_carry" ? "Perp Trading Pair" : "Trading Pair"}</div>
                 <select class="select mono" value=${symbol} onChange=${(e) => setSymbol(e.target.value)}>
-                  ${MOCK.SYMBOLS.filter((s) => strategy !== "funding_carry" || s.includes("SWAP")).map((s) => html`<option key=${s}>${s}</option>`)}
+                  ${tradingPairOptions.length ? tradingPairOptions.map((s) => html`<option key=${s}>${s}</option>`) : html`<option value="">No DB trading pairs</option>`}
                 </select>
                 <div class="field-hint">OKX instrument id</div>
               </div>
             `}
             ${strategy === "funding_carry" && html`
               <div class="field">
-                <div class="field-label">Spot hedge symbol</div>
+                <div class="field-label">Spot hedge trading pair</div>
                 <input class="input mono" value=${spotSymbol} onChange=${(e) => setSpotSymbol(e.target.value)} />
                 <div class="field-hint">Spot leg used for delta-neutral funding carry.</div>
               </div>
@@ -372,8 +703,13 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="field">
               <div class="field-label">Start</div>
-              <input class="input mono" type="date" value=${start} min=${startMin || undefined} onChange=${(e) => setStart(startMin && e.target.value < startMin ? startMin : e.target.value)} />
-              ${startMin && html`<div class="field-hint">min: ${startMin} (latest listing date among selected symbols)</div>`}
+              <input class="input mono" type="date" value=${start} onChange=${(e) => setStart(e.target.value)} />
+              ${selectedCoverageWarnings.length > 0 && html`
+                <div class="field-hint" style=${{ color: "var(--warn)", marginTop: 6 }}>
+                  No DB data before first candle:
+                  ${selectedCoverageWarnings.map((row) => `${row.instId} starts ${row.firstDate}`).join("; ")}
+                </div>
+              `}
             </div>
             <div class="field">
               <div class="field-label">End</div>
@@ -417,23 +753,50 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 </select>
               </div>
             `}
+            <div class="field" style=${{ gridColumn: "1 / -1" }}>
+              <div class="field-label">Research risk overrides</div>
+              <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                ${RISK_OVERRIDE_SPECS.map((spec) => html`
+                  <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
+                    <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
+                    <input class="input mono" type="number" min="0" step=${spec.step}
+                      value=${riskOverrides[spec.key]}
+                      placeholder=${spec.placeholder}
+                      title=${spec.help}
+                      aria-label=${spec.label}
+                      onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
+                    <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
+                  </div>
+                `)}
+              </div>
+              <label class="row" style=${{ gap: 8, marginTop: 10, alignItems: "flex-start" }}>
+                <input type="checkbox" checked=${fillAllSignals}
+                  onChange=${(e) => setFillAllSignals(e.target.checked)}
+                  style=${{ marginTop: 2 }} />
+                <span>
+                  <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
+                  <span class="field-hint">Research-only idealized execution: bypasses capacity caps and fills every submitted signal order.</span>
+                </span>
+              </label>
+              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. Research-only; live risk config is unchanged.</div>
+            </div>
+          </div>
+          <div class="field-hint" style=${{ marginTop: 10 }}>
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
-            <div class="row" style=${{ gap: 12, marginTop: 16, alignItems: "center" }}>
-              <span class=${`chip ${runJob.status === "done" ? "profit" : runJob.status === "error" ? "loss" : "warn"}`}>${runJob.status}</span>
-              <span class="field-hint">${runJob.message || ""}</span>
-              ${runJob.run_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>${runJob.run_id}</span>`}
-              ${runJob.progress != null && html`
-                <div class="bar" style=${{ flex: 1, height: 6 }}>
-                  <i style=${{ width: `${runJob.progress}%`, background: "var(--accent)" }}></i>
-                </div>
-              `}
-              ${runJob.status === "done" && runJob.run_id && setView && html`
-                <button class="btn primary sm" onClick=${() => {
-                  setSelectedRunId?.(runJob.run_id);
-                  setView("backtest");
-                }}>View Results →</button>
-              `}
+            <div class="col" style=${{ gap: 8, marginTop: 16 }}>
+              <div class="row" style=${{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <span class=${`chip ${runJob.status === "done" ? "profit" : runJob.status === "error" ? "loss" : "warn"}`}>${runJob.status}</span>
+                ${runJob.run_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${runJob.run_id}</span>`}
+                ${runJob.status === "done" && runJob.run_id && setView && html`
+                  <button class="btn primary sm" onClick=${() => {
+                    setSelectedRunId?.(runJob.run_id);
+                    setView("backtest");
+                  }}>View Results →</button>
+                `}
+              </div>
+              <${ProgressStage} job=${runJob} />
             </div>
             ${runJob.status === "error" && runJob.output && html`
               <pre style=${{ marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 200, overflowY: "auto" }}>${runJob.output}</pre>
@@ -448,7 +811,31 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} fillAllSignals=${fillAllSignals} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          ${isTechnical && html`
+            <div class="sep" style=${{ margin: "12px 0" }}></div>
+            <${ParameterSweepPanel}
+              id=${strategy}
+              inputs=${sweepParams[strategy] || {}}
+              setInputs=${(next) => setSweepParams((all) => ({ ...all, [strategy]: next }))}
+              bar=${bar}
+              start=${start}
+              end=${end}
+              symbols=${technicalSymbols}
+              job=${sweepJob}
+              onRun=${triggerParameterSweep}
+              finalistValidation=${sweepFinalistValidation}
+              setFinalistValidation=${setSweepFinalistValidation}
+              finalistTopPct=${sweepTopPct}
+              setFinalistTopPct=${setSweepTopPct}
+              maxFinalists=${sweepMaxFinalists}
+              setMaxFinalists=${setSweepMaxFinalists}
+              fillAllSignals=${fillAllSignals}
+              setFillAllSignals=${setFillAllSignals}
+              setView=${setView}
+              setSelectedRunId=${setSelectedRunId}
+            />
+          `}
         </div>
       </div>
 
@@ -457,7 +844,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id, params: activeParams = {}, setParams = () => {} }) {
+function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fillAllSignals = false, setParams = () => {} }) {
   const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
@@ -497,6 +884,22 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
       ["slow_span", "26", "MACD slow EMA", "Slow EMA span used in MACD. Default: 26."],
       ["signal_span", "9", "signal EMA", "EMA span applied to the MACD line. Default: 9."],
     ],
+    fear_greed_sentiment: [
+      ["dataset_id", "fear_greed_btc", "external dataset", "External feature dataset id. Missing or stale observations suppress trading signals."],
+      ["max_age_seconds", "172800", "feature TTL", "Maximum age for the as-of Fear & Greed value. Older values are treated as stale and generate no signal."],
+      ["extreme_fear_label", "Extreme Fear", "entry label", "Classification label that opens a long position when the feature is fresh."],
+      ["extreme_fear_threshold", "25", "numeric entry", "Numeric Fear & Greed value at or below this threshold also opens a long position."],
+      ["exit_value_threshold", "51", "numeric exit", "Numeric Fear & Greed value at or above this threshold exits an existing position."],
+    ],
+    cme_gap_fill: [
+      ["dataset_id", "cme_btc_yfinance", "external dataset", "External BTC futures dataset id. cme_btc_yfinance is research-only proxy; cme_btc1_continuous requires official data ingest."],
+      ["max_age_seconds", "604800", "feature TTL", "Maximum age for the as-of CME observation before it is treated as stale."],
+      ["min_gap_bps", "25", "gap threshold", "Minimum weekend CME gap size in basis points before the strategy considers an entry."],
+      ["max_hold_days", "2", "max hold", "Maximum holding time in days before a gap-fill position exits by timeout."],
+      ["stop_loss_bps_mult", "1.5", "stop multiple", "Stop-loss distance as a multiple of gap_bps from the OKX entry anchor. 0 disables stop-loss."],
+      ["max_gap_bps", "0", "upper gap filter", "Optional upper bound for oversized gaps. 0 disables the upper-bound filter."],
+      ["allow_direction", "long_only", "direction filter", "long_only trades only down-gaps. This default is regime-fitted to BTC 2024-26 and needs bear-regime walk-forward."],
+    ],
     ohlcv_rotation: [
       ["top_k", "3", "max simultaneous positions", "Max instruments held at once. Each gets equal weight (1/n), capped at max_position_weight=0.35."],
       ["rebalance_minutes", "60", "rebalance cadence (min)", "Re-rank universe every N minutes. Lower = more reactive, higher turnover cost."],
@@ -505,12 +908,22 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
       ["min_volume_z", "1.0", "volume z-score (diagnostic)", "Diagnostic threshold shown in backtest report. Not a hard entry filter; volume enters selection via composite score weight. Controls the vol_filter_pass_pct diagnostic metric."],
     ],
     daily_winner: [
-      ["selection", "yesterday_return", "ranking signal", "Ranks the selected universe by yesterday's daily close/open return, then trades the strongest symbol today."],
+      ["selection", "yesterday_return", "ranking signal", "Ranks the selected universe by yesterday's daily close/open return, then trades the strongest trading pair today."],
       ["holding_period", "1 day", "forced round trip", "Buys today's open and exits at today's daily close, producing one expected trade per complete day."],
       ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
   }[id] || [];
-  const editable = TECHNICAL_STRATEGIES.has(id);
+  const editable = PARAMETERIZED_STRATEGIES.has(id);
+  const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
+  const riskMaxPos = Number(riskOverrides.max_pos_pct_equity);
+  const riskMaxLeverage = Number(riskOverrides.max_leverage);
+  const hasRiskOverride = fillAllSignals || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
+  const riskSummary = [
+    `max_order_notional: ${Number.isFinite(riskMaxOrder) && riskMaxOrder > 0 ? fmtUSD(riskMaxOrder, 0) : "$500"}`,
+    `max_pos_pct: ${Number.isFinite(riskMaxPos) && riskMaxPos > 0 ? fmtPct(riskMaxPos, 0) : "30%"}`,
+    `max_leverage: ${Number.isFinite(riskMaxLeverage) && riskMaxLeverage > 0 ? `${fmtNum(riskMaxLeverage, 1)}x` : "3.0x"}`,
+    `fill_all_signals: ${fillAllSignals ? "on" : "off"}`,
+  ].join(" - ");
   function parseParam(value) {
     const num = Number(value);
     return value !== "" && Number.isFinite(num) ? num : value;
@@ -519,17 +932,196 @@ function StrategyParams({ id, params: activeParams = {}, setParams = () => {} })
     <div class="col" style=${{ gap: 12 }}>
       ${specs.map(([k, v, short, full]) => html`
         <div key=${k} class="col" style=${{ gap: 4 }}>
-          <div class="row" style=${{ alignItems: "center", gap: 10 }}>
-            <div style=${{ flex: 1, fontSize: 12 }} class="mono" title=${short}>${k}</div>
+          <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 120px)", alignItems: "center", gap: 8 }}>
+            <div style=${{ minWidth: 0, fontSize: 12, overflowWrap: "anywhere" }} class="mono" title=${short}>${k}</div>
             <input class="input mono" value=${editable ? (activeParams[k] ?? v) : v} disabled=${!editable}
               onChange=${(e) => setParams({ ...activeParams, [k]: parseParam(e.target.value) })}
-              style=${{ width: 100, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
+              style=${{ width: "100%", maxWidth: 120, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
           </div>
           <div class="field-hint" style=${{ fontSize: 11 }}>${full}</div>
         </div>
       `)}
       <div class="sep"></div>
-      <div class="field-hint">td_mode: cross - post_only: true - max_order_notional: $500${editable ? " - parameters are sent with this run" : ""}</div>
+      <div class="field-hint">td_mode: cross - post_only: true - ${riskSummary}${hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
+    </div>
+  `;
+}
+
+function ParameterSweepPanel({
+  id,
+  inputs = {},
+  setInputs = () => {},
+  bar,
+  start,
+  end,
+  symbols = [],
+  job,
+  onRun,
+  finalistValidation = "none",
+  setFinalistValidation = () => {},
+  finalistTopPct = 10,
+  setFinalistTopPct = () => {},
+  maxFinalists = 20,
+  setMaxFinalists = () => {},
+  fillAllSignals = false,
+  setFillAllSignals = () => {},
+  setView,
+  setSelectedRunId,
+}) {
+  const specs = SWEEP_PARAM_SPECS[id] || [];
+  const [rangeDrafts, setRangeDrafts] = useConfigState({});
+  let grid = {};
+  let parseError = "";
+  try {
+    grid = buildSweepGrid(id, inputs);
+  } catch (err) {
+    parseError = err.message;
+  }
+  const counts = parseError ? { total: 0, valid: 0 } : countValidSweepCombos(id, grid);
+  const screeningSeconds = parseError ? null : estimateSweepSeconds(id, grid, bar, start, end, symbols);
+  const finalistCount = counts.valid
+    ? Math.min(Number(maxFinalists) || 0, Math.max(1, Math.ceil(counts.valid * ((Number(finalistTopPct) || 10) / 100))))
+    : 0;
+  const finalistSeconds = screeningSeconds == null || !counts.valid
+    ? null
+    : (screeningSeconds / Math.max(1, counts.valid)) * finalistCount * estimateValidationMultiplier(start, end, finalistValidation);
+  const estimateSeconds = screeningSeconds == null || finalistSeconds == null ? null : screeningSeconds + finalistSeconds;
+  const topRows = job?.top_results || [];
+  const finalistRows = job?.finalist_results || [];
+  function updateDraft(key, field, value) {
+    setRangeDrafts((all) => ({ ...all, [key]: { ...(all[key] || {}), [field]: value } }));
+  }
+  function applyRange(key) {
+    const draft = rangeDrafts[key] || {};
+    const startV = Number(draft.start);
+    const endV = Number(draft.end);
+    const stepV = Number(draft.step || 1);
+    if (!Number.isInteger(startV) || !Number.isInteger(endV) || !Number.isInteger(stepV) || startV <= 0 || endV < startV || stepV <= 0) return;
+    setInputs({ ...inputs, [key]: `${startV}~${endV}${stepV > 1 ? `:${stepV}` : ""}` });
+  }
+  return html`
+    <div class="col" style=${{ gap: 10 }}>
+      <div>
+        <div class="card-title" style=${{ fontSize: 13 }}>Parameter sweep</div>
+        <div class="card-sub">compact screening, then full artifacts for top Sharpe finalists</div>
+      </div>
+      ${specs.map(([key, label]) => html`
+        <div key=${key} class="field">
+          <div class="field-label">${label} values</div>
+          <input class="input mono" value=${inputs[key] || ""}
+            onChange=${(e) => setInputs({ ...inputs, [key]: e.target.value })}
+            placeholder="7~100"
+            style=${{ fontSize: 12 }} />
+          <div class="row" style=${{ gap: 6, marginTop: 6 }}>
+            <input class="input mono" type="number" min="1" placeholder="start"
+              value=${rangeDrafts[key]?.start || ""}
+              onChange=${(e) => updateDraft(key, "start", e.target.value)}
+              style=${{ minWidth: 0, fontSize: 11, padding: "4px 6px" }} />
+            <input class="input mono" type="number" min="1" placeholder="end"
+              value=${rangeDrafts[key]?.end || ""}
+              onChange=${(e) => updateDraft(key, "end", e.target.value)}
+              style=${{ minWidth: 0, fontSize: 11, padding: "4px 6px" }} />
+            <input class="input mono" type="number" min="1" placeholder="step"
+              value=${rangeDrafts[key]?.step || ""}
+              onChange=${(e) => updateDraft(key, "step", e.target.value)}
+              style=${{ width: 54, fontSize: 11, padding: "4px 6px" }} />
+            <button class="btn sm" onClick=${() => applyRange(key)} style=${{ padding: "4px 8px" }}>Apply</button>
+          </div>
+        </div>
+      `)}
+      <div class="grid" style=${{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div class="field">
+          <div class="field-label">Top percent</div>
+          <input class="input mono" type="number" min="1" max="100" value=${finalistTopPct}
+            onChange=${(e) => setFinalistTopPct(e.target.value)} />
+        </div>
+        <div class="field">
+          <div class="field-label">Max finalists</div>
+          <input class="input mono" type="number" min="0" max="100" value=${maxFinalists}
+            onChange=${(e) => setMaxFinalists(e.target.value)} />
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-label">Finalist validation</div>
+        <select class="select" value=${finalistValidation} onChange=${(e) => setFinalistValidation(e.target.value)}>
+          <option value="none">None</option>
+          <option value="wf">Walk-Forward</option>
+          <option value="cpcv">CPCV</option>
+          <option value="both">Both (WF + CPCV)</option>
+        </select>
+      </div>
+      <label class="row" style=${{ gap: 8, alignItems: "flex-start" }}>
+        <input type="checkbox" checked=${fillAllSignals}
+          onChange=${(e) => setFillAllSignals(e.target.checked)}
+          style=${{ marginTop: 2 }} />
+        <span>
+          <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
+          <span class="field-hint">Ignore market/risk caps for this sweep; research-only idealized execution.</span>
+        </span>
+      </label>
+      <div class="field-hint">
+        ${parseError
+          ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
+          : html`${counts.valid}/${counts.total} valid combos - screening ${fmtDuration(screeningSeconds)} - finalists ${finalistCount} / ${fmtDuration(finalistSeconds)} - total ${fmtDuration(estimateSeconds)}`}
+      </div>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running"} onClick=${onRun}>
+        Run sweep
+      </button>
+      ${job && html`
+        <div class="row" style=${{ gap: 8, alignItems: "center" }}>
+          <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
+        </div>
+        <${ProgressStage} job=${job} style=${{ marginTop: 6 }} />
+        ${job.estimate && html`
+          <div class="field-hint">
+            ${job.combination_count || 0} combos - screening ${fmtDuration(job.estimate.estimated_screening_seconds)} - finalist reruns ${fmtDuration(job.estimate.estimated_full_rerun_seconds)}
+          </div>
+        `}
+        ${job.status === "error" && html`
+          <pre style=${{ marginTop: 4, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 160, overflowY: "auto" }}>${job.message || ""}</pre>
+        `}
+      `}
+      ${topRows.length > 0 && html`
+        <div class="tbl-wrap" style=${{ maxHeight: 240 }}>
+          <table class="tbl" style=${{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>params</th>
+                <th>Sharpe</th>
+                <th>Return</th>
+                <th>MDD</th>
+                <th>Full</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topRows.slice(0, 8).map((row) => html`
+                <tr key=${row.trial}>
+                  <td>${row.rank}</td>
+                  <td class="mono">${Object.entries(row.params || {}).map(([k, v]) => `${k.replace("_window", "").replace("_span", "")}:${v}`).join(" ")}</td>
+                  <td>${fmtNum(row.sharpe, 2)}</td>
+                  <td>${fmtPct(row.total_return, 2)}</td>
+                  <td>${fmtPct(row.max_drawdown, 2)}</td>
+                  <td>
+                    ${row.finalist_run_id && html`
+                      <button class="btn sm" onClick=${() => {
+                        setSelectedRunId?.(row.finalist_run_id);
+                        setView?.("backtest");
+                      }}>Open</button>
+                    `}
+                  </td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+      `}
+      ${job?.artifacts?.summary_csv && html`
+        <div class="field-hint mono">${job.artifacts.summary_csv}</div>
+      `}
+      ${finalistRows.length > 0 && html`
+        <div class="field-hint">${finalistRows.filter((r) => r.status === "ok").length}/${finalistRows.length} finalist full backtests saved.</div>
+      `}
     </div>
   `;
 }
@@ -538,21 +1130,21 @@ function MarketDataCard() {
   const [coverage, setCoverage] = useConfigState(null);
   const [instruments, setInstruments] = useConfigState([]);
   const [fetchJob, setFetchJob] = useConfigState(null);
+  const [exportJob, setExportJob] = useConfigState(null);
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
   const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
-  const [exportForm, setExportForm] = useConfigState({ symbols: [], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
+  const [exportForm, setExportForm] = useConfigState({ kind: "ohlcv", symbols: [], datasets: ["cme_btc_yfinance"], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
     .map((s) => listingMap[s])
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+  const exportKind = exportForm.kind || "ohlcv";
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
-  const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96 };
+  const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96, funding: 3, external: 1 };
   const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
-  const estRows = (exportForm.symbols || []).length * estDays * (ROWS_PER_DAY[exportForm.bar] || 24);
-  const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
   function fmtBytes(b) {
     if (b < 1024) return b + " B";
     if (b < 1_048_576) return (b / 1024).toFixed(1) + " KB";
@@ -560,13 +1152,24 @@ function MarketDataCard() {
     return (b / 1_073_741_824).toFixed(1) + " GB";
   }
   const coverageSymbols = [...new Set((coverage || [])
-    .filter((r) => r.bar === exportCoverageBar)
+    .filter((r) => exportKind === "funding" ? r.data_kind === "funding" : r.data_kind === "ohlcv" && r.bar === exportCoverageBar)
     .map((r) => r.inst_id)
     .filter(Boolean))]
     .sort();
   const exportSymbols = coverageSymbols.length
     ? coverageSymbols
-    : (instruments.length ? instruments.map((i) => i.inst_id) : MOCK.SYMBOLS.filter((s) => s.includes("SWAP"))).sort();
+    : [];
+  const exportDatasets = [...new Set((coverage || [])
+    .filter((r) => r.data_kind === "external")
+    .map((r) => r.inst_id)
+    .filter(Boolean))]
+    .sort();
+  const externalOptions = exportDatasets.length ? exportDatasets : ["cme_btc_yfinance"];
+  const selectedExportSymbols = (exportForm.symbols || []).filter((s) => exportSymbols.includes(s));
+  const selectedExportDatasets = (exportForm.datasets || []).filter((d) => externalOptions.includes(d));
+  const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
+  const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
+  const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
 
   function refreshCoverage() {
     window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
@@ -612,17 +1215,40 @@ function MarketDataCard() {
       return { ...f, symbols: next };
     });
   }
+  function toggleExportDataset(dataset) {
+    setExportForm((f) => {
+      const datasets = f.datasets || [];
+      const next = datasets.includes(dataset)
+        ? datasets.filter((s) => s !== dataset)
+        : [...datasets, dataset];
+      return { ...f, datasets: next };
+    });
+  }
 
   function triggerExport() {
-    const symbols = (exportForm.symbols || []).join(",");
-    if (!symbols) return;
-    window.location.assign(window.API.dataExportUrl({
-      symbols,
+    const body = {
+      kind: exportKind,
       bar: exportForm.bar,
       start: exportForm.start,
       end: exportForm.end,
       format: exportForm.format,
-    }));
+    };
+    if (exportKind === "external") {
+      const datasets = selectedExportDatasets.join(",");
+      if (!datasets) return;
+      setExportJob({ status: "running", message: "Refreshing external dataset..." });
+      window.API.refreshExternalData({ dataset_ids: selectedExportDatasets, start: exportForm.start, end: exportForm.end })
+        .then((job) => {
+          setExportJob({ status: "done", message: `${job.datasets?.[0]?.rows_fetched || 0} rows refreshed` });
+          window.location.assign(window.API.dataExportUrl({ ...body, datasets }));
+          refreshCoverage();
+        })
+        .catch((err) => setExportJob({ status: "error", message: err.message }));
+      return;
+    }
+    const symbols = selectedExportSymbols.join(",");
+    if (!symbols) return;
+    window.location.assign(window.API.dataExportUrl({ ...body, symbols }));
   }
 
   return html`
@@ -630,7 +1256,7 @@ function MarketDataCard() {
       <div class="card-h">
         <div>
           <div class="card-title">Market Data Coverage</div>
-          <div class="card-sub">OHLCV and funding rates stored in TimescaleDB</div>
+          <div class="card-sub">OHLCV, funding rates, and external feature observations stored in TimescaleDB</div>
         </div>
         <div class="row" style=${{ gap: 8 }}>
           <button class="btn sm" onClick=${() => setShowExportPanel((v) => !v)}>Export CSV</button>
@@ -640,21 +1266,39 @@ function MarketDataCard() {
 
       ${showExportPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Export OHLCV Data</div>
-          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Export Market Data</div>
+          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
-              <div class="field-label">Perpetual symbols</div>
+              <div class="field-label">${exportKind === "external" ? "External datasets" : "Trading pairs"}</div>
               <button class="btn sm" style=${{ marginBottom: 4 }}
                 onClick=${() => {
-                  const allSelected = exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length;
-                  setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
+                  if (exportKind === "external") {
+                    const allSelected = externalOptions.length > 0 && selectedExportDatasets.length === externalOptions.length;
+                    setExportForm((f) => ({ ...f, datasets: allSelected ? [] : [...externalOptions] }));
+                  } else {
+                    const allSelected = exportSymbols.length > 0 && selectedExportSymbols.length === exportSymbols.length;
+                    setExportForm((f) => ({ ...f, symbols: allSelected ? [] : [...exportSymbols] }));
+                  }
                 }}>
-                ${exportSymbols.length > 0 && (exportForm.symbols || []).length === exportSymbols.length ? "Deselect All" : "Select All"}
+                ${(exportKind === "external"
+                  ? externalOptions.length > 0 && selectedExportDatasets.length === externalOptions.length
+                  : exportSymbols.length > 0 && selectedExportSymbols.length === exportSymbols.length) ? "Deselect All" : "Select All"}
               </button>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
                   <tbody>
-                    ${exportSymbols.map((symbol) => html`
+                    ${exportKind === "external" ? externalOptions.map((dataset) => html`
+                      <tr key=${dataset} style=${{ cursor: "pointer" }} onClick=${() => toggleExportDataset(dataset)}>
+                        <td style=${{ width: 28 }}>
+                          <input
+                            type="checkbox"
+                            checked=${(exportForm.datasets || []).includes(dataset)}
+                            onChange=${() => {}}
+                          />
+                        </td>
+                        <td class="mono">${dataset}</td>
+                      </tr>
+                    `) : exportSymbols.length ? exportSymbols.map((symbol) => html`
                       <tr key=${symbol} style=${{ cursor: "pointer" }} onClick=${() => toggleExportSymbol(symbol)}>
                         <td style=${{ width: 28 }}>
                           <input
@@ -665,18 +1309,28 @@ function MarketDataCard() {
                         </td>
                         <td class="mono">${symbol}</td>
                       </tr>
-                    `)}
+                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${exportForm.bar}.</td></tr>`}
                   </tbody>
                 </table>
               </div>
               <div class="field-hint">
-                ${(exportForm.symbols || []).length} selected${exportForm.bar === "1H" ? " - 1H exports are aggregated from 1m candles" : ""}
+                ${selectedExportCount} selected${exportKind === "ohlcv" && exportForm.bar === "1H" ? " - 1H exports are aggregated from 1m candles" : ""}
               </div>
               ${estRows > 0 && html`<div class="field-hint">Est. size: ~${fmtBytes(estBytes)}</div>`}
             </div>
             <div class="field">
+              <div class="field-label">Kind</div>
+              <select class="select mono" value=${exportKind}
+                onChange=${(e) => setExportForm((f) => ({ ...f, kind: e.target.value, symbols: [], datasets: e.target.value === "external" ? ["cme_btc_yfinance"] : [] }))}>
+                <option value="ohlcv">OHLCV</option>
+                <option value="funding">Funding</option>
+                <option value="external">External</option>
+              </select>
+            </div>
+            <div class="field">
               <div class="field-label">Bar</div>
               <select class="select mono" value=${exportForm.bar}
+                disabled=${exportKind !== "ohlcv"}
                 onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
                 ${["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
@@ -700,8 +1354,14 @@ function MarketDataCard() {
               </select>
             </div>
           </div>
+          ${exportJob && html`
+            <div class="row" style=${{ gap: 8, marginTop: 10, alignItems: "center" }}>
+              <span class=${`chip ${exportJob.status === "done" ? "profit" : exportJob.status === "error" ? "loss" : "warn"}`}>${exportJob.status}</span>
+              <span class="field-hint">${exportJob.message || ""}</span>
+            </div>
+          `}
           <button class="btn primary sm" style=${{ marginTop: 12 }}
-            disabled=${!(exportForm.symbols || []).length || exportForm.start >= exportForm.end}
+            disabled=${selectedExportCount < 1 || exportForm.start >= exportForm.end || exportJob?.status === "running"}
             onClick=${triggerExport}>
             Download Data
           </button>
@@ -713,7 +1373,7 @@ function MarketDataCard() {
           <div class="card-title" style=${{ marginBottom: 12 }}>Fetch 1m OHLCV from OKX</div>
           <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
             <div class="field">
-              <div class="field-label">USDT swap symbols</div>
+              <div class="field-label">USDT swap trading pairs</div>
               <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
                 <table class="tbl" style=${{ fontSize: 12 }}>
                   <tbody>
@@ -746,7 +1406,7 @@ function MarketDataCard() {
               <div class="field-label">Start</div>
               <input class="input mono" type="date" value=${fetchForm.start}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, start: e.target.value }))} />
-              ${latestSelectedListing && html`<div class="field-hint">symbols listed after start auto-fetch from their listing date; latest selected listing: ${latestSelectedListing}</div>`}
+              ${latestSelectedListing && html`<div class="field-hint">trading pairs listed after start auto-fetch from their listing date; latest selected listing: ${latestSelectedListing}</div>`}
             </div>
             <div class="field">
               <div class="field-label">End</div>
@@ -759,12 +1419,7 @@ function MarketDataCard() {
               <span class=${`chip ${fetchJob.status === "done" ? "profit" : fetchJob.status === "error" ? "loss" : "warn"}`}>
                 ${fetchJob.status}
               </span>
-              <span class="field-hint">${fetchJob.message || ""}</span>
-              ${fetchJob.progress != null && html`
-                <div class="bar" style=${{ flex: 1, height: 6 }}>
-                  <i style=${{ width: `${fetchJob.progress}%`, background: "var(--accent)" }}></i>
-                </div>
-              `}
+              <${ProgressStage} job=${fetchJob} />
             </div>
           `}
           <button class="btn primary sm" style=${{ marginTop: 12 }}
@@ -784,7 +1439,7 @@ function MarketDataCard() {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Symbol</th><th>Bar</th><th class="num">First date</th>
+              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
               <th class="num">Gaps</th>
             </tr>
@@ -793,7 +1448,9 @@ function MarketDataCard() {
             ${(coverage || []).map((row, i) => html`
               <tr key=${i}>
                 <td class="mono">${row.inst_id}</td>
+                <td>${row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")}</td>
                 <td class="mono">${row.bar}</td>
+                <td class="mono">${row.provider || "-"}</td>
                 <td class="num mono">${row.first_ts ? new Date(row.first_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num mono">${row.last_ts ? new Date(row.last_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num">${(row.row_count || 0).toLocaleString()}</td>
@@ -803,7 +1460,7 @@ function MarketDataCard() {
               </tr>
             `)}
             ${(!coverage || !coverage.length) && html`
-              <tr><td colSpan=${6} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" to load historical data.</td></tr>
+              <tr><td colSpan=${8} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
             `}
           </tbody>
         </table>

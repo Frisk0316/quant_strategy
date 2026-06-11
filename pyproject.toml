@@ -31,11 +31,17 @@ dependencies = [
     "asyncpg>=0.29",
     "click>=8.1",
     "openpyxl>=3.0",
+    "yfinance>=0.2",
 ]
 
 [project.optional-dependencies]
 backtest = [
     "vectorbt>=0.26",
+    "nautilus_trader>=1.190",
+]
+validation = [
+    "vectorbt>=0.26",
+    "backtrader>=1.9",
     "nautilus_trader>=1.190",
 ]
 dev = [

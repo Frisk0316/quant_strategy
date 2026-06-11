@@ -71,6 +71,8 @@
     { id: "ma_crossover", name: "MA Crossover", tag: "Trend", desc: "Long/flat moving-average crossover strategy with adjustable fast and slow windows" },
     { id: "ema_crossover", name: "EMA Crossover", tag: "Trend", desc: "Long/flat exponential moving-average crossover strategy with adjustable spans" },
     { id: "macd_crossover", name: "MACD Crossover", tag: "Trend", desc: "Long/flat MACD line versus signal line crossover strategy" },
+    { id: "fear_greed_sentiment", name: "Fear & Greed Sentiment", tag: "External", desc: "Research-only BTC sentiment strategy using as-of Fear & Greed observations" },
+    { id: "cme_gap_fill", name: "CME Daily Gap Baseline", tag: "External", desc: "Research-only delayed daily CME BTC gap baseline, not real-time gap-fill" },
     { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
     { id: "daily_winner", name: "Daily Winner", tag: "Validation", desc: "Every day buys yesterday's strongest symbol and exits at the daily close" },
   ];
@@ -332,19 +334,42 @@ window.API = (function () {
       const qs = q.toString();
       return _getLarge("/api/backtest/" + id + "/price-series" + (qs ? "?" + qs : ""));
     },
+    /** Indicator time series CSV as JSON records (technical-indicator strategies only). */
+    fetchBacktestIndicators: (id, symbol = null, n = 1200) => {
+      const q = new URLSearchParams();
+      if (symbol) q.set("symbol", symbol);
+      if (n) q.set("n", n);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/indicators" + (qs ? "?" + qs : ""));
+    },
     /** Data coverage JSON. */
     fetchBacktestCoverage:    (id)      => _get("/api/backtest/" + id + "/data-coverage"),
     fetchWalkForward:         (id)      => _get("/api/backtest/" + id + "/walk-forward"),
     fetchCPCV:                (id)      => _get("/api/backtest/" + id + "/cpcv"),
+    fetchDifferentialValidations: (id)  => _get("/api/backtest/" + id + "/differential-validation"),
+    fetchDifferentialValidation: (id, validationId) => _get("/api/backtest/" + id + "/differential-validation/" + validationId),
+    fetchDifferentialValidationArtifact: (id, validationId, artifactName) => _getLarge("/api/backtest/" + id + "/differential-validation/" + validationId + "/artifact/" + artifactName),
+    fetchStrategyValidationFixtures: (strategy = null) => _get("/api/backtest/strategy-validation/fixtures" + (strategy ? "?strategy=" + encodeURIComponent(strategy) : "")),
+    fetchStrategyValidations: (strategy = null) => _get("/api/backtest/strategy-validation" + (strategy ? "?strategy=" + encodeURIComponent(strategy) : "")),
+    fetchStrategyValidation: (strategy, validationId) => _get("/api/backtest/strategy-validation/" + strategy + "/" + validationId),
+    fetchStrategyValidationArtifact: (strategy, validationId, artifactName) => _getLarge("/api/backtest/strategy-validation/" + strategy + "/" + validationId + "/artifact/" + artifactName),
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
     fetchDataCoverage:        ()        => _get("/api/data/coverage"),
     fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
     dataExportUrl:            (body)    => "/api/data/export?" + new URLSearchParams(body).toString(),
+    refreshExternalData:      (body)    => _post("/api/data/external/refresh", body),
     triggerDataFetch:         (body)    => _post("/api/data/fetch", body),
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),
+    triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
+    fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),
+    fetchBacktestSweepJobs:   ()        => _get("/api/backtest/sweep/jobs"),
+    triggerDifferentialValidation: (id, body) => _post("/api/backtest/" + id + "/differential-validation/run", body),
+    triggerStrategyValidation: (body) => _post("/api/backtest/strategy-validation/run", body),
+    fetchDifferentialValidationStatus: (jobId) => _get("/api/backtest/differential-validation/status/" + jobId),
+    fetchDifferentialValidationJobs: ()  => _get("/api/backtest/differential-validation/jobs"),
     deleteRun:                (id)      => fetch("/api/backtest/" + id, { method: "DELETE" }).then((r) => r.json()),
   };
 })();

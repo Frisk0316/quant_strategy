@@ -141,8 +141,8 @@ Deployment readiness:
 1. 資料時間區間、時區與 symbol 對齊。
 2. 沒有用未來資料產生當下 signal。
 3. OKX maker/taker fee、spread、slippage、missed fill 或 maker-only 約束有被納入。
-4. Walk-forward 或 CPCV 沒有 train/test leakage。
-5. DSR/PSR 或等價的過擬合檢查有被記錄。
+4. Walk-forward 或 CPCV 沒有 train/test leakage；每筆 backtest artifact 必須附帶 `validation_status`，判定規則見 [`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention)。
+5. DSR/PSR 或等價的過擬合檢查有被記錄；promotion 需 DSR >= 0.95、PSR >= 0.95，且 `n_trials` 誠實申報。
 6. Trade log、fill log、equity curve 可以重現。
 7. 策略參數來自文件或 config，不是隱藏在 notebook/chat 裡。
 
@@ -150,12 +150,16 @@ Deployment readiness:
 
 任何 live 之前必須完成以下階段：
 
-1. Historical backtest
-2. Walk-forward 或 CPCV
-3. Replay 或 shadow 檢查
-4. OKX demo
-5. 小資金 live
-6. 才能擴大資金
+| Stage | Requirement |
+| --- | --- |
+| Historical backtest | 必須有可重現 artifact 與 `validation_status`；`in_sample` 或 `naive_backtest` 不得勾選此 gate、不得引用為 edge evidence、不得作為 promotion 依據。 |
+| Walk-forward 或 CPCV | 必須由 `validation_status: walk_forward` 或 `validation_status: cpcv` artifact 滿足；不得有 train/test leakage。CPCV 必須誠實申報 `n_trials`，且 DSR >= 0.95、PSR >= 0.95。 |
+| Idealized fill 排除 | 任何 `result.validation.fill_all_signals == true`（或同義的 `result.validation.idealized_fill == true`）的 artifact，不論 `validation_status` 為何，皆 **不得勾選任何 Deployment Gate stage**、不得引用為 edge evidence、不得作為 promotion 依據。`fill_all_signals` 是 research-only 的 capacity / execution sensitivity 工具，禁止當作 live readiness 證據；理由與排除清單見 `research/strategy_synthesis.md#validation-status-convention`。 |
+| Differential validation | 技術指標策略（`ma_crossover`、`ema_crossover`、`macd_crossover`）必須通過：在 `results/<run_id>/validation/<validation_id>/validation_result.json` 中，至少有一個 reference engine（vectorbt 或 backtrader）回報 `engines.<engine>.comparison.signal_logic.status == "PASS"` 且 `engines.<engine>.comparison.signal_logic.actionable_mismatch_count == 0`。Scope 限定 **signal-logic only**：indicator/signal 方向與時序差異列入；PnL、equity、metric mismatches 為 advisory，不阻擋本 gate。Advisory scope（`trade_execution` / `pnl_semantics` / `metrics`）mismatch 不自動 FAIL Differential validation gate，但 reviewer 可在 promotion ADR 引用非零 `actionable_mismatch_counts` 作為拒絕或暫緩理由；advisory 表示「不自動 gate fail」，不是「可忽略」。`funding_carry`、`pairs_trading`、`as_market_maker`、`obi_market_maker`、`ohlcv_rotation`、`daily_winner` 及 external-feature 策略 (`cme_gap_fill`、`fear_greed_sentiment` 等)：not applicable；promotion ADR 必須明文記載「no external reference engine applies」並說明替代驗證來源（內部 regression test、shadow trading、analyzer 對照）。**無 override**：FAIL 為硬性阻擋，不接受 reviewer attestation 推翻；如需排除須由 user 顯式批准並更新本 gate 條文。**追溯適用**：適用於所有現存與未來的技術指標策略 artifact；現存 artifact 若未跑 differential validation、或未產出上述 signal-logic 欄位，視同 FAIL。本 gate 與「Idealized fill 排除」、下節「ct_val 來源檢查」皆為獨立必過項目，互不取代。 |
+| Replay 或 shadow 檢查 | 必須使用同碼 replay 或 shadow 對照，並保留 fill log、order log、equity curve、fees、funding cashflow。 |
+| OKX demo | 需要使用者批准，且 demo 期間風控、告警、rollback 可驗證。 |
+| 小資金 live | 需要使用者再次批准，使用明確資金上限與 kill switch。 |
+| 擴大資金 | 只能在前述階段均通過、Claude/使用者複核後進行。 |
 
 部署前檢查：
 
@@ -187,6 +191,19 @@ Deployment readiness:
 未通過回測/測試/風控 gate 前，不要宣稱可 live。
 ```
 
+### Deployment gate：ct_val 來源檢查
+
+任何 SWAP backtest 在進入 live / shadow / demo gate 前，**必須通過 ct_val provenance gate**：
+
+- 來源：`result.validation.ct_val_sources` 與 `result.validation.ct_val_all_authoritative`（自 2026-05 起由 `backtesting.replay._attach_ct_val_provenance()` 寫入 result.json）。
+- **Authoritative sources**：`db`（從 `instruments.contract_value` 查得，驗證過的權威值）、`config_override`（呼叫端顯式傳入 instrument_specs）、`spot_unit`（USDT 現貨對的恆等 1.0）。
+- **Non-authoritative sources**：`registry`（讀自 `config/instrument_specs.yaml`，bundled fallback）、`hardcoded_btc_eth`（離線情境下的 0.01 兜底）。
+- Gate 規則：
+  - **PASS** ⇔ `ct_val_all_authoritative == true`（即所有 swap symbol 的 ct_val 都來自 `db` 或 `config_override`）。
+  - **FAIL** 時必須拒絕該回測進入 live/shadow/demo gate；如要 override 必須在 PR 描述顯式說明每個 non-authoritative symbol 的核對方式，並由 human reviewer 顯式 approve。
+
+理由：ct_val 是 PnL / notional / funding / margin / liquidation 公式的線性乘子。非權威來源（即使 0.01 對 BTC/ETH 是真實值）在交易所改規格時會 silently drift，造成 backtest 與真實環境 PnL 偏差 10–1000 倍。CLAUDE.md hard rule 已要求 ct_val 一定要在公式裡，這條 gate 進一步要求它必須是「verified upstream」的值。
+
 ## 衝突處理
 
 如果兩個 AI 產出衝突：
@@ -215,7 +232,7 @@ Deployment readiness:
 
 | 策略 | 目的 | 已知偏差（intentional，禁止「修正」） |
 | --- | --- | --- |
-| `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；fee model 為 None；無 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
+| `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；顯示用成本來自合併 `cost_rate`（fee+slip 不分開），不可視為純手續費 PnL；validation 必須顯式指定 `wf`/`cpcv`/`both`，`validation=none` 不自動生成 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
 
 ## 最小完成定義
 

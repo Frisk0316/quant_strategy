@@ -14,6 +14,8 @@ import asyncpg
 import pandas as pd
 from loguru import logger
 
+from okx_quant.data.canonical_policy import canonical_conflict_where
+
 
 # Milliseconds per bar used for gap detection interval lookups
 _BAR_MS: dict[str, int] = {
@@ -537,7 +539,8 @@ class CandleStore:
 
         For each timestamp, selects the row from the highest-priority exchange
         in prefer_exchanges (e.g. ['okx', 'binance', 'bybit']).
-        Uses ON CONFLICT DO NOTHING to preserve already-validated canonical rows.
+        Uses the shared canonical priority gate so later Binance rows can
+        upgrade OKX raw rows while validated/corrected rows stay protected.
 
         Returns {promoted: int, source_counts: {exchange: int}}.
         """
@@ -582,7 +585,7 @@ class CandleStore:
         )
         source_counts = {r["exchange"]: r["cnt"] for r in count_rows}
 
-        result = await self._pool.execute(
+        changed_rows = await self._pool.fetch(
             f"""
             INSERT INTO canonical_candles
                 (ts, inst_id, bar, open, high, low, close,
@@ -609,14 +612,24 @@ class CandleStore:
                    vol_contract, vol_base, vol_quote, source_primary, 'raw'
             FROM ranked
             WHERE rn = 1
-            ON CONFLICT (inst_id, bar, ts) DO NOTHING
+            ON CONFLICT (inst_id, bar, ts) DO UPDATE SET
+                open=EXCLUDED.open,
+                high=EXCLUDED.high,
+                low=EXCLUDED.low,
+                close=EXCLUDED.close,
+                vol_contract=EXCLUDED.vol_contract,
+                vol_base=EXCLUDED.vol_base,
+                vol_quote=EXCLUDED.vol_quote,
+                source_primary=EXCLUDED.source_primary,
+                quality_status=EXCLUDED.quality_status,
+                updated_at=NOW(),
+                version=canonical_candles.version + 1
+            WHERE {canonical_conflict_where()}
+            RETURNING source_primary
             """,
             *params,
         )
-        try:
-            promoted = int(result.split()[-1])
-        except (ValueError, IndexError):
-            promoted = 0
+        promoted = len(changed_rows)
         return {"promoted": promoted, "source_counts": source_counts}
 
     async def upsert_market_klines(
@@ -854,8 +867,8 @@ class CandleStore:
     ) -> dict:
         """
         Promote closed raw candles from `source` into canonical_candles.
-        Uses INSERT ... ON CONFLICT DO NOTHING to avoid overwriting
-        already-corrected canonical rows.
+        Uses the shared canonical priority gate so higher-priority raw sources
+        can upgrade lower-priority raw rows without overwriting corrected rows.
         """
         conditions = ["r.source=$1", "r.inst_id=$2", "r.bar=$3", "r.is_closed=TRUE"]
         params: list[Any] = [source, inst_id, bar]
@@ -867,7 +880,7 @@ class CandleStore:
             conditions.append(f"r.ts < ${len(params)}")
         where = " AND ".join(conditions)
 
-        result = await self._pool.execute(
+        changed_rows = await self._pool.fetch(
             f"""
             INSERT INTO canonical_candles
                 (ts, inst_id, bar, open, high, low, close,
@@ -877,16 +890,24 @@ class CandleStore:
                 r.vol_contract, r.vol_base, r.vol_quote, $1, 'raw'
             FROM raw_candles r
             WHERE {where}
-            ON CONFLICT (inst_id, bar, ts) DO NOTHING
+            ON CONFLICT (inst_id, bar, ts) DO UPDATE SET
+                open=EXCLUDED.open,
+                high=EXCLUDED.high,
+                low=EXCLUDED.low,
+                close=EXCLUDED.close,
+                vol_contract=EXCLUDED.vol_contract,
+                vol_base=EXCLUDED.vol_base,
+                vol_quote=EXCLUDED.vol_quote,
+                source_primary=EXCLUDED.source_primary,
+                quality_status=EXCLUDED.quality_status,
+                updated_at=NOW(),
+                version=canonical_candles.version + 1
+            WHERE {canonical_conflict_where()}
+            RETURNING 1
             """,
             *params,
         )
-        # asyncpg returns "INSERT 0 N" string
-        try:
-            promoted = int(result.split()[-1])
-        except (ValueError, IndexError):
-            promoted = 0
-        return {"promoted": promoted}
+        return {"promoted": len(changed_rows)}
 
     async def upsert_canonical_candles(
         self,
@@ -895,8 +916,9 @@ class CandleStore:
         bar: str,
         source_primary: str = "okx",
         quality_status: str = "raw",
+        enforce_priority: bool = True,
     ) -> dict:
-        """Direct upsert into canonical_candles (used by validator for corrections)."""
+        """Direct upsert into canonical_candles (used by validators/corrections)."""
         if not rows:
             return {"inserted": 0}
         await self.ensure_ingestion_checkpoint_table()
@@ -913,25 +935,45 @@ class CandleStore:
             )
             for r in rows
         ]
+        changed_count = 0
+        conflict_where = f"WHERE {canonical_conflict_where()}" if enforce_priority else ""
         chunk_size = 500
         for i in range(0, len(records), chunk_size):
             chunk = records[i : i + chunk_size]
-            await self._pool.executemany(
-                """
+            cols = [list(col) for col in zip(*chunk)]
+            changed_rows = await self._pool.fetch(
+                f"""
                 INSERT INTO canonical_candles
                     (ts, inst_id, bar, open, high, low, close,
                      vol_contract, vol_base, vol_quote, source_primary, quality_status, updated_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+                SELECT *, NOW()
+                FROM unnest(
+                    $1::timestamptz[],
+                    $2::text[],
+                    $3::text[],
+                    $4::double precision[],
+                    $5::double precision[],
+                    $6::double precision[],
+                    $7::double precision[],
+                    $8::double precision[],
+                    $9::double precision[],
+                    $10::double precision[],
+                    $11::text[],
+                    $12::text[]
+                )
                 ON CONFLICT (inst_id, bar, ts) DO UPDATE SET
                     open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low, close=EXCLUDED.close,
                     vol_contract=EXCLUDED.vol_contract, vol_base=EXCLUDED.vol_base,
                     vol_quote=EXCLUDED.vol_quote, source_primary=EXCLUDED.source_primary,
                     quality_status=EXCLUDED.quality_status, updated_at=NOW(),
                     version=canonical_candles.version + 1
+                {conflict_where}
+                RETURNING 1
                 """,
-                chunk,
+                *cols,
             )
-        return {"inserted": len(rows)}
+            changed_count += len(changed_rows)
+        return {"inserted": changed_count}
 
     async def get_canonical_candles(
         self,

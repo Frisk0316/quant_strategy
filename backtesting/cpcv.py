@@ -21,6 +21,19 @@ from okx_quant.analytics.performance import sharpe
 from backtesting.result_utils import extract_returns
 
 
+def _result_validation(result: object) -> dict:
+    if isinstance(result, dict):
+        validation = result.get("validation", {})
+    else:
+        validation = getattr(result, "validation", {})
+    return validation if isinstance(validation, dict) else {}
+
+
+def _is_idealized_fill_result(result: object) -> bool:
+    validation = _result_validation(result)
+    return bool(validation.get("idealized_fill") or validation.get("fill_all_signals"))
+
+
 class CPCV:
     def __init__(
         self,
@@ -183,6 +196,7 @@ class CPCV:
         strategy_fn: Callable[[pd.DataFrame, pd.DataFrame], pd.Series],
         periods: int = 365,
         n_trials: int | None = None,
+        progress_callback: Callable[[dict], None] | None = None,
     ) -> dict:
         """
         Run CPCV evaluation and compute OOS combination/path metrics.
@@ -203,12 +217,20 @@ class CPCV:
         groups = self._build_groups(n)
         combo_groups = list(combinations(range(self.n_splits), self.k_test))
         combo_results = []
+        idealized_fill = False
 
-        for test_groups in combo_groups:
+        for i, test_groups in enumerate(combo_groups):
             train_idx, test_idx = self._apply_purge_and_embargo(n, groups, test_groups)
             train_data = df.iloc[train_idx]
             test_data = df.iloc[test_idx]
+            if progress_callback:
+                progress_callback({
+                    "current": i + 1,
+                    "total": len(combo_groups),
+                    "test_groups": test_groups,
+                })
             strategy_result = strategy_fn(train_data, test_data)
+            idealized_fill = idealized_fill or _is_idealized_fill_result(strategy_result)
             normalized_returns = self._coerce_oos_returns(test_data, strategy_result)
 
             if normalized_returns.empty:
@@ -239,6 +261,7 @@ class CPCV:
                 "n_paths": 0,
                 "path_sharpes": [],
                 "n_trials": int(n_trials or 0),
+                "validation": {"idealized_fill": True} if idealized_fill else {},
             }
 
         combo_sharpes = [result["sharpe"] for result in combo_results]
@@ -297,4 +320,5 @@ class CPCV:
             "n_paths": len(path_sharpes),
             "path_sharpes": path_sharpes,
             "n_trials": max(int(n_trials or 0), 0),
+            "validation": {"idealized_fill": True} if idealized_fill else {},
         }

@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 
 from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload
 from okx_quant.data.okx_book import OkxBook
@@ -67,6 +68,53 @@ async def test_ma_crossover_warms_up_then_emits_entry_and_exit():
     assert [s.side for s in signals] == ["buy", "sell"]
     assert signals[0].metadata["action"] == "entry"
     assert signals[1].metadata["action"] == "exit"
+    assert signals[1].metadata["cancel_existing"] is True
+
+
+@pytest.mark.asyncio
+async def test_long_flat_exit_stays_in_position_until_exit_order_is_filled():
+    strategy = MACrossoverStrategy({"symbols": ["BTC-USDT-SWAP"], "fast_window": 2, "slow_window": 3})
+    strategy._in_position["BTC-USDT-SWAP"] = True
+
+    await strategy.on_fill(Event(
+        EvtType.FILL,
+        payload=FillPayload(
+            cl_ord_id="partial-exit",
+            ord_id="partial-exit",
+            inst_id="BTC-USDT-SWAP",
+            fill_px=100.0,
+            fill_sz=0.5,
+            fee=0.0,
+            fee_ccy="USDT",
+            side="sell",
+            ts=1,
+            strategy=strategy.name,
+            state="partially_filled",
+            metadata={"remaining_sz": 0.5},
+        ),
+    ))
+
+    assert strategy._in_position["BTC-USDT-SWAP"] is True
+
+    await strategy.on_fill(Event(
+        EvtType.FILL,
+        payload=FillPayload(
+            cl_ord_id="filled-exit",
+            ord_id="filled-exit",
+            inst_id="BTC-USDT-SWAP",
+            fill_px=100.0,
+            fill_sz=0.5,
+            fee=0.0,
+            fee_ccy="USDT",
+            side="sell",
+            ts=2,
+            strategy=strategy.name,
+            state="filled",
+            metadata={"remaining_sz": 0.0},
+        ),
+    ))
+
+    assert strategy._in_position["BTC-USDT-SWAP"] is False
 
 
 @pytest.mark.asyncio
@@ -92,6 +140,45 @@ async def test_macd_crossover_emits_entry_after_warmup():
     signals = await _feed(strategy, "BTC-USDT-SWAP", prices)
 
     assert any(s.side == "buy" for s in signals)
+
+
+def test_ema_crossover_incremental_values_match_full_series_after_long_run():
+    strategy = EMACrossoverStrategy({
+        "symbols": ["BTC-USDT-SWAP"],
+        "fast_span": 20,
+        "slow_span": 50,
+    })
+    prices = [100.0 + (idx % 17) * 0.3 - idx * 0.02 for idx in range(260)]
+
+    fast = slow = 0.0
+    for price in prices:
+        fast, slow, _ = strategy._indicator_values("BTC-USDT-SWAP", price, [])
+
+    series = pd.Series(prices, dtype=float)
+    assert fast == pytest.approx(series.ewm(span=20, adjust=False).mean().iloc[-1])
+    assert slow == pytest.approx(series.ewm(span=50, adjust=False).mean().iloc[-1])
+
+
+def test_macd_crossover_incremental_values_match_full_series_after_long_run():
+    strategy = MACDCrossoverStrategy({
+        "symbols": ["BTC-USDT-SWAP"],
+        "fast_span": 12,
+        "slow_span": 26,
+        "signal_span": 9,
+    })
+    prices = [100.0 + (idx % 23) * 0.4 - idx * 0.01 for idx in range(220)]
+
+    macd_value = signal_value = 0.0
+    for price in prices:
+        macd_value, signal_value, _ = strategy._indicator_values("BTC-USDT-SWAP", price, [])
+
+    series = pd.Series(prices, dtype=float)
+    fast = series.ewm(span=12, adjust=False).mean()
+    slow = series.ewm(span=26, adjust=False).mean()
+    macd = fast - slow
+    signal = macd.ewm(span=9, adjust=False).mean()
+    assert macd_value == pytest.approx(macd.iloc[-1])
+    assert signal_value == pytest.approx(signal.iloc[-1])
 
 
 def test_invalid_fast_slow_params_are_rejected():

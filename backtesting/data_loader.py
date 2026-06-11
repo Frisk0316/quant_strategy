@@ -7,10 +7,34 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import pandas as pd
 import pyarrow.parquet as pq
+
+
+def _dsn_reachable(dsn: Optional[str], timeout: float = 1.5) -> bool:
+    """Fast TCP probe so callers can decide between postgres and parquet.
+
+    Catches the common "DB not running" case before asyncpg does its multi-second
+    retry. See routes_backtest._dsn_reachable for the canonical version.
+    """
+    if not dsn:
+        return False
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(dsn)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 5432
+    except Exception:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 
 def load_candles(
@@ -41,14 +65,70 @@ def load_candles(
                   Only used when backend='market'.
     """
     if backend == "postgres":
-        if not dsn:
-            raise ValueError("dsn is required when backend='postgres'")
+        # Fallback applies to both "no DSN string" and "DSN string but DB not
+        # reachable" — the docs treat connection refusal as the trigger to
+        # drop to parquet so backtests don't crash mid-run.
+        if not dsn or not _dsn_reachable(dsn):
+            return _load_candles_parquet(inst_id, bar, data_dir, start, end)
         return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect)
     if backend == "market":
         if not dsn:
             raise ValueError("dsn is required when backend='market'")
         return _load_candles_market(inst_id, bar, dsn, start, end, exchange)
     return _load_candles_parquet(inst_id, bar, data_dir, start, end)
+
+
+def _to_naive_utc_index(df: pd.DataFrame, ts_col: str = "ts") -> pd.DataFrame:
+    """Coerce a parquet candle frame to a tz-naive UTC DatetimeIndex.
+
+    Binance downloads write tz-aware (UTC) timestamps while the OKX downloader
+    writes tz-naive. Comparing either against `pd.Timestamp(start)` (tz-naive)
+    raises TypeError when one side is tz-aware. Normalize everything to
+    tz-naive UTC at read time so the rest of the loader is type-clean.
+    """
+    df[ts_col] = pd.to_datetime(df[ts_col], utc=True, errors="coerce")
+    df = df.dropna(subset=[ts_col])
+    df = df.set_index(ts_col).sort_index()
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert("UTC").tz_localize(None)
+    return df
+
+
+def _to_naive_utc_ts(value: Optional[str]) -> Optional[pd.Timestamp]:
+    """Convert a start/end bound to a tz-naive UTC Timestamp.
+
+    Mirrors `_to_naive_utc_index` so comparisons against the index always
+    have matching tz state regardless of whether the caller passes an
+    ISO string with or without an offset.
+    """
+    if value is None or value == "":
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts
+
+
+def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.to_pydatetime()
+
+
+def _shift_start(value: Optional[str], lookback_seconds: int) -> Optional[str]:
+    if not value or lookback_seconds <= 0:
+        return value
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return (ts - pd.Timedelta(seconds=int(lookback_seconds))).isoformat()
 
 
 def _load_candles_parquet(
@@ -64,13 +144,13 @@ def _load_candles_parquet(
         # If the requested bar can be derived by aggregating 1m data, try that first.
         base_path = inst_dir / "candles_1m.parquet"
         if _can_derive_from_1m(bar) and base_path.exists():
-            df_1m = pq.read_table(base_path).to_pandas()
-            df_1m["ts"] = pd.to_datetime(df_1m["ts"])
-            df_1m = df_1m.set_index("ts").sort_index()
-            if start:
-                df_1m = df_1m[df_1m.index >= pd.Timestamp(start)]
-            if end:
-                df_1m = df_1m[df_1m.index < pd.Timestamp(end)]
+            df_1m = _to_naive_utc_index(pq.read_table(base_path).to_pandas())
+            start_ts = _to_naive_utc_ts(start)
+            end_ts = _to_naive_utc_ts(end)
+            if start_ts is not None:
+                df_1m = df_1m[df_1m.index >= start_ts]
+            if end_ts is not None:
+                df_1m = df_1m[df_1m.index < end_ts]
             return _aggregate_1m_to_bar(df_1m, bar)
         available = sorted(p.name for p in inst_dir.glob("candles_*.parquet")) if inst_dir.exists() else []
         hint = (
@@ -80,13 +160,13 @@ def _load_candles_parquet(
         raise FileNotFoundError(
             f"Candle data not found: {path}\n{hint}"
         )
-    df = pq.read_table(path).to_pandas()
-    df["ts"] = pd.to_datetime(df["ts"])
-    df = df.set_index("ts").sort_index()
-    if start:
-        df = df[df.index >= pd.Timestamp(start)]
-    if end:
-        df = df[df.index < pd.Timestamp(end)]
+    df = _to_naive_utc_index(pq.read_table(path).to_pandas())
+    start_ts = _to_naive_utc_ts(start)
+    end_ts = _to_naive_utc_ts(end)
+    if start_ts is not None:
+        df = df[df.index >= start_ts]
+    if end_ts is not None:
+        df = df[df.index < end_ts]
     return df
 
 
@@ -279,23 +359,34 @@ def _load_candles_market(
     start_dt = _to_utc_dt(start)
     end_dt = _to_utc_dt(end)
 
-    async def _fetch() -> pd.DataFrame:
+    async def _fetch() -> tuple[pd.DataFrame, bool]:
         async with await CandleStore.from_dsn(dsn, min_size=1, max_size=2) as store:
-            return await store.get_market_klines(
+            df = await store.get_market_klines(
                 normalized_symbol=inst_id,
                 bar=bar,
                 start=start_dt,
                 end=end_dt,
                 exchange=exchange,
             )
+            if _can_derive_from_1m(bar) and _has_low_bar_coverage(df, start_dt, end_dt, bar):
+                df_1m = await store.get_market_klines(
+                    normalized_symbol=inst_id,
+                    bar="1m",
+                    start=start_dt,
+                    end=end_dt,
+                    exchange=exchange,
+                )
+                if not df_1m.empty:
+                    return df_1m, True
+            return df, False
 
     try:
         asyncio.get_running_loop()
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            df = pool.submit(asyncio.run, _fetch()).result()
+            df, is_1m_fallback = pool.submit(asyncio.run, _fetch()).result()
     except RuntimeError:
-        df = asyncio.run(_fetch())
+        df, is_1m_fallback = asyncio.run(_fetch())
 
     if df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
@@ -306,6 +397,9 @@ def _load_candles_market(
     df = df.rename(columns={"vol": "vol"})
     if "vol" not in df.columns:
         df["vol"] = float("nan")
+
+    if is_1m_fallback:
+        df = _aggregate_1m_to_bar(df[["open", "high", "low", "close", "vol"]], bar)
 
     return df[["open", "high", "low", "close", "vol"]]
 
@@ -357,26 +451,180 @@ def load_funding(
 ) -> pd.DataFrame:
     """Load funding rate history from Parquet or PostgreSQL and derive APR when absent."""
     if backend == "postgres":
-        if not dsn:
-            raise ValueError("dsn is required when backend='postgres'")
-        return _load_funding_pg(inst_id, dsn, start, end)
+        if not dsn or not _dsn_reachable(dsn):
+            # Same DB-primary fallback as load_candles — missing or unreachable
+            # DSN drops to parquet so backtests survive when the DB is down.
+            backend = "parquet"
+        else:
+            return _load_funding_pg(inst_id, dsn, start, end)
 
     path = Path(data_dir) / inst_id.replace("-", "_") / "funding.parquet"
     if not path.exists():
         raise FileNotFoundError(f"Funding data not found: {path}")
-    df = pq.read_table(path).to_pandas()
-    df["ts"] = pd.to_datetime(df["ts"])
-    df = df.set_index("ts").sort_index()
+    df = _to_naive_utc_index(pq.read_table(path).to_pandas())
     if "apr" not in df.columns and "rate" in df.columns:
         interval = df.get("funding_interval_hours", 8.0)
         if hasattr(interval, "fillna"):
             interval = interval.fillna(8.0)
         df["apr"] = df["rate"] * (365 * 24 / interval)
-    if start:
-        df = df[df.index >= pd.Timestamp(start)]
-    if end:
-        df = df[df.index < pd.Timestamp(end)]
+    start_ts = _to_naive_utc_ts(start)
+    end_ts = _to_naive_utc_ts(end)
+    if start_ts is not None:
+        df = df[df.index >= start_ts]
+    if end_ts is not None:
+        df = df[df.index < end_ts]
     return df
+
+
+def load_external_observations(
+    dataset_id: str,
+    data_dir: str = "data/external",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: Literal["postgres", "parquet"] = "postgres",
+    dsn: Optional[str] = None,
+    lookback_seconds: int = 0,
+) -> pd.DataFrame:
+    """Load external feature observations from PostgreSQL.
+
+    The ``data_dir`` argument is reserved for a future local fixture backend so
+    callers can keep the same signature as other loaders.
+    """
+    del data_dir
+    if backend != "postgres" or not dsn or not _dsn_reachable(dsn):
+        return pd.DataFrame(columns=[
+            "dataset_id", "observed_at", "published_at", "value_num",
+            "value_text", "fields", "quality_status", "raw_payload", "ingested_at",
+        ])
+    return _load_external_observations_pg(
+        dataset_id,
+        dsn,
+        _shift_start(start, lookback_seconds),
+        end,
+    )
+
+
+def _load_external_observations_pg(
+    dataset_id: str,
+    dsn: str,
+    start: Optional[str],
+    end: Optional[str],
+) -> pd.DataFrame:
+    from okx_quant.data.external_store import ExternalDataStore
+
+    start_dt = _to_utc_dt(start)
+    end_dt = _to_utc_dt(end)
+
+    async def _fetch() -> pd.DataFrame:
+        async with await ExternalDataStore.from_dsn(dsn, min_size=1, max_size=2) as store:
+            return await store.get_observations(dataset_id, start=start_dt, end=end_dt)
+
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _fetch()).result()
+    except RuntimeError:
+        return asyncio.run(_fetch())
+
+
+def load_feature_events(
+    dataset_id: str,
+    data_dir: str = "data/external",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: Literal["postgres", "parquet"] = "postgres",
+    dsn: Optional[str] = None,
+    lookback_seconds: int = 0,
+) -> pd.DataFrame:
+    """Return feature observations as replay event rows.
+
+    Event time is ``published_at`` when present, otherwise ``observed_at``.
+    This keeps the replay from seeing values before the configured publication
+    policy allows them.
+    """
+    observations = load_external_observations(
+        dataset_id,
+        data_dir=data_dir,
+        start=start,
+        end=end,
+        backend=backend,
+        dsn=dsn,
+        lookback_seconds=lookback_seconds,
+    )
+    if observations.empty:
+        return pd.DataFrame(columns=[
+            "ts", "dataset_id", "observed_at", "published_at", "value_num",
+            "value_text", "fields", "quality_status",
+        ])
+    frame = observations.copy()
+    frame["observed_at"] = pd.to_datetime(frame["observed_at"], utc=True, errors="coerce")
+    frame["published_at"] = pd.to_datetime(frame.get("published_at"), utc=True, errors="coerce")
+    frame = frame.dropna(subset=["observed_at"])
+    event_ts = frame["published_at"].where(frame["published_at"].notna(), frame["observed_at"])
+    frame["ts"] = event_ts.map(_timestamp_to_ms).astype("int64")
+    frame["dataset_id"] = dataset_id
+    frame["fields"] = frame["fields"].apply(lambda value: value if isinstance(value, dict) else {})
+    return frame[[
+        "ts", "dataset_id", "observed_at", "published_at", "value_num",
+        "value_text", "fields", "quality_status",
+    ]].sort_values("ts")
+
+
+def _timestamp_to_ms(value: Any) -> int:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return int(ts.timestamp() * 1000)
+
+
+def asof_join_features(
+    timestamps: pd.Series | pd.DatetimeIndex | list[Any],
+    observations: pd.DataFrame,
+    *,
+    max_age_seconds: int,
+    prefix: str,
+) -> pd.DataFrame:
+    """Backward as-of join observations onto event timestamps with TTL."""
+    left = pd.DataFrame({"ts": pd.to_datetime(timestamps, utc=True, errors="coerce")}).dropna()
+    if left.empty:
+        return pd.DataFrame(columns=["ts"])
+    if observations.empty:
+        out = left.copy()
+        out[f"{prefix}_fresh"] = False
+        out[f"{prefix}_missing"] = True
+        out[f"{prefix}_stale"] = False
+        return out
+
+    right = observations.copy()
+    right["observed_at"] = pd.to_datetime(right["observed_at"], utc=True, errors="coerce")
+    right["published_at"] = pd.to_datetime(right.get("published_at"), utc=True, errors="coerce")
+    right["feature_ts"] = right["published_at"].where(right["published_at"].notna(), right["observed_at"])
+    right = right.dropna(subset=["feature_ts"]).sort_values("feature_ts")
+    merged = pd.merge_asof(
+        left.sort_values("ts"),
+        right[["feature_ts", "observed_at", "published_at", "value_num", "value_text", "fields"]],
+        left_on="ts",
+        right_on="feature_ts",
+        direction="backward",
+    )
+    age_seconds = (merged["ts"] - merged["feature_ts"]).dt.total_seconds()
+    missing = merged["feature_ts"].isna()
+    stale = ~missing & (age_seconds > int(max_age_seconds))
+    merged[f"{prefix}_fresh"] = ~missing & ~stale
+    merged[f"{prefix}_missing"] = missing
+    merged[f"{prefix}_stale"] = stale
+    merged[f"{prefix}_age_seconds"] = age_seconds
+    rename = {
+        "value_num": f"{prefix}_value_num",
+        "value_text": f"{prefix}_value_text",
+        "fields": f"{prefix}_fields",
+        "observed_at": f"{prefix}_observed_at",
+        "published_at": f"{prefix}_published_at",
+    }
+    return merged.rename(columns=rename)
 
 
 # def _load_funding_pg(

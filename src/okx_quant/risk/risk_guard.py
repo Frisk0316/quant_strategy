@@ -45,6 +45,8 @@ class RiskGuard:
         self._kill_reason: str | None = None
         self.soft_stop: bool = False
         self._strategy_size_multipliers: dict[str, float] = {}
+        self.last_block_reason: str | None = None
+        self.last_bypass_reason: str | None = None
 
     # ------------------------------------------------------------------
     # Main gate
@@ -60,13 +62,29 @@ class RiskGuard:
         Synchronous risk check. Called for every order before submission.
         Returns False (block) if any limit is breached.
         """
+        self.last_block_reason = None
+        self.last_bypass_reason = None
+        is_reduce_only = bool(getattr(order, "reduce_only", False))
+
+        def note_reduce_only_bypass(reason: str) -> None:
+            if not is_reduce_only:
+                return
+            if self.last_bypass_reason:
+                self.last_bypass_reason = f"{self.last_bypass_reason}+{reason}"
+            else:
+                self.last_bypass_reason = reason
+
         if self.kill:
-            logger.warning("Order blocked: kill switch active", inst_id=order.inst_id, reason=self._kill_reason)
-            return False
+            if not is_reduce_only:
+                logger.warning("Order blocked: kill switch active", inst_id=order.inst_id, reason=self._kill_reason)
+                self.last_block_reason = self._kill_reason or "kill_switch"
+                return False
+            note_reduce_only_bypass(self._kill_reason or "kill_switch")
 
         eq = self._equity_fn()
         if eq <= 0:
             logger.error("Order blocked: equity is zero or negative", equity=eq)
+            self.last_block_reason = "non_positive_equity"
             return False
 
         # Fat-finger guard
@@ -77,6 +95,7 @@ class RiskGuard:
                 notional = float(order.sz) * float(order.px)
             except (ValueError, TypeError):
                 logger.warning("Order blocked: cannot parse sz/px", sz=order.sz, px=order.px)
+                self.last_block_reason = "invalid_order_size_or_price"
                 return False
 
         if notional > self.max_order_notional:
@@ -86,16 +105,20 @@ class RiskGuard:
                 limit=self.max_order_notional,
                 inst_id=order.inst_id,
             )
+            self.last_block_reason = "fat_finger"
             return False
 
         # Position size limit
         if current_pos_notional + notional > self.max_pos_pct * eq:
-            logger.warning(
-                "Order blocked: position limit",
-                pos_notional=current_pos_notional + notional,
-                limit=self.max_pos_pct * eq,
-            )
-            return False
+            if not is_reduce_only:
+                logger.warning(
+                    "Order blocked: position limit",
+                    pos_notional=current_pos_notional + notional,
+                    limit=self.max_pos_pct * eq,
+                )
+                self.last_block_reason = "position_limit"
+                return False
+            note_reduce_only_bypass("position_limit")
 
         # Stale quote check
         if current_mid > 0:
@@ -108,6 +131,7 @@ class RiskGuard:
                     mid=current_mid,
                     drift_pct=drift * 100,
                 )
+                self.last_block_reason = "stale_quote"
                 return False
 
         # Daily loss check
@@ -119,7 +143,10 @@ class RiskGuard:
                 "daily_loss_limit" if daily_loss_hit else "drawdown threshold breached"
             )
             self.trigger_hard_stop(reason)
-            return False
+            if not is_reduce_only:
+                self.last_block_reason = reason
+                return False
+            note_reduce_only_bypass(reason)
         if risk_level == RiskLevel.SOFT_STOP and not self.soft_stop:
             self.trigger_soft_stop()
 
@@ -132,7 +159,20 @@ class RiskGuard:
             )
             self.kill = True
             self._kill_reason = "daily_loss_limit"
-            return False
+            if not is_reduce_only:
+                self.last_block_reason = "daily_loss_limit"
+                return False
+            note_reduce_only_bypass("daily_loss_limit")
+
+        if self.last_bypass_reason:
+            logger.warning(
+                "Reduce-only risk bypass",
+                inst_id=order.inst_id,
+                strategy=order.strategy,
+                cl_ord_id=order.cl_ord_id,
+                reason=self.last_bypass_reason,
+                notional=notional,
+            )
 
         return True
 

@@ -3,7 +3,18 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
-const { LineChart, TradePriceChart } = window.Charts;
+const { LineChart, TradePriceChart, IndicatorChart, adaptiveDateLabel, MAX_Y_ZOOM = 8 } = window.Charts;
+
+const TECHNICAL_STRATEGIES_SET = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
+
+const PHASE2_IDLE_PARTS = {
+  equity: false,
+  ledger: false,
+  validation: false,
+  market: false,
+  risk: false,
+  indicators: false,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -12,6 +23,35 @@ function n(v, d = 2) { return v == null || isNaN(+v) ? "—" : (+v).toFixed(d); 
 function pct(v) { return v == null || isNaN(+v) ? "—" : ((+v) * 100).toFixed(2) + "%"; }
 function usd(v, d = 2) { return v == null || isNaN(+v) ? "—" : "$" + Math.abs(+v).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 function fmtDt(s) { if (!s) return "—"; try { return new Date(s).toISOString().slice(0, 19).replace("T", " "); } catch { return s; } }
+function parseObj(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function runParametersText(run) {
+  const params = run?.parameters || {};
+  const strategyParams = params.strategies || {};
+  const overrideParams = parseObj(params.overrides?.strategy_params);
+  const names = (run?.strategies || [run?.strategy]).filter(Boolean);
+  const parts = [];
+  for (const name of names) {
+    const p = { ...(strategyParams[name] || {}), ...(names.length === 1 ? overrideParams : {}) };
+    if (name === "ma_crossover" && (p.fast_window || p.slow_window)) parts.push(`MA ${p.fast_window ?? "?"}/${p.slow_window ?? "?"}`);
+    else if (name === "ema_crossover" && (p.fast_span || p.slow_span)) parts.push(`EMA ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}`);
+    else if (name === "macd_crossover" && (p.fast_span || p.slow_span || p.signal_span)) parts.push(`MACD ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}/${p.signal_span ?? "?"}`);
+  }
+  const risk = { ...(params.risk || {}), ...parseObj(params.overrides?.risk_overrides) };
+  if (risk.max_pos_pct_equity != null) parts.push(`max pos ${(+risk.max_pos_pct_equity * 100).toFixed(0)}%`);
+  if (risk.max_order_notional_usd != null) parts.push(`order $${(+risk.max_order_notional_usd).toLocaleString("en", { maximumFractionDigits: 0 })}`);
+  if (risk.max_leverage != null) parts.push(`lev ${(+risk.max_leverage).toFixed(1)}x`);
+  return parts.length ? parts.join(" | ") : "—";
+}
 function signedUsd(v, d = 2) {
   if (v == null || isNaN(+v)) return "—";
   const sign = +v < 0 ? "-" : "";
@@ -30,9 +70,96 @@ function chartDateTick(value) {
   const d = parseChartDate(value);
   return d ? d.toISOString().slice(0, 10) : String(value || "—");
 }
+function safeNum(v) {
+  return v == null || v === "" ? NaN : +v;
+}
+function chartRangeMs(range) {
+  if (!range || !Array.isArray(range)) return NaN;
+  const [startMs, endMs] = range;
+  return Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.abs(endMs - startMs) : NaN;
+}
+function chartDateTickForRange(range) {
+  const span = chartRangeMs(range);
+  return (value, _idx, visibleSpan) => adaptiveDateLabel(value, Number.isFinite(visibleSpan) ? visibleSpan : span);
+}
 function chartDateTooltip(value) {
   const d = parseChartDate(value);
   return d ? d.toISOString().slice(0, 19).replace("T", " ") + " UTC" : String(value || "—");
+}
+
+function parseMetadata(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function firstFinite(...values) {
+  for (const value of values) {
+    const n = +value;
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function tradeNotional(row, price, qty) {
+  const meta = parseMetadata(row?.metadata);
+  const explicit = firstFinite(row?.notional_usd, row?.notional, meta.notional_usd);
+  if (explicit != null) return Math.abs(explicit);
+  const ctVal = firstFinite(row?.ct_val, meta.ct_val, 1);
+  const fallback = Math.abs((+price || 0) * (+qty || 0) * (ctVal ?? 1));
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function markerMatchKey(row) {
+  const price = firstFinite(row?.price, row?.fill_px, row?.px, 0);
+  const qty = firstFinite(row?.qty, row?.fill_sz, row?.sz, 0);
+  return [
+    row?.inst_id || row?.symbol || "",
+    row?.ts || row?.datetime || "",
+    String(row?.side || "").toLowerCase(),
+    (price ?? 0).toFixed(8),
+    (qty ?? 0).toFixed(8),
+  ].join("|");
+}
+
+const SYMBOL_COLORS = [
+  "#2563eb",
+  "#dc2626",
+  "#059669",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#4f46e5",
+];
+
+function symbolColor(symbol, index = 0) {
+  return SYMBOL_COLORS[Math.abs(index) % SYMBOL_COLORS.length];
+}
+
+function validationModeFrom(validation, metrics, walkForward, cpcv) {
+  const windows = walkForward || [];
+  const combos = cpcv?.combos || [];
+  if (validation?.validation_mode) return validation.validation_mode;
+  if (validation?.validation_requested) return validation.validation_requested;
+  if (metrics?.validation_requested) return metrics.validation_requested;
+  return (windows.length || combos.length) ? "embedded" : "none";
+}
+
+function validationModeForRun(result) {
+  if (!result) return "none";
+  return validationModeFrom(
+    result.validation || {},
+    result.metrics || {},
+    result.walk_forward || result.walkForward || [],
+    result.cpcv || null,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +194,16 @@ const METRIC_DESCRIPTIONS = {
   fill_notional_usd:        { desc: "Total gross notional value of all fills", unit: "USD" },
   funding_cashflow:         { desc: "Net cashflow from funding rate settlements (positive = earned, negative = paid)", unit: "USD" },
   funding_settlement_count: { desc: "Number of funding settlement events processed", unit: "count" },
-  tail_ratio:               { desc: "95th percentile gain / |5th percentile loss| — measures tail balance", unit: "dimensionless" },
+  tail_ratio:               { desc: "95th percentile gain / |5th percentile loss| - measures tail balance", unit: "dimensionless" },
   pending_fill_event_count: { desc: "Number of fill events still in pending state at backtest end", unit: "count" },
+  terminal_open_position_count: { desc: "Open positions still present before terminal liquidation or end-of-run closeout", unit: "count" },
+  terminal_liquidation_fill_count: { desc: "Synthetic fills generated to close remaining positions at the run endpoint", unit: "count" },
+  terminal_liquidation_notional_usd: { desc: "Notional value closed by terminal liquidation fills", unit: "USD" },
+  validation_only:          { desc: "True when the strategy/run is for system validation only and is not deployable", unit: "boolean" },
+  number_of_trades:         { desc: "Strategy-specific count of completed round trips or trade decisions", unit: "count" },
+  expected_trade_days:      { desc: "Expected number of trading days in a daily validation run", unit: "days" },
+  loaded_symbols:           { desc: "Symbols that had enough data and were included in the run", unit: "list" },
+  skipped_symbols:          { desc: "Requested symbols skipped because data was unavailable or invalid", unit: "list" },
 };
 
 function metricTitle(key) {
@@ -176,6 +311,112 @@ function MetricValue({ value }) {
   return html`<span class="mono" style=${{ overflowWrap: "anywhere" }}>${text}</span>`;
 }
 
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasDisplayRows(value) {
+  return isPlainObject(value) && Object.keys(value).length > 0;
+}
+
+function parameterLabel(key) {
+  return String(key).replace(/_/g, " ");
+}
+
+function parameterValue(value) {
+  if (value == null || value === "") return "—";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
+    return Math.abs(value) >= 1000 ? value.toLocaleString("en", { maximumFractionDigits: 2 }) : String(value);
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function parameterGroupsForRun(run) {
+  const params = run?.parameters || {};
+  const groups = [];
+  const strategyParams = isPlainObject(params.strategies) ? params.strategies : {};
+  const names = (run?.strategies || [run?.strategy]).filter(Boolean);
+  for (const name of names) {
+    const values = strategyParams[name];
+    if (hasDisplayRows(values)) {
+      groups.push({ title: `${name} strategy`, rows: values });
+    }
+  }
+  if (hasDisplayRows(params.risk)) {
+    groups.push({ title: "Risk", rows: params.risk });
+  }
+  if (hasDisplayRows(params.backtest)) {
+    groups.push({ title: "Backtest Execution", rows: params.backtest });
+  }
+  const overrides = params.overrides || {};
+  if (hasDisplayRows(overrides.strategy_params)) {
+    groups.push({ title: "Strategy Overrides", rows: overrides.strategy_params });
+  }
+  if (hasDisplayRows(overrides.risk_overrides)) {
+    groups.push({ title: "Risk Overrides", rows: overrides.risk_overrides });
+  }
+  return groups;
+}
+
+function ParametersPanel({ run }) {
+  const groups = parameterGroupsForRun(run);
+  if (!groups.length) return null;
+  return html`
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <div class="card-title">Parameters</div>
+          <div class="card-sub">strategy, risk, and replay execution inputs</div>
+        </div>
+      </div>
+      <div class="param-group-grid">
+        ${groups.map((group) => html`
+          <div class="param-group" key=${group.title}>
+            <div class="param-group-title">${group.title}</div>
+            <div class="param-kv-grid">
+              ${Object.entries(group.rows).map(([key, value]) => html`
+                <div class="param-kv" key=${key}>
+                  <div class="param-key">${parameterLabel(key)}</div>
+                  <div class="param-value mono" title=${parameterValue(value)}>${parameterValue(value)}</div>
+                </div>
+              `)}
+            </div>
+          </div>
+        `)}
+      </div>
+    </div>
+  `;
+}
+
+function ExecutionQualitySummary({ metrics, parameters }) {
+  const partial = +(metrics.partial_fill_count ?? 0);
+  const pending = +(metrics.pending_fill_event_count ?? 0);
+  const realFills = +(metrics.real_fill_count ?? metrics.fill_count ?? 0);
+  const fillRate = metrics.fill_rate;
+  const queueFraction = parameters?.backtest?.queue_fill_fraction;
+  if (!partial && !pending && !(fillRate != null && +fillRate > 1)) return null;
+  return html`
+    <div class="card">
+      <div class="card-h">
+        <div>
+          <div class="card-title">Execution Quality</div>
+          <div class="card-sub">partial fills are replay lifecycle states, not risk rejections</div>
+        </div>
+      </div>
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <${MetricCard} label="Partial Fills" value=${partial.toLocaleString()} sub=${realFills ? `${pct(partial / realFills)} of real fills` : "no real fills"} tone=${partial ? "down" : undefined} />
+        <${MetricCard} label="Pending Events" value=${pending.toLocaleString()} sub="unfilled at run end" tone=${pending ? "down" : undefined} />
+        <${MetricCard} label="Fill Rate" value=${pct(fillRate)} sub="unique filled orders / submitted orders" tone=${fillRate != null && +fillRate <= 1 ? "up" : "down"} />
+        <${MetricCard} label="Queue Fraction" value=${queueFraction == null ? "—" : pct(queueFraction)} sub="replay queue allocation" />
+      </div>
+    </div>
+  `;
+}
+
 // ---------------------------------------------------------------------------
 // Bankruptcy / anomaly banner
 // ---------------------------------------------------------------------------
@@ -197,6 +438,44 @@ function AnomalyBanner({ metrics }) {
 // ---------------------------------------------------------------------------
 // Run Detail View — phase-1 loads result immediately; phase-2 loads heavy data
 // ---------------------------------------------------------------------------
+function ChartZoomControls({
+  range,
+  onReset,
+  xResetLabel = "Reset X",
+  yZoom = 1,
+  onYZoomIn = null,
+  onYZoomOut = null,
+  onYReset = null,
+  yResetLabel = "Reset Y",
+}) {
+  const hasRange = Array.isArray(range);
+  const hasYControls = typeof onYZoomIn === "function" || typeof onYZoomOut === "function";
+  const isYZoomed = Number.isFinite(+yZoom) && +yZoom > 1.0001;
+  if (!hasRange && !hasYControls) return null;
+  const [startMs, endMs] = hasRange ? range : [null, null];
+  const fmtZoom = (ms) => {
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? "--" : d.toISOString().slice(0, 16).replace("T", " ");
+  };
+  return html`
+    <div class="chart-zoom-reset" role="status">
+      <div class="chart-zoom-caption">
+        ${hasRange ? `Zoom ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC` : `Y ${(+yZoom || 1).toFixed(1)}x`}
+      </div>
+      ${hasYControls && html`
+        <button class="btn ghost sm" type="button" title="Zoom Y axis in" aria-label="Zoom Y axis in" onClick=${onYZoomIn}>Y+</button>
+        <button class="btn ghost sm" type="button" title="Zoom Y axis out" aria-label="Zoom Y axis out" disabled=${!isYZoomed} onClick=${onYZoomOut}>Y-</button>
+      `}
+      ${hasRange && typeof onReset === "function" && html`
+        <button class="btn ghost sm" type="button" onClick=${onReset}>${xResetLabel}</button>
+      `}
+      ${isYZoomed && typeof onYReset === "function" && html`
+        <button class="btn ghost sm" type="button" onClick=${onYReset}>${yResetLabel}</button>
+      `}
+    </div>
+  `;
+}
+
 function RunDetailView({ runId, onBack, onDelete }) {
   const [result, setResult] = useState(null);
   const [phase1Loading, setPhase1Loading] = useState(true);
@@ -210,12 +489,17 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [riskEvents, setRiskEvents] = useState([]);
   const [priceSeries, setPriceSeries] = useState([]);
   const [executionMarkers, setExecutionMarkers] = useState([]);
-  const [phase2Loading, setPhase2Loading] = useState(true);
+  const [, setPhase2Loading] = useState(true);
+  const [phase2Parts, setPhase2Parts] = useState(PHASE2_IDLE_PARTS);
   const [phase2Error, setPhase2Error] = useState(null);
 
   const [activeTab, setActiveTab] = useState("fills");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [chartSymbol, setChartSymbol] = useState("__all__");
+  const [selectedChartSymbols, setSelectedChartSymbols] = useState([]);
+  const [chartRanges, setChartRanges] = useState(new Map());
+  const [chartYZooms, setChartYZooms] = useState(new Map());
+  const [visibleSeries, setVisibleSeries] = useState(new Map());
+  const [indicators, setIndicators] = useState([]);
 
   // Phase 1: load result.json (fast — small payload)
   useEffect(() => {
@@ -230,7 +514,24 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
   // Phase 2: load heavy data after phase 1 completes
   useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    const activeStrategiesForLoad = result.strategies || (result.strategy ? [result.strategy] : []);
+    const shouldLoadValidation = validationModeForRun(result) !== "none";
+    const shouldLoadIndicators = activeStrategiesForLoad.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
+    const setPartDone = (key) => {
+      if (!cancelled) setPhase2Parts((prev) => ({ ...prev, [key]: false }));
+    };
+
     setPhase2Loading(true);
+    setPhase2Parts({
+      equity: true,
+      ledger: true,
+      validation: shouldLoadValidation,
+      market: true,
+      risk: true,
+      indicators: shouldLoadIndicators,
+    });
     setPhase2Error(null);
     setEquity([]);
     setFills([]);
@@ -240,33 +541,95 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setRiskEvents([]);
     setPriceSeries([]);
     setExecutionMarkers([]);
-    Promise.all([
-      window.API.fetchBacktestEquity(runId).catch(() => []),
-      window.API.fetchBacktestFills(runId).catch(() => []),
-      window.API.fetchBacktestTrades(runId).catch(() => []),
-      window.API.fetchWalkForward(runId).catch(() => []),
-      window.API.fetchCPCV(runId).catch(() => null),
-      window.API.fetchBacktestRiskEvents(runId).catch(() => []),
-      window.API.fetchBacktestPriceSeries(runId).catch(() => []),
-      window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
-    ]).then(([eq, fl, tr, wf, cv, re, ps, em]) => {
-      setEquity(eq || []);
-      setFills(fl || []);
-      setTrades(tr || []);
-      setWalkForward(wf || []);
-      setCpcv(cv || null);
-      setRiskEvents(re || []);
-      setPriceSeries(ps || []);
-      setExecutionMarkers(em || []);
-    }).catch((e) => setPhase2Error(e.message))
-      .finally(() => setPhase2Loading(false));
-  }, [runId]);
+    setSelectedChartSymbols([]);
+    setIndicators([]);
+    setChartRanges(new Map());
+    setChartYZooms(new Map());
+    setVisibleSeries(new Map());
+    const tasks = [];
+
+    tasks.push(
+      window.API.fetchBacktestEquity(runId)
+        .then((eq) => { if (!cancelled) setEquity(eq || []); })
+        .catch((e) => { if (!cancelled) { setEquity([]); setPhase2Error(e.message); } })
+        .finally(() => setPartDone("equity"))
+    );
+
+    tasks.push(
+      Promise.all([
+        window.API.fetchBacktestFills(runId).catch(() => []),
+        window.API.fetchBacktestTrades(runId).catch(() => []),
+      ]).then(([fl, tr]) => {
+        if (cancelled) return;
+        setFills(fl || []);
+        setTrades(tr || []);
+      }).finally(() => setPartDone("ledger"))
+    );
+
+    if (shouldLoadValidation) {
+      tasks.push(
+        Promise.all([
+          window.API.fetchWalkForward(runId).catch(() => []),
+          window.API.fetchCPCV(runId).catch(() => null),
+        ]).then(([wf, cv]) => {
+          if (cancelled) return;
+          setWalkForward(wf || []);
+          setCpcv(cv || null);
+        }).finally(() => setPartDone("validation"))
+      );
+    }
+
+    tasks.push(
+      window.API.fetchBacktestRiskEvents(runId)
+        .then((re) => { if (!cancelled) setRiskEvents(re || []); })
+        .catch(() => { if (!cancelled) setRiskEvents([]); })
+        .finally(() => setPartDone("risk"))
+    );
+
+    tasks.push(
+      Promise.all([
+        window.API.fetchBacktestPriceSeries(runId).catch(() => []),
+        window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
+      ]).then(([ps, em]) => {
+        if (cancelled) return;
+        setPriceSeries(ps || []);
+        setExecutionMarkers(em || []);
+      }).finally(() => setPartDone("market"))
+    );
+
+    if (shouldLoadIndicators) {
+      tasks.push(
+        (window.API.fetchBacktestIndicators?.(runId) ?? Promise.resolve([]))
+          .then((ind) => { if (!cancelled) setIndicators(ind || []); })
+          .catch(() => { if (!cancelled) setIndicators([]); })
+          .finally(() => setPartDone("indicators"))
+      );
+    }
+
+    Promise.allSettled(tasks).finally(() => {
+      if (!cancelled) setPhase2Loading(false);
+    });
+    return () => { cancelled = true; };
+  }, [runId, result]);
 
   if (phase1Loading) return html`<div class="field-hint" style=${{ padding: 32 }}>Loading run ${runId}…</div>`;
   if (phase1Error) return html`<div style=${{ color: "var(--loss)", padding: 32 }}>Error: ${phase1Error}</div>`;
   if (!result) return null;
 
   const m = result.metrics || {};
+  const equityLoading = phase2Parts.equity;
+  const ledgerLoading = phase2Parts.ledger;
+  const validationLoading = phase2Parts.validation;
+  const marketLoading = phase2Parts.market;
+  const riskLoading = phase2Parts.risk;
+  const bottomPanelLoading = activeTab === "risk" ? riskLoading : ledgerLoading;
+  const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
+  const isDailyWinnerRun = activeStrategies.includes("daily_winner");
+  const fundingNotModeled = isDailyWinnerRun || m.funding_mode === "not_modeled";
+  const totalCostLabel = isDailyWinnerRun ? "Total Costs" : "Total Fees";
+  const totalCostSub = isDailyWinnerRun
+    ? `Notional ${usd(m.fill_notional_usd)} (fee+slip)`
+    : `Notional ${usd(m.fill_notional_usd)}`;
   const strats = (result.strategies || []).join(", ") || result.strategy || "—";
   const symbols = (result.symbols || []).join(", ") || result.symbol || "—";
   const bar = result.bar || "—";
@@ -284,21 +647,120 @@ function RunDetailView({ runId, onBack, onDelete }) {
     ...priceSeries.map((r) => r.inst_id).filter(Boolean),
     ...executionMarkers.map((r) => r.inst_id).filter(Boolean),
   ])].sort();
-  const filteredPriceSeries = chartSymbol === "__all__"
-    ? priceSeries
-    : priceSeries.filter((r) => r.inst_id === chartSymbol);
-  const filteredMarkers = chartSymbol === "__all__"
-    ? executionMarkers
-    : executionMarkers.filter((r) => r.inst_id === chartSymbol);
+  const chartSymbolColors = Object.fromEntries(chartSymbols.map((symbol, i) => [symbol, symbolColor(symbol, i)]));
+  const effectiveSelectedChartSymbols = selectedChartSymbols.length
+    ? selectedChartSymbols
+    : chartSymbols.slice(0, 1);
+  const fillNotionalByMarker = new Map();
+  for (const fill of fills) {
+    const price = +(fill.fill_px ?? fill.price ?? fill.px ?? 0);
+    const qty = +(fill.fill_sz ?? fill.qty ?? fill.sz ?? 0);
+    fillNotionalByMarker.set(markerMatchKey(fill), tradeNotional(fill, price, qty));
+  }
+  const enrichedExecutionMarkers = executionMarkers.map((marker) => ({
+    ...marker,
+    notional_usd: firstFinite(marker.notional_usd, fillNotionalByMarker.get(markerMatchKey(marker))),
+  }));
+  const selectedSymbolSet = new Set(effectiveSelectedChartSymbols);
+  const filteredPriceSeries = priceSeries.filter((r) => selectedSymbolSet.has(r.inst_id));
+  const filteredMarkers = enrichedExecutionMarkers.filter((r) => selectedSymbolSet.has(r.inst_id));
+  const filteredTrades = trades.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
+  const filteredFills = fills.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
+  const filteredRiskEvents = riskEvents.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
 
-  const realFills = fills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
+  const realFills = filteredFills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
+
+  function getChartRange(id) {
+    const setRange = (nextRange) => {
+      setChartRanges((prev) => {
+        const next = new Map(prev);
+        if (nextRange) next.set(id, nextRange);
+        else next.delete(id);
+        return next;
+      });
+    };
+    return [chartRanges.get(id) || null, setRange];
+  }
+
+  function getChartYControls(id) {
+    const yZoom = chartYZooms.get(id) || 1;
+    const setYZoom = (nextValue) => {
+      setChartYZooms((prev) => {
+        const next = new Map(prev);
+        const clean = Math.max(1, Math.min(MAX_Y_ZOOM, Number.isFinite(+nextValue) ? +nextValue : 1));
+        if (clean <= 1.0001) next.delete(id);
+        else next.set(id, clean);
+        return next;
+      });
+    };
+    return {
+      yZoom,
+      onYZoomIn: () => setYZoom(yZoom * 1.4),
+      onYZoomOut: () => setYZoom(yZoom / 1.4),
+      onYReset: () => setYZoom(1),
+    };
+  }
+
+  function indicatorVisibleState(id, hasMacd) {
+    const current = visibleSeries.get(id);
+    return {
+      price: current?.price !== false,
+      fast: current?.fast !== false,
+      slow: current?.slow !== false,
+      macd: hasMacd ? current?.macd !== false : false,
+    };
+  }
+
+  function toggleIndicatorSeries(id, key, hasMacd) {
+    setVisibleSeries((prev) => {
+      const current = indicatorVisibleState(id, hasMacd);
+      const visibleKeys = ["price", "fast", "slow", ...(hasMacd ? ["macd"] : [])].filter((k) => current[k]);
+      if (current[key] && visibleKeys.length <= 1) return prev;
+      const next = new Map(prev);
+      next.set(id, { ...current, [key]: !current[key] });
+      return next;
+    });
+  }
+
+  const [marketRange, setMarketRange] = getChartRange("market");
+  const [equityRange, setEquityRange] = getChartRange("equity");
+  const [drawdownRange, setDrawdownRange] = getChartRange("drawdown");
+
+  // Technical-indicator strategies render per-symbol IndicatorChart cards.
+  const isTechnicalRun = activeStrategies.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
+  const indicatorBySymbol = (() => {
+    if (!isTechnicalRun || !indicators.length) return new Map();
+    const groups = new Map();
+    for (const row of indicators) {
+      const sym = row.inst_id || row.symbol || "";
+      if (!groups.has(sym)) groups.set(sym, []);
+      groups.get(sym).push(row);
+    }
+    for (const rows of groups.values()) {
+      rows.sort((a, b) => new Date(chartTimestamp(a)).getTime() - new Date(chartTimestamp(b)).getTime());
+    }
+    return groups;
+  })();
+  const indicatorSymbols = [...indicatorBySymbol.keys()].filter((s) => selectedSymbolSet.has(s));
+  const markersBySymbol = new Map();
+  for (const m of enrichedExecutionMarkers) {
+    const sym = m.inst_id || m.symbol || "";
+    if (!sym) continue;
+    if (!markersBySymbol.has(sym)) markersBySymbol.set(sym, []);
+    markersBySymbol.get(sym).push(m);
+  }
 
   const tradesMap = new Map();
-  for (const t of trades) {
+  for (const t of filteredTrades) {
     if (t.cl_ord_id && t.net_realized_pnl != null) {
       tradesMap.set(t.cl_ord_id, (tradesMap.get(t.cl_ord_id) ?? 0) + +t.net_realized_pnl);
     }
   }
+  const priceChartSymbols = effectiveSelectedChartSymbols.filter((sym) =>
+    filteredPriceSeries.some((row) => row.inst_id === sym)
+  );
+  const equityY = getChartYControls("equity");
+  const drawdownY = getChartYControls("drawdown");
 
   return html`
     <div class="col" style=${{ gap: "var(--gap-lg)" }}>
@@ -333,6 +795,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <${AnomalyBanner} metrics=${m} />
 
+      <${ParametersPanel} run=${result} />
+
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${MetricCard} label="Total Return" value=${pct(m.total_return)} tone=${+m.total_return >= 0 ? "up" : "down"} sub=${`Min equity: ${usd(m.min_equity)}`} />
         <${MetricCard} label="Sharpe (ann.)" value=${n(m.sharpe)} sub=${`Sortino ${n(m.sortino)}`} tone=${+m.sharpe >= 1 ? "up" : +m.sharpe >= 0.5 ? undefined : "down"} />
@@ -343,11 +807,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
       <div class="grid" style=${{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <${MetricCard} label="PSR" value=${n(m.psr)} sub="prob Sharpe > 0" />
         <${MetricCard} label="Orders / Fills" value=${`${m.submitted_order_count ?? m.order_count ?? "—"} / ${m.orders_filled_count ?? m.real_fill_count ?? m.fill_count ?? "—"}`} sub=${`Fill rate ${pct(m.fill_rate)}`} />
-        <${MetricCard} label="Total Fees" value=${usd(m.total_fees)} sub=${`Notional ${usd(m.fill_notional_usd)}`} />
-        <${MetricCard} label="Funding P&L" value=${(+m.funding_cashflow >= 0 ? "+" : "") + usd(m.funding_cashflow)} tone=${+m.funding_cashflow >= 0 ? "up" : "down"} sub=${`${m.funding_settlement_count ?? 0} settlements`} />
+        <${MetricCard} label=${totalCostLabel} value=${usd(m.total_fees)} sub=${totalCostSub} />
+        <${MetricCard}
+          label="Funding P&L"
+          value=${fundingNotModeled ? "N/A" : (+m.funding_cashflow >= 0 ? "+" : "") + usd(m.funding_cashflow)}
+          tone=${fundingNotModeled ? undefined : +m.funding_cashflow >= 0 ? "up" : "down"}
+          sub=${fundingNotModeled ? "not modeled for daily_winner" : `${m.funding_settlement_count ?? 0} settlements`}
+        />
       </div>
 
-      <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} loading=${phase2Loading} />
+      <${ValidationSummary} walkForward=${walkForward} cpcv=${cpcv} metrics=${m} validation=${result.validation} loading=${validationLoading} />
+
+      <${ExecutionQualitySummary} metrics=${m} parameters=${result.parameters || {}} />
 
       <div class="card">
         <div class="card-h">
@@ -355,9 +826,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
             <div class="card-title">Trades / Orders</div>
             <div class="card-sub">round trips and execution rows for the selected run</div>
           </div>
-          ${phase2Loading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading...</div>`}
+          ${ledgerLoading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading...</div>`}
         </div>
-        ${phase2Loading
+        ${ledgerLoading
           ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading trades and orders...</div>`
           : html`<${TradesOrdersTable} trades=${trades} fills=${fills} />`
         }
@@ -368,50 +839,207 @@ function RunDetailView({ runId, onBack, onDelete }) {
           <div>
             <div class="card-title">Price + Trade Markers</div>
             <div class="card-sub">
-              ${phase2Loading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
+              ${marketLoading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
             </div>
           </div>
-          <select class="select mono" value=${chartSymbol} onChange=${(e) => setChartSymbol(e.target.value)} style=${{ width: 190 }}>
-            <option value="__all__">All symbols</option>
-            ${chartSymbols.map((s) => html`<option key=${s} value=${s}>${s}</option>`)}
-          </select>
         </div>
-        ${phase2Loading
+        ${marketLoading
           ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
-          : filteredPriceSeries.length > 1
-            ? html`<div class="chart-wrap"><${TradePriceChart}
-                prices=${filteredPriceSeries}
-                markers=${filteredMarkers}
-                height=${260}
-                tooltipLabelFormatter=${chartDateTooltip}
-              /></div>`
-            : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series available for this run.</div>`
+          : html`
+            <div class="chart-stack">
+              ${priceChartSymbols.length
+                ? priceChartSymbols.map((sym) => {
+                    const chartId = `price:${sym}`;
+                    const y = getChartYControls(chartId);
+                    const rows = filteredPriceSeries.filter((row) => row.inst_id === sym);
+                    const markerRows = filteredMarkers.filter((row) => row.inst_id === sym);
+                    return html`
+                      <div key=${sym} class="chart-panel">
+                        <div class="chart-panel-h">
+                          <div>
+                            <div class="card-title">${sym}</div>
+                            <div class="card-sub">${rows.length.toLocaleString()} price samples - ${markerRows.length.toLocaleString()} markers</div>
+                          </div>
+                        </div>
+                        <${ChartZoomControls}
+                          range=${marketRange}
+                          onReset=${() => setMarketRange(null)}
+                          xResetLabel="Reset X (market)"
+                          yZoom=${y.yZoom}
+                          onYZoomIn=${y.onYZoomIn}
+                          onYZoomOut=${y.onYZoomOut}
+                          onYReset=${y.onYReset}
+                        />
+                        <div class="chart-wrap">
+                          <${TradePriceChart}
+                            prices=${rows}
+                            markers=${markerRows}
+                            height=${280}
+                            symbolColors=${chartSymbolColors}
+                            xTickFormatter=${adaptiveDateLabel}
+                            tooltipLabelFormatter=${chartDateTooltip}
+                            range=${marketRange}
+                            onRangeChange=${setMarketRange}
+                            yZoom=${y.yZoom}
+                          />
+                        </div>
+                      </div>
+                    `;
+                  })
+                : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
+              }
+              <${SymbolPillBar}
+                symbols=${chartSymbols}
+                selected=${effectiveSelectedChartSymbols}
+                colors=${chartSymbolColors}
+                onChange=${setSelectedChartSymbols}
+              />
+            </div>
+          `
         }
       </div>
+
+      ${isTechnicalRun && indicatorSymbols.length > 0 && indicatorSymbols.map((sym) => {
+        const rows = indicatorBySymbol.get(sym) || [];
+        if (rows.length < 2) return null;
+        const chartId = `indicator:${sym}`;
+        const y = getChartYControls(chartId);
+        const strategyForLabel = activeStrategies.find((s) => TECHNICAL_STRATEGIES_SET.has(s)) || "";
+        const timestamps = rows.map(chartTimestamp);
+        const closes = rows.map((r) => safeNum(r.close)).map((v) => Number.isFinite(v) ? v : NaN);
+        const fast = rows.map((r) => safeNum(r.fast_value)).map((v) => Number.isFinite(v) ? v : NaN);
+        const slow = rows.map((r) => safeNum(r.slow_value)).map((v) => Number.isFinite(v) ? v : NaN);
+        const macd = rows.map((r) => safeNum(r.macd));
+        const macdSignalVals = rows.map((r) => safeNum(r.macd_signal));
+        const macdHist = rows.map((r) => safeNum(r.macd_histogram));
+        const hasMacd = strategyForLabel === "macd_crossover";
+        const macdY = getChartYControls(`${chartId}:macd`);
+        const indicatorVisible = indicatorVisibleState(chartId, hasMacd);
+        const warmupSource = rows.some((r) => String(r.warmup_source || "").toLowerCase() === "db") ? "db" : "cold";
+        const warmupLabel = warmupSource === "db"
+          ? "DB warmup (opt-in visual aid)"
+          : "Cold-start (strategy-aligned)";
+        // Map markers from datetime back to row index for this symbol.
+        const dtToIdx = new Map(timestamps.map((t, i) => [String(t), i]));
+        const symMarkers = (markersBySymbol.get(sym) || []).map((m) => {
+          const key = String(m.datetime || m.ts || "");
+          let idx = dtToIdx.get(key);
+          if (idx == null) {
+            const target = new Date(key).getTime();
+            if (Number.isFinite(target)) {
+              let best = 0, bestDiff = Infinity;
+              for (let i = 0; i < timestamps.length; i++) {
+                const t = new Date(timestamps[i]).getTime();
+                const diff = Math.abs(t - target);
+                if (diff < bestDiff) { best = i; bestDiff = diff; }
+              }
+              idx = best;
+            }
+          }
+          return { ...m, idx };
+        }).filter((m) => Number.isFinite(m.idx));
+        const labels = strategyForLabel === "ma_crossover"
+          ? { fast: "Fast MA", slow: "Slow MA" }
+          : strategyForLabel === "ema_crossover"
+            ? { fast: "Fast EMA", slow: "Slow EMA" }
+            : { fast: "MACD fast", slow: "MACD slow" };
+        return html`
+          <div key=${sym} class="card">
+            <div class="card-h">
+              <div>
+                <div class="card-title">${sym} — ${strategyForLabel || "indicator"}</div>
+                <div class="card-sub">price + ${labels.fast.toLowerCase()} / ${labels.slow.toLowerCase()}${hasMacd ? " - MACD sub-panel" : ""}</div>
+              </div>
+            </div>
+            <${ChartZoomControls}
+              range=${marketRange}
+              onReset=${() => setMarketRange(null)}
+              xResetLabel="Reset X (market)"
+              yZoom=${y.yZoom}
+              onYZoomIn=${y.onYZoomIn}
+              onYZoomOut=${y.onYZoomOut}
+              onYReset=${y.onYReset}
+            />
+            <div class=${`indicator-warmup-banner ${warmupSource === "db" ? "warn" : "accent"}`}>
+              ${warmupLabel}
+            </div>
+            <${IndicatorSeriesPillBar}
+              visible=${indicatorVisible}
+              labels=${labels}
+              hasMacd=${hasMacd}
+              onToggle=${(key) => toggleIndicatorSeries(chartId, key, hasMacd)}
+            />
+            ${hasMacd && html`
+              <div class="chart-axis-controls">
+                <span>MACD Y ${macdY.yZoom.toFixed(1)}x</span>
+                <button class="btn ghost sm" type="button" title="Zoom MACD Y axis in" aria-label="Zoom MACD Y axis in" onClick=${macdY.onYZoomIn}>MACD Y+</button>
+                <button class="btn ghost sm" type="button" title="Zoom MACD Y axis out" aria-label="Zoom MACD Y axis out" disabled=${macdY.yZoom <= 1.0001} onClick=${macdY.onYZoomOut}>MACD Y-</button>
+                ${macdY.yZoom > 1.0001 && html`
+                  <button class="btn ghost sm" type="button" onClick=${macdY.onYReset}>Reset MACD Y</button>
+                `}
+              </div>
+            `}
+            <div class="chart-wrap fluid">
+              <${IndicatorChart}
+                symbol=${sym}
+                timestamps=${timestamps}
+                prices=${closes}
+                fast=${fast}
+                slow=${slow}
+                fastLabel=${labels.fast}
+                slowLabel=${labels.slow}
+                macd=${hasMacd ? macd : null}
+                macdSignal=${hasMacd ? macdSignalVals : null}
+                macdHistogram=${hasMacd ? macdHist : null}
+                markers=${symMarkers}
+                visibleSeries=${indicatorVisible}
+                range=${marketRange}
+                onRangeChange=${setMarketRange}
+                yZoom=${y.yZoom}
+                macdYZoom=${hasMacd ? macdY.yZoom : 1}
+                xTickFormatter=${adaptiveDateLabel}
+                tooltipLabelFormatter=${chartDateTooltip}
+              />
+            </div>
+          </div>
+        `;
+      })}
 
       <div class="card">
         <div class="card-h">
           <div>
             <div class="card-title">Equity curve</div>
             <div class="card-sub">
-              ${phase2Loading ? "Loading…" : eqValues.length > 0 ? `${eqValues.length.toLocaleString()} samples · initial $5,000` : "No equity data"}
+              ${equityLoading ? "Loading…" : eqValues.length > 0 ? `${eqValues.length.toLocaleString()} samples · initial $5,000` : "No equity data"}
             </div>
           </div>
           ${m.bankrupt && html`<${StatusBadge} ok=${false}>Bankrupt<//>`}
         </div>
-        ${phase2Loading
+        ${equityLoading
           ? html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>Loading equity curve…</div>`
           : phase2Error
             ? html`<div style=${{ color: "var(--loss)", padding: 16 }}>Failed to load equity data: ${phase2Error}</div>`
             : eqValues.length > 1
-              ? html`<div class="chart-wrap"><${LineChart}
+            ? html`
+                <${ChartZoomControls}
+                  range=${equityRange}
+                  onReset=${() => setEquityRange(null)}
+                  yZoom=${equityY.yZoom}
+                  onYZoomIn=${equityY.onYZoomIn}
+                  onYZoomOut=${equityY.onYZoomOut}
+                  onYReset=${equityY.onYReset}
+                />
+                <div class="chart-wrap"><${LineChart}
                   series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
                   height=${220}
                   mode="area"
                   xLabels=${eqDates}
-                  xTickFormatter=${chartDateTick}
+                  xTickFormatter=${chartDateTickForRange(equityRange)}
                   tooltipLabelFormatter=${chartDateTooltip}
                   tooltipValueFormatter=${(v) => signedUsd(v)}
+                  range=${equityRange}
+                  onRangeChange=${setEquityRange}
+                  yZoom=${equityY.yZoom}
                 /></div>`
               : html`<div class="field-hint" style=${{ padding: "32px 0", textAlign: "center" }}>No equity data available for this run.</div>`
         }
@@ -425,17 +1053,30 @@ function RunDetailView({ runId, onBack, onDelete }) {
           </div>
           <span class="chip loss">Max ${pct(m.max_drawdown)}</span>
         </div>
-        ${phase2Loading
+        ${equityLoading
           ? html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>Loading drawdown…</div>`
           : ddValues.length > 1
-            ? html`<div class="chart-wrap"><${LineChart}
+            ? html`
+              <${ChartZoomControls}
+                range=${drawdownRange}
+                onReset=${() => setDrawdownRange(null)}
+                yZoom=${drawdownY.yZoom}
+                onYZoomIn=${drawdownY.onYZoomIn}
+                onYZoomOut=${drawdownY.onYZoomOut}
+                onYReset=${drawdownY.onYReset}
+              />
+              <div class="chart-wrap"><${LineChart}
                 series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
                 height=${140}
                 mode="area"
                 xLabels=${ddDates}
-                xTickFormatter=${chartDateTick}
+                xTickFormatter=${chartDateTickForRange(drawdownRange)}
                 tooltipLabelFormatter=${chartDateTooltip}
                 tooltipValueFormatter=${(v) => pct(v)}
+                range=${drawdownRange}
+                onRangeChange=${setDrawdownRange}
+                yZoom=${drawdownY.yZoom}
+                yZoomAnchor="min"
               /></div>`
             : html`<div class="field-hint" style=${{ padding: "24px 0", textAlign: "center" }}>No drawdown data available.</div>`
         }
@@ -464,7 +1105,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
       <div class="card">
         <div class="card-h">
           <div class="row" style=${{ gap: 4 }}>
-            ${[["fills", `Fills (${realFills.length})`], ["all_fills", `All fills (${fills.length})`], ["risk", `Risk events (${riskEvents.length})`]].map(([id, label]) => html`
+            ${[["fills", `Fills (${realFills.length})`], ["all_fills", `All fills (${filteredFills.length})`], ["risk", `Risk events (${filteredRiskEvents.length})`]].map(([id, label]) => html`
               <button
                 key=${id}
                 class=${`btn sm ${activeTab === id ? "" : "ghost"}`}
@@ -472,27 +1113,90 @@ function RunDetailView({ runId, onBack, onDelete }) {
               >${label}</button>
             `)}
           </div>
-          ${phase2Loading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading…</div>`}
+          ${bottomPanelLoading && html`<div class="field-hint" style=${{ marginLeft: 12 }}>Loading…</div>`}
         </div>
 
         ${(activeTab === "fills" || activeTab === "all_fills") && (
-          phase2Loading
+          ledgerLoading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading fills data…</div>`
-            : html`<${FillsTable} rows=${activeTab === "fills" ? realFills : fills} tradesMap=${tradesMap} />`
+            : html`<${FillsTable} rows=${activeTab === "fills" ? realFills : filteredFills} tradesMap=${tradesMap} />`
         )}
         ${activeTab === "risk" && (
-          phase2Loading
+          riskLoading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading risk events…</div>`
-            : html`<${RiskEventsTable} rows=${riskEvents} />`
+            : html`<${RiskEventsTable} rows=${filteredRiskEvents} />`
         )}
       </div>
     </div>
   `;
 }
 
-function ValidationSummary({ walkForward, cpcv, metrics, loading }) {
+function SymbolPillBar({ symbols, selected, colors, onChange }) {
+  const selectedSet = new Set(selected || []);
+  function toggle(symbol) {
+    if (selectedSet.has(symbol) && selectedSet.size <= 1) return;
+    const next = selectedSet.has(symbol)
+      ? (selected || []).filter((item) => item !== symbol)
+      : [...(selected || []), symbol];
+    onChange(next.filter((item, index, arr) => arr.indexOf(item) === index).sort());
+  }
+  return html`
+    <div class="symbol-pill-bar" aria-label="Visible symbols">
+      ${(symbols || []).map((symbol, i) => {
+        const checked = selectedSet.has(symbol);
+        const color = colors?.[symbol] || symbolColor(symbol, i);
+        const disabled = checked && selectedSet.size <= 1;
+        return html`
+          <button
+            key=${symbol}
+            type="button"
+            class="symbol-pill"
+            aria-pressed=${checked ? "true" : "false"}
+            disabled=${disabled}
+            onClick=${() => toggle(symbol)}
+          >
+            <span class="symbol-pill-swatch" style=${{ background: color }}></span>
+            <span class="mono">${symbol}</span>
+          </button>
+        `;
+      })}
+    </div>
+  `;
+}
+
+function IndicatorSeriesPillBar({ visible, labels, hasMacd, onToggle }) {
+  const items = [
+    ["price", "Price"],
+    ["fast", labels.fast],
+    ["slow", labels.slow],
+    ...(hasMacd ? [["macd", "MACD"]] : []),
+  ];
+  const visibleCount = items.filter(([key]) => visible[key]).length;
+  return html`
+    <div class="indicator-pill-bar" aria-label="Visible indicator series">
+      ${items.map(([key, label]) => {
+        const active = visible[key];
+        const disabled = active && visibleCount <= 1;
+        return html`
+          <button
+            key=${key}
+            type="button"
+            class="symbol-pill"
+            aria-pressed=${active ? "true" : "false"}
+            disabled=${disabled}
+            onClick=${() => onToggle(key)}
+          >${label}</button>
+        `;
+      })}
+    </div>
+  `;
+}
+
+function ValidationSummary({ walkForward, cpcv, metrics, validation, loading }) {
   const windows = walkForward || [];
   const combos = cpcv?.combos || [];
+  const validationMode = validationModeFrom(validation || {}, metrics || {}, windows, cpcv);
+  if (!loading && validationMode === "none" && !windows.length && !combos.length) return null;
   const oos = windows.map((w) => +w.oos_sharpe || 0);
   const meanOos = oos.length ? oos.reduce((a, b) => a + b, 0) / oos.length : null;
   return html`
@@ -548,11 +1252,15 @@ function ValidationSummary({ walkForward, cpcv, metrics, loading }) {
 function normalizeLedgerTrade(t, i) {
   const ts = t.datetime || t.entry_ts || t.ts || t.exit_ts || "";
   const side = String(t.side || "buy").toUpperCase();
-  const price = +(t.price ?? t.entry_price ?? t.fill_px ?? 0);
-  const qty = +(t.qty ?? t.fill_sz ?? 0);
+  const price = +(t.price ?? t.entry_price ?? t.fill_px ?? t.px ?? 0);
+  const qty = +(t.qty ?? t.fill_sz ?? t.sz ?? 0);
   const fee = +(t.fee ?? 0);
-  const pnlRaw = t.pnl_usd ?? t.net_realized_pnl ?? t.realized_pnl ?? t.pnl ?? t.net_return ?? 0;
-  const pnl = +(pnlRaw ?? 0);
+  const isExecutionRow = !!t.execution_phase || t.type === "validation_synthetic_fill";
+  const pnlKeys = isExecutionRow
+    ? ["pnl_usd", "net_realized_pnl", "realized_pnl", "pnl"]
+    : ["pnl_usd", "net_realized_pnl", "realized_pnl", "pnl", "net_return"];
+  const pnlKey = pnlKeys.find((key) => Object.prototype.hasOwnProperty.call(t, key) && t[key] != null && t[key] !== "");
+  const pnl = pnlKey ? +t[pnlKey] : 0;
   return {
     id: t.id ?? t.cl_ord_id ?? i,
     ts,
@@ -561,9 +1269,10 @@ function normalizeLedgerTrade(t, i) {
     type: t.type || t.ord_type || "validation_round_trip",
     price,
     qty,
-    notional: +(t.notional ?? t.notional_usd ?? 0),
+    notional: tradeNotional(t, price, qty),
     fee,
     pnl,
+    hasPnl: !!pnlKey && Number.isFinite(pnl),
     status: String(t.status || t.state || "FILLED").toUpperCase(),
     strategy: t.strategy || "-",
     exit_ts: t.exit_ts,
@@ -572,26 +1281,54 @@ function normalizeLedgerTrade(t, i) {
 }
 
 function formatLedgerPnl(t) {
+  if (!t.hasPnl) return "-";
   if (t.notional === 0 && Math.abs(t.pnl) < 1) return pct(t.pnl);
-  return (t.pnl >= 0 ? "+" : "") + usd(t.pnl);
+  return (t.pnl >= 0 ? "+" : "") + signedUsd(t.pnl);
 }
 
 function TradesOrdersTable({ trades, fills }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [sideFilter, setSideFilter] = useState("ALL");
   const tradeRows = (trades || []).map(normalizeLedgerTrade);
   const fillRows = (fills || []).map(normalizeLedgerTrade);
-  const rows = tradeRows.length ? tradeRows : fillRows;
+  const baseRows = tradeRows.length ? tradeRows : fillRows;
+  const tradingPairs = [...new Set(
+    [...tradeRows, ...fillRows].map((row) => row.symbol).filter((symbol) => symbol && symbol !== "-")
+  )].sort();
+  const [pairFilter, setPairFilter] = useState("ALL");
+  useEffect(() => setPage(1), [sideFilter, pairFilter]);
+  useEffect(() => {
+    if (pairFilter !== "ALL" && !tradingPairs.includes(pairFilter)) setPairFilter("ALL");
+  }, [tradingPairs.join("|"), pairFilter]);
+  const rows = baseRows.filter((row) => {
+    if (sideFilter !== "ALL" && row.side !== sideFilter) return false;
+    if (pairFilter !== "ALL" && row.symbol !== pairFilter) return false;
+    return true;
+  });
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
-  if (!rows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders in this run.</div>`;
+  const showExit = rows.some((row) => row.exit_ts);
+  const emptyColSpan = showExit ? 13 : 12;
+  if (!baseRows.length) return html`<div class="field-hint" style=${{ padding: 16 }}>No trades or orders for this run.</div>`;
   return html`
     <div>
       <div class="row wrap" style=${{ gap: 12, alignItems: "center", marginBottom: 12 }}>
         <div class="field-hint" style=${{ flex: 1 }}>
-          Showing ${((safePage - 1) * pageSize + 1).toLocaleString()}-${Math.min(safePage * pageSize, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}
+          ${rows.length
+            ? `Showing ${((safePage - 1) * pageSize + 1).toLocaleString()}-${Math.min(safePage * pageSize, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}`
+            : `No rows match the current filters in ${baseRows.length.toLocaleString()} trades / orders`}
         </div>
+        <select class="select" value=${pairFilter} onChange=${(e) => setPairFilter(e.target.value)} style=${{ width: 190 }}>
+          <option value="ALL">All trading pairs</option>
+          ${tradingPairs.map((symbol) => html`<option key=${symbol} value=${symbol}>${symbol}</option>`)}
+        </select>
+        <select class="select" value=${sideFilter} onChange=${(e) => setSideFilter(e.target.value)} style=${{ width: 130 }}>
+          <option value="ALL">All sides</option>
+          <option value="BUY">Buy only</option>
+          <option value="SELL">Sell only</option>
+        </select>
         <select class="select" value=${pageSize} onChange=${(e) => { setPageSize(+e.target.value); setPage(1); }} style=${{ width: 140 }}>
           ${[25, 50, 100, 250, 500].map((size) => html`<option key=${size} value=${size}>${size} / page</option>`)}
         </select>
@@ -603,8 +1340,8 @@ function TradesOrdersTable({ trades, fills }) {
         <table class="tbl">
           <thead>
             <tr>
-              <th>ID</th><th>Timestamp (UTC)</th><th>Exit</th><th>Symbol</th><th>Side</th><th>Type</th>
-              <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional</th>
+              <th>ID</th><th>Timestamp (UTC)</th>${showExit && html`<th>Exit</th>`}<th>Trading Pair</th><th>Side</th><th>Type</th>
+              <th class="num">Price</th><th class="num">Qty</th><th class="num">Notional (USDT)</th>
               <th class="num">Fee</th><th class="num">PnL</th><th>Status</th><th>Strategy</th>
             </tr>
           </thead>
@@ -613,7 +1350,7 @@ function TradesOrdersTable({ trades, fills }) {
               <tr key=${`${t.id}-${i}`}>
                 <td class="mono" style=${{ color: "var(--text-muted)" }}>${t.id}</td>
                 <td class="mono">${fmtDt(t.ts)}</td>
-                <td class="mono">${t.exit_ts ? fmtDt(t.exit_ts).slice(0, 10) : "-"}</td>
+                ${showExit && html`<td class="mono">${t.exit_ts ? fmtDt(t.exit_ts).slice(0, 10) : "-"}</td>`}
                 <td class="mono">${t.symbol}</td>
                 <td><span class="chip" style=${{ color: t.side === "BUY" ? "var(--profit)" : "var(--loss)", background: t.side === "BUY" ? "var(--profit-soft)" : "var(--loss-soft)", borderColor: "transparent" }}>${t.side}</span></td>
                 <td class="mono" title=${t.note || ""} style=${{ color: "var(--text-muted)" }}>${t.type}</td>
@@ -621,11 +1358,12 @@ function TradesOrdersTable({ trades, fills }) {
                 <td class="num">${n(t.qty, 4)}</td>
                 <td class="num">${usd(t.notional)}</td>
                 <td class="num" style=${{ color: "var(--text-muted)" }}>${usd(t.fee, 4)}</td>
-                <td class="num" style=${{ color: t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? formatLedgerPnl(t) : "-"}</td>
+                <td class="num" style=${{ color: !t.hasPnl ? "var(--text-muted)" : t.pnl >= 0 ? "var(--profit)" : "var(--loss)" }}>${t.status === "FILLED" ? formatLedgerPnl(t) : "-"}</td>
                 <td><span class=${`chip ${t.status === "FILLED" ? "profit" : t.status === "REJECTED" ? "loss" : "warn"}`} style=${{ fontSize: 10 }}>${t.status}</span></td>
                 <td class="mono" style=${{ color: "var(--text-subtle)", fontSize: 11 }}>${t.strategy}</td>
               </tr>
             `)}
+            ${!rows.length && html`<tr><td colSpan=${emptyColSpan} class="field-hint" style=${{ textAlign: "center", padding: 16 }}>No trades match the current filters.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -649,11 +1387,11 @@ function FillsTable({ rows, tradesMap }) {
           <thead>
             <tr>
               <th>Datetime (UTC)</th>
-              <th>Symbol</th>
+              <th>Trading Pair</th>
               <th>Side</th>
               <th class="num">Fill px</th>
               <th class="num">Qty</th>
-              <th class="num">Notional</th>
+              <th class="num">Notional (USDT)</th>
               <th class="num">Fee</th>
               <th class="num" title="Net realized PnL for this order's fills (from trades data)">Net PnL</th>
               <th>State</th>
@@ -683,11 +1421,11 @@ function FillsTable({ rows, tradesMap }) {
                   <td class="num">${usd(f.notional_usd)}</td>
                   <td class="num" style=${{ color: "var(--text-muted)" }}>${usd(f.fee, 4)}</td>
                   <td class="num" style=${{ color: showPnl ? (pnlVal >= 0 ? "var(--profit)" : "var(--loss)") : "var(--text-muted)" }}>
-                    ${showPnl ? (pnlVal >= 0 ? "+" : "") + usd(pnlVal) : "—"}
+                    ${showPnl ? (pnlVal >= 0 ? "+" : "") + signedUsd(pnlVal) : "—"}
                   </td>
                   <td>
                     <span class=${`chip ${state === "filled" ? "profit" : state === "partially_filled" ? "warn" : ""}`} style=${{ fontSize: 10 }}>
-                      ${state.toUpperCase().replace("_", " ")}
+                      ${state.toUpperCase().replace(/_/g, " ")}
                     </span>
                   </td>
                   <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)" }}>${f.strategy || "—"}</td>
@@ -710,7 +1448,7 @@ function RiskEventsTable({ rows }) {
         <thead>
           <tr>
             <th>Datetime (UTC)</th>
-            <th>Symbol</th>
+            <th>Trading Pair</th>
             <th>Side</th>
             <th class="num">Notional</th>
             <th>Reason</th>
@@ -818,7 +1556,8 @@ function RunListView({ onSelect, onDelete }) {
               <tr>
                 <th>Run ID</th>
                 <th>Strategy</th>
-                <th>Symbols</th>
+                <th>Trading Pairs</th>
+                <th>Parameters</th>
                 <th>Bar</th>
                 <th>Period</th>
                 <th class="num">Return</th>
@@ -833,6 +1572,7 @@ function RunListView({ onSelect, onDelete }) {
             <tbody>
               ${runs.map((r) => {
                 const bankrupt = r.total_return != null && Math.abs(+r.max_drawdown) > 1;
+                const symbols = (r.symbols || [r.symbol]).filter(Boolean);
                 return html`
                   <tr
                     key=${r.run_id}
@@ -845,8 +1585,13 @@ function RunListView({ onSelect, onDelete }) {
                     <td class="mono" style=${{ fontSize: 12 }}>
                       ${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}
                     </td>
-                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>
-                      ${(r.symbols || [r.symbol]).filter(Boolean).join(", ")}
+                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
+                      ${symbols.length
+                        ? symbols.map((symbol, index) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
+                        : "—"}
+                    </td>
+                    <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      ${runParametersText(r)}
                     </td>
                     <td class="mono">${r.bar || "—"}</td>
                     <td class="mono" style=${{ fontSize: 11 }}>

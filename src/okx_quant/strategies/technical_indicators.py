@@ -2,7 +2,9 @@
 
 These strategies are intentionally Long/Flat for v1. They consume replay
 ``books`` events at the selected bar cadence and emit directional signals only
-on crossover transitions.
+on crossover transitions. EMA/MACD state is updated incrementally from the
+first bar to mirror ``ewm(adjust=False)``; signal emission remains gated until
+the configured warmup length has passed.
 """
 from __future__ import annotations
 
@@ -65,10 +67,10 @@ class _LongFlatCrossoverStrategy(Strategy):
         price = float(book.mid())
         prices = self._prices[inst_id]
         prices.append(price)
+        fast_value, slow_value, metadata = self._indicator_values(inst_id, price, list(prices))
         if len(prices) < self.warmup_bars:
             return None
 
-        fast_value, slow_value, metadata = self._indicator_values(list(prices))
         prev_fast = self._prev_fast[inst_id]
         prev_slow = self._prev_slow[inst_id]
         self._prev_fast[inst_id] = fast_value
@@ -103,6 +105,7 @@ class _LongFlatCrossoverStrategy(Strategy):
             metadata={
                 **metadata,
                 "action": action,
+                "cancel_existing": True,
                 "mode": "long_flat",
             },
         )
@@ -116,9 +119,20 @@ class _LongFlatCrossoverStrategy(Strategy):
         if fill.side == "buy":
             self._in_position[fill.inst_id] = True
         elif fill.side == "sell":
-            self._in_position[fill.inst_id] = False
+            remaining = fill.metadata.get("remaining_sz") if fill.metadata else None
+            try:
+                remaining_sz = float(remaining)
+            except (TypeError, ValueError):
+                remaining_sz = 0.0 if fill.state == "filled" else float("inf")
+            if fill.state == "filled" or remaining_sz <= 1e-12:
+                self._in_position[fill.inst_id] = False
 
-    def _indicator_values(self, prices: list[float]) -> tuple[float, float, dict]:
+    def _indicator_values(
+        self,
+        inst_id: str,
+        price: float,
+        prices: list[float],
+    ) -> tuple[float, float, dict]:
         raise NotImplementedError
 
 
@@ -130,7 +144,12 @@ class MACrossoverStrategy(_LongFlatCrossoverStrategy):
         self.warmup_bars = self.slow_window
         super().__init__("ma_crossover", params)
 
-    def _indicator_values(self, prices: list[float]) -> tuple[float, float, dict]:
+    def _indicator_values(
+        self,
+        inst_id: str,
+        price: float,
+        prices: list[float],
+    ) -> tuple[float, float, dict]:
         series = pd.Series(prices, dtype=float)
         fast = float(series.rolling(self.fast_window).mean().iloc[-1])
         slow = float(series.rolling(self.slow_window).mean().iloc[-1])
@@ -149,17 +168,32 @@ class EMACrossoverStrategy(_LongFlatCrossoverStrategy):
         _validate_fast_slow(self.fast_span, self.slow_span)
         self.warmup_bars = self.slow_span
         super().__init__("ema_crossover", params)
+        self._fast_ema: dict[str, float | None] = {symbol: None for symbol in self.symbols}
+        self._slow_ema: dict[str, float | None] = {symbol: None for symbol in self.symbols}
 
-    def _indicator_values(self, prices: list[float]) -> tuple[float, float, dict]:
-        series = pd.Series(prices, dtype=float)
-        fast = float(series.ewm(span=self.fast_span, adjust=False).mean().iloc[-1])
-        slow = float(series.ewm(span=self.slow_span, adjust=False).mean().iloc[-1])
+    def _indicator_values(
+        self,
+        inst_id: str,
+        price: float,
+        prices: list[float],
+    ) -> tuple[float, float, dict]:
+        fast = self._update_ema(self._fast_ema[inst_id], price, self.fast_span)
+        slow = self._update_ema(self._slow_ema[inst_id], price, self.slow_span)
+        self._fast_ema[inst_id] = fast
+        self._slow_ema[inst_id] = slow
         return fast, slow, {
             "fast_span": self.fast_span,
             "slow_span": self.slow_span,
             "fast_ema": fast,
             "slow_ema": slow,
         }
+
+    @staticmethod
+    def _update_ema(previous: float | None, price: float, span: int) -> float:
+        if previous is None:
+            return float(price)
+        alpha = 2.0 / (span + 1.0)
+        return alpha * float(price) + (1.0 - alpha) * previous
 
 
 class MACDCrossoverStrategy(_LongFlatCrossoverStrategy):
@@ -170,15 +204,28 @@ class MACDCrossoverStrategy(_LongFlatCrossoverStrategy):
         _validate_fast_slow(self.fast_span, self.slow_span)
         self.warmup_bars = self.slow_span + self.signal_span
         super().__init__("macd_crossover", params)
+        self._fast_ema: dict[str, float | None] = {symbol: None for symbol in self.symbols}
+        self._slow_ema: dict[str, float | None] = {symbol: None for symbol in self.symbols}
+        self._signal_ema: dict[str, float | None] = {symbol: None for symbol in self.symbols}
 
-    def _indicator_values(self, prices: list[float]) -> tuple[float, float, dict]:
-        series = pd.Series(prices, dtype=float)
-        fast_ema = series.ewm(span=self.fast_span, adjust=False).mean()
-        slow_ema = series.ewm(span=self.slow_span, adjust=False).mean()
-        macd = fast_ema - slow_ema
-        signal = macd.ewm(span=self.signal_span, adjust=False).mean()
-        macd_value = float(macd.iloc[-1])
-        signal_value = float(signal.iloc[-1])
+    def _indicator_values(
+        self,
+        inst_id: str,
+        price: float,
+        prices: list[float],
+    ) -> tuple[float, float, dict]:
+        fast = EMACrossoverStrategy._update_ema(self._fast_ema[inst_id], price, self.fast_span)
+        slow = EMACrossoverStrategy._update_ema(self._slow_ema[inst_id], price, self.slow_span)
+        self._fast_ema[inst_id] = fast
+        self._slow_ema[inst_id] = slow
+
+        macd_value = fast - slow
+        signal_value = EMACrossoverStrategy._update_ema(
+            self._signal_ema[inst_id],
+            macd_value,
+            self.signal_span,
+        )
+        self._signal_ema[inst_id] = signal_value
         return macd_value, signal_value, {
             "fast_span": self.fast_span,
             "slow_span": self.slow_span,

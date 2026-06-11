@@ -780,8 +780,8 @@ footer {
           <tr><td>system</td><td><code>spot_symbols</code></td><td><code>BTC-USDT</code>, <code>ETH-USDT</code></td><td>Funding carry 雙腿需要 spot symbols。</td></tr>
           <tr><td>system</td><td><code>equity_usd</code></td><td><code>5000.0</code></td><td>live/demo 啟動時可被 OKX balance 覆蓋。</td></tr>
           <tr><td>okx</td><td><code>ws_public/private/business</code></td><td>OKX WebSocket endpoints。</td><td>demo / shadow 需使用 demo 設定。</td></tr>
-          <tr><td>storage</td><td><code>backend</code></td><td><code>parquet</code></td><td>feed store backend。</td></tr>
-          <tr><td>storage</td><td><code>candle_backend</code></td><td><code>postgres</code></td><td>backtest candle source。</td></tr>
+          <tr><td>storage</td><td><code>backend</code></td><td><code>parquet</code></td><td>feed store backend（live/shadow feed cache）。</td></tr>
+          <tr><td>storage</td><td><code>candle_backend</code></td><td><code>postgres</code></td><td>backtest candle source。DB 為主，DSN 不可用時 <code>run_replay_backtest.py</code> 與 <code>routes_backtest._resolve_candle_backend()</code> 自動退回 parquet。</td></tr>
           <tr><td>market_data</td><td><code>canonical.base_bar</code></td><td><code>1m</code></td><td>derived bars: 5m, 15m, 1H。</td></tr>
           <tr><td>market_data.validation</td><td><code>sigma_threshold</code></td><td><code>3.0</code></td><td>cross-exchange outlier validation。</td></tr>
           <tr><td>clock</td><td><code>sync_interval_secs</code></td><td><code>300</code></td><td>避免 OKX timestamp drift。</td></tr>
@@ -887,37 +887,53 @@ cash_equity
   <div class="section-title">
     <div>
       <h2>9. Data / DB Layer：資料流與 TimescaleDB</h2>
-      <p>資料層同時支援 Parquet 與 PostgreSQL/TimescaleDB。多交易所資料會先進 market_* tables，再 canonicalize 成策略可讀的 canonical_candles。</p>
+      <p><b>DB 為主，Parquet 為離線快取。</b><code>download_okx_data.py</code> / <code>download_binance_data.py</code> 預設同時寫入 <code>data/ticks/*.parquet</code> 與 TimescaleDB 的 <code>raw_candles</code> + <code>canonical_candles</code>；回測預設 <code>candle_backend=postgres</code>，當 DSN 不可用時自動退回 parquet。</p>
     </div>
   </div>
 
   <div class="layer-map">
     <div class="stack">
       <div class="stack-item blue"><b>Exchange APIs</b><span>OKX / Binance / Bybit public endpoints，下載 candles 與 funding rates。</span></div>
-      <div class="stack-item blue"><b>Raw ingestion</b><span><code>scripts/market_data/ingest.py</code>，可 resumable，寫入 market_* tables。</span></div>
+      <div class="stack-item blue"><b>下載腳本</b><span><code>scripts/download_okx_data.py</code> / <code>download_binance_data.py</code> — 透過 <code>scripts/_db_writer.py</code> 同時寫 parquet + DB。</span></div>
+      <div class="stack-item blue"><b>Resumable ingest</b><span><code>scripts/market_data/ingest.py</code> 用於批量歷史回填到 <code>market_klines</code>。</span></div>
       <div class="stack-item yellow"><b>Validation</b><span>cross-exchange sigma threshold，manual-only replacement。</span></div>
     </div>
     <div class="stack">
-      <div class="stack-item green"><b>market_klines</b><span>多交易所原始 OHLCV。</span></div>
+      <div class="stack-item green"><b>raw_candles</b><span>多交易所原始 OHLCV，PK=(source, inst_id, bar, ts)。</span></div>
+      <div class="stack-item green"><b>market_klines</b><span>多交易所標準化層（ingest.py 寫入）。</span></div>
       <div class="stack-item green"><b>market_funding_rates</b><span>多交易所 funding history。</span></div>
-      <div class="stack-item green"><b>market_instruments</b><span>exchange native symbol + canonical bridge。</span></div>
+      <div class="stack-item green"><b>L2 books</b><span>仍以 <code>data/ticks/{INST}/{date}/books.parquet</code> 儲存，DB 沒有對應表。</span></div>
     </div>
     <div class="stack">
-      <div class="stack-item purple"><b>canonical_candles</b><span>策略與 backtest 使用的統一 candles。</span></div>
+      <div class="stack-item purple"><b>canonical_candles</b><span>策略與 backtest 主要讀取的統一 candles（PK=inst_id+bar+ts）。</span></div>
       <div class="stack-item purple"><b>funding_rates</b><span>funding carry replay 使用的 settlement data。</span></div>
-      <div class="stack-item purple"><b>backtest_runs / artifacts</b><span>前端 dashboard 讀取回測結果。</span></div>
+      <div class="stack-item purple"><b>backtest_runs / artifacts</b><span>前端 dashboard 讀取回測結果（含 <code>indicator_series</code>）。</span></div>
     </div>
   </div>
 
   <div class="card" style="margin-top:16px;">
-    <h3>典型資料流程</h3>
-    <pre>1. init_db.py
-2. ingest.py / backfill.py
+    <h3>典型資料流程（DB 為主）</h3>
+    <pre>1. init_db.py                                # 建立 hypertable + 索引
+2. download_okx_data.py / download_binance_data.py  # 同時寫 parquet + raw/canonical
+   或 scripts/market_data/ingest.py            # 大量歷史回填
 3. validate.py / validate_funding.py
-4. canonicalize.py
-5. run_replay_backtest.py
-6. save_backtest_artifacts()
+4. canonicalize.py                            # market_* → canonical_candles
+5. run_replay_backtest.py (backend=postgres)  # 直接讀 canonical_candles
+6. save_backtest_artifacts()                  # 含 indicator_series.csv
 7. FastAPI / frontend dashboard reads runs + artifacts</pre>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>Backtesting 資料載入 — 三種 backend</h3>
+    <table>
+      <thead><tr><th>backend</th><th>來源</th><th>使用時機</th></tr></thead>
+      <tbody>
+        <tr><td><code>postgres</code></td><td><code>canonical_candles</code></td><td><b>預設</b>。multi-exchange 驗證後的策略可讀層。</td></tr>
+        <tr><td><code>market</code></td><td><code>market_klines</code></td><td>需要看單一交易所原始層時使用。</td></tr>
+        <tr><td><code>parquet</code></td><td><code>data/ticks/*.parquet</code></td><td>fallback：DSN 不可用時自動退回；離線開發。</td></tr>
+      </tbody>
+    </table>
+    <p>切換點：<code>config/settings.yaml &gt; storage.candle_backend</code>；CLI 環境變數 <code>DATABASE_URL</code> 會自動橋接到 <code>storage.timescale_dsn</code>。前端 Market Data Coverage 面板讀的就是 <code>canonical_candles</code>。</p>
   </div>
 </section>
 

@@ -9,11 +9,20 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
+import pandas as pd
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
+
+FEAR_GREED_LABELS: dict[str, str] = {
+    "extreme fear": "Extreme Fear",
+    "fear": "Fear",
+    "neutral": "Neutral",
+    "greed": "Greed",
+    "extreme greed": "Extreme Greed",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +62,14 @@ class StorageConfig(BaseModel):
     parquet_dir: str = "./data/ticks"
     timescale_dsn: Optional[str] = None
     redis_url: str = "redis://localhost:6379"
-    candle_backend: Literal["parquet", "postgres"] = "parquet"
+    # Default to TimescaleDB candles; run_replay_backtest.py + routes_backtest.py
+    # auto-fall back to "parquet" when no DSN is reachable so the parquet flow
+    # keeps working in environments without a DB.
+    candle_backend: Literal["parquet", "postgres"] = "postgres"
+    # Default exchange whose data is consumed by backtests. Strategies must
+    # backtest on the same exchange's data they intend to trade on (see
+    # docs/ai_collaboration.md deployment gates). Frontend can override per-run.
+    primary_exchange: Literal["binance", "okx", "bybit", "coinbase", "kraken"] = "binance"
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +219,7 @@ class MACrossoverParams(BaseModel):
     symbols: list[str] = ["BTC-USDT-SWAP"]
     fast_window: int = Field(default=20, gt=0)
     slow_window: int = Field(default=50, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
@@ -222,6 +239,7 @@ class EMACrossoverParams(BaseModel):
     symbols: list[str] = ["BTC-USDT-SWAP"]
     fast_span: int = Field(default=20, gt=0)
     slow_span: int = Field(default=50, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
@@ -242,6 +260,7 @@ class MACDCrossoverParams(BaseModel):
     fast_span: int = Field(default=12, gt=0)
     slow_span: int = Field(default=26, gt=0)
     signal_span: int = Field(default=9, gt=0)
+    indicator_db_warmup: bool = False
     td_mode: str = "cross"
 
     @field_validator("symbols")
@@ -256,6 +275,75 @@ class MACDCrossoverParams(BaseModel):
         return self
 
 
+class FearGreedSentimentParams(BaseModel):
+    enabled: bool = False
+    symbol: str = "BTC-USDT-SWAP"
+    dataset_id: str = "fear_greed_btc"
+    max_age_seconds: int = Field(default=172800, gt=0)
+    extreme_fear_label: str = "Extreme Fear"
+    exit_labels: list[str] = ["Greed", "Extreme Greed"]
+    extreme_fear_threshold: float = Field(default=25.0, ge=0.0, le=100.0)
+    exit_value_threshold: float = Field(default=51.0, ge=0.0, le=100.0)
+    max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    td_mode: str = "cross"
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
+
+    @field_validator("extreme_fear_label")
+    @classmethod
+    def validate_extreme_fear_label(cls, value: str) -> str:
+        return _canonical_fear_greed_label(value)
+
+    @field_validator("exit_labels")
+    @classmethod
+    def validate_exit_labels(cls, value: list[str]) -> list[str]:
+        labels = [_canonical_fear_greed_label(label) for label in value]
+        if not labels:
+            raise ValueError("fear_greed_sentiment exit_labels must not be empty")
+        return labels
+
+
+class CMEGapFillParams(BaseModel):
+    enabled: bool = False
+    symbol: str = "BTC-USDT-SWAP"
+    dataset_id: str = "cme_btc1_continuous"
+    max_age_seconds: int = Field(default=604800, gt=0)
+    # Exclude dust gaps below likely round-trip costs.
+    min_gap_bps: float = Field(default=25.0, ge=0)
+    # Most proxy fills occur quickly; two days trims the timeout tail.
+    max_hold_days: float = Field(default=2.0, gt=0)
+    # 0 disables; >0 exits at stop_loss_bps_mult * gap_bps adverse from OKX entry.
+    stop_loss_bps_mult: float = Field(default=1.5, ge=0.0)
+    # 0 disables; >0 skips oversized gaps that often behave like regime moves.
+    max_gap_bps: float = Field(default=0.0, ge=0.0)
+    # Regime-fitted default: long_only trades only down-gaps; short_only trades only up-gaps.
+    allow_direction: Literal["both", "long_only", "short_only"] = "long_only"
+    roll_dates: list[str] = []
+    max_missing_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    max_stale_signal_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    td_mode: str = "cross"
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return normalize_swap_symbol(value)
+
+    @field_validator("roll_dates")
+    @classmethod
+    def validate_roll_dates(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for raw in value:
+            try:
+                normalized.append(pd.Timestamp(raw).date().isoformat())
+            except Exception as exc:
+                raise ValueError(f"invalid cme_gap_fill roll date: {raw}") from exc
+        return normalized
+
+
 class StrategiesConfig(BaseModel):
     obi_market_maker: OBIMarketMakerParams = OBIMarketMakerParams()
     as_market_maker: ASMarketMakerParams = ASMarketMakerParams()
@@ -264,6 +352,17 @@ class StrategiesConfig(BaseModel):
     ma_crossover: MACrossoverParams = MACrossoverParams()
     ema_crossover: EMACrossoverParams = EMACrossoverParams()
     macd_crossover: MACDCrossoverParams = MACDCrossoverParams()
+    fear_greed_sentiment: FearGreedSentimentParams = FearGreedSentimentParams()
+    cme_gap_fill: CMEGapFillParams = CMEGapFillParams()
+
+
+def _canonical_fear_greed_label(value: str) -> str:
+    text = str(value or "").strip()
+    canonical = FEAR_GREED_LABELS.get(text.casefold())
+    if not canonical:
+        allowed = ", ".join(FEAR_GREED_LABELS.values())
+        raise ValueError(f"Unknown Fear & Greed label '{value}'. Allowed: {allowed}")
+    return canonical
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +397,7 @@ class BacktestConfig(BaseModel):
     cancel_latency_ms: int = Field(default=200, ge=0)
     queue_fill_fraction: float = Field(default=0.20, ge=0.0, le=1.0)
     liquidate_on_end: bool = True
+    fill_all_signals: bool = False
 
 
 # ---------------------------------------------------------------------------

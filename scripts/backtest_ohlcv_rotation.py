@@ -44,8 +44,11 @@ from okx_quant.strategies.ohlcv_rotation import OHLCVRotationParams
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OHLCV Rotation Strategy backtest")
 
-    parser.add_argument("--backend", choices=["parquet", "postgres"], default="parquet")
-    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (required for postgres backend)")
+    parser.add_argument("--backend", choices=["parquet", "postgres", "market"], default="parquet")
+    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (required for postgres/market backend)")
+    parser.add_argument("--exchange", default=None,
+                        choices=["binance", "okx", "bybit", "coinbase", "kraken"],
+                        help="When set, load from market_klines filtered by this exchange (forces backend=market)")
     parser.add_argument("--data-dir", default="data/ticks")
     parser.add_argument("--bar", default="1m")
     parser.add_argument("--start", default=None)
@@ -55,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rebalance-minutes", type=int, default=60)
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--rank-exit-buffer", type=int, default=6)
+    parser.add_argument(
+        "--fill-all-signals",
+        action="store_true",
+        help="Research-only: ignore top-k/position caps and hold every instrument passing entry filters",
+    )
     parser.add_argument("--lookback-fast", type=int, default=60)
     parser.add_argument("--lookback-slow", type=int, default=240)
     parser.add_argument("--volume-z-window", type=int, default=60)
@@ -87,8 +95,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if args.backend == "postgres" and not args.dsn:
-        sys.exit("Error: --dsn is required when --backend=postgres")
+    # When --exchange is provided we MUST query market_klines (the only layer
+    # that retains per-exchange rows). canonical_candles is the merged view.
+    if args.exchange:
+        args.backend = "market"
+    if args.backend in {"postgres", "market"} and not args.dsn:
+        sys.exit(f"Error: --dsn is required when --backend={args.backend}")
 
     # Ensure benchmark is in universe
     universe = list(dict.fromkeys(args.universe))  # preserve order, deduplicate
@@ -107,6 +119,7 @@ def main() -> None:
                 end=args.end,
                 backend=args.backend,
                 dsn=args.dsn,
+                exchange=args.exchange,
             )
             dfs[inst] = df
             print(f"  {inst}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
@@ -123,6 +136,7 @@ def main() -> None:
         rebalance_minutes=args.rebalance_minutes,
         top_k=args.top_k,
         rank_exit_buffer=args.rank_exit_buffer,
+        fill_all_signals=args.fill_all_signals,
         lookback_fast_minutes=args.lookback_fast,
         lookback_slow_minutes=args.lookback_slow,
         volume_z_window_minutes=args.volume_z_window,

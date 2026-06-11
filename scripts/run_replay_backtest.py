@@ -12,6 +12,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting.replay import run_replay_backtest, run_replay_validations
+from backtesting.research_controls import (
+    apply_fill_all_signal_controls,
+    apply_research_risk_overrides,
+    summarize_risk_events,
+)
 from okx_quant.core.config import load_config
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
@@ -32,6 +37,8 @@ def main() -> None:
                             "ma_crossover",
                             "ema_crossover",
                             "macd_crossover",
+                            "fear_greed_sentiment",
+                            "cme_gap_fill",
                         ])
     parser.add_argument("--start")
     parser.add_argument("--end")
@@ -52,6 +59,10 @@ def main() -> None:
                         help="Override funding_carry min APR threshold for this replay")
     parser.add_argument("--strategy-params", default=None,
                         help="JSON object with strategy-specific parameter overrides")
+    parser.add_argument("--risk-overrides", default=None,
+                        help="JSON object with research-only risk overrides for this replay")
+    parser.add_argument("--fill-all-signals", action="store_true",
+                        help="Research-only: bypass execution/capacity caps and fill every submitted signal order")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "ticks"))
     parser.add_argument("--save-artifacts", action="store_true",
                         help="Save all backtest artifacts to --output-dir/<run_id>/")
@@ -63,6 +74,9 @@ def main() -> None:
                         help="Output format for tabular artifacts (default: csv)")
     parser.add_argument("--validate", choices=["wf", "cpcv", "both"], default=None,
                         help="Run replay-backed Walk-Forward, CPCV, or both and write them into result.json")
+    parser.add_argument("--exchange", default=None,
+                        choices=["binance", "okx", "bybit", "coinbase", "kraken"],
+                        help="Override cfg.storage.primary_exchange for this run (data source selector)")
     liquidation_group = parser.add_mutually_exclusive_group()
     liquidation_group.add_argument("--liquidate-on-end", dest="liquidate_on_end", action="store_true", default=None,
                                    help="Close open replay positions at the final available mid price")
@@ -71,6 +85,11 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(require_secrets=False)
+    risk_overrides = json.loads(args.risk_overrides) if args.risk_overrides else {}
+    cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
+    cfg, applied_fill_all_controls = apply_fill_all_signal_controls(cfg, args.fill_all_signals)
+    if args.exchange:
+        cfg.storage = cfg.storage.model_copy(update={"primary_exchange": args.exchange})
     if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
         cfg.storage.candle_backend = "parquet"
     strategy_params = json.loads(args.strategy_params) if args.strategy_params else {}
@@ -95,6 +114,14 @@ def main() -> None:
             cfg.strategies.macd_crossover = cfg.strategies.macd_crossover.model_copy(
                 update={"symbols": args.symbol}
             )
+        if "fear_greed_sentiment" in args.strategy:
+            cfg.strategies.fear_greed_sentiment = cfg.strategies.fear_greed_sentiment.model_copy(
+                update={"symbol": args.symbol[0]}
+            )
+        if "cme_gap_fill" in args.strategy:
+            cfg.strategies.cme_gap_fill = cfg.strategies.cme_gap_fill.model_copy(
+                update={"symbol": args.symbol[0]}
+            )
         cfg.system.symbols = args.symbol
     if "pairs_trading" in args.strategy:
         if args.symbol_x:
@@ -116,6 +143,7 @@ def main() -> None:
             cfg.strategies.funding_carry.min_apr_threshold = args.min_apr_threshold
 
     technical_names = {"ma_crossover", "ema_crossover", "macd_crossover"}
+    single_symbol_names = {"fear_greed_sentiment", "cme_gap_fill"}
     selected_technical = technical_names.intersection(args.strategy)
     if strategy_params:
         if len(args.strategy) != 1:
@@ -127,11 +155,13 @@ def main() -> None:
         updates = dict(strategy_params)
         if args.symbol and "symbols" not in updates and strategy_name in technical_names:
             updates["symbols"] = args.symbol
+        if args.symbol and "symbol" not in updates and strategy_name in single_symbol_names:
+            updates["symbol"] = args.symbol[0]
         setattr(cfg.strategies, strategy_name, current.model_copy(update=updates))
     elif selected_technical and args.symbol:
         cfg.system.symbols = args.symbol
 
-    print("PROGRESS:20", flush=True)
+    print("PROGRESS:20:Running replay backtest", flush=True)
     result = run_replay_backtest(
         strategy_names=args.strategy,
         cfg=cfg,
@@ -142,7 +172,18 @@ def main() -> None:
         periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
         liquidate_on_end=args.liquidate_on_end,
     )
-    print("PROGRESS:85", flush=True)
+    result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
+    if applied_risk_overrides:
+        result.validation["research_risk_overrides"] = applied_risk_overrides
+    if applied_fill_all_controls:
+        result.validation["research_fill_all_signals"] = applied_fill_all_controls
+    if args.save_artifacts and args.validate:
+        stage = f"Running replay validation ({args.validate}) and saving artifacts"
+    elif args.save_artifacts:
+        stage = "Saving replay artifacts"
+    else:
+        stage = "Preparing replay summary"
+    print(f"PROGRESS:85:{stage}", flush=True)
 
     print("=" * 72)
     print("REPLAY BACKTEST SUMMARY")
@@ -162,6 +203,12 @@ def main() -> None:
         validation_results = None
         if args.validate:
             print(f"Running replay validation: {args.validate}")
+
+            def _print_validation_progress(update: dict) -> None:
+                pct = int(update.get("progress", 85))
+                message = str(update.get("message") or "Running replay validation")
+                print(f"PROGRESS:{pct}:{message}", flush=True)
+
             validation_results = run_replay_validations(
                 strategy_names=args.strategy,
                 cfg=cfg,
@@ -172,7 +219,9 @@ def main() -> None:
                 periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
                 mode=args.validate,
                 liquidate_on_end=args.liquidate_on_end,
+                progress_callback=_print_validation_progress,
             )
+            print("PROGRESS:99:Saving replay artifacts", flush=True)
         run_dir = save_backtest_artifacts(
             result=result,
             cfg=cfg,

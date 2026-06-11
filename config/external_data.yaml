@@ -1,0 +1,59 @@
+datasets:
+  fear_greed_btc:
+    provider: alternative_me
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 172800
+    source_url: https://alternative.me/crypto/fear-and-greed-index/
+    attribution: "Data source: Alternative.me Crypto Fear & Greed Index"
+    adapter: fear_greed
+    required: true
+
+  dgs10:
+    provider: fred
+    frequency: business_daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://fred.stlouisfed.org/series/DGS10
+    attribution: "Data source: FRED DGS10"
+    adapter: fred
+    series_id: DGS10
+    api_key_env: FRED_API_KEY
+    vintage_policy: latest
+    publish_lag_days: 1
+    required: false
+
+  cme_btc1_continuous:
+    provider: official_cme_configured
+    frequency: daily
+    value_kind: ohlcv
+    max_age_seconds: 604800
+    source_url: https://docs.data.nasdaq.com/docs/getting-started
+    attribution: "CME Bitcoin futures data via configured official provider"
+    adapter: nasdaq_data_link
+    # CHRIS/CME_BTC1 is intentionally not used: the legacy CHRIS continuous
+    # futures dataset is discontinued/stale for new research. Provide a
+    # maintained official dataset code via this env var after sanity-checking
+    # a one-day fetch returns non-empty data.
+    dataset_code_env: CME_BTC1_DATASET_CODE
+    api_key_env: NASDAQ_DATA_LINK_API_KEY
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    notes: "Configure a maintained official CME/Nasdaq/Databento-compatible dataset before ingest; do not use discontinued CHRIS/CME_BTC1."
+    required: true
+
+  cme_btc_yfinance:
+    provider: yahoo_finance
+    frequency: daily
+    value_kind: ohlcv
+    max_age_seconds: 604800
+    source_url: https://finance.yahoo.com/quote/BTC%3DF/history/
+    attribution: "Research-only proxy: Yahoo Finance BTC=F via yfinance; not official CME data"
+    adapter: yfinance
+    ticker: BTC=F
+    interval: 1d
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Unofficial delayed/proxy CME Bitcoin futures data. Use only for preliminary research sanity checks; not for promotion/deployment evidence."

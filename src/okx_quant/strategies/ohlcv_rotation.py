@@ -57,6 +57,7 @@ class OHLCVRotationParams:
     long_only: bool = True
     equal_weight: bool = True
     max_position_weight: float = 0.35
+    fill_all_signals: bool = False
 
     fee_bps: float = 2.0
     slippage_bps: float = 2.0
@@ -228,7 +229,7 @@ def generate_target_weights(
 
         selected = []
         for inst in valid.index:
-            if ranks[inst] > params.top_k:
+            if not params.fill_all_signals and ranks[inst] > params.top_k:
                 continue
             if rf_row.get(inst, np.nan) <= 0:
                 continue
@@ -242,7 +243,9 @@ def generate_target_weights(
             selected.append(inst)
 
         if selected:
-            w = min(1.0 / len(selected), params.max_position_weight)
+            w = 1.0 / len(selected)
+            if not params.fill_all_signals:
+                w = min(w, params.max_position_weight)
             for inst in selected:
                 weights[inst] = w
 
@@ -310,7 +313,7 @@ def apply_exit_rules(
                 exit_triggered = False
                 if not regime_ok:
                     exit_triggered = True
-                elif rank > params.rank_exit_buffer:
+                elif not params.fill_all_signals and rank > params.rank_exit_buffer:
                     exit_triggered = True
                 elif not np.isnan(c) and not np.isnan(em) and c < em:
                     exit_triggered = True

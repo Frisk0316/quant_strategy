@@ -30,6 +30,41 @@ function valueAt(row, keys, fallback = 0) {
   return fallback;
 }
 
+function parseObj(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function runParametersText(run) {
+  const params = run?.parameters || {};
+  const strategyParams = params.strategies || {};
+  const overrideParams = parseObj(params.overrides?.strategy_params);
+  const names = (run?.strategies || [run?.strategy]).filter(Boolean);
+  const parts = [];
+  for (const name of names) {
+    const p = { ...(strategyParams[name] || {}), ...(names.length === 1 ? overrideParams : {}) };
+    if (name === "ma_crossover" && (p.fast_window || p.slow_window)) parts.push(`MA ${p.fast_window ?? "?"}/${p.slow_window ?? "?"}`);
+    else if (name === "ema_crossover" && (p.fast_span || p.slow_span)) parts.push(`EMA ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}`);
+    else if (name === "macd_crossover" && (p.fast_span || p.slow_span || p.signal_span)) parts.push(`MACD ${p.fast_span ?? "?"}/${p.slow_span ?? "?"}/${p.signal_span ?? "?"}`);
+  }
+  const risk = { ...(params.risk || {}), ...parseObj(params.overrides?.risk_overrides) };
+  if (risk.max_pos_pct_equity != null) parts.push(`max pos ${(+risk.max_pos_pct_equity * 100).toFixed(0)}%`);
+  if (risk.max_order_notional_usd != null) parts.push(`order $${(+risk.max_order_notional_usd).toLocaleString("en", { maximumFractionDigits: 0 })}`);
+  if (risk.max_leverage != null) parts.push(`lev ${(+risk.max_leverage).toFixed(1)}x`);
+  return parts.length ? parts.join(" | ") : "—";
+}
+
+function runSymbols(run) {
+  return (run?.symbols || [run?.symbol]).filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Compact run picker shown when no run is selected
 // ---------------------------------------------------------------------------
@@ -84,7 +119,8 @@ function RunPicker({ onSelect }) {
               <tr>
                 <th>Run ID</th>
                 <th>Strategy</th>
-                <th>Symbols</th>
+                <th>Trading Pairs</th>
+                <th>Parameters</th>
                 <th>Bar</th>
                 <th>Period</th>
                 <th class="num">Return</th>
@@ -99,7 +135,12 @@ function RunPicker({ onSelect }) {
                 <tr key=${r.run_id} style=${{ cursor: "pointer" }} onClick=${() => onSelect(r.run_id)}>
                   <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${r.run_id}</td>
                   <td class="mono" style=${{ fontSize: 12 }}>${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}</td>
-                  <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)" }}>${(r.symbols || [r.symbol]).filter(Boolean).join(", ")}</td>
+                  <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
+                    ${runSymbols(r).length
+                      ? runSymbols(r).map((symbol, index, symbols) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
+                      : "—"}
+                  </td>
+                  <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${runParametersText(r)}</td>
                   <td class="mono">${r.bar || "—"}</td>
                   <td class="mono" style=${{ fontSize: 11 }}>${r.start ? r.start.slice(0, 10) : "—"} → ${r.end ? r.end.slice(0, 10) : "—"}</td>
                   <td class="num" style=${{ color: r.total_return >= 0 ? "var(--profit)" : "var(--loss)" }}>${pct(r.total_return)}</td>

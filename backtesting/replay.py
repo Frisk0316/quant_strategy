@@ -18,12 +18,18 @@ import pyarrow.parquet as pq
 from loguru import logger
 
 from backtesting.data_loader import load_candles as load_ohlcv_candles
+from backtesting.data_loader import load_feature_events as load_external_feature_events
 from backtesting.data_loader import load_funding as load_funding_rates
+from backtesting.research_controls import (
+    FILL_ALL_MAX_ORDER_NOTIONAL_USD,
+    FILL_ALL_MAX_POS_PCT_EQUITY,
+    FILL_ALL_STALE_QUOTE_PCT,
+)
 from okx_quant.analytics.dsr import psr
 from okx_quant.analytics.performance import summary
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig, load_config
-from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload, OrderPayload
+from okx_quant.core.events import Event, EvtType, FeaturePayload, FillPayload, MarketPayload, OrderPayload
 from okx_quant.data.okx_book import OkxBook
 from okx_quant.execution.broker import SimBroker
 from okx_quant.execution.execution_handler import ExecutionHandler
@@ -38,6 +44,7 @@ from okx_quant.risk.risk_guard import RiskGuard
 from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
+from okx_quant.strategies.external_features import CMEGapFillStrategy, FearGreedSentimentStrategy
 from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 from okx_quant.strategies.technical_indicators import (
@@ -311,11 +318,23 @@ def _to_ms_int(val) -> int:
     if val is None:
         return 0
     try:
-        if isinstance(val, pd.Timestamp):
-            return int(val.timestamp() * 1000)
-        return int(float(val))
+        if isinstance(val, pd.Timestamp) or not isinstance(val, (int, float, str)):
+            return int(pd.Timestamp(val).timestamp() * 1000)
+        raw = int(float(val))
+        magnitude = abs(raw)
+        if magnitude == 0:
+            return 0
+        if magnitude < 100_000_000_000:
+            return raw * 1000
+        if magnitude >= 100_000_000_000_000:
+            return raw // 1_000_000
+        return raw
     except (TypeError, ValueError, OSError):
         return 0
+
+
+def _timestamp_series_to_ms(series: pd.Series) -> pd.Series:
+    return series.map(_to_ms_int).astype("int64")
 
 
 def _bar_to_seconds(bar: str) -> int:
@@ -393,7 +412,24 @@ def _compute_data_coverage(
         "start": start,
         "end": end,
         "symbols": per_symbol,
+        "features": _feature_coverage(feed),
     }
+
+
+def _feature_coverage(feed: "HistoricalEventFeed") -> list[dict]:
+    feature_events = getattr(feed, "feature_events", pd.DataFrame())
+    if feature_events.empty or "dataset_id" not in feature_events.columns:
+        return []
+    coverage: list[dict] = []
+    for dataset_id, group in feature_events.groupby("dataset_id"):
+        ts = pd.to_datetime(group["ts"], unit="ms", utc=True, errors="coerce")
+        coverage.append({
+            "dataset_id": str(dataset_id),
+            "event_count": int(group["ts"].nunique()),
+            "first_event_ts": ts.min().isoformat() if not ts.dropna().empty else None,
+            "last_event_ts": ts.max().isoformat() if not ts.dropna().empty else None,
+        })
+    return coverage
 
 
 def _check_data_coverage_gate(coverage: dict) -> None:
@@ -497,15 +533,18 @@ def load_l1_books(
         except FileNotFoundError:
             candles = pd.DataFrame()
         if candles.empty and fallback_inst_id:
-            candles = load_ohlcv_candles(
-                fallback_inst_id,
-                bar=bar,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                backend="postgres",
-                dsn=dsn,
-            )
+            try:
+                candles = load_ohlcv_candles(
+                    fallback_inst_id,
+                    bar=bar,
+                    data_dir=data_dir,
+                    start=start,
+                    end=end,
+                    backend="postgres",
+                    dsn=dsn,
+                )
+            except FileNotFoundError:
+                candles = pd.DataFrame()
         if not candles.empty:
             return _synthetic_l1_from_candles(
                 inst_id=inst_id,
@@ -521,7 +560,7 @@ def load_l1_books(
             ts_ms = (
                 raw_ticks[ts_col].astype("int64")
                 if ts_col == "server_ts"
-                else (raw_ticks[ts_col].astype("int64") // 1_000_000)
+                else _timestamp_series_to_ms(raw_ticks[ts_col])
             )
             return pd.DataFrame({
                 "ts": ts_ms.astype("int64"),
@@ -535,7 +574,7 @@ def load_l1_books(
         stored_books = _load_parquet_frames(sorted(inst_dir.glob("*/books.parquet")))
         if not stored_books.empty:
             stored_books = _normalize_time_filter(stored_books, ts_col="ts", start=start, end=end)
-            stored_books["ts"] = stored_books["ts"].astype("int64") // 1_000_000
+            stored_books["ts"] = _timestamp_series_to_ms(stored_books["ts"])
             stored_books["inst_id"] = inst_id
             return stored_books[["ts", "inst_id", "bid_px_0", "bid_sz_0", "ask_px_0", "ask_sz_0"]]
 
@@ -588,7 +627,7 @@ def _synthetic_l1_from_candles(
     half_spread = mid * synthetic_spread_bps / 20_000.0
     size = data["vol"].astype(float).clip(lower=1.0) if "vol" in data.columns else 1.0
     return pd.DataFrame({
-        "ts": data["ts"].astype("int64") // 1_000_000,
+        "ts": _timestamp_series_to_ms(data["ts"]),
         "inst_id": inst_id,
         "bid_px_0": (mid - half_spread).astype(float),
         "bid_sz_0": size,
@@ -606,19 +645,24 @@ def load_funding_events(
     dsn: Optional[str] = None,
 ) -> pd.DataFrame:
     if backend == "postgres":
-        funding = load_funding_rates(
-            inst_id=inst_id,
-            data_dir=data_dir,
-            start=start,
-            end=end,
-            backend="postgres",
-            dsn=dsn,
-        )
+        try:
+            funding = load_funding_rates(
+                inst_id=inst_id,
+                data_dir=data_dir,
+                start=start,
+                end=end,
+                backend="postgres",
+                dsn=dsn,
+            )
+        except FileNotFoundError:
+            # data_loader.load_funding falls back to parquet when no DSN is
+            # present; missing local funding files are tolerated.
+            return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
         if funding.empty:
             return pd.DataFrame(columns=["ts", "inst_id", "funding_rate", "next_funding_time"])
         frame = funding.reset_index(names="ts")
         return pd.DataFrame({
-            "ts": frame["ts"].astype("int64") // 1_000_000,
+            "ts": _timestamp_series_to_ms(frame["ts"]),
             "inst_id": inst_id,
             "funding_rate": frame["rate"].astype(float),
             "next_funding_time": frame.get("nextFundingTime", 0),
@@ -631,7 +675,7 @@ def load_funding_events(
     funding = pq.read_table(path).to_pandas()
     funding = _normalize_time_filter(funding, ts_col="ts", start=start, end=end)
     return pd.DataFrame({
-        "ts": funding["ts"].astype("int64") // 1_000_000,
+        "ts": _timestamp_series_to_ms(funding["ts"]),
         "inst_id": inst_id,
         "funding_rate": funding["rate"].astype(float),
         "next_funding_time": funding.get("nextFundingTime", 0),
@@ -640,28 +684,64 @@ def load_funding_events(
 
 
 class HistoricalEventFeed:
-    def __init__(self, market_events: pd.DataFrame, funding_events: pd.DataFrame) -> None:
+    def __init__(
+        self,
+        market_events: pd.DataFrame,
+        funding_events: pd.DataFrame,
+        feature_events: Optional[pd.DataFrame] = None,
+    ) -> None:
         self.market_events = market_events
         self.funding_events = funding_events
+        self.feature_events = feature_events if feature_events is not None else pd.DataFrame()
 
     def iter_events(self) -> Iterable[Event]:
         combined: list[tuple[int, int, Event]] = []
 
+        for row in self.feature_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
+            payload = FeaturePayload(
+                dataset_id=str(row.dataset_id),
+                ts=ts_ms,
+                observed_at=_to_ms_int(getattr(row, "observed_at", None)) or None,
+                published_at=_to_ms_int(getattr(row, "published_at", None)) or None,
+                value_num=(
+                    float(row.value_num)
+                    if getattr(row, "value_num", None) is not None
+                    and pd.notna(getattr(row, "value_num", None))
+                    else None
+                ),
+                value_text=(
+                    str(row.value_text)
+                    if getattr(row, "value_text", None) is not None
+                    and pd.notna(getattr(row, "value_text", None))
+                    else None
+                ),
+                fields=(
+                    getattr(row, "fields", {})
+                    if isinstance(getattr(row, "fields", {}), dict)
+                    else {}
+                ),
+                quality_status=str(getattr(row, "quality_status", "raw") or "raw"),
+            )
+            combined.append((ts_ms, 0, Event(EvtType.FEATURE, payload=payload)))
+
         for row in self.market_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = MarketPayload(
                 inst_id=row.inst_id,
-                ts=int(row.ts),
+                ts=ts_ms,
                 bids=[[f"{float(row.bid_px_0):.10f}", f"{float(row.bid_sz_0):.10f}"]],
                 asks=[[f"{float(row.ask_px_0):.10f}", f"{float(row.ask_sz_0):.10f}"]],
                 seq_id=0,
                 channel="books",
             )
-            combined.append((int(row.ts), 0, Event(EvtType.MARKET, payload=payload)))
+            combined.append((ts_ms, 1, Event(EvtType.MARKET, payload=payload)))
 
         for row in self.funding_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = MarketPayload(
                 inst_id=row.inst_id,
-                ts=int(row.ts),
+                ts=ts_ms,
                 bids=[],
                 asks=[],
                 seq_id=0,
@@ -675,7 +755,7 @@ class HistoricalEventFeed:
                     else None
                 ),
             )
-            combined.append((int(row.ts), 1, Event(EvtType.FUNDING, payload=payload)))
+            combined.append((ts_ms, 2, Event(EvtType.FUNDING, payload=payload)))
 
         combined.sort(key=lambda item: (item[0], item[1]))
         for _, _, event in combined:
@@ -683,6 +763,12 @@ class HistoricalEventFeed:
 
 
 class ReplayBacktestEngine:
+    # Authoritative sources whose ct_val came from a verified upstream (DB
+    # instruments registry or an explicit per-symbol config override). Any other
+    # source (registry yaml, BTC/ETH hardcoded fallback) is non-authoritative
+    # and downstream live-deployment gates should refuse such runs.
+    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = ("db", "config_override", "spot_unit")
+
     def __init__(
         self,
         cfg: AppConfig,
@@ -694,13 +780,26 @@ class ReplayBacktestEngine:
     ) -> None:
         self._cfg = cfg
         self._strategy_names = strategy_names
-        self._instrument_specs = instrument_specs or self._default_instrument_specs()
+        self._ct_val_sources: dict[str, dict] = {}
+        if instrument_specs:
+            self._instrument_specs = instrument_specs
+            # Caller-supplied specs are treated as per-symbol authoritative
+            # overrides — this is the same trust level as a DB-backed value.
+            for sym, spec in instrument_specs.items():
+                ct_val = spec.get("ctVal") if isinstance(spec, dict) else None
+                self._ct_val_sources[sym] = {
+                    "value": float(ct_val) if ct_val is not None else None,
+                    "source": "config_override",
+                }
+        else:
+            self._instrument_specs = self._default_instrument_specs()
         self._periods = periods
         self._bar_seconds = bar_seconds
         self._liquidate_on_end = cfg.backtest.liquidate_on_end if liquidate_on_end is None else liquidate_on_end
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
+        db_specs = self._load_db_instrument_specs()
         swap_symbols = set(self._cfg.system.symbols)
         swap_symbols.update(self._cfg.strategies.obi_market_maker.symbols)
         swap_symbols.update(self._cfg.strategies.as_market_maker.symbols)
@@ -712,29 +811,149 @@ class ReplayBacktestEngine:
         swap_symbols.update(self._cfg.strategies.ma_crossover.symbols)
         swap_symbols.update(self._cfg.strategies.ema_crossover.symbols)
         swap_symbols.update(self._cfg.strategies.macd_crossover.symbols)
+        swap_symbols.update({
+            self._cfg.strategies.fear_greed_sentiment.symbol,
+            self._cfg.strategies.cme_gap_fill.symbol,
+        })
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
+            ct_val, source = self._resolve_swap_ct_val(symbol, db_specs)
             specs[symbol] = {
-                "ctVal": self._fallback_swap_ct_val(symbol),
+                "ctVal": ct_val,
                 "minSz": 0.01,
                 "lotSz": 0.01,
                 "tickSz": 0.1,
                 "tdMode": "cross",
             }
+            self._ct_val_sources[symbol] = {"value": ct_val, "source": source}
         spot_symbols = set(self._cfg.system.spot_symbols)
         spot_symbols.add(self._cfg.strategies.funding_carry.spot_symbol)
         for symbol in spot_symbols:
             specs[symbol] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
+            # USDT spot pairs trade in base units so ctVal=1.0 is exact, not a fallback.
+            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit"}
         return specs
+
+    def _load_db_instrument_specs(self) -> dict:
+        """Query `instruments.contract_value` for every active row, when DB is reachable.
+
+        Returned shape: {inst_id: {"ct_val": float}}. Empty dict when DSN is
+        missing, unreachable, or query fails — caller falls through to the
+        bundled YAML registry. Errors are warnings, not exceptions, because the
+        DB-primary architecture must degrade gracefully to parquet.
+        """
+        dsn = getattr(self._cfg.storage, "timescale_dsn", None)
+        if not dsn:
+            return {}
+        try:
+            from backtesting.data_loader import _dsn_reachable
+        except Exception:
+            return {}
+        if not _dsn_reachable(dsn):
+            return {}
+        try:
+            import asyncio
+
+            import asyncpg
+
+            async def _fetch() -> list:
+                conn = await asyncpg.connect(dsn)
+                try:
+                    return await conn.fetch(
+                        """
+                        SELECT inst_id, contract_value
+                        FROM instruments
+                        WHERE contract_value IS NOT NULL
+                        """
+                    )
+                finally:
+                    await conn.close()
+
+            rows = asyncio.run(_fetch())
+        except Exception as exc:  # noqa: BLE001 — DB issues should not crash backtest
+            logger.warning("Failed to load instrument ctVal from DB: {}", exc)
+            return {}
+        out: dict = {}
+        for row in rows:
+            ct_val = row.get("contract_value") if isinstance(row, dict) else row["contract_value"]
+            inst_id = row.get("inst_id") if isinstance(row, dict) else row["inst_id"]
+            if ct_val is None:
+                continue
+            try:
+                out[inst_id] = {"ct_val": float(ct_val)}
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    @staticmethod
+    def _load_instrument_spec_registry() -> dict:
+        """Read config/instrument_specs.yaml (bundled OKX SWAP spec registry).
+
+        Cached on the class so repeated lookups don't re-read the file.
+        """
+        cache_attr = "_INSTRUMENT_SPEC_CACHE"
+        cached = getattr(ReplayBacktestEngine, cache_attr, None)
+        if cached is not None:
+            return cached
+        registry: dict = {}
+        try:
+            import yaml
+            specs_path = Path(__file__).resolve().parents[1] / "config" / "instrument_specs.yaml"
+            if specs_path.exists():
+                data = yaml.safe_load(specs_path.read_text(encoding="utf-8")) or {}
+                registry = data.get("swaps", {}) or {}
+        except Exception as exc:  # noqa: BLE001 — file IO / yaml errors should not crash backtest
+            logger.warning("Failed to load instrument_specs.yaml: {}", exc)
+        setattr(ReplayBacktestEngine, cache_attr, registry)
+        return registry
+
+    @staticmethod
+    def _resolve_swap_ct_val(symbol: str, db_specs: dict | None = None) -> tuple[float, str]:
+        """Resolve a swap symbol's ctVal and report the provenance label.
+
+        Lookup priority (highest = most authoritative):
+          1. `db` — DB-backed `instruments.contract_value`. Verified upstream;
+             trusted for live deployment.
+          2. `registry` — bundled `config/instrument_specs.yaml`. Trusted for
+             backtest but flagged as non-authoritative for live gating because
+             it can drift from the exchange spec.
+          3. `hardcoded_btc_eth` — last-resort 0.01 for BTC/ETH symbols only.
+             Same authority class as `registry`.
+          4. Raise — unknown swap; never silently fall back to 1.0 because the
+             ct_val multiplier directly drives PnL / notional / funding.
+        """
+        if db_specs and db_specs.get(symbol, {}).get("ct_val") is not None:
+            return float(db_specs[symbol]["ct_val"]), "db"
+        registry = ReplayBacktestEngine._load_instrument_spec_registry()
+        spec = registry.get(symbol)
+        if spec and spec.get("ct_val") is not None:
+            return float(spec["ct_val"]), "registry"
+        if symbol.startswith(("BTC-", "ETH-")):
+            logger.warning(
+                "Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01",
+                inst_id=symbol,
+            )
+            return 0.01, "hardcoded_btc_eth"
+        logger.error(
+            "Instrument ctVal missing for swap; add it to config/instrument_specs.yaml "
+            "or populate instruments.contract_value in DB",
+            inst_id=symbol,
+        )
+        raise ValueError(
+            f"Missing ctVal for swap '{symbol}'. Add an entry under `swaps:` in "
+            f"config/instrument_specs.yaml or populate the DB instruments table."
+        )
 
     @staticmethod
     def _fallback_swap_ct_val(symbol: str) -> float:
-        if symbol.startswith(("BTC-", "ETH-")):
-            logger.warning("Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01", inst_id=symbol)
-            return 0.01
-        logger.error("Instrument ctVal missing for non-BTC/ETH swap; refusing silent fallback", inst_id=symbol)
-        raise ValueError(f"Missing ctVal for non-BTC/ETH swap: {symbol}")
+        """Backwards-compatible wrapper that drops the provenance label.
+
+        Existing call sites (and tests) only care about the numeric value;
+        new code should call `_resolve_swap_ct_val` directly to also record
+        provenance.
+        """
+        return ReplayBacktestEngine._resolve_swap_ct_val(symbol)[0]
 
     def _build_strategies(self) -> list[Strategy]:
         wanted = set(self._strategy_names or [])
@@ -755,6 +974,8 @@ class ReplayBacktestEngine:
             ("ma_crossover", MACrossoverStrategy(strat_cfg.ma_crossover.model_dump())),
             ("ema_crossover", EMACrossoverStrategy(strat_cfg.ema_crossover.model_dump())),
             ("macd_crossover", MACDCrossoverStrategy(strat_cfg.macd_crossover.model_dump())),
+            ("fear_greed_sentiment", FearGreedSentimentStrategy(strat_cfg.fear_greed_sentiment.model_dump())),
+            ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
         ]
         enabled = {
             "obi_market_maker": strat_cfg.obi_market_maker.enabled,
@@ -764,6 +985,8 @@ class ReplayBacktestEngine:
             "ma_crossover": strat_cfg.ma_crossover.enabled,
             "ema_crossover": strat_cfg.ema_crossover.enabled,
             "macd_crossover": strat_cfg.macd_crossover.enabled,
+            "fear_greed_sentiment": strat_cfg.fear_greed_sentiment.enabled,
+            "cme_gap_fill": strat_cfg.cme_gap_fill.enabled,
         }
 
         for name, strategy in candidates:
@@ -786,7 +1009,7 @@ class ReplayBacktestEngine:
                 book.asks[float(px)] = (px, sz)
 
     async def run(self, feed: HistoricalEventFeed) -> ReplayBacktestResult:
-        if feed.market_events.empty and feed.funding_events.empty:
+        if feed.market_events.empty and feed.funding_events.empty and feed.feature_events.empty:
             raise ValueError("ReplayBacktestEngine received an empty historical feed")
 
         bus = EventBus()
@@ -798,16 +1021,24 @@ class ReplayBacktestEngine:
             max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
         )
         dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
+        fill_all_signals = bool(getattr(self._cfg.backtest, "fill_all_signals", False))
+        max_order_notional_usd = self._cfg.risk.max_order_notional_usd
+        max_pos_pct_equity = self._cfg.risk.max_pos_pct_equity
+        stale_quote_pct = self._cfg.risk.stale_quote_pct
+        if fill_all_signals:
+            max_order_notional_usd = max(max_order_notional_usd, FILL_ALL_MAX_ORDER_NOTIONAL_USD)
+            max_pos_pct_equity = max(max_pos_pct_equity, FILL_ALL_MAX_POS_PCT_EQUITY)
+            stale_quote_pct = max(stale_quote_pct, FILL_ALL_STALE_QUOTE_PCT)
         risk_guard = RiskGuard(
             equity_fn=positions.get_equity,
             drawdown_tracker=dd_tracker,
-            max_order_notional_usd=self._cfg.risk.max_order_notional_usd,
-            max_pos_pct_equity=self._cfg.risk.max_pos_pct_equity,
+            max_order_notional_usd=max_order_notional_usd,
+            max_pos_pct_equity=max_pos_pct_equity,
             max_leverage=self._cfg.risk.max_leverage,
             max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
             soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
             hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
-            stale_quote_pct=self._cfg.risk.stale_quote_pct,
+            stale_quote_pct=stale_quote_pct,
         )
         for strategy in strategies:
             risk_guard.register_strategy(strategy.name)
@@ -817,6 +1048,7 @@ class ReplayBacktestEngine:
             order_latency_ms=self._cfg.backtest.order_latency_ms,
             cancel_latency_ms=self._cfg.backtest.cancel_latency_ms,
             queue_fill_fraction=self._cfg.backtest.queue_fill_fraction,
+            fill_all_on_submit=fill_all_signals,
         )
         portfolio_mgr = PortfolioManager(
             bus=bus,
@@ -834,7 +1066,7 @@ class ReplayBacktestEngine:
             ),
             RateLimiter(),
         )
-        exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=self._cfg.risk.stale_quote_pct)
+        exec_handler = ExecutionHandler(bus=bus, order_manager=order_manager, stale_quote_pct=stale_quote_pct)
         recorder = ReplayRecorder(initial_equity=self._cfg.system.equity_usd)
         original_risk_check = risk_guard.check
         last_risk_day: str | None = None
@@ -856,7 +1088,25 @@ class ReplayBacktestEngine:
         ) -> bool:
             allowed = original_risk_check(order, current_pos_notional, current_mid)
             if allowed:
+                bypass_reason = getattr(risk_guard, "last_bypass_reason", None)
+                if bypass_reason:
+                    ts = execution_model.current_ts(order.inst_id)
+                    recorder.record_risk_event(
+                        ts=ts,
+                        strategy=order.strategy,
+                        inst_id=order.inst_id,
+                        side=order.side,
+                        px=float(order.px),
+                        sz=float(order.sz),
+                        notional_usd=order.notional_usd,
+                        reason=f"allowed_reduce_only_bypass:{bypass_reason}",
+                        current_position=current_pos_notional,
+                        position_limit=max_pos_pct_equity * positions.get_equity(),
+                        current_equity=positions.get_equity(),
+                        metadata={"reduce_only": True},
+                    )
                 return True
+            block_reason = getattr(risk_guard, "last_block_reason", None) or "risk_guard_block"
             ts = execution_model.current_ts(order.inst_id)
             execution_model.rejected_log.append({
                 "ts": ts,
@@ -864,7 +1114,7 @@ class ReplayBacktestEngine:
                 "inst_id": order.inst_id,
                 "side": order.side,
                 "px": float(order.px),
-                "reason": "risk_guard_block",
+                "reason": block_reason,
             })
             recorder.record_risk_event(
                 ts=ts,
@@ -874,9 +1124,9 @@ class ReplayBacktestEngine:
                 px=float(order.px),
                 sz=float(order.sz),
                 notional_usd=order.notional_usd,
-                reason="risk_guard_block",
+                reason=block_reason,
                 current_position=current_pos_notional,
-                position_limit=self._cfg.risk.max_pos_pct_equity * positions.get_equity(),
+                position_limit=max_pos_pct_equity * positions.get_equity(),
                 current_equity=positions.get_equity(),
             )
             return False
@@ -895,6 +1145,8 @@ class ReplayBacktestEngine:
             symbol
             for strategy in strategies
             for symbol in getattr(strategy, "symbols", [])
+        } | {
+            getattr(strategy, "symbol", None) for strategy in strategies
         } | set(self._cfg.system.symbols) | set(self._cfg.system.spot_symbols)
         books = {symbol: OkxBook(symbol) for symbol in book_symbols if symbol}
 
@@ -926,6 +1178,17 @@ class ReplayBacktestEngine:
                 if strategy.is_active:
                     signal = await strategy.on_market(event)
                     if signal:
+                        recorder.record_signal(signal, payload.ts)
+                        await bus.put(Event(EvtType.SIGNAL, payload=signal))
+
+        async def on_feature_event(event: Event) -> None:
+            payload = event.payload
+            reset_daily_risk_if_needed(payload.ts)
+            for strategy in strategies:
+                if strategy.is_active:
+                    signal = await strategy.on_market(event)
+                    if signal:
+                        recorder.record_signal(signal, payload.ts)
                         await bus.put(Event(EvtType.SIGNAL, payload=signal))
 
         async def on_signal_event(event: Event) -> None:
@@ -951,6 +1214,7 @@ class ReplayBacktestEngine:
 
         bus.subscribe(EvtType.MARKET, on_market_event)
         bus.subscribe(EvtType.FUNDING, on_funding_event)
+        bus.subscribe(EvtType.FEATURE, on_feature_event)
         bus.subscribe(EvtType.SIGNAL, on_signal_event)
         bus.subscribe(EvtType.ORDER, on_order_event)
         bus.subscribe(EvtType.FILL, on_fill_event)
@@ -976,6 +1240,17 @@ class ReplayBacktestEngine:
             ts=last_event_ts,
             liquidate_on_end=self._liquidate_on_end,
         )
+        terminal_validation["fill_all_signals"] = fill_all_signals
+        if fill_all_signals:
+            terminal_validation["fill_all_signals_controls"] = {
+                "max_order_notional_usd": max_order_notional_usd,
+                "max_pos_pct_equity": max_pos_pct_equity,
+                "stale_quote_pct": stale_quote_pct,
+                "execution_model": "fill_all_on_submit",
+            }
+        feature_validation = self._collect_feature_validation(strategies)
+        if feature_validation:
+            terminal_validation["external_features"] = feature_validation
 
         return recorder.build_result(
             positions,
@@ -984,6 +1259,15 @@ class ReplayBacktestEngine:
             validation=terminal_validation,
             metric_overrides=terminal_metrics,
         )
+
+    @staticmethod
+    def _collect_feature_validation(strategies: list[Strategy]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for strategy in strategies:
+            status = getattr(strategy, "coverage_status", None)
+            if isinstance(status, dict):
+                out[str(strategy.name)] = dict(status)
+        return out
 
     def _liquidate_terminal_positions(
         self,
@@ -1195,6 +1479,7 @@ def build_feed_for_strategies(
 ) -> HistoricalEventFeed:
     market_frames: list[pd.DataFrame] = []
     funding_frames: list[pd.DataFrame] = []
+    feature_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
     if "obi_market_maker" in strategy_set:
@@ -1292,6 +1577,46 @@ def build_feed_for_strategies(
             dsn=cfg.storage.timescale_dsn,
         ))
 
+    if "fear_greed_sentiment" in strategy_set:
+        params = cfg.strategies.fear_greed_sentiment
+        market_frames.append(load_l1_books(
+            params.symbol,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+        feature_frames.append(load_external_feature_events(
+            params.dataset_id,
+            start=start,
+            end=end,
+            backend="postgres",
+            dsn=cfg.storage.timescale_dsn,
+            lookback_seconds=params.max_age_seconds,
+        ))
+
+    if "cme_gap_fill" in strategy_set:
+        params = cfg.strategies.cme_gap_fill
+        market_frames.append(load_l1_books(
+            params.symbol,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            bar=bar,
+            backend=cfg.storage.candle_backend,
+            dsn=cfg.storage.timescale_dsn,
+        ))
+        feature_frames.append(load_external_feature_events(
+            params.dataset_id,
+            start=start,
+            end=end,
+            backend="postgres",
+            dsn=cfg.storage.timescale_dsn,
+            lookback_seconds=params.max_age_seconds,
+        ))
+
     market_df = _concat_non_empty(market_frames)
 
     # Load funding for all SWAP symbols that appear in market data,
@@ -1323,7 +1648,8 @@ def build_feed_for_strategies(
             logger.warning("No funding data available for {}", sym)
 
     funding_df = _concat_non_empty(funding_frames)
-    return HistoricalEventFeed(market_events=market_df, funding_events=funding_df)
+    feature_df = _concat_non_empty(feature_frames)
+    return HistoricalEventFeed(market_events=market_df, funding_events=funding_df, feature_events=feature_df)
 
 
 def _concat_non_empty(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -1400,7 +1726,10 @@ def build_replay_validation_frame(
         end=end,
         bar=bar,
     )
-    frames = [df for df in [feed.market_events, feed.funding_events] if not df.empty and "ts" in df.columns]
+    frames = [
+        df for df in [feed.market_events, feed.funding_events, feed.feature_events]
+        if not df.empty and "ts" in df.columns
+    ]
     if not frames:
         return pd.DataFrame(columns=["event_count"], index=pd.DatetimeIndex([], tz="UTC"))
 
@@ -1590,6 +1919,7 @@ def run_replay_validations(
     n_trials: int = 1,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run replay-backed WF/CPCV validation and return result.json-ready data."""
     from backtesting.cpcv import CPCV
@@ -1616,9 +1946,35 @@ def run_replay_validations(
         "validation_frame_end": df.index[-1].isoformat(),
     }
 
+    def _emit(progress: int, message: str, **extra: Any) -> None:
+        if progress_callback:
+            progress_callback({
+                "progress": max(85, min(99, int(progress))),
+                "message": message,
+                **extra,
+            })
+
+    has_wf = validate_mode in {"wf", "both"}
+    has_cpcv = validate_mode in {"cpcv", "both"}
+    wf_start, wf_end = (86, 93) if has_cpcv else (86, 99)
+    cpcv_start, cpcv_end = (94, 99) if has_wf else (86, 99)
+
     replay_runner = runner or run_replay_backtest
     if validate_mode in {"wf", "both"}:
         wf = WalkForward(is_days=wf_is_days, oos_days=wf_oos_days)
+
+        def _wf_progress(update: dict[str, Any]) -> None:
+            current = int(update.get("current") or 1)
+            total = max(int(update.get("total") or 1), 1)
+            pct = wf_start + int((current - 1) / total * max(wf_end - wf_start, 1))
+            _emit(
+                pct,
+                f"Walk-Forward window {current}/{total}",
+                phase="walk_forward",
+                current=current,
+                total=total,
+            )
+
         wf_results = wf.evaluate(
             df,
             make_replay_strategy_fn(
@@ -1632,6 +1988,7 @@ def run_replay_validations(
                 runner=replay_runner,
             ),
             periods=periods,
+            progress_callback=_wf_progress,
         )
         validation["walk_forward"] = _summarize_walk_forward(wf_results)
 
@@ -1642,6 +1999,21 @@ def run_replay_validations(
             embargo_pct=cpcv_embargo_pct,
             purge_size=cpcv_purge_size,
         )
+
+        def _cpcv_progress(update: dict[str, Any]) -> None:
+            current = int(update.get("current") or 1)
+            total = max(int(update.get("total") or 1), 1)
+            pct = cpcv_start + int((current - 1) / total * max(cpcv_end - cpcv_start, 1))
+            groups = update.get("test_groups")
+            group_label = f" groups {list(groups)}" if groups is not None else ""
+            _emit(
+                pct,
+                f"CPCV combination {current}/{total}{group_label}",
+                phase="cpcv",
+                current=current,
+                total=total,
+            )
+
         cpcv_results = cpcv.evaluate(
             df,
             make_replay_strategy_fn(
@@ -1656,6 +2028,7 @@ def run_replay_validations(
             ),
             periods=periods,
             n_trials=n_trials,
+            progress_callback=_cpcv_progress,
         )
         validation["cpcv"] = _summarize_cpcv(cpcv_results, cpcv_n_splits, cpcv_k_test)
 
@@ -1673,6 +2046,14 @@ def run_replay_backtest(
     liquidate_on_end: Optional[bool] = None,
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
+    # Safety net for the DB-primary default. Treat both "no DSN" and "DSN
+    # unreachable" (DB process not running) as a trigger to drop to parquet,
+    # otherwise the very first load_candles call crashes with
+    # ConnectionRefusedError.
+    if getattr(cfg.storage, "candle_backend", "parquet") == "postgres":
+        from backtesting.data_loader import _dsn_reachable as _dsn_probe
+        if not cfg.storage.timescale_dsn or not _dsn_probe(cfg.storage.timescale_dsn):
+            cfg.storage = cfg.storage.model_copy(update={"candle_backend": "parquet"})
     feed = build_feed_for_strategies(cfg, strategy_names=strategy_names, data_dir=data_dir, start=start, end=end, bar=bar)
     coverage = _compute_data_coverage(feed, start, end, bar)
     _check_data_coverage_gate(coverage)
@@ -1684,5 +2065,39 @@ def run_replay_backtest(
         liquidate_on_end=liquidate_on_end,
     )
     result = engine.run_sync(feed)
+    _attach_ct_val_provenance(result, engine)
     _apply_post_run_gates(result, strategy_names, coverage)
     return result
+
+
+def _attach_ct_val_provenance(result: Any, engine: "ReplayBacktestEngine") -> None:
+    """Record the source of every symbol's ctVal on `result.validation`.
+
+    Drives the live-deployment gate: backtests whose ctVal came from anything
+    other than DB / config_override / spot_unit must NOT be promoted to live or
+    shadow trading without explicit human override. The full per-symbol map is
+    preserved so reviewers can audit exactly where each value came from.
+    """
+    sources = getattr(engine, "_ct_val_sources", {}) or {}
+    authoritative = ReplayBacktestEngine.AUTHORITATIVE_CT_VAL_SOURCES
+    non_authoritative = {
+        sym: info for sym, info in sources.items()
+        if info.get("source") not in authoritative
+    }
+    payload = {
+        "ct_val_sources": {
+            sym: {"value": info.get("value"), "source": info.get("source")}
+            for sym, info in sources.items()
+        },
+        "ct_val_all_authoritative": len(non_authoritative) == 0,
+        "ct_val_non_authoritative_symbols": sorted(non_authoritative.keys()),
+        "ct_val_gate_passed": len(non_authoritative) == 0,
+    }
+    try:
+        existing = getattr(result, "validation", None) or {}
+        if not isinstance(existing, dict):
+            existing = dict(existing) if existing else {}
+        existing.update(payload)
+        setattr(result, "validation", existing)
+    except Exception as exc:  # noqa: BLE001 — ct_val tracking is informational, never blocks the run
+        logger.warning("Failed to attach ct_val provenance to result.validation: {}", exc)

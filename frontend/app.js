@@ -24,6 +24,8 @@ function NavGlyph({ kind }) {
     case "cpcv": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><rect x="1.5" y="1.5" width="4" height="4"/><rect x="6.5" y="1.5" width="4" height="4"/><rect x="1.5" y="6.5" width="4" height="4"/><rect x="6.5" y="6.5" width="4" height="4"/><rect x="11.5" y="6.5" width="3" height="4"/></svg>`;
     case "trades": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M1.5 4h13M1.5 8h13M1.5 12h13"/></svg>`;
     case "compare": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M3 13V6M8 13V3M13 13V8"/></svg>`;
+    case "validation": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M2.5 8.5l3 3 8-8"/><path d="M3 3.5h6M3 6h4M3 13h10"/></svg>`;
+    case "metrics": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M3 2.5h10v11H3z"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/></svg>`;
     case "risk": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M8 1.5l6 2.5v4c0 3.5-2.5 6-6 7-3.5-1-6-3.5-6-7v-4l6-2.5z"/></svg>`;
     case "backtest": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><rect x="1.5" y="2" width="13" height="9" rx="1.5"/><path d="M4 13h8M8 11v2"/><path d="M5 6l2 2 4-3"/></svg>`;
     default: return null;
@@ -163,17 +165,21 @@ function App() {
   const NAV = [
     { id: "config", label: "Run Backtest", group: "Setup", glyph: "config" },
     { id: "backtest", label: "Backtest Runs", group: "Backtest", glyph: "backtest" },
+    { id: "validation", label: "Validation Lab", group: "Backtest", glyph: "validation" },
     { id: "compare", label: "Compare runs", group: "Analysis", glyph: "compare" },
+    { id: "metrics", label: "Metrics Glossary", group: "Analysis", glyph: "metrics" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
   ];
   const groups = [...new Set(NAV.map((n) => n.group))];
   const titleMap = {
     config: ["Run Backtest", "Configure and launch strategy backtest"],
     backtest: ["Backtest Runs", "Real results saved by --save-artifacts"],
+    validation: ["Validation Lab", "Strategy-level reference checks"],
     wf: ["Walk-Forward", "Out-of-sample validation windows"],
     cpcv: ["CPCV / DSR", "Combinatorial Purged CV and promotion gates"],
     trades: ["Trades / Orders", "Filterable order and trade ledger"],
     compare: ["Compare Runs", "Aligned equity comparison across saved runs"],
+    metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
   };
   const selectedRunSummary = allRuns.find((r) => r.run_id === selectedRunId);
@@ -254,10 +260,12 @@ function App() {
       <main class="app-main">
         ${view === "config" && html`<${window.RunConfigView} tweaks=${tweaks} setTweak=${setTweak} setView=${setView} setSelectedRunId=${setSelectedRunId} />`}
         ${view === "backtest" && html`<${window.BacktestView} selectedRunId=${selectedRunId} setSelectedRunId=${setSelectedRunId} onRunsChanged=${refreshRuns} />`}
+        ${view === "validation" && html`<${window.ValidationLabView} selectedRunId=${selectedRunId} setSelectedRunId=${setSelectedRunId} />`}
         ${view === "wf" && html`<${window.WalkForwardView} selectedRunId=${selectedRunId} />`}
         ${view === "cpcv" && html`<${window.CPCVView} selectedRunId=${selectedRunId} />`}
         ${view === "trades" && html`<${window.TradesView} selectedRunId=${selectedRunId} />`}
         ${view === "compare" && html`<${window.CompareView} selectedRunId=${selectedRunId} />`}
+        ${view === "metrics" && html`<${window.MetricsGlossaryView} />`}
         ${view === "risk" && html`<${window.RiskView} selectedRunId=${selectedRunId} />`}
       </main>
 

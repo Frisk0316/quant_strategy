@@ -37,7 +37,7 @@ FILL_COLUMNS = [
 
 TRADE_COLUMNS = [
     "ts", "datetime", "strategy", "inst_id", "side", "fill_px", "fill_sz",
-    "fee", "fee_ccy",
+    "notional_usd", "fee", "fee_ccy",
     "size_before", "size_after", "avg_entry_before", "avg_entry_after",
     "position_notional_before", "position_notional_after",
     "realized_pnl", "net_realized_pnl", "unrealized_pnl_after",
@@ -91,10 +91,19 @@ CANCEL_LOG_COLUMNS = [
 
 EXECUTION_MARKER_COLUMNS = [
     "ts", "datetime", "inst_id", "strategy", "side", "price", "qty", "fee",
-    "net_realized_pnl", "day_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
+    "notional_usd", "net_realized_pnl", "day_pnl", "position_after", "marker_position", "marker_shape", "marker_text",
 ]
 
 PRICE_SERIES_COLUMNS = ["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"]
+
+INDICATOR_SERIES_COLUMNS = [
+    "ts", "datetime", "inst_id", "strategy", "close",
+    "fast_value", "slow_value",
+    "macd", "macd_signal", "macd_histogram",
+    "warmup_source",
+]
+
+_TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +255,16 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _contains_idealized_fill_flag(value: Any) -> bool:
+    if isinstance(value, dict):
+        if bool(value.get("idealized_fill")) or bool(value.get("fill_all_signals")):
+            return True
+        return any(_contains_idealized_fill_flag(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_idealized_fill_flag(v) for v in value)
+    return False
+
+
 def _df_records(df: pd.DataFrame) -> list[dict]:
     if df.empty:
         return []
@@ -264,6 +283,10 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
             return
 
         metrics = meta.get("metrics", {})
+        metadata = {
+            "parameters": meta.get("parameters", {}),
+            "validation": meta.get("validation", {}),
+        }
 
         def _parse_date(value: Any) -> Any:
             if not value:
@@ -299,12 +322,15 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     """
                 )
                 await conn.execute(
+                    "ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'"
+                )
+                await conn.execute(
                     """
                     INSERT INTO backtest_runs
                       (run_id, created_at, strategies, symbols, bar, start_date, end_date,
                        artifact_dir, total_return, sharpe, max_drawdown, order_count,
-                       real_fill_count, fill_rate, bankrupt)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                       real_fill_count, fill_rate, bankrupt, metadata)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)
                     ON CONFLICT (run_id) DO UPDATE SET
                         created_at = EXCLUDED.created_at,
                         strategies = EXCLUDED.strategies,
@@ -319,7 +345,8 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                         order_count = EXCLUDED.order_count,
                         real_fill_count = EXCLUDED.real_fill_count,
                         fill_rate = EXCLUDED.fill_rate,
-                        bankrupt = EXCLUDED.bankrupt
+                        bankrupt = EXCLUDED.bankrupt,
+                        metadata = EXCLUDED.metadata
                     """,
                     run_id,
                     datetime.now(tz=timezone.utc),
@@ -336,6 +363,7 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     metrics.get("real_fill_count", metrics.get("fill_count", metrics.get("orders_filled_count"))),
                     metrics.get("fill_rate"),
                     bool(metrics.get("bankrupt", False)),
+                    json.dumps(metadata, allow_nan=False),
                 )
             finally:
                 await conn.close()
@@ -591,6 +619,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
         price = _safe_float(f.get("fill_px"), 0.0)
         qty = _safe_float(f.get("fill_sz"), 0.0)
         fee = _safe_float(f.get("fee"), 0.0)
+        notional_usd = _safe_float(f.get("notional_usd"), abs(price * qty))
         pnl = _safe_float(
             net_pnl_map.get((f.get("inst_id", ""), f.get("ts", 0)), float("nan")),
             float("nan"),
@@ -607,6 +636,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
         marker_shape = "arrowUp" if side == "buy" else "arrowDown"
         marker_text = (
             f"{side.upper()} {qty:.6g} @ {price:,.2f} | "
+            f"Notional: {notional_usd:,.2f} USDT | "
             f"Trade PnL: {pnl_str} | Day PnL: {day_pnl_str}"
         )
 
@@ -629,6 +659,7 @@ def _build_execution_markers(fill_log: pd.DataFrame, trade_log: pd.DataFrame) ->
             "price": price,
             "qty": qty,
             "fee": fee,
+            "notional_usd": notional_usd,
             "net_realized_pnl": pnl,
             "day_pnl": day_pnl,
             "position_after": pos_after,
@@ -646,6 +677,286 @@ def _build_price_series_df(price_log: pd.DataFrame) -> pd.DataFrame:
     if "datetime" not in df.columns and "ts" in df.columns:
         df["datetime"] = _ts_to_datetime(df["ts"])
     return df
+
+
+def _resolve_indicator_params(cfg: Any, strategy_name: str) -> Optional[dict]:
+    """Pull the active parameters for a technical-indicator strategy from cfg.
+
+    Returns None when the cfg does not carry the strategy config object — callers
+    treat that as "skip indicator emission" rather than fail.
+    """
+    strategies = getattr(cfg, "strategies", None)
+    if strategies is None:
+        return None
+    sub = getattr(strategies, strategy_name, None)
+    if sub is None:
+        return None
+    try:
+        dumped = sub.model_dump() if hasattr(sub, "model_dump") else dict(sub)
+    except Exception:
+        return None
+    return dumped if isinstance(dumped, dict) else None
+
+
+def _build_run_parameters(cfg: Any, args: Any, strategy_names: list[str]) -> dict[str, Any]:
+    """Capture the active research parameters that produced this result."""
+    def _maybe_json_obj(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else value
+        except Exception:
+            return value
+
+    strategies_obj = getattr(cfg, "strategies", None)
+    strategy_params: dict[str, Any] = {}
+    if strategies_obj is not None:
+        for name in strategy_names:
+            sub = getattr(strategies_obj, name, None)
+            if sub is None:
+                continue
+            try:
+                dumped = sub.model_dump() if hasattr(sub, "model_dump") else dict(sub)
+            except Exception:
+                dumped = {}
+            if isinstance(dumped, dict):
+                strategy_params[name] = _scrub_secrets(dumped)
+
+    risk = getattr(cfg, "risk", None)
+    risk_params = {
+        key: getattr(risk, key)
+        for key in ("max_order_notional_usd", "max_pos_pct_equity", "max_leverage")
+        if risk is not None and hasattr(risk, key)
+    }
+    backtest = getattr(cfg, "backtest", None)
+    backtest_params = {
+        key: getattr(backtest, key)
+        for key in (
+            "order_latency_ms",
+            "cancel_latency_ms",
+            "queue_fill_fraction",
+            "liquidate_on_end",
+            "fill_all_signals",
+        )
+        if backtest is not None and hasattr(backtest, key)
+    }
+    cli_strategy_params = _maybe_json_obj(getattr(args, "strategy_params", None)) if args else None
+    cli_risk_overrides = _maybe_json_obj(getattr(args, "risk_overrides", None)) if args else None
+    return _scrub_secrets({
+        "strategies": strategy_params,
+        "risk": risk_params,
+        "backtest": backtest_params,
+        "overrides": {
+            "strategy_params": cli_strategy_params or {},
+            "risk_overrides": cli_risk_overrides or {},
+        },
+    })
+
+
+def _indicator_lookback_bars(strategy_name: str, params: dict) -> int:
+    if not bool(params.get("indicator_db_warmup", False)):
+        return 0
+    if strategy_name == "ma_crossover":
+        return max(int(params.get("slow_window", 50) or 50) - 1, 0)
+    if strategy_name == "ema_crossover":
+        return max(int(params.get("slow_span", 50) or 50) * 3, 0)
+    if strategy_name == "macd_crossover":
+        slow_s = int(params.get("slow_span", 26) or 26)
+        signal_s = int(params.get("signal_span", 9) or 9)
+        return max(slow_s, signal_s) * 3
+    return 0
+
+
+def _fetch_warmup_candles(
+    dsn: Optional[str],
+    inst_ids: list[str],
+    bar: str,
+    start_ts: Any,
+    lookback_bars: int,
+) -> dict[str, pd.DataFrame]:
+    if not dsn or not inst_ids or lookback_bars <= 0 or not bar:
+        return {}
+    try:
+        import asyncio
+
+        import asyncpg
+
+        if isinstance(start_ts, (int, float, np.integer, np.floating)) or (
+            isinstance(start_ts, str) and start_ts.isdigit()
+        ):
+            numeric_ts = float(start_ts)
+            unit = "ms" if numeric_ts > 1e11 else "s"
+            start_dt = pd.to_datetime(numeric_ts, unit=unit, utc=True, errors="coerce")
+        else:
+            start_dt = pd.to_datetime(start_ts, utc=True, errors="coerce")
+        if pd.isna(start_dt):
+            return {}
+        start_value = start_dt.to_pydatetime()
+
+        async def _fetch() -> dict[str, pd.DataFrame]:
+            conn = await asyncpg.connect(dsn)
+            try:
+                result: dict[str, pd.DataFrame] = {}
+                for inst_id in inst_ids:
+                    rows = await conn.fetch(
+                        """
+                        SELECT ts, close FROM canonical_candles
+                        WHERE inst_id=$1 AND bar=$2 AND ts < $3
+                        ORDER BY ts DESC LIMIT $4
+                        """,
+                        inst_id,
+                        bar,
+                        start_value,
+                        lookback_bars,
+                    )
+                    if not rows:
+                        continue
+                    df = pd.DataFrame([dict(r) for r in rows]).sort_values("ts")
+                    df["inst_id"] = inst_id
+                    df["datetime"] = _ts_to_datetime(df["ts"])
+                    result[inst_id] = df
+                return result
+            finally:
+                await conn.close()
+
+        return asyncio.run(_fetch())
+    except Exception as exc:
+        logger.warning("Could not fetch indicator warmup candles from DB: {}", exc)
+        return {}
+
+
+def _compute_indicator_frame(
+    price_df: pd.DataFrame,
+    strategy_name: str,
+    params: dict,
+    warmup_per_inst: Optional[dict[str, pd.DataFrame]] = None,
+) -> pd.DataFrame:
+    """Recompute fast/slow (and MACD) per inst_id from price_series close prices.
+
+    Mirrors the math in src/okx_quant/strategies/technical_indicators.py so the
+    artifact lines up with the live strategy without re-importing it.
+    """
+    if price_df.empty or "close" not in price_df.columns:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+
+    out_frames: list[pd.DataFrame] = []
+    grouped = price_df.sort_values("ts").groupby("inst_id", sort=False)
+    for inst_id, group in grouped:
+        sub = group.copy()
+        warm = (warmup_per_inst or {}).get(str(inst_id))
+        warm_closes = (
+            warm.sort_values("ts")["close"].astype(float)
+            if warm is not None and not warm.empty and "close" in warm.columns
+            else pd.Series(dtype=float)
+        )
+        closes = pd.concat(
+            [warm_closes.reset_index(drop=True), sub["close"].astype(float).reset_index(drop=True)],
+            ignore_index=True,
+        )
+        warm_len = len(warm_closes)
+        fast = pd.Series(float("nan"), index=closes.index)
+        slow = pd.Series(float("nan"), index=closes.index)
+        macd = pd.Series(float("nan"), index=closes.index)
+        macd_signal = pd.Series(float("nan"), index=closes.index)
+        macd_hist = pd.Series(float("nan"), index=closes.index)
+
+        if strategy_name == "ma_crossover":
+            fast_w = int(params.get("fast_window", 20) or 20)
+            slow_w = int(params.get("slow_window", 50) or 50)
+            fast = closes.rolling(fast_w, min_periods=fast_w).mean()
+            slow = closes.rolling(slow_w, min_periods=slow_w).mean()
+        elif strategy_name == "ema_crossover":
+            fast_s = int(params.get("fast_span", 20) or 20)
+            slow_s = int(params.get("slow_span", 50) or 50)
+            fast = closes.ewm(span=fast_s, adjust=False).mean()
+            slow = closes.ewm(span=slow_s, adjust=False).mean()
+        elif strategy_name == "macd_crossover":
+            fast_s = int(params.get("fast_span", 12) or 12)
+            slow_s = int(params.get("slow_span", 26) or 26)
+            signal_s = int(params.get("signal_span", 9) or 9)
+            fast = closes.ewm(span=fast_s, adjust=False).mean()
+            slow = closes.ewm(span=slow_s, adjust=False).mean()
+            macd_line = fast - slow
+            signal_line = macd_line.ewm(span=signal_s, adjust=False).mean()
+            macd = macd_line
+            macd_signal = signal_line
+            macd_hist = macd_line - signal_line
+        else:
+            continue
+
+        out = pd.DataFrame({
+            "ts": sub["ts"].tolist(),
+            "inst_id": inst_id,
+            "strategy": strategy_name,
+            "close": sub["close"].astype(float).values,
+            "fast_value": fast.iloc[warm_len:].values,
+            "slow_value": slow.iloc[warm_len:].values,
+            "macd": macd.iloc[warm_len:].values,
+            "macd_signal": macd_signal.iloc[warm_len:].values,
+            "macd_histogram": macd_hist.iloc[warm_len:].values,
+            "warmup_source": "db" if warm_len > 0 else "cold",
+        })
+        if "datetime" in sub.columns:
+            out["datetime"] = sub["datetime"].values
+        out_frames.append(out)
+
+    if not out_frames:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    df = pd.concat(out_frames, ignore_index=True)
+    if "datetime" not in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    return df
+
+
+def _build_indicator_series_df(
+    price_df: pd.DataFrame,
+    cfg: Any,
+    strategy_names: list[str],
+    dsn: Optional[str] = None,
+    bar: str = "",
+) -> pd.DataFrame:
+    """Recompute indicator time series for any technical strategy in the run.
+
+    Empty DataFrame when no technical strategy is active or when price_series is
+    missing close prices — non-fatal, just skips emitting the CSV.
+    """
+    active = [s for s in (strategy_names or []) if s in _TECHNICAL_STRATEGIES]
+    if not active or price_df.empty or "close" not in price_df.columns:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    frames: list[pd.DataFrame] = []
+    inst_ids = [str(s) for s in price_df.get("inst_id", pd.Series(dtype=object)).dropna().unique()]
+    start_ts = price_df["ts"].min() if "ts" in price_df.columns and not price_df.empty else None
+    for strat in active:
+        params = _resolve_indicator_params(cfg, strat) or {}
+        lookback = _indicator_lookback_bars(strat, params)
+        warmup = _fetch_warmup_candles(dsn, inst_ids, bar, start_ts, lookback) if lookback > 0 else {}
+        sub = _compute_indicator_frame(price_df, strat, params, warmup_per_inst=warmup)
+        if not sub.empty:
+            frames.append(sub)
+    if not frames:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    df = pd.concat(frames, ignore_index=True)
+    trimmed: list[pd.DataFrame] = []
+    for _, group in df.sort_values("ts").groupby(["strategy", "inst_id"], sort=False):
+        finite_mask = group["fast_value"].apply(_is_finite_number) | group["slow_value"].apply(_is_finite_number)
+        if finite_mask.any():
+            first_idx = finite_mask[finite_mask].index[0]
+            trimmed.append(group.loc[first_idx:])
+    if not trimmed:
+        return pd.DataFrame(columns=INDICATOR_SERIES_COLUMNS)
+    return pd.concat(trimmed, ignore_index=True)
+
+
+def _indicator_warmup_sources(indicator_df: pd.DataFrame) -> dict[str, dict[str, str]]:
+    if indicator_df.empty or not {"strategy", "inst_id", "warmup_source"} <= set(indicator_df.columns):
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for (strategy, inst_id), group in indicator_df.groupby(["strategy", "inst_id"], sort=True):
+        sources = [str(v) for v in group["warmup_source"].dropna().unique()]
+        source = "db" if "db" in sources else "cold"
+        out.setdefault(str(strategy), {})[str(inst_id)] = source
+    return out
 
 
 def _build_data_coverage(
@@ -728,6 +1039,7 @@ def save_backtest_artifacts(
     end_s = end or getattr(args, "end", None)
     bar_s = bar or getattr(args, "bar", "1H")
     run_id_final = build_run_id(strats, start_s, end_s, bar_s, run_id)
+    run_parameters = _build_run_parameters(cfg, args, strats)
 
     # Resolve DSN: prefer cfg.storage.timescale_dsn (populated by load_config from
     # DATABASE_URL env var when YAML omits it), fall back to env var directly.
@@ -753,6 +1065,10 @@ def save_backtest_artifacts(
     rejected_log: list[dict] = getattr(result, "rejected_log", [])
     cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
     result_validation: dict[str, Any] = dict(getattr(result, "validation", {}) or {})
+    if "fill_all_signals" in result_validation or "idealized_fill" in result_validation:
+        result_validation["idealized_fill"] = bool(
+            result_validation.get("idealized_fill") or result_validation.get("fill_all_signals")
+        )
     if validation_results and "cpcv" in validation_results:
         cpcv_payload = validation_results.get("cpcv") or {}
         if _is_finite_number(cpcv_payload.get("dsr")):
@@ -810,6 +1126,23 @@ def save_backtest_artifacts(
         trades_df = trades_df[trades_df.get("fill_sz", pd.Series(0, index=trades_df.index)).astype(float) > 0].copy()
         if "datetime" not in trades_df.columns:
             trades_df["datetime"] = _ts_to_datetime(trades_df["ts"])
+        if "notional_usd" not in trades_df.columns:
+            if "metadata" in trades_df.columns:
+                trades_df["notional_usd"] = trades_df["metadata"].apply(
+                    lambda m: _safe_float(m.get("notional_usd"), float("nan")) if isinstance(m, dict) else float("nan")
+                )
+            else:
+                trades_df["notional_usd"] = float("nan")
+        fallback_mask = trades_df["notional_usd"].isna() | (trades_df["notional_usd"] == 0)
+        if fallback_mask.any():
+            ct_val = pd.Series(1.0, index=trades_df.index)
+            if "ct_val_after" in trades_df.columns:
+                ct_val = trades_df["ct_val_after"].fillna(1.0)
+            trades_df.loc[fallback_mask, "notional_usd"] = (
+                trades_df.loc[fallback_mask, "fill_px"].astype(float)
+                * trades_df.loc[fallback_mask, "fill_sz"].astype(float)
+                * ct_val.loc[fallback_mask].astype(float)
+            ).abs()
         if "metadata" in trades_df.columns:
             trades_df["metadata"] = trades_df["metadata"].apply(_dump_metadata)
     if write_files:
@@ -908,12 +1241,25 @@ def save_backtest_artifacts(
         _write_csv(run_dir / "price_series.csv", price_df, PRICE_SERIES_COLUMNS)
 
     # -------------------------------------------------------------------
+    # indicator_series.csv — only emitted for technical-indicator strategies
+    # -------------------------------------------------------------------
+    indicator_df = _build_indicator_series_df(price_df, cfg, strats, dsn=dsn, bar=bar_s)
+    indicator_warmup_sources = _indicator_warmup_sources(indicator_df)
+    if write_files:
+        _write_csv(run_dir / "indicator_series.csv", indicator_df, INDICATOR_SERIES_COLUMNS)
+
+    # -------------------------------------------------------------------
     # data_coverage.json
     # -------------------------------------------------------------------
     coverage = _build_data_coverage(
         market_frames_meta or [],
         funding_frames_meta or [],
     )
+    replay_coverage = result_validation.get("gate3_data_coverage")
+    if isinstance(replay_coverage, dict):
+        coverage["replay_gate"] = replay_coverage
+        if "features" in replay_coverage:
+            coverage["features"] = replay_coverage.get("features") or []
     if write_files:
         _write_json(run_dir / "data_coverage.json", coverage)
 
@@ -952,6 +1298,7 @@ def save_backtest_artifacts(
         "cancel_log": "cancel_log.csv",
         "execution_markers": "execution_markers.csv",
         "price_series": "price_series.csv",
+        "indicator_series": "indicator_series.csv",
         "data_coverage": "data_coverage.json",
     }
     if artifact_mode == "db":
@@ -976,6 +1323,7 @@ def save_backtest_artifacts(
             "primary_exchange": "binance",
         },
         "metrics": metrics,
+        "parameters": run_parameters,
         "artifacts": artifact_refs,
     }
     validation_payload = dict(result_validation)
@@ -989,6 +1337,10 @@ def save_backtest_artifacts(
             for key, value in validation_results.items()
             if key not in {"walk_forward", "cpcv"}
         })
+        if _contains_idealized_fill_flag(validation_results):
+            validation_payload["idealized_fill"] = True
+    if indicator_warmup_sources:
+        validation_payload.setdefault("indicator_warmup_sources", indicator_warmup_sources)
     if validation_payload:
         result_json["validation"] = validation_payload
     if write_files:
@@ -1012,6 +1364,7 @@ def save_backtest_artifacts(
         "cancel_log": _df_records(ensure_columns(cancel_df.copy(), CANCEL_LOG_COLUMNS)),
         "execution_markers": _df_records(ensure_columns(markers_df.copy(), EXECUTION_MARKER_COLUMNS)),
         "price_series": _df_records(ensure_columns(price_df.copy(), PRICE_SERIES_COLUMNS)),
+        "indicator_series": _df_records(ensure_columns(indicator_df.copy(), INDICATOR_SERIES_COLUMNS)),
         "data_coverage": coverage,
     }, dsn=dsn, mode=artifact_mode)
 

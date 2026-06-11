@@ -98,6 +98,8 @@ ma_crossover:
     - BTC-USDT-SWAP
   fast_window: 20
   slow_window: 50
+  # Default false keeps indicator artifacts aligned with strategy cold-start semantics.
+  indicator_db_warmup: false
   td_mode: cross
 
 ema_crossover:
@@ -106,6 +108,8 @@ ema_crossover:
     - BTC-USDT-SWAP
   fast_span: 20
   slow_span: 50
+  # Opt in only when visual continuity is preferred over marker/strategy parity.
+  indicator_db_warmup: false
   td_mode: cross
 
 macd_crossover:
@@ -115,6 +119,45 @@ macd_crossover:
   fast_span: 12
   slow_span: 26
   signal_span: 9
+  # Opt in only when visual continuity is preferred over marker/strategy parity.
+  indicator_db_warmup: false
   td_mode: cross
 
+fear_greed_sentiment:
+  enabled: false
+  symbol: BTC-USDT-SWAP
+  dataset_id: fear_greed_btc
+  # Required feature: stale or missing values produce no signal.
+  max_age_seconds: 172800
+  extreme_fear_label: Extreme Fear
+  exit_labels:
+    - Greed
+    - Extreme Greed
+  # Numeric thresholds are a fallback if the upstream label spelling drifts.
+  extreme_fear_threshold: 25.0
+  exit_value_threshold: 51.0
+  max_missing_signal_ratio: 0.05
+  max_stale_signal_ratio: 0.05
+  td_mode: cross
 
+cme_gap_fill:
+  enabled: false
+  symbol: BTC-USDT-SWAP
+  dataset_id: cme_btc1_continuous
+  # Required feature: stale or missing CME observations produce no signal.
+  # Daily CME observations are a delayed research baseline, not real-time gap-fill.
+  max_age_seconds: 604800
+  # Dust-bucket exclusion: gaps below ~25 bps are too close to round-trip costs.
+  min_gap_bps: 25.0
+  # 73% of proxy fills land within day 1; day 2 keeps a small buffer.
+  max_hold_days: 2.0
+  # Caps adverse move at 1.5x the detected gap; 0 disables stop-loss.
+  stop_loss_bps_mult: 1.5
+  # Optional oversize-gap filter; 0 disables upper bound.
+  max_gap_bps: 0.0
+  # Regime-fitted to BTC 2024-26; revert if bear-regime WF fails.
+  allow_direction: long_only
+  roll_dates: []
+  max_missing_signal_ratio: 0.05
+  max_stale_signal_ratio: 0.05
+  td_mode: cross
