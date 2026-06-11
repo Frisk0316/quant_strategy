@@ -1,10 +1,30 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from okx_quant.api import routes_backtest as routes
+
+
+def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")
+
+    assert "Contract limit:" in text
+    assert "Artifacts:" in text
+    assert "Trigger:" in text
+    assert "required artifacts present:" in text
+    assert "Python package vectorbt is installed" in text
+    assert "advisory export plus optional signal replay execution" in text
+    assert "Engine execution matrix" in text
+    assert "External validation conclusion" in text
+    assert "Next required actions" in text
+    assert "Replay coverage" in text
+    assert "Missing artifacts" in text
+    assert "contract=${activeContract}" in text
 
 
 def test_downsample_price_records_preserves_each_symbol():
@@ -278,6 +298,52 @@ def test_price_series_route_backfills_symbols_missing_from_existing_artifact(tmp
 
     assert response.status_code == 200
     assert {row["inst_id"] for row in response.json()} == {"BTC-USDT-SWAP", "ETH-USDT-SWAP"}
+
+
+def test_execution_markers_endpoint_filters_by_symbol(tmp_path):
+    run_dir = tmp_path / "run_markers"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        """
+        {
+          "run_id": "run_markers",
+          "strategies": ["daily_winner"],
+          "symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+          "bar": "1m",
+          "start": "2024-01-01",
+          "end": "2024-01-02",
+          "metrics": {}
+        }
+        """,
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "ts": 1704067200000,
+                "datetime": "2024-01-01T00:00:00+00:00",
+                "inst_id": "BTC-USDT-SWAP",
+                "side": "buy",
+                "price": 42000.0,
+            },
+            {
+                "ts": 1704067200000,
+                "datetime": "2024-01-01T00:00:00+00:00",
+                "inst_id": "ETH-USDT-SWAP",
+                "side": "buy",
+                "price": 2300.0,
+            },
+        ]
+    ).to_csv(run_dir / "execution_markers.csv", index=False)
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/run_markers/execution-markers?symbol=BTC-USDT-SWAP")
+
+    assert response.status_code == 200
+    assert [row["inst_id"] for row in response.json()] == ["BTC-USDT-SWAP"]
 
 
 def test_get_run_backfills_parameters_from_config_for_legacy_results(tmp_path):
