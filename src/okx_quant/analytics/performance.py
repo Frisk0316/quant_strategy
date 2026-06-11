@@ -1,6 +1,6 @@
 """
 Performance metrics for strategy evaluation.
-Extracted from §3.4 of Crypto_Quant_Plan_v1.md.
+Extracted from §3.4 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 All functions are pure (no I/O, no state).
 Crypto: annualize with sqrt(365) for daily, sqrt(365*24) for hourly.

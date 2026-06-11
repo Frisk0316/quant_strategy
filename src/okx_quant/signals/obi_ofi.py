@@ -1,6 +1,6 @@
 """
 Order Book Imbalance (OBI) and Order Flow Imbalance (OFI) signals.
-Extracted from §1.1 of Crypto_Quant_Plan_v1.md.
+Extracted from §1.1 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 All functions are pure (no I/O, no state) for easy unit testing.
 """

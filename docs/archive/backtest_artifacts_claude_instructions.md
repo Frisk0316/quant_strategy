@@ -1,3 +1,13 @@
+---
+status: archived
+type: plan
+owner: codex
+created: 2026-05-07
+last_reviewed: 2026-06-11
+expires: none
+superseded_by: docs/ADR/0002-backtest-result-schema.md
+---
+
 # Claude 任務文件：補完 Backtest Result Artifacts、CSV Export 與 Frontend API
 
 ## 0. 任務背景

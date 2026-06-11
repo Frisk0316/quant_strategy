@@ -1,3 +1,13 @@
+---
+status: archived
+type: plan
+owner: codex
+created: 2026-05-06
+last_reviewed: 2026-06-11
+expires: none
+superseded_by: docs/backtest_live_parity_plan.md
+---
+
 # Improved Plan: PostgreSQL / TimescaleDB OHLCV Data Pipeline
 
 ## 0. Context

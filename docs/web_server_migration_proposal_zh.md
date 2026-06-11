@@ -1,3 +1,13 @@
+---
+status: proposed
+type: plan
+owner: human
+created: 2026-05-19
+last_reviewed: 2026-06-11
+expires: none
+superseded_by: null
+---
+
 # 量化交易系統 Web Server 遷移企劃書
 
 日期：2026-05-19  

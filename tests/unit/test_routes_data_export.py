@@ -4,10 +4,16 @@ from datetime import datetime, timezone
 
 import pytest
 
+import okx_quant.api.routes_data as routes_data
 from okx_quant.api.routes_data import (
+    FetchRequest,
     _external_export_row,
+    _existing_update_ranges,
     _funding_export_row,
+    _instrument_sort_key,
+    _next_existing_update_start,
     _refresh_external_datasets,
+    _request_symbols,
 )
 
 
@@ -59,6 +65,100 @@ def test_external_export_row_flattens_yfinance_ohlcv_fields():
     assert exported[0] == "cme_btc_yfinance"
     assert exported[5:10] == [43000.0, 44000.0, 42000.0, 43500.0, 1000.0]
     assert exported[15] is True
+
+
+def test_request_symbols_normalizes_binance_native_pair():
+    req = FetchRequest(
+        exchange="binance",
+        symbol="BTCUSDT",
+        symbols=["ETHUSDT", "BTC-USDT-SWAP"],
+        bar="1m",
+        start="2024-01-01",
+        end="2024-01-02",
+    )
+
+    assert _request_symbols(req) == ["ETH-USDT-SWAP", "BTC-USDT-SWAP"]
+
+
+def test_instrument_sort_key_prioritizes_exact_base_match():
+    rows = [
+        {"inst_id": "BRETT-USDT-SWAP", "native_symbol": "BRETTUSDT", "base_ccy": "BRETT", "quote_ccy": "USDT"},
+        {"inst_id": "BTC-USDT-SWAP", "native_symbol": "BTCUSDT", "base_ccy": "BTC", "quote_ccy": "USDT"},
+        {"inst_id": "PUMPBTC-USDT-SWAP", "native_symbol": "PUMPBTCUSDT", "base_ccy": "PUMPBTC", "quote_ccy": "USDT"},
+    ]
+
+    sorted_rows = sorted(rows, key=lambda row: _instrument_sort_key(row, "BTC"))
+
+    assert sorted_rows[0]["inst_id"] == "BTC-USDT-SWAP"
+
+
+def test_next_existing_update_start_resumes_after_last_db_candle():
+    requested_start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    last_ts = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)
+
+    assert _next_existing_update_start(requested_start, last_ts, "1m") == datetime(
+        2024, 6, 1, 0, 1, tzinfo=timezone.utc
+    )
+
+
+def test_existing_update_ranges_backfills_before_first_db_candle():
+    requested_start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    requested_end = datetime(2024, 2, 1, tzinfo=timezone.utc)
+    bounds = {
+        "first_ts": datetime(2024, 1, 1, tzinfo=timezone.utc),
+        "last_ts": datetime(2024, 6, 1, tzinfo=timezone.utc),
+    }
+
+    assert _existing_update_ranges(requested_start, requested_end, bounds, "1m") == [
+        (datetime(2023, 1, 1, tzinfo=timezone.utc), datetime(2024, 1, 1, tzinfo=timezone.utc))
+    ]
+
+
+def test_existing_update_ranges_can_backfill_and_append():
+    requested_start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    requested_end = datetime(2024, 6, 2, tzinfo=timezone.utc)
+    bounds = {
+        "first_ts": datetime(2024, 1, 1, tzinfo=timezone.utc),
+        "last_ts": datetime(2024, 6, 1, tzinfo=timezone.utc),
+    }
+
+    assert _existing_update_ranges(requested_start, requested_end, bounds, "1m") == [
+        (datetime(2023, 1, 1, tzinfo=timezone.utc), datetime(2024, 1, 1, tzinfo=timezone.utc)),
+        (datetime(2024, 6, 1, 0, 1, tzinfo=timezone.utc), datetime(2024, 6, 2, tzinfo=timezone.utc)),
+    ]
+
+
+def test_existing_update_ranges_skips_fully_covered_window():
+    requested_start = datetime(2024, 2, 1, tzinfo=timezone.utc)
+    requested_end = datetime(2024, 3, 1, tzinfo=timezone.utc)
+    bounds = {
+        "first_ts": datetime(2024, 1, 1, tzinfo=timezone.utc),
+        "last_ts": datetime(2024, 6, 1, tzinfo=timezone.utc),
+    }
+
+    assert _existing_update_ranges(requested_start, requested_end, bounds, "1m") == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_fetch_symbols_can_use_existing_db_pairs(monkeypatch):
+    async def fake_existing_db_symbols(db_dsn: str, bar: str) -> list[str]:
+        assert db_dsn == "postgresql://unused"
+        assert bar == "1m"
+        return ["BTC-USDT-SWAP", "SOL-USDT-SWAP"]
+
+    monkeypatch.setattr(routes_data, "_existing_db_symbols", fake_existing_db_symbols)
+    req = FetchRequest(
+        exchange="binance",
+        symbols=["ETHUSDT"],
+        existing_only=True,
+        bar="1m",
+        start="2024-01-01",
+        end="2024-01-02",
+    )
+
+    resolved = await routes_data._resolve_fetch_symbols(req, "postgresql://unused")
+
+    assert resolved == ["BTC-USDT-SWAP", "SOL-USDT-SWAP"]
 
 
 @pytest.mark.asyncio

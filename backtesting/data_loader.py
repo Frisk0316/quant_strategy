@@ -109,6 +109,26 @@ def _to_naive_utc_ts(value: Optional[str]) -> Optional[pd.Timestamp]:
     return ts
 
 
+def _filter_by_time_column(
+    df: pd.DataFrame,
+    ts_col: str,
+    start: Optional[str],
+    end: Optional[str],
+) -> pd.DataFrame:
+    out = df.copy()
+    out[ts_col] = pd.to_datetime(out[ts_col], utc=True, errors="coerce")
+    out = out.dropna(subset=[ts_col])
+    start_ts = _to_naive_utc_ts(start)
+    end_ts = _to_naive_utc_ts(end)
+    compare = out[ts_col].dt.tz_convert("UTC").dt.tz_localize(None)
+    if start_ts is not None:
+        out = out[compare >= start_ts]
+        compare = compare.loc[out.index]
+    if end_ts is not None:
+        out = out[compare < end_ts]
+    return out
+
+
 def _to_utc_dt(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -474,6 +494,112 @@ def load_funding(
     if end_ts is not None:
         df = df[df.index < end_ts]
     return df
+
+
+def load_trade_ticks(
+    inst_id: str,
+    data_dir: str = "data/ticks",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: Literal["parquet", "postgres"] = "parquet",
+    dsn: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load raw trade ticks from FeedStore parquet or a per-instrument Timescale table."""
+    if backend == "postgres":
+        if not dsn or not _dsn_reachable(dsn):
+            backend = "parquet"
+        else:
+            return _load_trade_ticks_pg(inst_id, dsn, start, end)
+
+    inst_dir = Path(data_dir) / inst_id.replace("-", "_")
+    frames = _read_trade_tick_parquet_frames(inst_dir)
+    if not frames:
+        raise FileNotFoundError(f"Trade tick data not found under: {inst_dir}")
+    df = pd.concat(frames, ignore_index=True)
+    ts_col = "ts" if "ts" in df.columns else ("timestamp" if "timestamp" in df.columns else "")
+    if not ts_col:
+        raise ValueError("Trade tick parquet data must include ts or timestamp column")
+    df = _filter_by_time_column(df, ts_col=ts_col, start=start, end=end)
+    price_col = "price" if "price" in df.columns else ("px" if "px" in df.columns else "")
+    size_col = "size" if "size" in df.columns else ("sz" if "sz" in df.columns else "")
+    if not price_col or not size_col:
+        raise ValueError("Trade tick parquet data must include price/px and size/sz columns")
+    out = pd.DataFrame({
+        "ts": pd.to_datetime(df[ts_col], utc=True, errors="coerce"),
+        "trade_id": df.get("trade_id", df.get("tradeId", "")),
+        "price": pd.to_numeric(df[price_col], errors="coerce"),
+        "size": pd.to_numeric(df[size_col], errors="coerce"),
+        "side": df.get("side", ""),
+    }).dropna(subset=["ts", "price", "size"])
+    if not out.empty:
+        out["ts"] = out["ts"].dt.tz_convert("UTC").dt.tz_localize(None)
+    return out.sort_values("ts").reset_index(drop=True)
+
+
+def _read_trade_tick_parquet_frames(inst_dir: Path) -> list[pd.DataFrame]:
+    paths = []
+    flat = inst_dir / "trades.parquet"
+    if flat.exists():
+        paths.append(flat)
+    if inst_dir.exists():
+        paths.extend(sorted(inst_dir.glob("*/trades.parquet")))
+    return [pq.read_table(path).to_pandas() for path in paths if path.exists()]
+
+
+def _trade_ticks_table_name(inst_id: str) -> str:
+    table = inst_id.lower().replace("-", "_") + "_trades"
+    if not table.replace("_", "").isalnum():
+        raise ValueError(f"Unsafe trade tick table name for {inst_id!r}")
+    return table
+
+
+def _load_trade_ticks_pg(
+    inst_id: str,
+    dsn: str,
+    start: Optional[str],
+    end: Optional[str],
+) -> pd.DataFrame:
+    import asyncio
+    import concurrent.futures
+    import asyncpg
+
+    table = _trade_ticks_table_name(inst_id)
+    start_dt = _to_utc_dt(start)
+    end_dt = _to_utc_dt(end)
+
+    async def _fetch() -> pd.DataFrame:
+        conn = await asyncpg.connect(dsn)
+        try:
+            exists = await conn.fetchval("SELECT to_regclass($1)", table)
+            if not exists:
+                return pd.DataFrame(columns=["ts", "trade_id", "price", "size", "side"])
+            rows = await conn.fetch(
+                f"""
+                SELECT ts, trade_id, price, size, side
+                FROM {table}
+                WHERE ($1::timestamptz IS NULL OR ts >= $1)
+                  AND ($2::timestamptz IS NULL OR ts <  $2)
+                ORDER BY ts
+                """,
+                start_dt,
+                end_dt,
+            )
+        finally:
+            await conn.close()
+        if not rows:
+            return pd.DataFrame(columns=["ts", "trade_id", "price", "size", "side"])
+        df = pd.DataFrame([dict(row) for row in rows])
+        df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.tz_convert("UTC").dt.tz_localize(None)
+        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+        df["size"] = pd.to_numeric(df["size"], errors="coerce")
+        return df.dropna(subset=["ts", "price", "size"]).sort_values("ts").reset_index(drop=True)
+
+    try:
+        asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _fetch()).result()
+    except RuntimeError:
+        return asyncio.run(_fetch())
 
 
 def load_external_observations(

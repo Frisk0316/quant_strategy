@@ -1,3 +1,13 @@
+---
+status: archived
+type: research
+owner: human
+created: 2026-04-27
+last_reviewed: 2026-06-11
+expires: none
+superseded_by: research/strategy_synthesis.md
+---
+
 # OKX 加密量化交易深度研究：從微結構理論到實盤架構
 
 **核心結論**：在 OKX 以 $1k–$10k 小資金操作，**非主流微結構策略（OBI/OFI、VPIN、Avellaneda–Stoikov market making）與資金費率套利的組合**最符合理論嚴謹與經濟邏輯要求，但成敗取決於執行細節，而非策略新穎度。在 VIP0 費率結構下，**純 taker 的高頻策略在數學上幾乎不可能獲利**——round-trip 費率就吃掉 15–30 bp 的每筆邊際。因此建議以 **maker-only (`post_only`) 微結構策略 + delta-neutral funding carry** 為兩條主線，以 Nautilus Trader 做 tick-level 回測，並以 ¼-Kelly 與 HMM regime filter 做風控。本報告涵蓋六類策略的完整數學、OKX API v5 端點、回測框架比較、風控公式與可部署的 Python 事件驅動架構。

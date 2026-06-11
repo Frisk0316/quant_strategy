@@ -321,12 +321,30 @@ window.API = (function () {
     fetchBacktestReturns:     (id, n = 600) => _getLarge("/api/backtest/" + id + "/returns" + (n ? "?n=" + n : "")),
     fetchBacktestDrawdown:    (id, n = 600) => _getLarge("/api/backtest/" + id + "/drawdown" + (n ? "?n=" + n : "")),
     /** Fills CSV as JSON records. */
-    fetchBacktestFills:       (id)      => _getLarge("/api/backtest/" + id + "/fills"),
+    fetchBacktestFills:       (id, limit = 1000, offset = 0) => {
+      const q = new URLSearchParams();
+      if (limit) q.set("limit", limit);
+      if (offset) q.set("offset", offset);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/fills" + (qs ? "?" + qs : ""));
+    },
     /** Trades CSV as JSON records. */
-    fetchBacktestTrades:      (id)      => _getLarge("/api/backtest/" + id + "/trades"),
+    fetchBacktestTrades:      (id, limit = 1000, offset = 0) => {
+      const q = new URLSearchParams();
+      if (limit) q.set("limit", limit);
+      if (offset) q.set("offset", offset);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/trades" + (qs ? "?" + qs : ""));
+    },
     /** Risk events CSV as JSON records. */
     fetchBacktestRiskEvents:  (id)      => _getLarge("/api/backtest/" + id + "/risk-events"),
-    fetchBacktestExecutionMarkers: (id) => _getLarge("/api/backtest/" + id + "/execution-markers"),
+    fetchBacktestExecutionMarkers: (id, symbol = null, limit = 1000) => {
+      const q = new URLSearchParams();
+      if (symbol) q.set("symbol", symbol);
+      if (limit) q.set("limit", limit);
+      const qs = q.toString();
+      return _getLarge("/api/backtest/" + id + "/execution-markers" + (qs ? "?" + qs : ""));
+    },
     fetchBacktestPriceSeries: (id, symbol = null, n = 1200) => {
       const q = new URLSearchParams();
       if (symbol) q.set("symbol", symbol);
@@ -351,15 +369,22 @@ window.API = (function () {
     fetchDifferentialValidationArtifact: (id, validationId, artifactName) => _getLarge("/api/backtest/" + id + "/differential-validation/" + validationId + "/artifact/" + artifactName),
     fetchStrategyValidationFixtures: (strategy = null) => _get("/api/backtest/strategy-validation/fixtures" + (strategy ? "?strategy=" + encodeURIComponent(strategy) : "")),
     fetchStrategyValidations: (strategy = null) => _get("/api/backtest/strategy-validation" + (strategy ? "?strategy=" + encodeURIComponent(strategy) : "")),
+    fetchStrategyValidationContracts: (strategy = null) => _get("/api/backtest/strategy-validation/contracts" + (strategy ? "?strategy=" + encodeURIComponent(strategy) : "")),
     fetchStrategyValidation: (strategy, validationId) => _get("/api/backtest/strategy-validation/" + strategy + "/" + validationId),
     fetchStrategyValidationArtifact: (strategy, validationId, artifactName) => _getLarge("/api/backtest/strategy-validation/" + strategy + "/" + validationId + "/artifact/" + artifactName),
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
     fetchDataCoverage:        ()        => _get("/api/data/coverage"),
-    fetchDataInstruments:     ()        => _get("/api/data/instruments?inst_type=SWAP&quote_ccy=USDT"),
+    fetchDataInstruments:     (exchange = "okx", q = "") => {
+      const params = new URLSearchParams({ inst_type: "SWAP", quote_ccy: "USDT", exchange });
+      if (q) params.set("q", q);
+      return _get("/api/data/instruments?" + params.toString());
+    },
     dataExportUrl:            (body)    => "/api/data/export?" + new URLSearchParams(body).toString(),
     refreshExternalData:      (body)    => _post("/api/data/external/refresh", body),
     triggerDataFetch:         (body)    => _post("/api/data/fetch", body),
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
+    cancelDataFetch:          (jobId)   => _post("/api/data/fetch/cancel/" + jobId, {}),
+    fetchDataFetchJobs:       ()        => _get("/api/data/fetch/jobs"),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),

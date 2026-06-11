@@ -1,6 +1,6 @@
 """
 VPIN (Volume-synchronized Probability of Informed Trading) computation.
-Extracted from §1.2 of Crypto_Quant_Plan_v1.md.
+Extracted from §1.2 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 CRITICAL: VPIN is a DIRECTIONLESS signal — it measures toxic flow intensity.
 Use it to WIDEN SPREADS, not to determine trade direction.

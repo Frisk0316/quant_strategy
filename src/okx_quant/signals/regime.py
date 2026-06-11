@@ -2,7 +2,7 @@
 Market regime detection for strategy gating.
 Not in the live order path — runs on a slower cadence (minutes/hours).
 
-Reference: §4.3 of Crypto_Quant_Plan_v1.md
+Reference: §4.3 of docs/archive/Crypto_Quant_Plan_v1.md
 """
 from __future__ import annotations
 

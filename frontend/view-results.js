@@ -64,6 +64,19 @@ function runParametersText(run) {
 function runSymbols(run) {
   return (run?.symbols || [run?.symbol]).filter(Boolean);
 }
+function TradingPairList({ symbols }) {
+  const list = (symbols || []).filter(Boolean);
+  if (!list.length) return "—";
+  return html`
+    <div class="run-symbol-list" title=${list.join(", ")}>
+      ${list.map((symbol, index) => html`
+        <div class="run-symbol-item" key=${`${symbol}-${index}`}>
+          ${symbol}${index < list.length - 1 ? "," : ""}
+        </div>
+      `)}
+    </div>
+  `;
+}
 
 // ---------------------------------------------------------------------------
 // Compact run picker shown when no run is selected
@@ -135,10 +148,8 @@ function RunPicker({ onSelect }) {
                 <tr key=${r.run_id} style=${{ cursor: "pointer" }} onClick=${() => onSelect(r.run_id)}>
                   <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${r.run_id}</td>
                   <td class="mono" style=${{ fontSize: 12 }}>${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}</td>
-                  <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
-                    ${runSymbols(r).length
-                      ? runSymbols(r).map((symbol, index, symbols) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
-                      : "—"}
+                  <td class="mono run-symbols-cell">
+                    <${TradingPairList} symbols=${runSymbols(r)} />
                   </td>
                   <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${runParametersText(r)}</td>
                   <td class="mono">${r.bar || "—"}</td>

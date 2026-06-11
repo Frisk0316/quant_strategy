@@ -1,3 +1,13 @@
+---
+status: archived
+type: review
+owner: codex
+created: 2026-05-11
+last_reviewed: 2026-06-11
+expires: none
+superseded_by: docs/AI_HANDOFF.md
+---
+
 # PR1 / PR2 修改建議與後續 PR 規劃
 
 ## 文件目的

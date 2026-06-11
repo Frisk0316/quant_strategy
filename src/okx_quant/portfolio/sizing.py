@@ -1,6 +1,6 @@
 """
 Position sizing functions.
-Extracted from §4.1 of Crypto_Quant_Plan_v1.md.
+Extracted from §4.1 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 All functions are pure (no I/O, no state).
 """

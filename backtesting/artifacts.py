@@ -69,6 +69,26 @@ FUNDING_COLUMNS = [
     "funding_fee", "cash_before", "cash_after", "equity_after", "source",
 ]
 
+FUNDING_RATE_COLUMNS = [
+    "ts", "datetime", "inst_id", "funding_rate", "funding_rate_pct",
+    "funding_interval_hours", "next_funding_time", "mark_price",
+    "basis_z", "crowding", "source",
+]
+
+EXTERNAL_OBSERVATION_COLUMNS = [
+    "ts", "datetime", "dataset_id", "observed_at", "published_at",
+    "value_num", "value_text", "fields", "quality_status",
+]
+
+BOOK_SNAPSHOT_COLUMNS = [
+    "ts", "datetime", "inst_id", "side", "level", "px", "sz",
+    "seq_id", "channel", "action", "checksum", "source",
+]
+
+TRADE_TICK_COLUMNS = [
+    "ts", "datetime", "inst_id", "trade_id", "price", "size", "side", "source",
+]
+
 SIGNAL_COLUMNS = [
     "ts", "datetime", "strategy", "inst_id", "side", "strength",
     "fair_value", "target_bid", "target_ask", "metadata",
@@ -183,6 +203,34 @@ def build_run_id(
     bar_s = bar.replace(":", "")
     now_s = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"replay_{strat}_{start_s}_{end_s}_{bar_s}_{now_s}"
+
+
+def _display_slug(value: Any, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    if not text:
+        text = fallback
+    text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
+    return text.lower() or fallback
+
+
+def build_run_display_name(
+    strategy_names: list[str],
+    symbols: list[str],
+    created_at: Any = None,
+) -> str:
+    """Human-readable, sortable run label for UI tables."""
+    try:
+        ts = pd.Timestamp(created_at) if created_at else pd.Timestamp.now(tz="UTC")
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        day = ts.tz_convert("UTC").strftime("%Y/%m/%d")
+    except Exception:
+        day = datetime.now(tz=timezone.utc).strftime("%Y/%m/%d")
+    strategy = _display_slug("_".join(strategy_names or []) or "strategy")
+    symbol = _display_slug("_".join(symbols[:3]) if symbols else "multi_symbol")
+    if len(symbols) > 3:
+        symbol = f"{symbol}_plus{len(symbols) - 3}"
+    return f"{day}_{strategy}_{symbol}"
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +351,7 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     """
                     CREATE TABLE IF NOT EXISTS backtest_runs (
                         run_id          TEXT PRIMARY KEY,
+                        display_name    TEXT NOT NULL DEFAULT '',
                         created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         strategies      TEXT[] NOT NULL DEFAULT '{}',
                         symbols         TEXT[] NOT NULL DEFAULT '{}',
@@ -325,13 +374,17 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                     "ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'"
                 )
                 await conn.execute(
+                    "ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''"
+                )
+                await conn.execute(
                     """
                     INSERT INTO backtest_runs
-                      (run_id, created_at, strategies, symbols, bar, start_date, end_date,
+                      (run_id, display_name, created_at, strategies, symbols, bar, start_date, end_date,
                        artifact_dir, total_return, sharpe, max_drawdown, order_count,
                        real_fill_count, fill_rate, bankrupt, metadata)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
                     ON CONFLICT (run_id) DO UPDATE SET
+                        display_name = EXCLUDED.display_name,
                         created_at = EXCLUDED.created_at,
                         strategies = EXCLUDED.strategies,
                         symbols = EXCLUDED.symbols,
@@ -349,6 +402,11 @@ def _upsert_run_to_db(run_id: str, meta: dict, artifact_dir: Path, dsn: Optional
                         metadata = EXCLUDED.metadata
                     """,
                     run_id,
+                    meta.get("display_name") or build_run_display_name(
+                        meta.get("strategies", []),
+                        meta.get("symbols", []),
+                        meta.get("created_at"),
+                    ),
                     datetime.now(tz=timezone.utc),
                     meta.get("strategies", []),
                     meta.get("symbols", []),
@@ -572,6 +630,76 @@ def _build_funding_df(funding_log: pd.DataFrame) -> pd.DataFrame:
     if "funding_rate" in df.columns:
         df["funding_rate_pct"] = df["funding_rate"] * 100
     for col in ["strategy", "funding_interval_hours", "source", "cash_before", "cash_after", "equity_after"]:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_funding_rates_df(funding_rate_log: pd.DataFrame) -> pd.DataFrame:
+    if funding_rate_log.empty:
+        return pd.DataFrame(columns=FUNDING_RATE_COLUMNS)
+    df = funding_rate_log.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    col_map = {
+        "rate": "funding_rate",
+        "nextFundingTime": "next_funding_time",
+    }
+    df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns and v not in df.columns})
+    if "funding_rate" in df.columns:
+        df["funding_rate"] = pd.to_numeric(df["funding_rate"], errors="coerce")
+        df["funding_rate_pct"] = df["funding_rate"] * 100
+    for col in FUNDING_RATE_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_external_observations_df(feature_event_log: pd.DataFrame) -> pd.DataFrame:
+    if feature_event_log.empty:
+        return pd.DataFrame(columns=EXTERNAL_OBSERVATION_COLUMNS)
+    df = feature_event_log.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    if "fields" in df.columns:
+        df["fields"] = df["fields"].apply(_dump_metadata)
+    for col in EXTERNAL_OBSERVATION_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_book_snapshots_df(book_snapshot_log: pd.DataFrame) -> pd.DataFrame:
+    if book_snapshot_log.empty:
+        return pd.DataFrame(columns=BOOK_SNAPSHOT_COLUMNS)
+    df = book_snapshot_log.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    for col in ["px", "sz"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "level" in df.columns:
+        df["level"] = pd.to_numeric(df["level"], errors="coerce").astype("Int64")
+    if "side" in df.columns:
+        df["side"] = df["side"].astype(str).str.lower()
+    for col in BOOK_SNAPSHOT_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    return df
+
+
+def _build_trade_ticks_df(trade_tick_log: pd.DataFrame) -> pd.DataFrame:
+    if trade_tick_log.empty:
+        return pd.DataFrame(columns=TRADE_TICK_COLUMNS)
+    df = trade_tick_log.copy()
+    if "datetime" not in df.columns and "ts" in df.columns:
+        df["datetime"] = _ts_to_datetime(df["ts"])
+    for col in ["price", "size"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "side" in df.columns:
+        df["side"] = df["side"].astype(str).str.lower()
+    for col in TRADE_TICK_COLUMNS:
         if col not in df.columns:
             df[col] = None
     return df
@@ -1064,6 +1192,10 @@ def save_backtest_artifacts(
     risk_event_log: list[dict] = getattr(result, "risk_event_log", [])
     rejected_log: list[dict] = getattr(result, "rejected_log", [])
     cancel_log_data: list[dict] = getattr(result, "cancel_log", [])
+    funding_rate_log: pd.DataFrame = getattr(result, "funding_rate_log", pd.DataFrame())
+    feature_event_log: pd.DataFrame = getattr(result, "feature_event_log", pd.DataFrame())
+    book_snapshot_log: pd.DataFrame = getattr(result, "book_snapshot_log", pd.DataFrame())
+    trade_tick_log: pd.DataFrame = getattr(result, "trade_tick_log", pd.DataFrame())
     result_validation: dict[str, Any] = dict(getattr(result, "validation", {}) or {})
     if "fill_all_signals" in result_validation or "idealized_fill" in result_validation:
         result_validation["idealized_fill"] = bool(
@@ -1184,6 +1316,34 @@ def save_backtest_artifacts(
         _write_csv(run_dir / "funding.csv", funding_df, FUNDING_COLUMNS)
 
     # -------------------------------------------------------------------
+    # funding_rates.csv - raw funding-rate observations for reference engines
+    # -------------------------------------------------------------------
+    funding_rates_df = _build_funding_rates_df(funding_rate_log)
+    if write_files:
+        _write_csv(run_dir / "funding_rates.csv", funding_rates_df, FUNDING_RATE_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # external_observations.csv - raw feature observations for reference engines
+    # -------------------------------------------------------------------
+    external_observations_df = _build_external_observations_df(feature_event_log)
+    if write_files:
+        _write_csv(run_dir / "external_observations.csv", external_observations_df, EXTERNAL_OBSERVATION_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # book_snapshots.csv - raw order-book levels for execution-sensitive validation
+    # -------------------------------------------------------------------
+    book_snapshots_df = _build_book_snapshots_df(book_snapshot_log)
+    if write_files:
+        _write_csv(run_dir / "book_snapshots.csv", book_snapshots_df, BOOK_SNAPSHOT_COLUMNS)
+
+    # -------------------------------------------------------------------
+    # trade_ticks.csv - raw trade ticks for VPIN/order-flow reference engines
+    # -------------------------------------------------------------------
+    trade_ticks_df = _build_trade_ticks_df(trade_tick_log)
+    if write_files:
+        _write_csv(run_dir / "trade_ticks.csv", trade_ticks_df, TRADE_TICK_COLUMNS)
+
+    # -------------------------------------------------------------------
     # signals.csv
     # -------------------------------------------------------------------
     signals_df = pd.DataFrame(signal_log) if signal_log else pd.DataFrame()
@@ -1292,6 +1452,10 @@ def save_backtest_artifacts(
         "returns": "returns.csv",
         "drawdown": "drawdown.csv",
         "funding": "funding.csv",
+        "funding_rates": "funding_rates.csv",
+        "external_observations": "external_observations.csv",
+        "book_snapshots": "book_snapshots.csv",
+        "trade_ticks": "trade_ticks.csv",
         "signals": "signals.csv",
         "risk_events": "risk_events.csv",
         "rejected_orders": "rejected_orders.csv",
@@ -1309,6 +1473,7 @@ def save_backtest_artifacts(
 
     result_json = {
         "run_id": run_id_final,
+        "display_name": build_run_display_name(strats, symbols),
         "created_at": _now_utc(),
         "mode": "replay_backtest",
         "strategies": strats,
@@ -1320,6 +1485,8 @@ def save_backtest_artifacts(
         "data_source": {
             "ohlcv_layer": "canonical_candles",
             "funding_layer": "funding_rates",
+            "external_feature_layer": "external_observations",
+            "trade_tick_layer": "trade_ticks",
             "primary_exchange": "binance",
         },
         "metrics": metrics,
@@ -1358,6 +1525,10 @@ def save_backtest_artifacts(
         "returns": _df_records(ensure_columns(returns_df.copy(), RETURN_COLUMNS)),
         "drawdown": _df_records(ensure_columns(drawdown_df.copy(), DRAWDOWN_COLUMNS)),
         "funding": _df_records(ensure_columns(funding_df.copy(), FUNDING_COLUMNS)),
+        "funding_rates": _df_records(ensure_columns(funding_rates_df.copy(), FUNDING_RATE_COLUMNS)),
+        "external_observations": _df_records(ensure_columns(external_observations_df.copy(), EXTERNAL_OBSERVATION_COLUMNS)),
+        "book_snapshots": _df_records(ensure_columns(book_snapshots_df.copy(), BOOK_SNAPSHOT_COLUMNS)),
+        "trade_ticks": _df_records(ensure_columns(trade_ticks_df.copy(), TRADE_TICK_COLUMNS)),
         "signals": _df_records(ensure_columns(signals_df.copy(), SIGNAL_COLUMNS)),
         "risk_events": _df_records(ensure_columns(risk_df.copy(), RISK_EVENT_COLUMNS)),
         "rejected_orders": _df_records(ensure_columns(rejected_df.copy(), REJECTED_ORDER_COLUMNS)),

@@ -12,7 +12,7 @@ import csv
 import io
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
@@ -21,10 +21,24 @@ from pydantic import BaseModel, Field
 
 _jobs: dict[str, dict] = {}
 
+_FETCH_BAR_MS: dict[str, int] = {
+    "1m": 60_000,
+    "3m": 3 * 60_000,
+    "5m": 5 * 60_000,
+    "15m": 15 * 60_000,
+    "30m": 30 * 60_000,
+    "1H": 60 * 60_000,
+    "2H": 2 * 60 * 60_000,
+    "4H": 4 * 60 * 60_000,
+    "1D": 24 * 60 * 60_000,
+}
+
 
 class FetchRequest(BaseModel):
     symbol: str | None = None
     symbols: list[str] = Field(default_factory=list)
+    exchange: str = "okx"
+    existing_only: bool = False
     bar: str
     start: str
     end: str
@@ -37,11 +51,26 @@ class ExternalRefreshRequest(BaseModel):
     end: str = ""
 
 
+class _FetchCancelled(Exception):
+    pass
+
+
 def make_data_router(db_dsn: str | None = None) -> APIRouter:
     router = APIRouter()
 
     @router.get("/instruments")
-    async def get_instruments(inst_type: str = "SWAP", quote_ccy: str = "USDT"):
+    async def get_instruments(
+        inst_type: str = "SWAP",
+        quote_ccy: str = "USDT",
+        exchange: str = "okx",
+        q: str = "",
+    ):
+        exchange = _normalize_fetch_exchange(exchange)
+        keyword = str(q or "").strip().upper()
+        if exchange == "binance":
+            rows = await _binance_instruments(quote_ccy=quote_ccy, keyword=keyword)
+            return rows
+
         from okx_quant.data.exchange_clients.okx_public import OKXPublicClient
 
         client = OKXPublicClient()
@@ -57,8 +86,11 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
                 continue
             list_time_ms = _safe_int(item.get("listTime"))
             base_ccy = item.get("baseCcy") or inst_id.split("-")[0]
-            rows.append({
+            row = {
+                "exchange": "okx",
                 "inst_id": inst_id,
+                "native_symbol": inst_id,
+                "normalized_symbol": inst_id,
                 "inst_type": item.get("instType"),
                 "base_ccy": base_ccy,
                 "quote_ccy": inferred_quote,
@@ -66,8 +98,11 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
                 "state": item.get("state"),
                 "list_time_ms": list_time_ms,
                 "list_date": _ms_to_date(list_time_ms),
-            })
-        rows.sort(key=lambda r: r["inst_id"] or "")
+            }
+            if keyword and not _instrument_matches(row, keyword):
+                continue
+            rows.append(row)
+        rows.sort(key=lambda r: _instrument_sort_key(r, keyword))
         return rows
 
     @router.get("/coverage")
@@ -244,25 +279,59 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
     async def trigger_fetch(req: FetchRequest, bg: BackgroundTasks):
         if not db_dsn:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
-        symbols = _request_symbols(req)
+        exchange = _normalize_fetch_exchange(req.exchange)
+        symbols = await _resolve_fetch_symbols(req, db_dsn)
         if not symbols:
-            raise HTTPException(status_code=400, detail="At least one symbol is required")
+            detail = "No existing DB trading pairs found for this bar" if req.existing_only else "At least one symbol is required"
+            raise HTTPException(status_code=400, detail=detail)
         job_id = str(uuid.uuid4())[:8]
         _jobs[job_id] = {
             "job_id": job_id,
+            "exchange": exchange,
+            "existing_only": bool(req.existing_only),
             "status": "running",
             "progress": 0,
-            "message": f"Starting {len(symbols)} symbol fetch...",
+            "message": (
+                f"Starting {exchange.upper()} {len(symbols)} existing DB symbol update..."
+                if req.existing_only
+                else f"Starting {exchange.upper()} {len(symbols)} symbol fetch..."
+            ),
             "symbols": symbols,
+            "symbol_count": len(symbols),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         bg.add_task(_run_fetch, job_id, req, db_dsn)
-        return {"job_id": job_id, "status": "running"}
+        return _jobs[job_id]
 
     @router.get("/fetch/status/{job_id}")
     async def fetch_status(job_id: str):
         if job_id not in _jobs:
             raise HTTPException(status_code=404, detail="Job not found")
         return _jobs[job_id]
+
+    @router.post("/fetch/cancel/{job_id}")
+    async def cancel_fetch(job_id: str):
+        if job_id not in _jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = _jobs[job_id]
+        if job.get("status") in {"done", "error", "cancelled"}:
+            return job
+        job.update({
+            "cancel_requested": True,
+            "status": "cancelling",
+            "message": f"Cancel requested for {job.get('exchange', '').upper() or 'data'} fetch...",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return job
+
+    @router.get("/fetch/jobs")
+    async def fetch_jobs():
+        return sorted(
+            _jobs.values(),
+            key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+            reverse=True,
+        )
 
     return router
 
@@ -274,10 +343,158 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
+def _job_cancel_requested(job_id: str) -> bool:
+    return bool(_jobs.get(job_id, {}).get("cancel_requested"))
+
+
+def _raise_if_fetch_cancelled(job_id: str) -> None:
+    if _job_cancel_requested(job_id):
+        raise _FetchCancelled()
+
+
+def _mark_fetch_cancelled(job_id: str, message: str = "Fetch cancelled by user") -> None:
+    job = _jobs.get(job_id)
+    if not job:
+        return
+    job.update({
+        "status": "cancelled",
+        "cancel_requested": True,
+        "message": message,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
 def _ms_to_date(value: int | None) -> str | None:
     if value is None:
         return None
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc).date().isoformat()
+
+
+def _normalize_fetch_exchange(value: str | None) -> str:
+    exchange = str(value or "okx").strip().lower()
+    if exchange not in {"okx", "binance"}:
+        raise HTTPException(status_code=400, detail="exchange must be one of: okx, binance")
+    return exchange
+
+
+def _binance_native_to_normalized(symbol: str, quote: str = "USDT") -> str:
+    clean = re.sub(r"[^A-Za-z0-9]", "", str(symbol or "").upper())
+    quote = str(quote or "USDT").upper()
+    if clean.endswith(quote) and len(clean) > len(quote):
+        base = clean[: -len(quote)]
+        return f"{base}-{quote}-SWAP"
+    return clean
+
+
+def _normalized_to_binance_native(symbol: str) -> str:
+    parts = str(symbol or "").upper().split("-")
+    if len(parts) >= 2:
+        if parts[-1] in {"SWAP", "PERP", "FUTURES"}:
+            parts = parts[:-1]
+        return "".join(parts)
+    return re.sub(r"[^A-Za-z0-9]", "", str(symbol or "").upper())
+
+
+def _instrument_matches(row: dict[str, Any], keyword: str) -> bool:
+    haystack = " ".join(
+        str(row.get(key) or "")
+        for key in ("inst_id", "native_symbol", "normalized_symbol", "base_ccy", "quote_ccy")
+    ).upper()
+    return keyword in haystack
+
+
+def _instrument_sort_key(row: dict[str, Any], keyword: str = "") -> tuple[int, str]:
+    inst_id = str(row.get("inst_id") or "").upper()
+    native = str(row.get("native_symbol") or "").upper()
+    normalized = str(row.get("normalized_symbol") or inst_id).upper()
+    base = str(row.get("base_ccy") or "").upper()
+    quote = str(row.get("quote_ccy") or "USDT").upper()
+    keyword = str(keyword or "").upper()
+    exact_normalized = f"{keyword}-{quote}-SWAP" if keyword and quote else ""
+    exact_native = f"{keyword}{quote}" if keyword and quote else ""
+
+    if keyword:
+        if base == keyword or inst_id == exact_normalized or normalized == exact_normalized or native == exact_native:
+            return (0, inst_id)
+        if base.startswith(keyword) or inst_id.startswith(keyword) or native.startswith(keyword):
+            return (1, inst_id)
+        if keyword in inst_id or keyword in native or keyword in normalized:
+            return (2, inst_id)
+    return (3, inst_id)
+
+
+async def _binance_instruments(quote_ccy: str = "USDT", keyword: str = "") -> list[dict[str, Any]]:
+    from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
+
+    quote = str(quote_ccy or "USDT").upper()
+    client = BinancePublicClient()
+    try:
+        payload = await asyncio.to_thread(client.get_futures_exchange_info)
+    finally:
+        client.close()
+    rows: list[dict[str, Any]] = []
+    for item in payload.get("symbols") or []:
+        native = str(item.get("symbol") or "").upper()
+        base = str(item.get("baseAsset") or "").upper()
+        quote_asset = str(item.get("quoteAsset") or "").upper()
+        margin = str(item.get("marginAsset") or quote_asset or quote).upper()
+        if quote and quote_asset != quote:
+            continue
+        if item.get("contractType") not in {None, "PERPETUAL"}:
+            continue
+        normalized = _binance_native_to_normalized(native, quote_asset or quote)
+        list_time_ms = _safe_int(item.get("onboardDate"))
+        row = {
+            "exchange": "binance",
+            "inst_id": normalized,
+            "native_symbol": native,
+            "normalized_symbol": normalized,
+            "inst_type": "SWAP",
+            "base_ccy": base or normalized.split("-")[0],
+            "quote_ccy": quote_asset or quote,
+            "settle_ccy": margin,
+            "state": item.get("status"),
+            "list_time_ms": list_time_ms,
+            "list_date": _ms_to_date(list_time_ms),
+        }
+        if keyword and not _instrument_matches(row, keyword):
+            continue
+        rows.append(row)
+    rows.sort(key=lambda r: _instrument_sort_key(r, keyword))
+    return rows
+
+
+def _okx_instrument_rows(
+    raw: list[dict[str, Any]],
+    quote_ccy: str = "USDT",
+    keyword: str = "",
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in raw:
+        inst_id = item.get("instId") or ""
+        inferred_quote = item.get("quoteCcy") or item.get("settleCcy")
+        if quote_ccy and inferred_quote != quote_ccy and f"-{quote_ccy}-" not in inst_id:
+            continue
+        list_time_ms = _safe_int(item.get("listTime"))
+        base_ccy = item.get("baseCcy") or inst_id.split("-")[0]
+        row = {
+            "exchange": "okx",
+            "inst_id": inst_id,
+            "native_symbol": inst_id,
+            "normalized_symbol": inst_id,
+            "inst_type": item.get("instType"),
+            "base_ccy": base_ccy,
+            "quote_ccy": inferred_quote,
+            "settle_ccy": item.get("settleCcy"),
+            "state": item.get("state"),
+            "list_time_ms": list_time_ms,
+            "list_date": _ms_to_date(list_time_ms),
+        }
+        if keyword and not _instrument_matches(row, keyword):
+            continue
+        rows.append(row)
+    rows.sort(key=lambda r: _instrument_sort_key(r, keyword))
+    return rows
 
 
 def _parse_utc(value: str) -> datetime:
@@ -888,11 +1105,110 @@ async def _write_fetched_to_parquet(
 
 
 def _request_symbols(req: FetchRequest) -> list[str]:
+    exchange = _normalize_fetch_exchange(req.exchange)
     symbols = list(req.symbols or [])
     if req.symbol:
         symbols.append(req.symbol)
     seen = set()
-    return [s for s in symbols if s and not (s in seen or seen.add(s))]
+    normalized = []
+    for raw in symbols:
+        symbol = str(raw or "").strip().upper()
+        if not symbol:
+            continue
+        if exchange == "binance":
+            symbol = symbol if "-" in symbol else _binance_native_to_normalized(symbol)
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        normalized.append(symbol)
+    return normalized
+
+
+async def _existing_db_symbol_bounds(db_dsn: str, bar: str) -> list[dict[str, Any]]:
+    import asyncpg
+
+    conn = await asyncpg.connect(db_dsn)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT inst_id, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+            FROM canonical_candles
+            WHERE bar = $1
+            GROUP BY inst_id
+            ORDER BY last_ts DESC, inst_id
+            """,
+            bar,
+        )
+    finally:
+        await conn.close()
+    return [
+        {"inst_id": str(row["inst_id"]), "first_ts": row["first_ts"], "last_ts": row["last_ts"]}
+        for row in rows
+        if row["inst_id"]
+    ]
+
+
+async def _existing_db_symbols(db_dsn: str, bar: str) -> list[str]:
+    rows = await _existing_db_symbol_bounds(db_dsn, bar)
+    return [str(row["inst_id"]) for row in rows if row.get("inst_id")]
+
+
+async def _resolve_fetch_symbols(req: FetchRequest, db_dsn: str) -> list[str]:
+    if req.existing_only:
+        return await _existing_db_symbols(db_dsn, req.bar)
+    return _request_symbols(req)
+
+
+def _coerce_utc_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _next_existing_update_start(
+    requested_start_dt: datetime,
+    existing_last_ts: Any,
+    bar: str,
+) -> datetime:
+    last_dt = _coerce_utc_datetime(existing_last_ts)
+    if not last_dt:
+        return requested_start_dt
+    next_dt = last_dt + timedelta(milliseconds=_FETCH_BAR_MS.get(bar, 60_000))
+    return max(requested_start_dt, next_dt)
+
+
+def _existing_update_ranges(
+    requested_start_dt: datetime,
+    requested_end_dt: datetime,
+    existing_bounds: dict[str, Any] | None,
+    bar: str,
+) -> list[tuple[datetime, datetime]]:
+    if requested_start_dt >= requested_end_dt:
+        return []
+    if not existing_bounds:
+        return [(requested_start_dt, requested_end_dt)]
+
+    first_dt = _coerce_utc_datetime(existing_bounds.get("first_ts"))
+    last_dt = _coerce_utc_datetime(existing_bounds.get("last_ts"))
+    if not first_dt or not last_dt:
+        return [(requested_start_dt, requested_end_dt)]
+
+    bar_delta = timedelta(milliseconds=_FETCH_BAR_MS.get(bar, 60_000))
+    ranges: list[tuple[datetime, datetime]] = []
+    if requested_start_dt < first_dt:
+        ranges.append((requested_start_dt, min(first_dt, requested_end_dt)))
+
+    next_dt = last_dt + bar_delta
+    if next_dt < requested_end_dt:
+        ranges.append((max(requested_start_dt, next_dt), requested_end_dt))
+
+    return [(start, end) for start, end in ranges if start < end]
 
 
 def _request_dataset_ids(req: ExternalRefreshRequest) -> list[str]:
@@ -949,90 +1265,226 @@ async def _run_fetch(job_id: str, req: FetchRequest, db_dsn: str) -> None:
         import asyncpg
 
         from okx_quant.data.candle_store import CandleStore
+        from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
         from okx_quant.data.exchange_clients.okx_public import OKXPublicClient
 
-        symbols = _request_symbols(req)
+        exchange = _normalize_fetch_exchange(req.exchange)
+        existing_bounds: dict[str, dict[str, Any]] = {}
+        if req.existing_only:
+            bound_rows = await _existing_db_symbol_bounds(db_dsn, req.bar)
+            existing_bounds = {str(row["inst_id"]): row for row in bound_rows}
+            symbols = list(existing_bounds)
+        else:
+            symbols = _request_symbols(req)
         requested_start_dt = datetime.fromisoformat(req.start).replace(tzinfo=timezone.utc)
         end_dt = datetime.fromisoformat(req.end).replace(tzinfo=timezone.utc)
-        end_ms = int(end_dt.timestamp() * 1000)
 
-        _jobs[job_id]["message"] = f"Loading OKX instrument metadata..."
-        client = OKXPublicClient()
+        _jobs[job_id].update({
+            "exchange": exchange,
+            "existing_only": bool(req.existing_only),
+            "symbols": symbols,
+            "symbol_count": len(symbols),
+            "created_at": _jobs[job_id].get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "message": f"Loading {exchange.upper()} instrument metadata...",
+        })
+        _raise_if_fetch_cancelled(job_id)
+        client = BinancePublicClient() if exchange == "binance" else OKXPublicClient()
+        pool = await asyncpg.create_pool(db_dsn, min_size=1, max_size=3)
         try:
-            instruments = _instrument_map(await asyncio.to_thread(client.get_instruments, "SWAP"))
+            if exchange == "binance":
+                instruments = {
+                    row["inst_id"]: row
+                    for row in await _binance_instruments(quote_ccy="USDT")
+                }
+            else:
+                raw = await asyncio.to_thread(client.get_instruments, "SWAP")
+                instruments = {
+                    row["inst_id"]: row
+                    for row in _okx_instrument_rows(raw, quote_ccy="USDT", keyword="")
+                }
             fetched: list[dict] = []
             total = len(symbols)
+            store = CandleStore(pool)
             for idx, symbol in enumerate(symbols, start=1):
+                _raise_if_fetch_cancelled(job_id)
                 meta = instruments.get(symbol, {})
                 list_time_ms = _safe_int(meta.get("listTime"))
+                if list_time_ms is None:
+                    list_time_ms = _safe_int(meta.get("list_time_ms"))
                 list_dt = (
                     datetime.fromtimestamp(list_time_ms / 1000, tz=timezone.utc)
                     if list_time_ms else requested_start_dt
                 )
-                start_dt = max(requested_start_dt, list_dt)
-                if start_dt >= end_dt:
+                symbol_ranges = (
+                    _existing_update_ranges(requested_start_dt, end_dt, existing_bounds.get(symbol), req.bar)
+                    if req.existing_only
+                    else [(requested_start_dt, end_dt)]
+                )
+                fetch_ranges = []
+                for range_start_dt, range_end_dt in symbol_ranges:
+                    start_dt = max(range_start_dt, list_dt)
+                    if start_dt < range_end_dt:
+                        fetch_ranges.append((start_dt, range_end_dt))
+                symbol_progress_base = int(((idx - 1) / total) * 90)
+                _jobs[job_id].update({
+                    "progress": max(3, symbol_progress_base),
+                    "message": f"Fetching {symbol} {req.bar} from {exchange.upper()} ({idx}/{total})...",
+                    "current_symbol": symbol,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                if not fetch_ranges:
+                    skip_start_dt = max(requested_start_dt, list_dt)
                     fetched.append({
                         "symbol": symbol,
                         "status": "skipped",
+                        "exchange": exchange,
                         "rows": 0,
                         "list_date": _ms_to_date(list_time_ms),
-                        "message": "Listing date is after requested end date",
+                        "effective_start": skip_start_dt.date().isoformat(),
+                        "effective_end": end_dt.date().isoformat(),
+                        "message": (
+                            "Already covered for requested date range"
+                            if req.existing_only and existing_bounds.get(symbol)
+                            else "Listing date is after requested end date"
+                        ),
+                    })
+                    _jobs[job_id].update({
+                        "progress": int((idx / total) * 90),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
                     })
                     continue
 
-                start_ms = int(start_dt.timestamp() * 1000)
-                _jobs[job_id].update({
-                    "progress": int(((idx - 1) / total) * 90),
-                    "message": f"Fetching {symbol} {req.bar} from OKX ({idx}/{total})...",
-                    "current_symbol": symbol,
-                })
-                candles = await asyncio.to_thread(
-                    client.paginate_history,
-                    symbol,
-                    req.bar,
-                    start_ms,
-                    end_ms,
+                native_symbol = str(meta.get("native_symbol") or symbol)
+                if exchange == "binance":
+                    native_symbol = _normalized_to_binance_native(symbol)
+                base_ccy = meta.get("base_ccy") or symbol.split("-")[0]
+                quote_ccy = meta.get("quote_ccy") or "USDT"
+                settle_ccy = meta.get("settle_ccy") or quote_ccy
+                await store.register_instrument(
+                    inst_id=symbol,
+                    base_ccy=base_ccy,
+                    quote_ccy=quote_ccy,
+                    settle_ccy=settle_ccy,
+                    exchange=exchange,
+                )
+                _raise_if_fetch_cancelled(job_id)
+                await store.register_instrument_bar(inst_id=symbol, bar=req.bar)
+                instrument_id = await store.register_market_instrument(
+                    exchange=exchange,
+                    inst_id=native_symbol,
+                    normalized_symbol=symbol,
+                    base_asset=base_ccy,
+                    quote_asset=quote_ccy,
+                    settlement_asset=settle_ccy,
+                    listing_time=list_dt if list_time_ms else None,
+                    is_active=str(meta.get("state") or "").upper() not in {"CLOSE", "BREAK", "END_TRADING"},
+                    canonical_inst_id=symbol,
                 )
 
-                pool = await asyncpg.create_pool(db_dsn, min_size=1, max_size=3)
-                try:
-                    store = CandleStore(pool)
-                    base_ccy = symbol.split("-")[0]
-                    await store.register_instrument(inst_id=symbol, base_ccy=base_ccy)
-                    await store.register_instrument_bar(inst_id=symbol, bar=req.bar)
-                    await store.upsert_raw_candles(candles, source="okx", inst_id=symbol, bar=req.bar)
+                rows_fetched = 0
+                parquet_rows = 0
+                parquet_errors: list[str] = []
+                fetched_ranges = []
+                range_total = len(fetch_ranges)
+                for range_idx, (start_dt, range_end_dt) in enumerate(fetch_ranges, start=1):
+                    start_ms = int(start_dt.timestamp() * 1000)
+                    range_end_ms = int(range_end_dt.timestamp() * 1000)
+                    range_label = f" range {range_idx}/{range_total}" if range_total > 1 else ""
+                    _jobs[job_id].update({
+                        "progress": max(3, symbol_progress_base),
+                        "message": f"Fetching {symbol} {req.bar}{range_label} from {exchange.upper()} ({idx}/{total})...",
+                        "current_symbol": symbol,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    if exchange == "binance":
+                        candles = await asyncio.to_thread(
+                            client.get_klines_range,
+                            native_symbol,
+                            req.bar,
+                            start_ms,
+                            range_end_ms,
+                            should_cancel=lambda: _job_cancel_requested(job_id),
+                        )
+                    else:
+                        candles = await asyncio.to_thread(
+                            client.paginate_history,
+                            native_symbol,
+                            req.bar,
+                            start_ms,
+                            range_end_ms,
+                            should_cancel=lambda: _job_cancel_requested(job_id),
+                        )
+                    _raise_if_fetch_cancelled(job_id)
+
+                    _jobs[job_id].update({
+                        "progress": min(95, int(((idx - 0.45) / total) * 90)),
+                        "message": f"Writing {symbol} {req.bar}{range_label} to DB ({idx}/{total})...",
+                        "current_symbol": symbol,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    await store.upsert_raw_candles(candles, source=exchange, inst_id=symbol, bar=req.bar)
+                    _raise_if_fetch_cancelled(job_id)
                     await store.canonicalize_from_raw(
-                        source="okx",
+                        source=exchange,
                         inst_id=symbol,
                         bar=req.bar,
                         start=start_dt,
-                        end=end_dt,
+                        end=range_end_dt,
                     )
-                    await store.update_instrument_bar_bounds(symbol, req.bar)
-                finally:
-                    await pool.close()
+                    _raise_if_fetch_cancelled(job_id)
+                    await store.upsert_market_klines(
+                        candles,
+                        instrument_id=instrument_id,
+                        bar=req.bar,
+                        data_source=exchange,
+                    )
+                    _raise_if_fetch_cancelled(job_id)
+                    _jobs[job_id].update({
+                        "progress": min(98, int((idx / total) * 90)),
+                        "message": f"Exporting {symbol} {req.bar}{range_label} parquet ({idx}/{total})...",
+                        "current_symbol": symbol,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
 
-                parquet_rows = 0
-                parquet_error = None
-                try:
-                    parquet_rows = await _write_fetched_to_parquet(
-                        db_dsn, symbol, req.bar, start_dt, end_dt
+                    range_parquet_rows = 0
+                    try:
+                        range_parquet_rows = await _write_fetched_to_parquet(
+                            db_dsn, symbol, req.bar, start_dt, range_end_dt
+                        )
+                    except Exception as exc:
+                        parquet_errors.append(str(exc))
+                    _raise_if_fetch_cancelled(job_id)
+                    rows_fetched += len(candles)
+                    parquet_rows += range_parquet_rows
+                    fetched_ranges.append(
+                        {
+                            "start": start_dt.date().isoformat(),
+                            "end": range_end_dt.date().isoformat(),
+                            "rows": len(candles),
+                        }
                     )
-                except Exception as exc:
-                    parquet_error = str(exc)
+                await store.update_instrument_bar_bounds(symbol, req.bar)
+                _raise_if_fetch_cancelled(job_id)
 
                 fetched.append({
                     "symbol": symbol,
+                    "native_symbol": native_symbol,
+                    "exchange": exchange,
                     "status": "done",
-                    "rows": len(candles),
+                    "rows": rows_fetched,
                     "parquet_rows": parquet_rows,
-                    "parquet_error": parquet_error,
+                    "parquet_error": "; ".join(parquet_errors) if parquet_errors else None,
                     "list_date": _ms_to_date(list_time_ms),
-                    "effective_start": start_dt.date().isoformat(),
+                    "effective_start": fetch_ranges[0][0].date().isoformat(),
+                    "effective_end": fetch_ranges[-1][1].date().isoformat(),
+                    "ranges": fetched_ranges,
                 })
         finally:
             client.close()
+            await pool.close()
 
+        _raise_if_fetch_cancelled(job_id)
         parquet_total = sum(int(r.get("parquet_rows") or 0) for r in fetched)
         parquet_errors = [r for r in fetched if r.get("parquet_error")]
         parquet_summary = (
@@ -1043,8 +1495,19 @@ async def _run_fetch(job_id: str, req: FetchRequest, db_dsn: str) -> None:
         _jobs[job_id].update({
             "status": "done",
             "progress": 100,
-            "message": f"Fetched {len(fetched)} symbol(s) for {req.bar} ({parquet_summary})",
+            "message": (
+                f"Updated {len(fetched)} existing DB {exchange.upper()} symbol(s) for {req.bar} ({parquet_summary})"
+                if req.existing_only
+                else f"Fetched {len(fetched)} {exchange.upper()} symbol(s) for {req.bar} ({parquet_summary})"
+            ),
             "results": fetched,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         })
+    except _FetchCancelled:
+        _mark_fetch_cancelled(job_id)
     except Exception as exc:
-        _jobs[job_id].update({"status": "error", "message": str(exc)})
+        _jobs[job_id].update({
+            "status": "error",
+            "message": str(exc),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })

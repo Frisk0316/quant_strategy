@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from backtesting.artifacts import _build_indicator_series_df, save_backtest_artifacts
 from backtesting.cpcv import CPCV
-from backtesting.data_loader import compute_returns, load_funding
+from backtesting.data_loader import compute_returns, load_funding, load_trade_ticks
 from backtesting.replay import (
     HistoricalEventFeed,
     ReplayBacktestEngine,
@@ -1256,3 +1256,71 @@ def test_replay_feed_builder_tolerates_empty_requested_data(tmp_path):
     assert feed.market_events.empty
     assert feed.funding_events.empty
     assert list(feed.iter_events()) == []
+
+
+def test_historical_event_feed_emits_trade_ticks_before_same_timestamp_books():
+    ts = 1_704_067_200_000
+    feed = HistoricalEventFeed(
+        market_events=pd.DataFrame([
+            {
+                "ts": ts,
+                "inst_id": "BTC-USDT-SWAP",
+                "bid_px_0": 99.9,
+                "bid_sz_0": 1.0,
+                "ask_px_0": 100.1,
+                "ask_sz_0": 1.0,
+            }
+        ]),
+        funding_events=pd.DataFrame([
+            {
+                "ts": ts,
+                "inst_id": "BTC-USDT-SWAP",
+                "funding_rate": 0.0,
+            }
+        ]),
+        feature_events=pd.DataFrame(),
+        trade_events=pd.DataFrame([
+            {
+                "ts": ts,
+                "inst_id": "BTC-USDT-SWAP",
+                "trade_id": "t1",
+                "price": 100.0,
+                "size": 0.5,
+                "side": "buy",
+            }
+        ]),
+    )
+
+    events = list(feed.iter_events())
+
+    assert [event.payload.channel for event in events] == ["trades", "books", "funding-rate"]
+    assert events[0].payload.trade_id == "t1"
+
+
+def test_load_trade_ticks_reads_feedstore_parquet_layout(tmp_path):
+    inst_dir = tmp_path / "BTC_USDT_SWAP" / "2024-01-01"
+    inst_dir.mkdir(parents=True)
+    trades = pd.DataFrame(
+        {
+            "ts": pd.to_datetime([
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:01Z",
+            ]),
+            "trade_id": ["t1", "t2"],
+            "price": [100.0, 101.0],
+            "size": [0.5, 0.25],
+            "side": ["buy", "sell"],
+        }
+    )
+    pq.write_table(pa.Table.from_pandas(trades), inst_dir / "trades.parquet")
+
+    loaded = load_trade_ticks(
+        "BTC-USDT-SWAP",
+        data_dir=str(tmp_path),
+        start="2024-01-01T00:00:00Z",
+        end="2024-01-01T00:00:02Z",
+    )
+
+    assert list(loaded["trade_id"]) == ["t1", "t2"]
+    assert loaded["price"].tolist() == [100.0, 101.0]
+    assert str(loaded["ts"].dt.tz) == "None"
