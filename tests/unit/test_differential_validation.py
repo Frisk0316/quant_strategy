@@ -1,5 +1,7 @@
 import json
 import math
+import re
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -8,6 +10,24 @@ from fastapi.testclient import TestClient
 
 from backtesting import differential_validation as dv
 from okx_quant.api.routes_backtest import make_backtest_router
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REAL_NAUTILUS_ENGINE_SMOKE = dv._nautilus_engine_smoke
+
+
+@pytest.fixture(autouse=True)
+def _stub_nautilus_engine_smoke(monkeypatch):
+    monkeypatch.setattr(
+        dv,
+        "_nautilus_engine_smoke",
+        lambda bundle, *args, **kwargs: {
+            "status": "SKIP",
+            "engine_execution": "not_run",
+            "reason": "unit tests stub Nautilus BacktestEngine smoke",
+            "scope_limit": "unit test stub; production validation uses the real helper",
+        },
+    )
 
 
 def _write_json(path, payload):
@@ -99,6 +119,575 @@ def _base_run(tmp_path, run_id="diff_run", strategy="ma_crossover"):
     return run_dir
 
 
+def _daily_winner_run(tmp_path, run_id="daily_winner_reference"):
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]
+    dates = pd.date_range("2024-01-01T00:00:00Z", periods=4, freq="D")
+    closes = {
+        "BTC-USDT-SWAP": [110.0, 101.0, 100.0, 100.0],
+        "ETH-USDT-SWAP": [105.0, 120.0, 103.0, 100.0],
+        "SOL-USDT-SWAP": [101.0, 100.0, 130.0, 100.0],
+    }
+    price_rows = []
+    for symbol in symbols:
+        for ts, close in zip(dates, closes[symbol]):
+            price_rows.append({
+                "ts": int(ts.timestamp() * 1000),
+                "datetime": ts.isoformat().replace("+00:00", "Z"),
+                "inst_id": symbol,
+                "open": 100.0,
+                "high": max(100.0, close),
+                "low": min(100.0, close),
+                "close": close,
+                "vol": 10.0,
+            })
+    pd.DataFrame(price_rows).to_csv(run_dir / "price_series.csv", index=False)
+    round_trips = [
+        {
+            "inst_id": "BTC-USDT-SWAP",
+            "entry_ts": "2024-01-02T00:00:00Z",
+            "exit_ts": "2024-01-03T00:00:00Z",
+            "entry_price": 100.0,
+            "exit_price": 101.0,
+            "cost_rate": 0.0,
+        },
+        {
+            "inst_id": "ETH-USDT-SWAP",
+            "entry_ts": "2024-01-03T00:00:00Z",
+            "exit_ts": "2024-01-04T00:00:00Z",
+            "entry_price": 100.0,
+            "exit_price": 103.0,
+            "cost_rate": 0.0,
+        },
+        {
+            "inst_id": "SOL-USDT-SWAP",
+            "entry_ts": "2024-01-04T00:00:00Z",
+            "exit_ts": "2024-01-05T00:00:00Z",
+            "entry_price": 100.0,
+            "exit_price": 100.0,
+            "cost_rate": 0.0,
+        },
+    ]
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["daily_winner"],
+            "symbols": symbols,
+            "bar": "1D",
+            "start": "2024-01-01",
+            "end": "2024-01-04",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "equity": [
+                {"datetime": "2024-01-01T00:00:00Z", "equity": 1000.0},
+                {"datetime": "2024-01-02T00:00:00Z", "equity": 1010.0},
+                {"datetime": "2024-01-03T00:00:00Z", "equity": 1040.3},
+                {"datetime": "2024-01-04T00:00:00Z", "equity": 1040.3},
+            ],
+            "round_trips": round_trips,
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    return run_dir
+
+
+def _ohlcv_rotation_run(tmp_path, run_id="ohlcv_rotation_reference"):
+    from backtesting.ohlcv_rotation_backtest import run_ohlcv_rotation_backtest
+    from okx_quant.strategies.ohlcv_rotation import OHLCVRotationParams
+
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    idx = pd.date_range("2024-01-01T00:00:00Z", periods=240, freq="min")
+    symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    btc_close = [100.0 + i * 0.005 for i in range(len(idx))]
+    eth_close = [100.0 + i * 0.001 for i in range(len(idx))]
+    dfs = {}
+    for symbol, closes in {"BTC-USDT-SWAP": btc_close, "ETH-USDT-SWAP": eth_close}.items():
+        df = pd.DataFrame(
+            {
+                "open": closes,
+                "high": closes,
+                "low": [value * 0.998 for value in closes],
+                "close": closes,
+                "vol": [100.0 + i % 7 for i in range(len(idx))],
+            },
+            index=idx.tz_convert(None),
+        )
+        dfs[symbol] = df
+
+    params = OHLCVRotationParams(
+        universe=symbols,
+        benchmark_inst_id="BTC-USDT-SWAP",
+        bar="1m",
+        rebalance_minutes=30,
+        top_k=1,
+        rank_exit_buffer=2,
+        lookback_fast_minutes=5,
+        lookback_slow_minutes=20,
+        volume_z_window_minutes=5,
+        realized_vol_window_minutes=5,
+        breakout_window_minutes=5,
+        ema_window_minutes=5,
+        benchmark_ema_window_minutes=20,
+        atr_window_minutes=5,
+        min_volume_z=0.0,
+        max_position_weight=1.0,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+    )
+    result = run_ohlcv_rotation_backtest(dfs, params)
+    assert not result.target_weights.empty
+
+    price_rows = []
+    for symbol, df in dfs.items():
+        for ts, row in df.iterrows():
+            utc = pd.Timestamp(ts, tz="UTC")
+            price_rows.append({
+                "ts": int(utc.timestamp() * 1000),
+                "datetime": utc.isoformat().replace("+00:00", "Z"),
+                "inst_id": symbol,
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "vol": row["vol"],
+            })
+    pd.DataFrame(price_rows).to_csv(run_dir / "price_series.csv", index=False)
+    result.target_weights.to_csv(run_dir / "target_weights.csv")
+    result.trades.to_csv(run_dir / "trades.csv", index=False)
+    pd.DataFrame({
+        "ts": [pd.Timestamp(ts, tz="UTC").isoformat().replace("+00:00", "Z") for ts in result.equity_curve.index],
+        "datetime": [pd.Timestamp(ts, tz="UTC").isoformat().replace("+00:00", "Z") for ts in result.equity_curve.index],
+        "equity": result.equity_curve.to_numpy(dtype=float) * 1000.0,
+    }).to_csv(run_dir / "equity_curve.csv", index=False)
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["ohlcv_rotation"],
+            "symbols": symbols,
+            "bar": "1m",
+            "benchmark": "BTC-USDT-SWAP",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "parameters": {
+                "strategies": {
+                    "ohlcv_rotation": {
+                        "benchmark_inst_id": "BTC-USDT-SWAP",
+                        "bar": "1m",
+                        "rebalance_minutes": 30,
+                        "top_k": 1,
+                        "rank_exit_buffer": 2,
+                        "lookback_fast_minutes": 5,
+                        "lookback_slow_minutes": 20,
+                        "volume_z_window_minutes": 5,
+                        "realized_vol_window_minutes": 5,
+                        "breakout_window_minutes": 5,
+                        "ema_window_minutes": 5,
+                        "benchmark_ema_window_minutes": 20,
+                        "atr_window_minutes": 5,
+                        "min_volume_z": 0.0,
+                        "max_position_weight": 1.0,
+                        "fee_bps": 0.0,
+                        "slippage_bps": 0.0,
+                    }
+                },
+                "backtest": {"fill_all_signals": False},
+            },
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    return run_dir
+
+
+def _pairs_trading_run(tmp_path, run_id="pairs_trading_reference"):
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    symbol_y = "ETH-USDT-SWAP"
+    symbol_x = "BTC-USDT-SWAP"
+    params = {
+        "symbol_y": symbol_y,
+        "symbol_x": symbol_x,
+        "kalman_delta": 1e-4,
+        "entry_z": 0.8,
+        "exit_z": 0.2,
+        "stop_z": 99.0,
+        "lookback_hours": 168,
+        "bar_seconds": 3600,
+        "max_half_life_hours": 1000.0,
+        "max_hedge_uncertainty": 10.0,
+    }
+    timestamps = pd.date_range("2024-01-01T00:00:00Z", periods=260, freq="h")
+    price_rows = []
+    for idx, ts in enumerate(timestamps):
+        x_price = 40_000.0 * (1.0 + 0.0002 * idx)
+        spread = 0.018 * math.sin(idx / 4.0)
+        y_price = math.exp(math.log(x_price) + spread) / 20.0
+        for symbol, price in ((symbol_x, x_price), (symbol_y, y_price)):
+            price_rows.append({
+                "ts": int(ts.timestamp() * 1000),
+                "datetime": ts.isoformat().replace("+00:00", "Z"),
+                "inst_id": symbol,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "vol": 10.0,
+            })
+    pd.DataFrame(price_rows).to_csv(run_dir / "price_series.csv", index=False)
+    pd.DataFrame(
+        {
+            "ts": [int(timestamps[0].timestamp() * 1000), int(timestamps[-1].timestamp() * 1000)],
+            "datetime": [
+                timestamps[0].isoformat().replace("+00:00", "Z"),
+                timestamps[-1].isoformat().replace("+00:00", "Z"),
+            ],
+            "equity": [1000.0, 1000.0],
+        }
+    ).to_csv(run_dir / "equity_curve.csv", index=False)
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["pairs_trading"],
+            "symbols": [symbol_y, symbol_x],
+            "bar": "1H",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "parameters": {
+                "strategies": {"pairs_trading": params},
+                "backtest": {"fill_all_signals": True},
+            },
+        },
+    )
+    _write_json(
+        run_dir / "config.json",
+        {
+            "system": {"equity_usd": 1000.0},
+            "strategies": {"pairs_trading": params},
+            "backtest": {"fill_all_signals": True},
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "trades.csv", index=False)
+
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._pairs_trading_reference_result(bundle, "vectorbt")
+    assert not reference.signals.empty
+    reference.signals.to_csv(run_dir / "signals.csv", index=False)
+    reference.trades.to_csv(run_dir / "trades.csv", index=False)
+    return run_dir
+
+
+def _fear_greed_run(tmp_path, run_id="fear_greed_reference"):
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    params = {
+        "symbol": "BTC-USDT-SWAP",
+        "dataset_id": "fear_greed_btc",
+        "max_age_seconds": 172800,
+        "extreme_fear_label": "Extreme Fear",
+        "exit_labels": ["Greed", "Extreme Greed"],
+        "extreme_fear_threshold": 25.0,
+        "exit_value_threshold": 51.0,
+    }
+    times = pd.to_datetime(
+        [
+            "2024-01-01T00:00:00Z",
+            "2024-01-02T00:00:00Z",
+            "2024-01-03T00:00:00Z",
+        ],
+        utc=True,
+    )
+    prices = [100.0, 102.0, 104.0]
+    pd.DataFrame(
+        {
+            "ts": [int(ts.timestamp() * 1000) for ts in times],
+            "datetime": [ts.isoformat().replace("+00:00", "Z") for ts in times],
+            "inst_id": ["BTC-USDT-SWAP"] * len(times),
+            "open": prices,
+            "high": prices,
+            "low": prices,
+            "close": prices,
+            "vol": [10.0] * len(times),
+        }
+    ).to_csv(run_dir / "price_series.csv", index=False)
+    pd.DataFrame(
+        {
+            "dataset_id": ["fear_greed_btc", "fear_greed_btc"],
+            "observed_at": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-03T00:00:00Z",
+            ],
+            "published_at": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-03T00:00:00Z",
+            ],
+            "value_num": [20.0, 70.0],
+            "value_text": ["Extreme Fear", "Greed"],
+            "fields": [{}, {}],
+            "quality_status": ["ok", "ok"],
+        }
+    ).to_csv(run_dir / "external_observations.csv", index=False)
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["fear_greed_sentiment"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1D",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "parameters": {"strategies": {"fear_greed_sentiment": params}},
+        },
+    )
+    _write_json(
+        run_dir / "config.json",
+        {
+            "system": {"equity_usd": 1000.0},
+            "strategies": {"fear_greed_sentiment": params},
+            "backtest": {},
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "trades.csv", index=False)
+    pd.DataFrame(
+        {
+            "ts": [int(times[0].timestamp() * 1000), int(times[-1].timestamp() * 1000)],
+            "datetime": [
+                times[0].isoformat().replace("+00:00", "Z"),
+                times[-1].isoformat().replace("+00:00", "Z"),
+            ],
+            "equity": [1000.0, 1000.0],
+        }
+    ).to_csv(run_dir / "equity_curve.csv", index=False)
+
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._external_feature_reference_result(bundle, "vectorbt")
+    assert list(reference.signals["side"]) == ["buy", "sell"]
+    reference.signals.to_csv(run_dir / "signals.csv", index=False)
+    reference.trades.to_csv(run_dir / "trades.csv", index=False)
+    return run_dir
+
+
+def _cme_gap_run(tmp_path, run_id="cme_gap_reference"):
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    params = {
+        "symbol": "BTC-USDT-SWAP",
+        "dataset_id": "cme_btc1_continuous",
+        "max_age_seconds": 604800,
+        "min_gap_bps": 25.0,
+        "max_hold_days": 2.0,
+        "stop_loss_bps_mult": 1.5,
+        "max_gap_bps": 0.0,
+        "allow_direction": "long_only",
+        "roll_dates": [],
+    }
+    market_times = pd.to_datetime(
+        [
+            "2024-01-05T00:00:00Z",
+            "2024-01-08T00:00:00Z",
+            "2024-01-08T12:00:00Z",
+        ],
+        utc=True,
+    )
+    prices = [100.0, 100.0, 102.5]
+    pd.DataFrame(
+        {
+            "ts": [int(ts.timestamp() * 1000) for ts in market_times],
+            "datetime": [ts.isoformat().replace("+00:00", "Z") for ts in market_times],
+            "inst_id": ["BTC-USDT-SWAP"] * len(market_times),
+            "open": prices,
+            "high": prices,
+            "low": prices,
+            "close": prices,
+            "vol": [10.0] * len(market_times),
+        }
+    ).to_csv(run_dir / "price_series.csv", index=False)
+    pd.DataFrame(
+        {
+            "dataset_id": ["cme_btc1_continuous", "cme_btc1_continuous"],
+            "observed_at": [
+                "2024-01-05T00:00:00Z",
+                "2024-01-08T00:00:00Z",
+            ],
+            "published_at": [
+                "2024-01-05T00:00:00Z",
+                "2024-01-08T00:00:00Z",
+            ],
+            "value_num": [100.0, 98.0],
+            "value_text": ["", ""],
+            "fields": [
+                {"open": 100.0, "close": 100.0, "is_roll_day": False},
+                {"open": 98.0, "close": 99.0, "is_roll_day": False},
+            ],
+            "quality_status": ["ok", "ok"],
+        }
+    ).to_csv(run_dir / "external_observations.csv", index=False)
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["cme_gap_fill"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1D",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "parameters": {"strategies": {"cme_gap_fill": params}},
+        },
+    )
+    _write_json(
+        run_dir / "config.json",
+        {
+            "system": {"equity_usd": 1000.0},
+            "strategies": {"cme_gap_fill": params},
+            "backtest": {},
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "trades.csv", index=False)
+    pd.DataFrame(
+        {
+            "ts": [int(market_times[0].timestamp() * 1000), int(market_times[-1].timestamp() * 1000)],
+            "datetime": [
+                market_times[0].isoformat().replace("+00:00", "Z"),
+                market_times[-1].isoformat().replace("+00:00", "Z"),
+            ],
+            "equity": [1000.0, 1000.0],
+        }
+    ).to_csv(run_dir / "equity_curve.csv", index=False)
+
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._external_feature_reference_result(bundle, "vectorbt")
+    assert list(reference.signals["side"]) == ["buy", "sell"]
+    reference.signals.to_csv(run_dir / "signals.csv", index=False)
+    reference.trades.to_csv(run_dir / "trades.csv", index=False)
+    return run_dir
+
+
+def _funding_carry_run(tmp_path, run_id="funding_carry_reference"):
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    params = {
+        "perp_symbol": "BTC-USDT-SWAP",
+        "spot_symbol": "BTC-USDT",
+        "min_apr_threshold": 0.12,
+        "max_abs_basis_z": 2.5,
+        "max_crowding": 0.85,
+    }
+    times = pd.to_datetime(
+        [
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T08:00:00Z",
+            "2024-01-01T16:00:00Z",
+        ],
+        utc=True,
+    )
+    prices = [100.0, 101.0, 102.0]
+    pd.DataFrame(
+        {
+            "ts": [int(ts.timestamp() * 1000) for ts in times],
+            "datetime": [ts.isoformat().replace("+00:00", "Z") for ts in times],
+            "inst_id": ["BTC-USDT-SWAP"] * len(times),
+            "open": prices,
+            "high": prices,
+            "low": prices,
+            "close": prices,
+            "vol": [10.0] * len(times),
+        }
+    ).to_csv(run_dir / "price_series.csv", index=False)
+    pd.DataFrame(
+        {
+            "ts": [int(ts.timestamp() * 1000) for ts in times],
+            "datetime": [ts.isoformat().replace("+00:00", "Z") for ts in times],
+            "inst_id": ["BTC-USDT-SWAP"] * len(times),
+            "funding_rate": [0.00005, 0.0002, -0.0001],
+            "funding_interval_hours": [8.0, 8.0, 8.0],
+            "basis_z": [0.0, 0.0, 0.0],
+            "crowding": [0.2, 0.2, 0.2],
+            "source": ["unit"] * len(times),
+        }
+    ).to_csv(run_dir / "funding_rates.csv", index=False)
+    _write_json(
+        run_dir / "result.json",
+        {
+            "run_id": run_id,
+            "strategies": ["funding_carry"],
+            "symbols": ["BTC-USDT-SWAP", "BTC-USDT"],
+            "bar": "8H",
+            "metrics": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
+            "parameters": {"strategies": {"funding_carry": params}},
+        },
+    )
+    _write_json(
+        run_dir / "config.json",
+        {
+            "system": {"equity_usd": 1000.0},
+            "strategies": {"funding_carry": params},
+            "backtest": {},
+        },
+    )
+    pd.DataFrame().to_csv(run_dir / "indicator_series.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "fills.csv", index=False)
+    pd.DataFrame().to_csv(run_dir / "trades.csv", index=False)
+    pd.DataFrame(
+        {
+            "ts": [int(times[0].timestamp() * 1000), int(times[-1].timestamp() * 1000)],
+            "datetime": [
+                times[0].isoformat().replace("+00:00", "Z"),
+                times[-1].isoformat().replace("+00:00", "Z"),
+            ],
+            "equity": [1000.0, 1000.0],
+        }
+    ).to_csv(run_dir / "equity_curve.csv", index=False)
+
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._funding_carry_reference_result(bundle, "vectorbt")
+    assert list(reference.signals["side"]) == ["sell", "buy"]
+    reference.signals.to_csv(run_dir / "signals.csv", index=False)
+    reference.trades.to_csv(run_dir / "trades.csv", index=False)
+    return run_dir
+
+
+def _declared_strategy_ids() -> set[str]:
+    frontend_text = (REPO_ROOT / "frontend" / "data.js").read_text(encoding="utf-8")
+    strategies_match = re.search(r"const STRATEGIES\s*=\s*\[(?P<body>.*?)\n\s*\];", frontend_text, re.S)
+    assert strategies_match, "frontend/data.js STRATEGIES array not found"
+    frontend_ids = set(re.findall(r'id:\s*"([a-z0-9_]+)"', strategies_match.group("body")))
+
+    routes_text = (REPO_ROOT / "src" / "okx_quant" / "api" / "routes_backtest.py").read_text(encoding="utf-8")
+    allowed_match = re.search(r"allowed\s*=\s*\{(?P<body>.*?)\n\s*\}", routes_text, re.S)
+    assert allowed_match, "routes_backtest.py allowed strategy set not found"
+    api_ids = set(re.findall(r'"([a-z][a-z0-9_]+)"', allowed_match.group("body")))
+    return frontend_ids | api_ids
+
+
+def test_reference_validation_contract_covers_all_declared_strategies():
+    declared = _declared_strategy_ids()
+    missing = declared - set(dv.REFERENCE_VALIDATION_CONTRACTS)
+
+    assert missing == set()
+    for strategy, contract in dv.REFERENCE_VALIDATION_CONTRACTS.items():
+        statuses = {
+            str(capability.get("status"))
+            for capability in (contract.get("engines") or {}).values()
+        }
+        assert statuses == {"implemented"}, strategy
+
+
+def test_reference_validation_contract_declares_all_engine_portability_paths():
+    for strategy, contract in dv.REFERENCE_VALIDATION_CONTRACTS.items():
+        engines = contract.get("engines") or {}
+        assert set(engines) == dv.ENGINE_NAMES, strategy
+        for engine, capability in engines.items():
+            assert capability.get("status") == "implemented", f"{strategy}:{engine}"
+            assert capability.get("role") in dv.REFERENCE_ROLES, f"{strategy}:{engine}"
+            assert capability.get("limitation"), f"{strategy}:{engine}"
+
+
 def test_artifact_loader_reads_replay_rotation_and_daily_winner_shapes(tmp_path):
     replay = _base_run(tmp_path, "replay_run", "ma_crossover")
     rotation = _base_run(tmp_path, "rotation_run", "ohlcv_rotation")
@@ -151,6 +740,7 @@ def test_comparator_classifies_signal_trade_pnl_and_metric_mismatches(tmp_path):
     reference = dv.ReferenceResult(
         engine="unit",
         status="OK",
+        reference_role="reference_signals_only",
         signals=pd.DataFrame(
             {
                 "datetime": ["2024-01-01T02:00:00Z"],
@@ -285,7 +875,91 @@ def test_advisory_trade_pnl_and_metric_mismatches_do_not_fail_signal_gate(tmp_pa
     assert result["summary"]["scopes"]["metrics"]["status"] == "ADVISORY_MISMATCH"
 
 
-def test_missing_optional_engines_are_reported_as_skip(tmp_path, monkeypatch):
+def test_external_validation_conclusion_flags_independent_signal_failure():
+    conclusion = dv._external_validation_conclusion(
+        validation_conclusion={"status": "FAIL", "summary": "failed"},
+        source_data_validation={"status": "PASS", "ohlcv_source_validation": "db_parity_pass", "checks": {}},
+        portability_gate={"passed": False, "blocked_reason": "no_reference_engine_completed"},
+        engine_execution_matrix=[
+            {
+                "engine": "backtrader",
+                "status": "OK",
+                "reference_role": "reference_signals_only",
+                "gate_role": "independent_reference",
+                "portable_gate_eligible": False,
+                "trigger_status": "completed",
+                "missing_artifacts": [],
+            }
+        ],
+    )
+
+    assert conclusion["external_engines"]["independent_attempted"] == ["backtrader"]
+    assert conclusion["external_engines"]["independent_reference"] == []
+    assert "backtrader independent reference did not pass signal_logic" in conclusion["blocking_gaps"]
+
+
+def test_external_validation_conclusion_flags_nautilus_partial_signal_coverage():
+    conclusion = dv._external_validation_conclusion(
+        validation_conclusion={"status": "ADVISORY_ONLY", "summary": "advisory"},
+        source_data_validation={"status": "WARN", "ohlcv_source_validation": "artifact_pass_db_skipped", "checks": {}},
+        portability_gate={"passed": False, "blocked_reason": "only_advisory_reference_replay_completed"},
+        engine_execution_matrix=[
+            {
+                "engine": "nautilus",
+                "status": "OK",
+                "reference_role": "advisory",
+                "gate_role": "advisory_only",
+                "portable_gate_eligible": False,
+                "trigger_status": "completed",
+                "missing_artifacts": [],
+                "signal_replay_coverage": {
+                    "total_signal_rows": 3,
+                    "replayable_signal_rows": 1,
+                },
+            }
+        ],
+    )
+
+    assert "nautilus signal replay partial coverage: 1/3 signals" in conclusion["blocking_gaps"]
+    assert any("all exported/reference signals" in item for item in conclusion["next_required_actions"])
+
+
+def test_nautilus_replay_signals_reports_mapped_symbol_coverage(tmp_path):
+    run_dir = _base_run(tmp_path, "nautilus_signal_coverage")
+    signals = pd.DataFrame(
+        {
+            "datetime": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+                "2024-01-01T02:00:00Z",
+                "2024-01-01T03:00:00Z",
+            ],
+            "inst_id": ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BTC-USDT-SWAP"],
+            "strategy": ["unit"] * 4,
+            "side": ["buy", "sell", "buy", "hold"],
+        }
+    )
+    bundle = dv.load_artifact_bundle(run_dir)
+
+    replay, coverage = dv._nautilus_replay_signals(
+        bundle,
+        instruments={"BTC-USDT-SWAP": object(), "ETH-USDT-SWAP": object()},
+        signals=signals,
+    )
+
+    assert len(replay) == 2
+    assert coverage["total_signal_rows"] == 4
+    assert coverage["buy_sell_signal_rows"] == 3
+    assert coverage["replayable_signal_rows"] == 2
+    assert coverage["skipped_non_primary_symbol"] == 1
+    assert coverage["skipped_unmapped_symbol"] == 1
+    assert coverage["skipped_unsupported_side"] == 1
+    assert coverage["mapped_symbols"] == ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    assert coverage["replayed_symbols"] == ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    assert coverage["skipped_symbols"] == ["SOL-USDT-SWAP"]
+
+
+def test_missing_optional_engines_skip_but_nautilus_export_still_runs(tmp_path, monkeypatch):
     run_dir = _base_run(tmp_path)
 
     monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: None)
@@ -295,19 +969,957 @@ def test_missing_optional_engines_are_reported_as_skip(tmp_path, monkeypatch):
         validation_id="skip_test",
     )
 
-    assert summary["status"] == "SKIP"
-    assert summary["ohlcv_source_validation"] == "deferred"
+    assert summary["status"] == "PASS"
+    assert summary["ohlcv_source_validation"] == "artifact_pass_db_skipped"
+    assert summary["source_data_validation"]["status"] == "WARN"
+    assert summary["source_data_validation"]["checks"]["price_series"]["status"] == "PASS"
+    assert summary["source_data_validation"]["checks"]["db_parity"]["status"] == "SKIP"
+    assert summary["validation_conclusion"]["status"] == "ADVISORY_ONLY"
+    external = summary["external_validation_conclusion"]
+    assert external["status"] == "ADVISORY_ONLY"
+    assert external["external_engines"]["advisory_only"] == ["nautilus"]
+    assert "nautilus full project-strategy/matching-engine parity not implemented" in external["blocking_gaps"]
+    assert any("Nautilus catalog/strategy/order/fill mapping" in item for item in external["next_required_actions"])
     assert summary["engines"]["vectorbt"]["status"] == "SKIP"
     assert summary["engines"]["backtrader"]["status"] == "SKIP"
-    assert summary["engines"]["nautilus"]["status"] == "SKIP"
+    assert summary["engines"]["nautilus"]["status"] == "OK"
     assert summary["engines"]["vectorbt"]["reference_role"] == "skipped_dependency"
     assert summary["engines"]["backtrader"]["reference_role"] == "skipped_dependency"
-    assert summary["engines"]["nautilus"]["reference_role"] == "not_applicable"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+    assert summary["engines"]["nautilus"]["metadata"]["reference_mode"] == "nautilus_artifact_replay_export"
+    assert summary["engines"]["nautilus"]["metadata"]["engine_execution"] == "not_run"
     assert summary["engines"]["vectorbt"]["comparison"]["signal_logic"]["status"] == "SKIP"
     assert summary["signal_logic_gate"]["passed"] is False
+    assert summary["portable_validation_gate"]["passed"] is False
+    assert summary["portable_validation_gate"]["advisory_passing_engines"] == ["nautilus"]
+    assert summary["portable_validation_gate"]["blocked_reason"] == "only_advisory_reference_replay_completed"
     assert summary["promotion_gate_evidence"] is False
-    assert summary["mismatch_counts"]["metrics"]["actionable"] == 0
+    matrix = {row["engine"]: row for row in summary["engine_execution_matrix"]}
+    assert matrix["vectorbt"]["execution_state"] == "skipped"
+    assert matrix["vectorbt"]["trigger_status"] == "missing_dependency"
+    assert matrix["vectorbt"]["dependency_available"] is False
+    assert matrix["vectorbt"]["gate_role"] == "not_eligible"
+    assert any("strict comparison scope" in item for item in matrix["vectorbt"]["trigger_conditions"])
+    assert matrix["nautilus"]["execution_state"] == "advisory_run"
+    assert matrix["nautilus"]["gate_role"] == "advisory_only"
+    assert matrix["nautilus"]["portable_gate_eligible"] is False
+    assert any("advisory comparison only" in item for item in matrix["nautilus"]["trigger_conditions"])
+    assert summary["engines"]["nautilus"]["comparison"]["metrics"]["status"] == "ADVISORY_MISMATCH"
+    assert summary["mismatch_counts"]["metrics"]["actionable"] > 0
     assert (run_dir / "validation" / "skip_test" / "validation_result.json").exists()
+    assert (run_dir / "validation" / "skip_test" / "reference_nautilus_export_manifest.json").exists()
+
+
+def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):
+    run_dir = _base_run(tmp_path, "nautilus_smoke_metadata")
+    smoke = {
+        "status": "OK",
+        "engine_execution": "smoke_run",
+        "reason": "unit smoke",
+        "ticks_submitted": 2,
+        "data_types": ["QuoteTick", "TradeTick"],
+        "signals_available": 3,
+        "signals_replayed": 2,
+        "signal_replay_coverage": {
+            "total_signal_rows": 3,
+            "replayable_signal_rows": 2,
+            "skipped_symbols": ["SOL-USDT-SWAP"],
+        },
+        "scope_limit": "engine smoke only",
+    }
+    monkeypatch.setattr(dv, "_nautilus_engine_smoke", lambda bundle, *args, **kwargs: smoke)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="nautilus_smoke_validation",
+    )
+
+    metadata = summary["engines"]["nautilus"]["metadata"]
+    assert metadata["engine_execution"] == "smoke_run"
+    assert metadata["nautilus_engine_smoke"] == smoke
+    matrix = {row["engine"]: row for row in summary["engine_execution_matrix"]}
+    assert matrix["nautilus"]["signals_replayed"] == 2
+    assert matrix["nautilus"]["signal_replay_coverage"]["skipped_symbols"] == ["SOL-USDT-SWAP"]
+
+    manifest = json.loads(
+        (run_dir / "validation" / "nautilus_smoke_validation" / "reference_nautilus_export_manifest.json")
+        .read_text(encoding="utf-8")
+    )
+    assert manifest["engine_execution"] == "smoke_run"
+    assert manifest["nautilus_engine_smoke"] == smoke
+    assert "advisory Strategy" in manifest["limitations"][0]
+    assert "queue priority" in manifest["limitations"][1]
+
+
+def test_real_nautilus_engine_smoke_runs_signal_replay_when_available(tmp_path):
+    pytest.importorskip("nautilus_trader")
+    run_dir = _base_run(tmp_path, "real_nautilus_signal_replay")
+    bundle = dv.load_artifact_bundle(run_dir)
+
+    smoke = REAL_NAUTILUS_ENGINE_SMOKE(bundle)
+
+    assert smoke["status"] == "OK"
+    assert smoke["engine_execution"] == "signal_replay_run"
+    assert smoke["signals_replayed"] == 1
+    assert smoke["signal_replay_coverage"]["replayable_signal_rows"] == 1
+    assert smoke["backtest_result"]["strategy_order_attempts"] >= 1
+    assert smoke["backtest_result"]["total_orders"] >= 1
+
+
+def test_real_nautilus_engine_smoke_replays_mapped_daily_winner_symbols(tmp_path):
+    pytest.importorskip("nautilus_trader")
+    run_dir = _daily_winner_run(tmp_path, "real_nautilus_daily_winner_replay")
+    bundle = dv.load_artifact_bundle(run_dir)
+    signals, _, _, _ = dv._daily_winner_reference_components(bundle)
+
+    smoke = REAL_NAUTILUS_ENGINE_SMOKE(bundle, signals=signals)
+
+    coverage = smoke["signal_replay_coverage"]
+    assert smoke["status"] == "OK"
+    assert smoke["engine_execution"] == "signal_replay_run"
+    assert coverage["total_signal_rows"] == 6
+    assert coverage["replayable_signal_rows"] == 4
+    assert coverage["skipped_unmapped_symbol"] == 2
+    assert coverage["replayed_symbols"] == ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    assert coverage["skipped_symbols"] == ["SOL-USDT-SWAP"]
+    assert smoke["signals_replayed"] == 4
+    assert smoke["backtest_result"]["strategy_order_attempts"] >= 4
+
+
+def test_source_data_validation_fails_invalid_ohlcv_artifact(tmp_path):
+    run_dir = _base_run(tmp_path, "bad_ohlcv")
+    prices = pd.read_csv(run_dir / "price_series.csv")
+    prices.loc[1, "high"] = 1.0
+    prices.to_csv(run_dir / "price_series.csv", index=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="bad_ohlcv_validation",
+    )
+
+    price_check = summary["source_data_validation"]["checks"]["price_series"]
+    assert summary["status"] == "FAIL"
+    assert summary["ohlcv_source_validation"] == "artifact_fail"
+    assert summary["source_data_validation"]["status"] == "FAIL"
+    assert price_check["status"] == "FAIL"
+    assert price_check["failures"]["high_too_low"] == 1
+    assert summary["validation_conclusion"]["status"] == "FAIL"
+
+
+def test_market_maker_source_validation_accepts_book_snapshots(tmp_path):
+    run_dir = _base_run(tmp_path, "obi_books", "obi_market_maker")
+    pd.DataFrame(
+        {
+            "ts": [1_704_067_200_000] * 4,
+            "datetime": ["2024-01-01T00:00:00Z"] * 4,
+            "inst_id": ["BTC-USDT-SWAP"] * 4,
+            "side": ["bid", "bid", "ask", "ask"],
+            "level": [0, 1, 0, 1],
+            "px": [99.9, 99.8, 100.1, 100.2],
+            "sz": [2.0, 1.5, 2.1, 1.4],
+            "seq_id": [101] * 4,
+            "channel": ["books"] * 4,
+            "source": ["market_payload"] * 4,
+        }
+    ).to_csv(run_dir / "book_snapshots.csv", index=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="obi_books_validation",
+    )
+
+    book_check = summary["source_data_validation"]["checks"]["book_snapshots"]
+    assert book_check["status"] == "PASS"
+    assert book_check["rows"] == 4
+    assert book_check["sides"] == ["ask", "bid"]
+    assert book_check["max_depth_by_side"] == {"bid": 2, "ask": 2}
+    manifest = json.loads(
+        (run_dir / "validation" / "obi_books_validation" / "reference_nautilus_export_manifest.json")
+        .read_text(encoding="utf-8")
+    )
+    assert manifest["inputs"]["book_snapshots"] == "book_snapshots.csv"
+
+
+def test_market_maker_source_validation_warns_when_book_snapshots_missing(tmp_path):
+    run_dir = _base_run(tmp_path, "as_missing_books", "as_market_maker")
+    contract = dv.strategy_reference_validation_contract("as_market_maker")
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="as_missing_books_validation",
+    )
+
+    required = contract["engines"]["nautilus"]["required_artifacts"]
+    book_check = summary["source_data_validation"]["checks"]["book_snapshots"]
+    assert "book_snapshots" in required
+    assert book_check["status"] == "WARN"
+    assert book_check["required"] is True
+    assert "book_snapshots.csv" in book_check["reason"]
+
+
+def _write_market_maker_book_snapshots(run_dir):
+    pd.DataFrame(
+        {
+            "ts": [
+                1_704_067_200_000,
+                1_704_067_200_000,
+                1_704_067_200_000,
+                1_704_067_200_000,
+                1_704_067_201_000,
+                1_704_067_201_000,
+                1_704_067_201_000,
+                1_704_067_201_000,
+            ],
+            "datetime": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:01Z",
+                "2024-01-01T00:00:01Z",
+                "2024-01-01T00:00:01Z",
+                "2024-01-01T00:00:01Z",
+            ],
+            "inst_id": ["BTC-USDT-SWAP"] * 8,
+            "side": ["bid", "bid", "ask", "ask", "bid", "bid", "ask", "ask"],
+            "level": [0, 1, 0, 1, 0, 1, 0, 1],
+            "px": [99.9, 99.8, 100.1, 100.2, 100.0, 99.9, 100.2, 100.3],
+            "sz": [3.0, 2.0, 1.0, 1.0, 3.5, 2.1, 1.0, 1.2],
+            "seq_id": [101, 101, 101, 101, 102, 102, 102, 102],
+            "channel": ["books"] * 8,
+            "source": ["market_payload"] * 8,
+        }
+    ).to_csv(run_dir / "book_snapshots.csv", index=False)
+
+
+def _write_market_maker_trade_ticks(run_dir):
+    pd.DataFrame(
+        {
+            "ts": [1_704_067_199_500, 1_704_067_199_700, 1_704_067_200_500],
+            "datetime": [
+                "2023-12-31T23:59:59.500Z",
+                "2023-12-31T23:59:59.700Z",
+                "2024-01-01T00:00:00.500Z",
+            ],
+            "inst_id": ["BTC-USDT-SWAP"] * 3,
+            "trade_id": ["t1", "t2", "t3"],
+            "price": [100.0, 100.05, 100.1],
+            "size": [0.4, 0.3, 0.5],
+            "side": ["buy", "sell", "buy"],
+            "source": ["market_payload"] * 3,
+        }
+    ).to_csv(run_dir / "trade_ticks.csv", index=False)
+
+
+def _market_maker_reference_run(tmp_path, run_id, strategy):
+    run_dir = _base_run(tmp_path, run_id, strategy)
+    _write_market_maker_book_snapshots(run_dir)
+    if strategy == "as_market_maker":
+        _write_market_maker_trade_ticks(run_dir)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._market_maker_reference_result(bundle, "vectorbt")
+    assert reference.status == "OK"
+    assert not reference.signals.empty
+    reference.signals.to_csv(run_dir / "signals.csv", index=False)
+    return run_dir
+
+
+def test_obi_market_maker_reference_recomputes_quote_signal_gate(tmp_path, monkeypatch):
+    run_dir = _market_maker_reference_run(tmp_path, "obi_quote_reference", "obi_market_maker")
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="obi_quote_reference_validation",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["external_validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["external_validation_conclusion"]["external_engines"]["independent_reference"] == ["vectorbt", "backtrader"]
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["vectorbt"]["metadata"]["reference_mode"] == "obi_market_maker_book_quote_recompute"
+    assert summary["engines"]["vectorbt"]["comparison"]["signal_logic"]["status"] == "PASS"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+
+
+def test_as_market_maker_reference_recomputes_quote_signal_gate(tmp_path, monkeypatch):
+    run_dir = _market_maker_reference_run(tmp_path, "as_quote_reference", "as_market_maker")
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="as_quote_reference_validation",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["engines"]["backtrader"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["backtrader"]["metadata"]["reference_mode"] == "as_market_maker_book_quote_recompute"
+    assert summary["engines"]["backtrader"]["comparison"]["signal_logic"]["status"] == "PASS"
+    assert summary["source_data_validation"]["checks"]["trade_ticks"]["status"] == "PASS"
+
+
+def test_trade_ticks_db_parity_compares_artifact_to_store(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _market_maker_reference_run(tmp_path, "as_trade_tick_db_parity", "as_market_maker")
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        return pd.DataFrame(
+            {
+                "open": prices["open"].astype(float).to_numpy(),
+                "high": prices["high"].astype(float).to_numpy(),
+                "low": prices["low"].astype(float).to_numpy(),
+                "close": prices["close"].astype(float).to_numpy(),
+                "vol": prices["vol"].astype(float).to_numpy(),
+            },
+            index=idx,
+        )
+
+    def fake_load_trade_ticks(
+        inst_id,
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+    ):
+        assert inst_id == "BTC-USDT-SWAP"
+        ticks = pd.read_csv(run_dir / "trade_ticks.csv")
+        return pd.DataFrame(
+            {
+                "ts": pd.to_datetime(ticks["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None),
+                "trade_id": ticks["trade_id"].astype(str),
+                "price": ticks["price"].astype(float),
+                "size": ticks["size"].astype(float),
+                "side": ticks["side"].astype(str),
+            }
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+    monkeypatch.setattr(data_loader, "load_trade_ticks", fake_load_trade_ticks)
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt"],
+        validation_id="as_trade_tick_db_parity_validation",
+    )
+
+    tick_db = summary["source_data_validation"]["checks"]["trade_ticks_db_parity"]
+    assert tick_db["status"] == "PASS"
+    assert tick_db["symbols"][0]["status"] == "PASS"
+    assert tick_db["symbols"][0]["key"] == "trade_id"
+    assert tick_db["symbols"][0]["value_mismatches"] == 0
+
+
+def test_market_maker_quote_reference_detects_target_quote_mismatch(tmp_path, monkeypatch):
+    run_dir = _market_maker_reference_run(tmp_path, "obi_quote_mismatch", "obi_market_maker")
+    signals = pd.read_csv(run_dir / "signals.csv")
+    signals.loc[0, "target_bid"] = float(signals.loc[0, "target_bid"]) + 1.0
+    signals.to_csv(run_dir / "signals.csv", index=False)
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt"],
+        validation_id="obi_quote_mismatch_validation",
+    )
+
+    signal_logic = summary["engines"]["vectorbt"]["comparison"]["signal_logic"]
+    assert summary["status"] == "FAIL"
+    assert signal_logic["status"] == "FAIL"
+    assert signal_logic["actionable_mismatch_count"] == 1
+    assert summary["mismatch_counts"]["signals"]["actionable"] == 1
+
+
+def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "db_parity")
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        assert inst_id == "BTC-USDT-SWAP"
+        assert bar == "1H"
+        assert backend == "postgres"
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        return pd.DataFrame(
+            {
+                "open": prices["open"].astype(float).to_numpy(),
+                "high": prices["high"].astype(float).to_numpy(),
+                "low": prices["low"].astype(float).to_numpy(),
+                "close": prices["close"].astype(float).to_numpy(),
+                "vol": prices["vol"].astype(float).to_numpy(),
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="db_parity_validation",
+    )
+
+    db_check = summary["source_data_validation"]["checks"]["db_parity"]
+    assert summary["ohlcv_source_validation"] == "db_parity_pass"
+    assert db_check["status"] == "PASS"
+    assert db_check["symbols"][0]["status"] == "PASS"
+    assert db_check["symbols"][0]["value_mismatches"] == 0
+
+
+def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "db_reference_prices")
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        db_prices = prices.copy()
+        db_prices.loc[2, "close"] = 202.0
+        db_prices.loc[2, "high"] = 202.0
+        idx = pd.to_datetime(db_prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        return pd.DataFrame(
+            {
+                "open": db_prices["open"].astype(float).to_numpy(),
+                "high": db_prices["high"].astype(float).to_numpy(),
+                "low": db_prices["low"].astype(float).to_numpy(),
+                "close": db_prices["close"].astype(float).to_numpy(),
+                "vol": db_prices["vol"].astype(float).to_numpy(),
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="db_reference_prices_validation",
+    )
+
+    price_input = summary["engines"]["nautilus"]["metadata"]["price_input"]
+    equity = pd.read_csv(run_dir / "validation" / "db_reference_prices_validation" / "reference_nautilus_equity_curve.csv")
+    assert price_input["source"] == "db_canonical_candles"
+    assert summary["source_data_validation"]["checks"]["db_parity"]["status"] == "FAIL"
+    assert equity["equity"].iloc[-1] == pytest.approx(2000.0)
+
+
+def test_funding_db_parity_compares_artifact_to_funding_rates(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "funding_db_parity", "funding_carry")
+    funding_times = ["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]
+    pd.DataFrame(
+        {
+            "ts": [1_704_070_800_000, 1_704_074_400_000],
+            "datetime": funding_times,
+            "inst_id": ["BTC-USDT-SWAP", "BTC-USDT-SWAP"],
+            "strategy": ["funding_carry", "funding_carry"],
+            "funding_rate": [0.0001, -0.0002],
+            "funding_interval_hours": [8.0, 8.0],
+            "mark_price": [101.0, 102.0],
+            "funding_fee": [0.1, -0.2],
+        }
+    ).to_csv(run_dir / "funding.csv", index=False)
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        return pd.DataFrame(
+            {
+                "open": prices["open"].astype(float).to_numpy(),
+                "high": prices["high"].astype(float).to_numpy(),
+                "low": prices["low"].astype(float).to_numpy(),
+                "close": prices["close"].astype(float).to_numpy(),
+                "vol": prices["vol"].astype(float).to_numpy(),
+            },
+            index=idx,
+        )
+
+    def fake_load_funding(
+        inst_id,
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+    ):
+        assert inst_id == "BTC-USDT-SWAP"
+        idx = pd.to_datetime(funding_times, utc=True).tz_convert("UTC").tz_localize(None)
+        return pd.DataFrame(
+            {
+                "rate": [0.0001, -0.0002],
+                "realized_rate": [0.0001, -0.0002],
+                "funding_interval_hours": [8.0, 8.0],
+                "mark_price": [101.0, 102.0],
+                "source": ["okx", "okx"],
+                "apr": [0.1095, -0.219],
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+    monkeypatch.setattr(data_loader, "load_funding", fake_load_funding)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="funding_db_parity_validation",
+    )
+
+    funding_check = summary["source_data_validation"]["checks"]["funding"]
+    funding_db_check = summary["source_data_validation"]["checks"]["funding_db_parity"]
+    assert funding_check["status"] == "PASS"
+    assert funding_check["rows"] == 2
+    assert funding_db_check["status"] == "PASS"
+    assert funding_db_check["symbols"][0]["status"] == "PASS"
+    assert funding_db_check["symbols"][0]["rate_mismatches"] == 0
+
+
+def test_funding_cashflow_formula_validates_signed_notional(tmp_path):
+    run_dir = _base_run(tmp_path, "funding_formula", "funding_carry")
+    pd.DataFrame(
+        {
+            "ts": [1_704_070_800_000, 1_704_074_400_000],
+            "datetime": ["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"],
+            "inst_id": ["BTC-USDT-SWAP", "BTC-USDT-SWAP"],
+            "strategy": ["funding_carry", "funding_carry"],
+            "funding_rate": [0.0001, -0.0002],
+            "position_notional": [-100.0, -100.0],
+            "funding_fee": [0.01, -0.02],
+        }
+    ).to_csv(run_dir / "funding.csv", index=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="funding_formula_validation",
+    )
+
+    formula = summary["source_data_validation"]["checks"]["funding_cashflow_formula"]
+    assert formula["status"] == "PASS"
+    assert formula["basis"] == "position_notional"
+    assert formula["mismatch_count"] == 0
+
+
+def test_funding_cashflow_formula_fails_wrong_sign(tmp_path):
+    run_dir = _base_run(tmp_path, "funding_formula_bad", "funding_carry")
+    pd.DataFrame(
+        {
+            "ts": [1_704_070_800_000],
+            "datetime": ["2024-01-01T01:00:00Z"],
+            "inst_id": ["BTC-USDT-SWAP"],
+            "strategy": ["funding_carry"],
+            "funding_rate": [0.0001],
+            "position_size": [-0.25],
+            "ct_val": [0.01],
+            "mark_price": [40000.0],
+            "funding_fee": [-0.01],
+        }
+    ).to_csv(run_dir / "funding.csv", index=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="funding_formula_bad_validation",
+    )
+
+    formula = summary["source_data_validation"]["checks"]["funding_cashflow_formula"]
+    assert summary["status"] == "FAIL"
+    assert formula["status"] == "FAIL"
+    assert formula["basis"] == "position_size_ct_val_mark_price"
+    assert formula["mismatch_count"] == 1
+
+
+def test_external_observations_db_parity_compares_artifact_to_store(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "external_db_parity", "fear_greed_sentiment")
+    observed = ["2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"]
+    pd.DataFrame(
+        {
+            "dataset_id": ["fear_greed_btc", "fear_greed_btc"],
+            "observed_at": observed,
+            "published_at": observed,
+            "value_num": [22.0, 55.0],
+            "value_text": ["Extreme Fear", "Neutral"],
+            "quality_status": ["ok", "ok"],
+        }
+    ).to_csv(run_dir / "external_observations.csv", index=False)
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        return pd.DataFrame(
+            {
+                "open": prices["open"].astype(float).to_numpy(),
+                "high": prices["high"].astype(float).to_numpy(),
+                "low": prices["low"].astype(float).to_numpy(),
+                "close": prices["close"].astype(float).to_numpy(),
+                "vol": prices["vol"].astype(float).to_numpy(),
+            },
+            index=idx,
+        )
+
+    def fake_load_external_observations(
+        dataset_id,
+        data_dir="data/external",
+        start=None,
+        end=None,
+        backend="postgres",
+        dsn=None,
+        lookback_seconds=0,
+    ):
+        assert dataset_id == "fear_greed_btc"
+        return pd.DataFrame(
+            {
+                "dataset_id": ["fear_greed_btc", "fear_greed_btc"],
+                "observed_at": pd.to_datetime(observed, utc=True),
+                "published_at": pd.to_datetime(observed, utc=True),
+                "value_num": [22.0, 55.0],
+                "value_text": ["Extreme Fear", "Neutral"],
+                "quality_status": ["ok", "ok"],
+            }
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+    monkeypatch.setattr(data_loader, "load_external_observations", fake_load_external_observations)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="external_db_parity_validation",
+    )
+
+    external_check = summary["source_data_validation"]["checks"]["external_observations"]
+    external_db_check = summary["source_data_validation"]["checks"]["external_observations_db_parity"]
+    assert external_check["status"] == "PASS"
+    assert external_check["dataset_id"] == "fear_greed_btc"
+    assert external_db_check["status"] == "PASS"
+    assert external_db_check["dataset_id"] == "fear_greed_btc"
+    assert external_db_check["value_mismatches"] == 0
+    assert external_db_check["compared_fields"] == ["value_num", "value_text"]
+
+
+def test_external_observations_artifact_fails_wrong_dataset(tmp_path):
+    run_dir = _base_run(tmp_path, "external_wrong_dataset", "fear_greed_sentiment")
+    pd.DataFrame(
+        {
+            "dataset_id": ["other_dataset"],
+            "observed_at": ["2024-01-01T00:00:00Z"],
+            "value_num": [22.0],
+        }
+    ).to_csv(run_dir / "external_observations.csv", index=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="external_wrong_dataset_validation",
+    )
+
+    external_check = summary["source_data_validation"]["checks"]["external_observations"]
+    assert summary["status"] == "FAIL"
+    assert external_check["status"] == "FAIL"
+    assert external_check["dataset_mismatches"] == 1
+
+
+def test_advisory_adapter_result_is_not_portable_gate_pass(tmp_path, monkeypatch):
+    run_dir = _base_run(tmp_path, "pairs_reference_contract", "pairs_trading")
+
+    def fake_replay(self, bundle):
+        return dv.ReferenceResult(
+            engine=self.engine,
+            status="OK",
+            reason="fake advisory replay",
+            reference_role="advisory",
+            signals=dv._artifact_reference_signals(bundle),
+            equity_curve=bundle.equity_curve,
+            metadata={"reference_mode": "artifact_signal_replay"},
+        )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(dv.VectorBTReferenceAdapter, "_run_available", fake_replay)
+    monkeypatch.setattr(dv.BacktraderReferenceAdapter, "_run_available", fake_replay)
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader"],
+        validation_id="pairs_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["reference_validation_contract"]["strategy"] == "pairs_trading"
+    assert summary["portable_validation_gate"]["passed"] is False
+    assert summary["portable_validation_gate"]["advisory_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["portable_validation_gate"]["blocked_reason"] == "only_advisory_reference_replay_completed"
+    assert summary["engines"]["vectorbt"]["reference_role"] == "advisory"
+    assert summary["engines"]["vectorbt"]["comparison"]["signal_logic"]["role"] == "advisory"
+
+
+def test_pairs_trading_reference_recomputes_kalman_ou_signal_gate(tmp_path, monkeypatch):
+    run_dir = _pairs_trading_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._pairs_trading_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert reference.metadata["reference_mode"] == "pairs_trading_kalman_ou_signal_recompute"
+    assert set(reference.signals["side"]).issubset({"buy", "sell"})
+    assert not reference.signals.empty
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="pairs_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["signal_logic_gate"]["passed"] is True
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["vectorbt"]["metadata"]["reference_mode"] == "pairs_trading_kalman_ou_signal_recompute"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+
+
+def test_fear_greed_reference_recomputes_external_feature_signal_gate(tmp_path, monkeypatch):
+    run_dir = _fear_greed_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._external_feature_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert reference.metadata["reference_mode"] == "fear_greed_sentiment_external_feature_signal_recompute"
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="fear_greed_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["backtrader"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+
+
+def test_cme_gap_reference_recomputes_external_feature_signal_gate(tmp_path, monkeypatch):
+    run_dir = _cme_gap_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._external_feature_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert reference.metadata["reference_mode"] == "cme_gap_fill_external_feature_signal_recompute"
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="cme_gap_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["backtrader"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+
+
+def test_funding_carry_reference_recomputes_rate_signal_gate(tmp_path, monkeypatch):
+    run_dir = _funding_carry_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._funding_carry_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert reference.metadata["reference_mode"] == "funding_carry_rate_signal_recompute"
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="funding_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["signal_logic_gate"]["passed"] is True
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["backtrader"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+    funding_check = summary["source_data_validation"]["checks"]["funding"]
+    assert funding_check["status"] == "PASS"
+    assert funding_check["artifact_role"] == "funding_rates"
+
+
+def test_daily_winner_reference_recomputes_prior_day_winner_signal_gate(tmp_path, monkeypatch):
+    run_dir = _daily_winner_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._daily_winner_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert list(reference.signals[reference.signals["side"] == "buy"]["inst_id"]) == [
+        "BTC-USDT-SWAP",
+        "ETH-USDT-SWAP",
+        "SOL-USDT-SWAP",
+    ]
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="daily_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["signal_logic_gate"]["passed"] is True
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["vectorbt"]["metadata"]["reference_mode"] == "daily_winner_prior_day_recompute"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
+
+
+def test_ohlcv_rotation_reference_recomputes_target_weight_signal_gate(tmp_path, monkeypatch):
+    run_dir = _ohlcv_rotation_run(tmp_path)
+    bundle = dv.load_artifact_bundle(run_dir)
+    reference = dv._ohlcv_rotation_reference_result(bundle, "vectorbt")
+
+    assert reference.reference_role == "reference_signals_only"
+    assert not reference.signals.empty
+    pd.testing.assert_frame_equal(
+        dv._normalize_signals(bundle.signals),
+        dv._normalize_signals(reference.signals),
+    )
+
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["vectorbt", "backtrader", "nautilus"],
+        validation_id="rotation_reference_contract",
+    )
+
+    assert summary["status"] == "PASS"
+    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
+    assert summary["portable_validation_gate"]["passed"] is True
+    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
+    assert summary["signal_logic_gate"]["passed"] is True
+    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
+    assert summary["engines"]["vectorbt"]["metadata"]["reference_mode"] == "ohlcv_rotation_target_weight_recompute"
+    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
 
 
 def test_backtrader_macd_reference_uses_project_compatible_ema_path(tmp_path):
@@ -401,6 +2013,19 @@ def test_strategy_fixture_listing_includes_materializable_sweep_finalists(tmp_pa
     assert missing["validation_ready"] is False
     assert missing["materialize_ready"] is True
     assert missing["missing_artifacts"] == ["result.json", "price_series.csv", "signals.csv"]
+
+
+def test_strategy_fixture_listing_uses_lightweight_metadata(tmp_path, monkeypatch):
+    _base_run(tmp_path, "good_ma_fixture", "ma_crossover")
+
+    def fail_read_csv(*args, **kwargs):
+        raise AssertionError("fixture listing should not load full CSV artifacts")
+
+    monkeypatch.setattr(dv.pd, "read_csv", fail_read_csv)
+
+    fixtures = dv.list_strategy_validation_fixtures(tmp_path, "ma_crossover")
+
+    assert [row["run_id"] for row in fixtures] == ["good_ma_fixture"]
 
 
 def test_strategy_fixture_resolve_materializes_missing_sweep_finalist(tmp_path, monkeypatch):
@@ -515,7 +2140,37 @@ def test_backtest_api_triggers_and_reads_differential_validation(tmp_path, monke
 
     detail = client.get("/api/backtest/api_run/differential-validation/api_validation")
     assert detail.status_code == 200
-    assert detail.json()["ohlcv_source_validation"] == "deferred"
+    assert detail.json()["ohlcv_source_validation"] == "artifact_pass_db_skipped"
+
+
+def test_backtest_api_exposes_reference_validation_contracts(tmp_path):
+    app = FastAPI()
+    app.include_router(make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    listing = client.get("/api/backtest/strategy-validation/contracts")
+    assert listing.status_code == 200
+    strategies = {row["strategy"] for row in listing.json()}
+    assert "ma_crossover" in strategies
+    assert "daily_winner" in strategies
+
+    detail = client.get("/api/backtest/strategy-validation/contracts?strategy=daily_winner")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["strategy"] == "daily_winner"
+    assert payload["engines"]["vectorbt"]["status"] == "implemented"
+    assert payload["engines"]["vectorbt"]["role"] == "reference_signals_only"
+    assert payload["engines"]["backtrader"]["status"] == "implemented"
+    assert payload["engines"]["backtrader"]["role"] == "reference_signals_only"
+    assert payload["engines"]["nautilus"]["status"] == "implemented"
+    assert payload["engines"]["nautilus"]["role"] == "advisory"
+
+    rotation = client.get("/api/backtest/strategy-validation/contracts?strategy=ohlcv_rotation")
+    assert rotation.status_code == 200
+    rotation_payload = rotation.json()
+    assert rotation_payload["engines"]["vectorbt"]["role"] == "reference_signals_only"
+    assert rotation_payload["engines"]["backtrader"]["role"] == "reference_signals_only"
+    assert rotation_payload["engines"]["nautilus"]["role"] == "advisory"
 
 
 def test_backtest_api_triggers_strategy_validation(tmp_path, monkeypatch):
