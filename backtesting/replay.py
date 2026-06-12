@@ -1860,6 +1860,7 @@ def make_replay_strategy_fn(
     bar: str = "1H",
     periods: int = 365 * 24,
     include_train_metrics: bool = False,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
 ) -> Callable[[pd.DataFrame, pd.DataFrame], dict[str, Any]]:
@@ -1881,6 +1882,8 @@ def make_replay_strategy_fn(
             "bar": bar,
             "periods": periods,
         }
+        if instrument_specs is not None:
+            kwargs["instrument_specs"] = instrument_specs
         if liquidate_on_end is not None:
             kwargs["liquidate_on_end"] = liquidate_on_end
         return replay_runner(**kwargs)
@@ -2023,6 +2026,7 @@ def run_replay_validations(
     cpcv_embargo_pct: float = 0.02,
     cpcv_purge_size: int = 1,
     n_trials: int = 1,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
@@ -2090,6 +2094,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=True,
+                instrument_specs=instrument_specs,
                 liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
@@ -2129,6 +2134,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=False,
+                instrument_specs=instrument_specs,
                 liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
@@ -2149,6 +2155,7 @@ def run_replay_backtest(
     end: Optional[str] = None,
     bar: str = "1H",
     periods: int = 365 * 24,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
@@ -2166,6 +2173,7 @@ def run_replay_backtest(
     engine = ReplayBacktestEngine(
         cfg,
         strategy_names=strategy_names,
+        instrument_specs=instrument_specs,
         periods=periods,
         bar_seconds=_bar_to_seconds(bar),
         liquidate_on_end=liquidate_on_end,

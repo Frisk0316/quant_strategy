@@ -890,6 +890,116 @@ def _signal_point_correctness_matrix(
     }
 
 
+def _nautilus_order_fill_parity(
+    engine_results: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    result = engine_results.get("nautilus")
+    if not isinstance(result, dict):
+        return {
+            "engine": "nautilus",
+            "scope": "signal_replay_order_fill",
+            "status": "SKIP",
+            "passed": False,
+            "reason": "Nautilus engine was not selected for this validation run.",
+            "checks": [],
+            "promotion_gate_evidence": False,
+            "full_project_strategy_parity_passed": False,
+        }
+
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    smoke = metadata.get("nautilus_engine_smoke") if isinstance(metadata.get("nautilus_engine_smoke"), dict) else {}
+    coverage = smoke.get("signal_replay_coverage") if isinstance(smoke.get("signal_replay_coverage"), dict) else {}
+    backtest_result = smoke.get("backtest_result") if isinstance(smoke.get("backtest_result"), dict) else {}
+
+    smoke_status = str(smoke.get("status") or result.get("status") or "SKIP").upper()
+    engine_execution = str(smoke.get("engine_execution") or metadata.get("engine_execution") or "not_run")
+    signals_available = _coerce_count(smoke.get("signals_available", coverage.get("total_signal_rows", 0)))
+    buy_sell_signal_rows = _coerce_count(coverage.get("buy_sell_signal_rows", signals_available))
+    signals_replayed = _coerce_count(smoke.get("signals_replayed", coverage.get("replayable_signal_rows", 0)))
+    order_attempts = _coerce_count(backtest_result.get("strategy_order_attempts", 0))
+    total_orders = _coerce_count(backtest_result.get("total_orders", 0))
+    fills = _coerce_count(backtest_result.get("strategy_fills", 0))
+    skipped_replay_rows = sum(
+        _coerce_count(coverage.get(field, 0))
+        for field in (
+            "skipped_unmapped_symbol",
+            "skipped_unsupported_side",
+            "skipped_invalid_timestamp",
+        )
+    )
+
+    checks = [
+        {
+            "name": "engine_signal_replay_run",
+            "status": "PASS" if smoke_status == "OK" and engine_execution == "signal_replay_run" else "FAIL",
+            "expected": "status=OK and engine_execution=signal_replay_run",
+            "actual": f"status={smoke_status} engine_execution={engine_execution}",
+        },
+        {
+            "name": "signal_rows_available",
+            "status": "PASS" if buy_sell_signal_rows > 0 else "FAIL",
+            "expected": "at least one buy/sell signal row",
+            "actual": buy_sell_signal_rows,
+        },
+        {
+            "name": "signal_replay_coverage",
+            "status": "PASS" if signals_replayed == buy_sell_signal_rows and skipped_replay_rows == 0 else "FAIL",
+            "expected": {
+                "signals_replayed": buy_sell_signal_rows,
+                "skipped_replay_rows": 0,
+            },
+            "actual": {
+                "signals_replayed": signals_replayed,
+                "skipped_replay_rows": skipped_replay_rows,
+                "skipped_symbols": coverage.get("skipped_symbols", []),
+            },
+        },
+        {
+            "name": "order_attempt_coverage",
+            "status": "PASS" if order_attempts == signals_replayed and signals_replayed > 0 else "FAIL",
+            "expected": signals_replayed,
+            "actual": order_attempts,
+        },
+        {
+            "name": "order_acceptance",
+            "status": "PASS" if total_orders >= order_attempts and order_attempts > 0 else "FAIL",
+            "expected": f">= {order_attempts}",
+            "actual": total_orders,
+        },
+        {
+            "name": "fill_coverage",
+            "status": "PASS" if fills == order_attempts and order_attempts > 0 else "FAIL",
+            "expected": order_attempts,
+            "actual": fills,
+        },
+    ]
+    failed_checks = [row["name"] for row in checks if row["status"] != "PASS"]
+    status = "PASS" if not failed_checks else ("SKIP" if smoke_status == "SKIP" else "FAIL")
+    return {
+        "engine": "nautilus",
+        "scope": "signal_replay_order_fill",
+        "status": status,
+        "passed": status == "PASS",
+        "signals_available": signals_available,
+        "buy_sell_signal_rows": buy_sell_signal_rows,
+        "signals_replayed": signals_replayed,
+        "order_attempts": order_attempts,
+        "orders_accepted": total_orders,
+        "fills": fills,
+        "failed_checks": failed_checks,
+        "checks": checks,
+        "signal_replay_coverage": coverage,
+        "backtest_result": backtest_result,
+        "promotion_gate_evidence": False,
+        "full_project_strategy_parity_passed": False,
+        "full_project_strategy_parity_gap": (
+            "Nautilus parity currently validates generated signal-replay orders and fills; "
+            "project strategy source execution, L2/L3 queue priority, funding settlement, "
+            "and production exchange adapter behavior are not covered."
+        ),
+    }
+
+
 def _external_validation_conclusion(
     validation_conclusion: dict[str, Any],
     source_data_validation: dict[str, Any],
@@ -2590,6 +2700,7 @@ def run_differential_validation(
         selected_engines,
         all_mismatches,
     )
+    nautilus_order_fill_parity = _nautilus_order_fill_parity(engine_results)
     validation_conclusion = _validation_conclusion(
         source_data_validation,
         portability_gate,
@@ -2628,6 +2739,7 @@ def run_differential_validation(
         "portable_validation_gate": portability_gate,
         "engine_execution_matrix": engine_execution_matrix,
         "signal_point_correctness": signal_point_correctness,
+        "nautilus_order_fill_parity": nautilus_order_fill_parity,
         "source_data_validation": source_data_validation,
         "validation_conclusion": validation_conclusion,
         "external_validation_conclusion": external_validation_conclusion,
@@ -3067,7 +3179,7 @@ class NautilusReferenceAdapter(ReferenceAdapter):
             },
             "limitations": [
                 "Nautilus signal replay uses an advisory Strategy generated from exported/reference signals, not the project strategy source code.",
-                "Matching-engine fills may exist for replay orders, but queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
+                "Signal-replay order/fill parity checks Nautilus market-order acceptance and fills; queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
                 "The output is suitable as advisory portability evidence only.",
             ],
         }
@@ -3088,6 +3200,7 @@ class NautilusReferenceAdapter(ReferenceAdapter):
                 "reference_mode": reference_mode,
                 "engine_execution": engine_execution,
                 "nautilus_engine_smoke": engine_smoke,
+                "order_fill_parity_scope": "signal_replay_order_fill",
                 "dependency": "nautilus_trader",
                 "dependency_available": dependency_available,
                 "price_input": price_input,
@@ -3132,12 +3245,26 @@ def _nautilus_engine_smoke(
     try:
         instruments, instrument_meta = _nautilus_smoke_instruments(bundle, TestInstrumentProvider, signals=signals)
         primary_instrument = next(iter(instruments.values()))
+        replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
+        effective_max_ticks = max_ticks
+        if replay_signals:
+            effective_max_ticks = max(
+                max_ticks,
+                (
+                    int(len(bundle.price_series))
+                    + int(len(_book_snapshot_events(bundle)))
+                    + int(len(_trade_tick_frame(bundle)))
+                    + int(len(replay_signals))
+                    + 1
+                ),
+            )
         ticks, input_rows = _nautilus_smoke_ticks(
             bundle,
             instruments,
             TestDataStubs,
             AggressorSide,
-            max_ticks=max_ticks,
+            max_ticks=effective_max_ticks,
+            replay_signals=replay_signals,
         )
         if not ticks:
             return {
@@ -3169,7 +3296,6 @@ def _nautilus_engine_smoke(
                 engine.add_instrument(instrument)
                 added_instrument_ids.add(instrument_id)
             engine.add_data(ticks)
-            replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
             strategy = None
             if replay_signals:
                 strategy = _nautilus_signal_replay_strategy(
@@ -3192,7 +3318,6 @@ def _nautilus_engine_smoke(
                 if hasattr(engine, "dispose"):
                     engine.dispose()
         orders = int(result_meta.get("total_orders") or 0)
-        replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
         execution = "signal_replay_run" if replay_signals and orders > 0 else "smoke_run"
         reason = (
             "Nautilus BacktestEngine ran an advisory signal-replay Strategy and accepted generated orders"
@@ -3206,13 +3331,15 @@ def _nautilus_engine_smoke(
             "instrument": instrument_meta,
             "input_rows": input_rows,
             "ticks_submitted": len(ticks),
+            "max_ticks_requested": int(max_ticks),
+            "max_ticks_effective": int(effective_max_ticks),
             "data_types": sorted({type(tick).__name__ for tick in ticks}),
             "signals_available": int(replay_coverage["total_signal_rows"]),
             "signals_replayed": int(len(replay_signals)),
             "signal_replay_coverage": replay_coverage,
             "backtest_result": result_meta,
             "scope_limit": (
-                "advisory signal replay only; project strategy source logic, queue/fill parity, and PnL are not validated"
+                "advisory signal replay with Nautilus order/fill parity; project strategy source logic, L2/L3 queue priority, funding settlement, and PnL are not validated"
                 if execution == "signal_replay_run"
                 else "engine data smoke only; no replayable buy/sell signals were executed"
             ),
@@ -3269,12 +3396,14 @@ def _nautilus_replay_signals(
         if pd.isna(dt):
             coverage["skipped_invalid_timestamp"] += 1
             continue
+        fair_value = _safe_float(row.get("fair_value", row.get("price", row.get("close"))), float("nan"))
         replayed_symbols.add(symbol_key)
         rows.append({
             "ts_ns": _ts_ms(dt) * 1_000_000,
             "side": side,
             "source_inst_id": symbol_key,
             "instrument_key": symbol_key,
+            "fair_value": fair_value if math.isfinite(fair_value) and fair_value > 0 else None,
         })
     rows.sort(key=lambda item: int(item["ts_ns"]))
     coverage["replayable_signal_rows"] = int(len(rows))
@@ -3419,6 +3548,7 @@ def _nautilus_smoke_ticks(
     aggressor_side: Any,
     *,
     max_ticks: int,
+    replay_signals: list[dict[str, Any]] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     ticks: list[Any] = []
     input_rows = {
@@ -3427,6 +3557,7 @@ def _nautilus_smoke_ticks(
         "price_series": 0,
         "quote_ticks": 0,
         "trade_tick_ticks": 0,
+        "terminal_replay_quote_ticks": 0,
         "mapped_symbols": sorted(instruments),
         "skipped_unmapped_book_snapshots": 0,
         "skipped_unmapped_price_rows": 0,
@@ -3522,6 +3653,44 @@ def _nautilus_smoke_ticks(
             ts_init=ts_ns,
         ))
         input_rows["trade_tick_ticks"] += 1
+
+    last_quote_ts_by_instrument: dict[str, int] = {}
+    for tick in ticks:
+        if type(tick).__name__ != "QuoteTick":
+            continue
+        instrument_id = str(getattr(tick, "instrument_id", ""))
+        last_quote_ts_by_instrument[instrument_id] = max(
+            last_quote_ts_by_instrument.get(instrument_id, -1),
+            int(getattr(tick, "ts_event", 0)),
+        )
+    for signal in replay_signals or []:
+        if len(ticks) >= max_ticks:
+            break
+        instrument = instruments.get(str(signal.get("instrument_key") or ""))
+        if instrument is None:
+            continue
+        ts_ns = int(signal.get("ts_ns") or 0)
+        instrument_id = str(instrument.id)
+        if last_quote_ts_by_instrument.get(instrument_id, -1) >= ts_ns:
+            continue
+        price = _safe_float(signal.get("fair_value"), float("nan"))
+        if not math.isfinite(price) or price <= 0:
+            price = 1.0
+        spread = max(abs(price) * 0.0001, 0.1)
+        bid = max(price - spread / 2.0, 0.000001)
+        ask = price + spread / 2.0
+        ticks.append(data_stubs.quote_tick(
+            instrument=instrument,
+            bid_price=bid,
+            ask_price=ask,
+            bid_size=1.0,
+            ask_size=1.0,
+            ts_event=ts_ns,
+            ts_init=ts_ns,
+        ))
+        input_rows["quote_ticks"] += 1
+        input_rows["terminal_replay_quote_ticks"] += 1
+        last_quote_ts_by_instrument[instrument_id] = ts_ns
 
     ticks.sort(key=lambda tick: int(getattr(tick, "ts_event", 0)))
     return ticks, input_rows
@@ -3650,6 +3819,7 @@ def list_validation_results(run_dir: str | Path) -> list[dict[str, Any]]:
             "signal_logic_gate": payload.get("signal_logic_gate"),
             "portable_validation_gate": payload.get("portable_validation_gate"),
             "signal_point_correctness": payload.get("signal_point_correctness"),
+            "nautilus_order_fill_parity": payload.get("nautilus_order_fill_parity"),
             "reference_validation_contract": payload.get("reference_validation_contract"),
             "materialized_from_sweep_summary": bool(payload.get("materialized_from_sweep_summary")),
             "engines": list((payload.get("engines") or {}).keys()),
@@ -3709,6 +3879,7 @@ def list_strategy_validation_results(results_dir: str | Path, strategy: str | No
                 "signal_logic_gate": payload.get("signal_logic_gate"),
                 "portable_validation_gate": payload.get("portable_validation_gate"),
                 "signal_point_correctness": payload.get("signal_point_correctness"),
+                "nautilus_order_fill_parity": payload.get("nautilus_order_fill_parity"),
                 "reference_validation_contract": payload.get("reference_validation_contract"),
                 "engines": list((payload.get("engines") or {}).keys()),
                 "mismatch_counts": payload.get("mismatch_counts", {}),

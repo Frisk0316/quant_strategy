@@ -57,6 +57,8 @@ def main() -> None:
                         help="Override funding_carry min APR threshold for this replay")
     parser.add_argument("--strategy-params", default=None,
                         help="JSON object with strategy-specific parameter overrides")
+    parser.add_argument("--instrument-specs-json", default=None,
+                        help="JSON object keyed by inst_id with explicit ctVal/minSz/lotSz/tickSz overrides")
     parser.add_argument("--risk-overrides", default=None,
                         help="JSON object with research-only risk overrides for this replay")
     parser.add_argument("--fill-all-signals", action="store_true",
@@ -93,6 +95,9 @@ def main() -> None:
     strategy_params = json.loads(args.strategy_params) if args.strategy_params else {}
     if strategy_params and not isinstance(strategy_params, dict):
         sys.exit("Error: --strategy-params must be a JSON object")
+    instrument_specs = json.loads(args.instrument_specs_json) if args.instrument_specs_json else None
+    if instrument_specs is not None and not isinstance(instrument_specs, dict):
+        sys.exit("Error: --instrument-specs-json must be a JSON object")
 
     if args.symbol:
         args.symbol = [normalize_swap_symbol(symbol) for symbol in args.symbol]
@@ -164,6 +169,7 @@ def main() -> None:
         end=args.end,
         bar=args.bar,
         periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
+        instrument_specs=instrument_specs,
         liquidate_on_end=args.liquidate_on_end,
     )
     result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
@@ -212,6 +218,7 @@ def main() -> None:
                 bar=args.bar,
                 periods=args.periods or BAR_PERIODS.get(args.bar, 365 * 24),
                 mode=args.validate,
+                instrument_specs=instrument_specs,
                 liquidate_on_end=args.liquidate_on_end,
                 progress_callback=_print_validation_progress,
             )

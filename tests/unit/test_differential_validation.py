@@ -1117,6 +1117,80 @@ def test_signal_point_correctness_matrix_reports_three_engine_rows():
     assert rows["vectorbt"]["advisory_differences"]["metrics"]["total"] == 3
 
 
+def test_nautilus_order_fill_parity_passes_signal_replay_orders_and_fills():
+    matrix = dv._nautilus_order_fill_parity({
+        "nautilus": {
+            "status": "OK",
+            "metadata": {
+                "engine_execution": "signal_replay_run",
+                "nautilus_engine_smoke": {
+                    "status": "OK",
+                    "engine_execution": "signal_replay_run",
+                    "signals_available": 2,
+                    "signals_replayed": 2,
+                    "signal_replay_coverage": {
+                        "total_signal_rows": 2,
+                        "buy_sell_signal_rows": 2,
+                        "replayable_signal_rows": 2,
+                        "skipped_unmapped_symbol": 0,
+                        "skipped_unsupported_side": 0,
+                        "skipped_invalid_timestamp": 0,
+                    },
+                    "backtest_result": {
+                        "strategy_order_attempts": 2,
+                        "total_orders": 2,
+                        "strategy_fills": 2,
+                    },
+                },
+            },
+        }
+    })
+
+    assert matrix["status"] == "PASS"
+    assert matrix["passed"] is True
+    assert matrix["order_attempts"] == 2
+    assert matrix["orders_accepted"] == 2
+    assert matrix["fills"] == 2
+    assert matrix["full_project_strategy_parity_passed"] is False
+
+
+def test_nautilus_order_fill_parity_fails_partial_replay_or_fill_gap():
+    matrix = dv._nautilus_order_fill_parity({
+        "nautilus": {
+            "status": "OK",
+            "metadata": {
+                "engine_execution": "signal_replay_run",
+                "nautilus_engine_smoke": {
+                    "status": "OK",
+                    "engine_execution": "signal_replay_run",
+                    "signals_available": 3,
+                    "signals_replayed": 2,
+                    "signal_replay_coverage": {
+                        "total_signal_rows": 3,
+                        "buy_sell_signal_rows": 3,
+                        "replayable_signal_rows": 2,
+                        "skipped_unmapped_symbol": 1,
+                        "skipped_unsupported_side": 0,
+                        "skipped_invalid_timestamp": 0,
+                        "skipped_symbols": ["SOL-USDT-SWAP"],
+                    },
+                    "backtest_result": {
+                        "strategy_order_attempts": 2,
+                        "total_orders": 2,
+                        "strategy_fills": 1,
+                    },
+                },
+            },
+        }
+    })
+
+    assert matrix["status"] == "FAIL"
+    assert matrix["passed"] is False
+    assert "signal_replay_coverage" in matrix["failed_checks"]
+    assert "fill_coverage" in matrix["failed_checks"]
+    assert matrix["signal_replay_coverage"]["skipped_symbols"] == ["SOL-USDT-SWAP"]
+
+
 def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):
     run_dir = _base_run(tmp_path, "nautilus_smoke_metadata")
     smoke = {
@@ -1145,6 +1219,7 @@ def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):
     metadata = summary["engines"]["nautilus"]["metadata"]
     assert metadata["engine_execution"] == "smoke_run"
     assert metadata["nautilus_engine_smoke"] == smoke
+    assert summary["nautilus_order_fill_parity"]["status"] == "FAIL"
     matrix = {row["engine"]: row for row in summary["engine_execution_matrix"]}
     assert matrix["nautilus"]["signals_replayed"] == 2
     assert matrix["nautilus"]["signal_replay_coverage"]["skipped_symbols"] == ["SOL-USDT-SWAP"]
@@ -1172,6 +1247,11 @@ def test_real_nautilus_engine_smoke_runs_signal_replay_when_available(tmp_path):
     assert smoke["signal_replay_coverage"]["replayable_signal_rows"] == 1
     assert smoke["backtest_result"]["strategy_order_attempts"] >= 1
     assert smoke["backtest_result"]["total_orders"] >= 1
+    assert smoke["backtest_result"]["strategy_fills"] >= 1
+    parity = dv._nautilus_order_fill_parity({
+        "nautilus": {"status": "OK", "metadata": {"nautilus_engine_smoke": smoke}}
+    })
+    assert parity["status"] == "PASS"
 
 
 def test_real_nautilus_engine_smoke_replays_mapped_daily_winner_symbols(tmp_path):
@@ -1192,6 +1272,7 @@ def test_real_nautilus_engine_smoke_replays_mapped_daily_winner_symbols(tmp_path
     assert coverage["skipped_symbols"] == ["SOL-USDT-SWAP"]
     assert smoke["signals_replayed"] == 4
     assert smoke["backtest_result"]["strategy_order_attempts"] >= 4
+    assert smoke["backtest_result"]["strategy_fills"] >= 4
 
 
 def test_source_data_validation_fails_invalid_ohlcv_artifact(tmp_path):

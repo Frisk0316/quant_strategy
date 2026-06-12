@@ -1098,6 +1098,51 @@ def test_run_replay_backtest_cli_passes_no_liquidate_on_end(monkeypatch, minimal
     assert calls["liquidate_on_end"] is False
 
 
+def test_run_replay_backtest_cli_passes_instrument_specs_json(monkeypatch, minimal_cfg):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"bankrupt": False, "fill_rate": 0.0},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    specs = {
+        "BTC-USDT-SWAP": {
+            "ctVal": 0.01,
+            "minSz": 0.01,
+            "lotSz": 0.01,
+            "tickSz": 0.1,
+            "tdMode": "cross",
+        }
+    }
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_replay_backtest.py",
+            "--strategy",
+            "ma_crossover",
+            "--instrument-specs-json",
+            json.dumps(specs),
+        ],
+    )
+
+    cli.main()
+
+    assert calls["instrument_specs"] == specs
+
+
 def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_cfg):
     from scripts import run_replay_backtest as cli
 
