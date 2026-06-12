@@ -6,7 +6,7 @@ to the common dict shape used by CandleStore.upsert_raw_candles().
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -153,6 +153,7 @@ class OKXPublicClient:
         start_ms: int,
         end_ms: int,
         page_size: int = 100,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> list[dict]:
         """
         Paginate backwards from end_ms to start_ms, yielding all candles.
@@ -166,6 +167,8 @@ class OKXPublicClient:
         bar_ms = _BAR_MS.get(bar, 60_000)
 
         while True:
+            if should_cancel and should_cancel():
+                break
             time.sleep(self._rate_sleep)
             try:
                 page = self.get_history_candles(
@@ -183,6 +186,8 @@ class OKXPublicClient:
                 break
 
             all_rows.extend(page)
+            if should_cancel and should_cancel():
+                break
             oldest_ts = page[0]["ts_ms"]
 
             if oldest_ts <= start_ms:

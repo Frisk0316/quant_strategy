@@ -58,7 +58,7 @@ def as_quote(
 ) -> tuple[float, float]:
     """
     Compute Avellaneda-Stoikov bid and ask quotes.
-    Extracted from §1.3 of Crypto_Quant_Plan_v1.md.
+    Extracted from §1.3 of docs/archive/Crypto_Quant_Plan_v1.md.
 
     Args:
         mid: Current mid-price.
@@ -170,7 +170,10 @@ class ASMarketMaker(Strategy):
             return None
 
         # Throttle quote refresh
-        now = time.time()
+        try:
+            now = float(getattr(payload, "ts", 0)) / 1000.0
+        except (TypeError, ValueError):
+            now = time.time()
         if now - self._last_quote_ts[inst_id] < self.refresh_ms / 1000:
             return None
         self._last_quote_ts[inst_id] = now

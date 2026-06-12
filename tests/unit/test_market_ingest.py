@@ -6,6 +6,7 @@ from scripts.market_data.ingest import (
 )
 from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
 from okx_quant.data.exchange_clients.bybit_public import BybitPublicClient
+from okx_quant.data.exchange_clients.okx_public import OKXPublicClient
 
 
 def test_binance_kline_row_normalization(monkeypatch):
@@ -41,6 +42,38 @@ def test_binance_funding_row_normalization(monkeypatch):
     assert rows[0]["ts_ms"] == 1_700_000_000_000
     assert rows[0]["funding_rate"] == 0.0001
     assert rows[0]["mark_price"] == 50000.5
+    client.close()
+
+
+def test_binance_kline_range_honors_cancel_before_fetch(monkeypatch):
+    client = BinancePublicClient()
+    monkeypatch.setattr(client, "get_klines", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("fetch called")))
+
+    rows = client.get_klines_range(
+        "BTCUSDT",
+        "1m",
+        1_700_000_000_000,
+        1_700_000_060_000,
+        should_cancel=lambda: True,
+    )
+
+    assert rows == []
+    client.close()
+
+
+def test_okx_paginate_history_honors_cancel_before_fetch(monkeypatch):
+    client = OKXPublicClient()
+    monkeypatch.setattr(client, "get_history_candles", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("fetch called")))
+
+    rows = client.paginate_history(
+        "BTC-USDT-SWAP",
+        "1m",
+        1_700_000_000_000,
+        1_700_000_060_000,
+        should_cancel=lambda: True,
+    )
+
+    assert rows == []
     client.close()
 
 

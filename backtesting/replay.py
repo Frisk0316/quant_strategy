@@ -20,6 +20,7 @@ from loguru import logger
 from backtesting.data_loader import load_candles as load_ohlcv_candles
 from backtesting.data_loader import load_feature_events as load_external_feature_events
 from backtesting.data_loader import load_funding as load_funding_rates
+from backtesting.data_loader import load_trade_ticks as load_raw_trade_ticks
 from backtesting.research_controls import (
     FILL_ALL_MAX_ORDER_NOTIONAL_USD,
     FILL_ALL_MAX_POS_PCT_EQUITY,
@@ -71,6 +72,10 @@ class ReplayBacktestResult:
     risk_event_log: list[dict] = field(default_factory=list)
     rejected_log: list[dict] = field(default_factory=list)
     cancel_log: list[dict] = field(default_factory=list)
+    funding_rate_log: pd.DataFrame = field(default_factory=pd.DataFrame)
+    feature_event_log: pd.DataFrame = field(default_factory=pd.DataFrame)
+    book_snapshot_log: pd.DataFrame = field(default_factory=pd.DataFrame)
+    trade_tick_log: pd.DataFrame = field(default_factory=pd.DataFrame)
     validation: dict[str, Any] = field(default_factory=dict)
 
 
@@ -82,6 +87,8 @@ class ReplayRecorder:
     funding_log: list[dict] = field(default_factory=list)
     equity_samples: list[dict] = field(default_factory=list)
     price_log: list[dict] = field(default_factory=list)
+    book_snapshot_log: list[dict] = field(default_factory=list)
+    trade_tick_log: list[dict] = field(default_factory=list)
     signal_log: list[dict] = field(default_factory=list)
     risk_event_log: list[dict] = field(default_factory=list)
 
@@ -156,6 +163,54 @@ class ReplayRecorder:
             "low": mid,
             "close": mid,
             "vol": float(payload.bids[0][1]) + float(payload.asks[0][1]),
+        })
+
+    def record_book_snapshot(self, payload: MarketPayload) -> None:
+        if not payload.bids and not payload.asks:
+            return
+
+        def append_levels(side: str, levels: list) -> None:
+            for level, row in enumerate(levels):
+                try:
+                    px = float(row[0])
+                    sz = float(row[1])
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if not math.isfinite(px) or not math.isfinite(sz) or sz <= 0:
+                    continue
+                self.book_snapshot_log.append({
+                    "ts": int(payload.ts),
+                    "inst_id": payload.inst_id,
+                    "side": side,
+                    "level": level,
+                    "px": px,
+                    "sz": sz,
+                    "seq_id": payload.seq_id,
+                    "channel": payload.channel,
+                    "action": payload.action,
+                    "checksum": payload.checksum,
+                    "source": "market_payload",
+                })
+
+        append_levels("bid", payload.bids)
+        append_levels("ask", payload.asks)
+
+    def record_trade_tick(self, payload: MarketPayload) -> None:
+        try:
+            price = float(payload.trade_price)
+            size = float(payload.trade_size)
+        except (TypeError, ValueError):
+            return
+        if not math.isfinite(price) or not math.isfinite(size) or price <= 0 or size <= 0:
+            return
+        self.trade_tick_log.append({
+            "ts": int(payload.ts),
+            "inst_id": payload.inst_id,
+            "trade_id": payload.trade_id,
+            "price": price,
+            "size": size,
+            "side": payload.trade_side,
+            "source": "market_payload",
         })
 
     def record_signal(self, signal, ts: int) -> None:
@@ -238,6 +293,8 @@ class ReplayRecorder:
             funding_log=pd.DataFrame(self.funding_log),
             trade_log=pd.DataFrame(positions.get_trade_log()),
             price_log=pd.DataFrame(self.price_log),
+            book_snapshot_log=pd.DataFrame(self.book_snapshot_log),
+            trade_tick_log=pd.DataFrame(self.trade_tick_log),
             signal_log=list(self.signal_log),
             risk_event_log=list(self.risk_event_log),
             rejected_log=rejected_log,
@@ -636,6 +693,39 @@ def _synthetic_l1_from_candles(
     })
 
 
+def load_trade_events(
+    inst_id: str,
+    data_dir: str = "data/ticks",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    backend: str = "parquet",
+    dsn: Optional[str] = None,
+) -> pd.DataFrame:
+    columns = ["ts", "inst_id", "trade_id", "price", "size", "side"]
+    try:
+        ticks = load_raw_trade_ticks(
+            inst_id,
+            data_dir=data_dir,
+            start=start,
+            end=end,
+            backend=backend,
+            dsn=dsn,
+        )
+    except (FileNotFoundError, ValueError):
+        return pd.DataFrame(columns=columns)
+    if ticks.empty:
+        return pd.DataFrame(columns=columns)
+    frame = ticks.copy()
+    return pd.DataFrame({
+        "ts": _timestamp_series_to_ms(frame["ts"]),
+        "inst_id": inst_id,
+        "trade_id": frame.get("trade_id", frame.get("tradeId", "")),
+        "price": pd.to_numeric(frame["price"], errors="coerce"),
+        "size": pd.to_numeric(frame["size"], errors="coerce"),
+        "side": frame.get("side", ""),
+    }).dropna(subset=["price", "size"])
+
+
 def load_funding_events(
     inst_id: str,
     data_dir: str = "data/ticks",
@@ -689,10 +779,12 @@ class HistoricalEventFeed:
         market_events: pd.DataFrame,
         funding_events: pd.DataFrame,
         feature_events: Optional[pd.DataFrame] = None,
+        trade_events: Optional[pd.DataFrame] = None,
     ) -> None:
         self.market_events = market_events
         self.funding_events = funding_events
         self.feature_events = feature_events if feature_events is not None else pd.DataFrame()
+        self.trade_events = trade_events if trade_events is not None else pd.DataFrame()
 
     def iter_events(self) -> Iterable[Event]:
         combined: list[tuple[int, int, Event]] = []
@@ -725,6 +817,32 @@ class HistoricalEventFeed:
             )
             combined.append((ts_ms, 0, Event(EvtType.FEATURE, payload=payload)))
 
+        for row in self.trade_events.itertuples(index=False):
+            ts_ms = _to_ms_int(getattr(row, "ts", None))
+            payload = MarketPayload(
+                inst_id=row.inst_id,
+                ts=ts_ms,
+                bids=[],
+                asks=[],
+                seq_id=0,
+                channel="trades",
+                trade_id=(
+                    str(getattr(row, "trade_id", ""))
+                    if getattr(row, "trade_id", None) is not None
+                    and pd.notna(getattr(row, "trade_id", None))
+                    else None
+                ),
+                trade_price=float(getattr(row, "price")),
+                trade_size=float(getattr(row, "size")),
+                trade_side=(
+                    str(getattr(row, "side", ""))
+                    if getattr(row, "side", None) is not None
+                    and pd.notna(getattr(row, "side", None))
+                    else None
+                ),
+            )
+            combined.append((ts_ms, 1, Event(EvtType.MARKET, payload=payload)))
+
         for row in self.market_events.itertuples(index=False):
             ts_ms = _to_ms_int(getattr(row, "ts", None))
             payload = MarketPayload(
@@ -735,7 +853,7 @@ class HistoricalEventFeed:
                 seq_id=0,
                 channel="books",
             )
-            combined.append((ts_ms, 1, Event(EvtType.MARKET, payload=payload)))
+            combined.append((ts_ms, 2, Event(EvtType.MARKET, payload=payload)))
 
         for row in self.funding_events.itertuples(index=False):
             ts_ms = _to_ms_int(getattr(row, "ts", None))
@@ -755,7 +873,7 @@ class HistoricalEventFeed:
                     else None
                 ),
             )
-            combined.append((ts_ms, 2, Event(EvtType.FUNDING, payload=payload)))
+            combined.append((ts_ms, 3, Event(EvtType.FUNDING, payload=payload)))
 
         combined.sort(key=lambda item: (item[0], item[1]))
         for _, _, event in combined:
@@ -1162,6 +1280,16 @@ class ReplayBacktestEngine:
                 dd_tracker.update(positions.get_equity())
                 recorder.record_equity(payload.ts, positions.get_equity())
                 recorder.record_price(payload)
+                recorder.record_book_snapshot(payload)
+                for strategy in strategies:
+                    if strategy.is_active:
+                        signal = await strategy.on_market(event, books.get(payload.inst_id))
+                        if signal:
+                            recorder.record_signal(signal, payload.ts)
+                            await bus.put(Event(EvtType.SIGNAL, payload=signal))
+            elif payload.channel == "trades":
+                reset_daily_risk_if_needed(payload.ts)
+                recorder.record_trade_tick(payload)
                 for strategy in strategies:
                     if strategy.is_active:
                         signal = await strategy.on_market(event, books.get(payload.inst_id))
@@ -1252,13 +1380,16 @@ class ReplayBacktestEngine:
         if feature_validation:
             terminal_validation["external_features"] = feature_validation
 
-        return recorder.build_result(
+        result = recorder.build_result(
             positions,
             periods=self._periods,
             execution_model=execution_model,
             validation=terminal_validation,
             metric_overrides=terminal_metrics,
         )
+        result.funding_rate_log = feed.funding_events.copy()
+        result.feature_event_log = feed.feature_events.copy()
+        return result
 
     @staticmethod
     def _collect_feature_validation(strategies: list[Strategy]) -> dict[str, Any]:
@@ -1480,6 +1611,7 @@ def build_feed_for_strategies(
     market_frames: list[pd.DataFrame] = []
     funding_frames: list[pd.DataFrame] = []
     feature_frames: list[pd.DataFrame] = []
+    trade_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
     if "obi_market_maker" in strategy_set:
@@ -1502,6 +1634,14 @@ def build_feed_for_strategies(
                 start=start,
                 end=end,
                 bar=bar,
+                backend=cfg.storage.candle_backend,
+                dsn=cfg.storage.timescale_dsn,
+            ))
+            trade_frames.append(load_trade_events(
+                symbol,
+                data_dir=data_dir,
+                start=start,
+                end=end,
                 backend=cfg.storage.candle_backend,
                 dsn=cfg.storage.timescale_dsn,
             ))
@@ -1649,7 +1789,13 @@ def build_feed_for_strategies(
 
     funding_df = _concat_non_empty(funding_frames)
     feature_df = _concat_non_empty(feature_frames)
-    return HistoricalEventFeed(market_events=market_df, funding_events=funding_df, feature_events=feature_df)
+    trade_df = _concat_non_empty(trade_frames)
+    return HistoricalEventFeed(
+        market_events=market_df,
+        funding_events=funding_df,
+        feature_events=feature_df,
+        trade_events=trade_df,
+    )
 
 
 def _concat_non_empty(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -1727,7 +1873,7 @@ def build_replay_validation_frame(
         bar=bar,
     )
     frames = [
-        df for df in [feed.market_events, feed.funding_events, feed.feature_events]
+        df for df in [feed.market_events, feed.funding_events, feed.feature_events, feed.trade_events]
         if not df.empty and "ts" in df.columns
     ]
     if not frames:

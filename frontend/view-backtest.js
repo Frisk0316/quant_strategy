@@ -15,6 +15,9 @@ const PHASE2_IDLE_PARTS = {
   risk: false,
   indicators: false,
 };
+const MARKET_PRICE_POINTS = 700;
+const MARKET_MARKER_LIMIT = 1200;
+const INDICATOR_POINTS = 700;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,6 +54,19 @@ function runParametersText(run) {
   if (risk.max_order_notional_usd != null) parts.push(`order $${(+risk.max_order_notional_usd).toLocaleString("en", { maximumFractionDigits: 0 })}`);
   if (risk.max_leverage != null) parts.push(`lev ${(+risk.max_leverage).toFixed(1)}x`);
   return parts.length ? parts.join(" | ") : "—";
+}
+function TradingPairList({ symbols }) {
+  const list = (symbols || []).filter(Boolean);
+  if (!list.length) return "—";
+  return html`
+    <div class="run-symbol-list" title=${list.join(", ")}>
+      ${list.map((symbol, index) => html`
+        <div class="run-symbol-item" key=${`${symbol}-${index}`}>
+          ${symbol}${index < list.length - 1 ? "," : ""}
+        </div>
+      `)}
+    </div>
+  `;
 }
 function signedUsd(v, d = 2) {
   if (v == null || isNaN(+v)) return "—";
@@ -476,6 +492,35 @@ function ChartZoomControls({
   `;
 }
 
+function runVisualSymbols(run) {
+  const symbols = [];
+  const add = (value) => {
+    if (typeof value === "string" && value && !symbols.includes(value)) symbols.push(value);
+  };
+  (run?.symbols || []).forEach(add);
+  add(run?.symbol);
+  const metrics = run?.metrics || {};
+  ["loaded_symbols", "universe", "skipped_symbols"].forEach((key) => (metrics[key] || []).forEach(add));
+  const validation = run?.validation || {};
+  (validation.daily_winner_data_sources || []).forEach((source) => add(source?.inst_id));
+  (run?.trades || []).forEach((row) => add(row?.inst_id || row?.symbol));
+  return symbols;
+}
+
+function replaceRowsForSymbol(existing, symbol, rows) {
+  const next = [
+    ...(existing || []).filter((row) => (row.inst_id || row.symbol) !== symbol),
+    ...(rows || []),
+  ];
+  next.sort((a, b) => {
+    const ta = new Date(a.datetime || a.ts || 0).getTime();
+    const tb = new Date(b.datetime || b.ts || 0).getTime();
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    return String(a.inst_id || a.symbol || "").localeCompare(String(b.inst_id || b.symbol || ""));
+  });
+  return next;
+}
+
 function RunDetailView({ runId, onBack, onDelete }) {
   const [result, setResult] = useState(null);
   const [phase1Loading, setPhase1Loading] = useState(true);
@@ -500,12 +545,21 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [chartYZooms, setChartYZooms] = useState(new Map());
   const [visibleSeries, setVisibleSeries] = useState(new Map());
   const [indicators, setIndicators] = useState([]);
+  const [riskLoadedRun, setRiskLoadedRun] = useState(null);
+  const [marketSymbolStatus, setMarketSymbolStatus] = useState({});
+  const [indicatorSymbolStatus, setIndicatorSymbolStatus] = useState({});
 
   // Phase 1: load result.json (fast — small payload)
   useEffect(() => {
     setPhase1Loading(true);
     setPhase1Error(null);
     setResult(null);
+    setPriceSeries([]);
+    setExecutionMarkers([]);
+    setIndicators([]);
+    setSelectedChartSymbols([]);
+    setMarketSymbolStatus({});
+    setIndicatorSymbolStatus({});
     window.API.fetchBacktest(runId)
       .then((r) => setResult(r))
       .catch((e) => setPhase1Error(e.message))
@@ -516,9 +570,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   useEffect(() => {
     if (!result) return;
     let cancelled = false;
-    const activeStrategiesForLoad = result.strategies || (result.strategy ? [result.strategy] : []);
     const shouldLoadValidation = validationModeForRun(result) !== "none";
-    const shouldLoadIndicators = activeStrategiesForLoad.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
     const setPartDone = (key) => {
       if (!cancelled) setPhase2Parts((prev) => ({ ...prev, [key]: false }));
     };
@@ -528,9 +580,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
       equity: true,
       ledger: true,
       validation: shouldLoadValidation,
-      market: true,
-      risk: true,
-      indicators: shouldLoadIndicators,
+      market: false,
+      risk: false,
+      indicators: false,
     });
     setPhase2Error(null);
     setEquity([]);
@@ -539,6 +591,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setWalkForward([]);
     setCpcv(null);
     setRiskEvents([]);
+    setRiskLoadedRun(null);
     setPriceSeries([]);
     setExecutionMarkers([]);
     setSelectedChartSymbols([]);
@@ -546,6 +599,8 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setChartRanges(new Map());
     setChartYZooms(new Map());
     setVisibleSeries(new Map());
+    setMarketSymbolStatus({});
+    setIndicatorSymbolStatus({});
     const tasks = [];
 
     tasks.push(
@@ -579,38 +634,81 @@ function RunDetailView({ runId, onBack, onDelete }) {
       );
     }
 
-    tasks.push(
-      window.API.fetchBacktestRiskEvents(runId)
-        .then((re) => { if (!cancelled) setRiskEvents(re || []); })
-        .catch(() => { if (!cancelled) setRiskEvents([]); })
-        .finally(() => setPartDone("risk"))
-    );
-
-    tasks.push(
-      Promise.all([
-        window.API.fetchBacktestPriceSeries(runId).catch(() => []),
-        window.API.fetchBacktestExecutionMarkers(runId).catch(() => []),
-      ]).then(([ps, em]) => {
-        if (cancelled) return;
-        setPriceSeries(ps || []);
-        setExecutionMarkers(em || []);
-      }).finally(() => setPartDone("market"))
-    );
-
-    if (shouldLoadIndicators) {
-      tasks.push(
-        (window.API.fetchBacktestIndicators?.(runId) ?? Promise.resolve([]))
-          .then((ind) => { if (!cancelled) setIndicators(ind || []); })
-          .catch(() => { if (!cancelled) setIndicators([]); })
-          .finally(() => setPartDone("indicators"))
-      );
-    }
-
     Promise.allSettled(tasks).finally(() => {
       if (!cancelled) setPhase2Loading(false);
     });
     return () => { cancelled = true; };
   }, [runId, result]);
+
+  useEffect(() => {
+    if (!result || selectedChartSymbols.length) return;
+    const initialSymbols = runVisualSymbols(result).slice(0, 1);
+    if (initialSymbols.length) setSelectedChartSymbols(initialSymbols);
+  }, [runId, result, selectedChartSymbols.length]);
+
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    const activeStrategiesForMarket = result.strategies || (result.strategy ? [result.strategy] : []);
+    const shouldLoadIndicators = activeStrategiesForMarket.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
+    const symbolsToLoad = (selectedChartSymbols.length ? selectedChartSymbols : runVisualSymbols(result).slice(0, 1))
+      .filter(Boolean);
+
+    for (const symbol of symbolsToLoad) {
+      if (!marketSymbolStatus[symbol]) {
+        setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "loading" }));
+        Promise.all([
+          window.API.fetchBacktestPriceSeries(runId, symbol, MARKET_PRICE_POINTS).catch(() => []),
+          window.API.fetchBacktestExecutionMarkers(runId, symbol, MARKET_MARKER_LIMIT).catch(() => []),
+        ]).then(([ps, em]) => {
+          if (cancelled) return;
+          setPriceSeries((prev) => replaceRowsForSymbol(prev, symbol, ps || []));
+          setExecutionMarkers((prev) => replaceRowsForSymbol(prev, symbol, em || []));
+          setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "loaded" }));
+        }).catch(() => {
+          if (!cancelled) setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
+        });
+      }
+
+      if (shouldLoadIndicators && !indicatorSymbolStatus[symbol]) {
+        setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "loading" }));
+        (window.API.fetchBacktestIndicators?.(runId, symbol, INDICATOR_POINTS) ?? Promise.resolve([]))
+          .then((ind) => {
+            if (cancelled) return;
+            setIndicators((prev) => replaceRowsForSymbol(prev, symbol, ind || []));
+            setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "loaded" }));
+          })
+          .catch(() => {
+            if (!cancelled) setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
+          });
+      }
+    }
+
+    return () => { cancelled = true; };
+  }, [runId, result, selectedChartSymbols.join("|")]);
+
+  useEffect(() => {
+    if (!result || activeTab !== "risk" || riskLoadedRun === runId) return;
+    let cancelled = false;
+    setPhase2Parts((prev) => ({ ...prev, risk: true }));
+    window.API.fetchBacktestRiskEvents(runId)
+      .then((re) => {
+        if (!cancelled) {
+          setRiskEvents(re || []);
+          setRiskLoadedRun(runId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRiskEvents([]);
+          setRiskLoadedRun(runId);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPhase2Parts((prev) => ({ ...prev, risk: false }));
+      });
+    return () => { cancelled = true; };
+  }, [runId, result, activeTab, riskLoadedRun]);
 
   if (phase1Loading) return html`<div class="field-hint" style=${{ padding: 32 }}>Loading run ${runId}…</div>`;
   if (phase1Error) return html`<div style=${{ color: "var(--loss)", padding: 32 }}>Error: ${phase1Error}</div>`;
@@ -620,7 +718,6 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const equityLoading = phase2Parts.equity;
   const ledgerLoading = phase2Parts.ledger;
   const validationLoading = phase2Parts.validation;
-  const marketLoading = phase2Parts.market;
   const riskLoading = phase2Parts.risk;
   const bottomPanelLoading = activeTab === "risk" ? riskLoading : ledgerLoading;
   const activeStrategies = result.strategies || (result.strategy ? [result.strategy] : []);
@@ -631,6 +728,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
     ? `Notional ${usd(m.fill_notional_usd)} (fee+slip)`
     : `Notional ${usd(m.fill_notional_usd)}`;
   const strats = (result.strategies || []).join(", ") || result.strategy || "—";
+  const displayName = result.display_name || runId;
   const symbols = (result.symbols || []).join(", ") || result.symbol || "—";
   const bar = result.bar || "—";
   const start = result.start ? result.start.slice(0, 10) : "—";
@@ -643,7 +741,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const ddValues = drawdownChartRows.map(r => +r.drawdown);
   const ddDates = drawdownChartRows.map(chartTimestamp);
   const chartSymbols = [...new Set([
-    ...(result.symbols || []),
+    ...runVisualSymbols(result),
     ...priceSeries.map((r) => r.inst_id).filter(Boolean),
     ...executionMarkers.map((r) => r.inst_id).filter(Boolean),
   ])].sort();
@@ -759,6 +857,14 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const priceChartSymbols = effectiveSelectedChartSymbols.filter((sym) =>
     filteredPriceSeries.some((row) => row.inst_id === sym)
   );
+  const selectedMarketLoading = effectiveSelectedChartSymbols.some((sym) =>
+    !marketSymbolStatus[sym] || marketSymbolStatus[sym] === "loading"
+  );
+  const marketLoading = selectedMarketLoading;
+  const selectedMarketErrors = effectiveSelectedChartSymbols.filter((sym) => marketSymbolStatus[sym] === "error");
+  const selectedIndicatorLoading = isTechnicalRun && effectiveSelectedChartSymbols.some((sym) =>
+    indicatorSymbolStatus[sym] === "loading"
+  );
   const equityY = getChartYControls("equity");
   const drawdownY = getChartYControls("drawdown");
 
@@ -774,7 +880,10 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
       <div class="row" style=${{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button class="btn ghost sm" onClick=${onBack}>← Runs</button>
-        <div class="mono" style=${{ fontSize: 13, color: "var(--text-subtle)", flex: 1 }}>${runId}</div>
+        <div style=${{ flex: 1, minWidth: 240 }}>
+          <div class="mono" style=${{ fontSize: 13 }}>${displayName}</div>
+          ${displayName !== runId && html`<div class="field-hint mono">${runId}</div>`}
+        </div>
         <span class="chip">${strats}</span>
         <span class="chip">${symbols}</span>
         <span class="chip">${bar}</span>
@@ -886,7 +995,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
                       </div>
                     `;
                   })
-                : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No selected price series available for this run.</div>`
+                : selectedMarketErrors.length
+                  ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Failed to load price series for ${selectedMarketErrors.join(", ")}.</div>`
+                  : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series rows were returned for the selected symbol.</div>`
               }
               <${SymbolPillBar}
                 symbols=${chartSymbols}
@@ -1554,7 +1665,7 @@ function RunListView({ onSelect, onDelete }) {
           <table class="tbl">
             <thead>
               <tr>
-                <th>Run ID</th>
+                <th>Run</th>
                 <th>Strategy</th>
                 <th>Trading Pairs</th>
                 <th>Parameters</th>
@@ -1579,16 +1690,21 @@ function RunListView({ onSelect, onDelete }) {
                     style=${{ cursor: "pointer" }}
                     onClick=${() => onSelect(r.run_id)}
                   >
-                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-subtle)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      ${r.run_id}
+                    <td style=${{ maxWidth: 220, overflow: "hidden" }}>
+                      <div class="mono" title=${r.display_name || r.run_id} style=${{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        ${r.display_name || r.run_id}
+                      </div>
+                      ${r.display_name && r.display_name !== r.run_id && html`
+                        <div class="field-hint mono" title=${r.run_id} style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          ${r.run_id}
+                        </div>
+                      `}
                     </td>
                     <td class="mono" style=${{ fontSize: 12 }}>
                       ${(r.strategies || [r.strategy]).filter(Boolean).join(", ")}
                     </td>
-                    <td class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7, whiteSpace: "normal" }}>
-                      ${symbols.length
-                        ? symbols.map((symbol, index) => html`<div key=${`${symbol}-${index}`}>${symbol}${index < symbols.length - 1 ? "," : ""}</div>`)
-                        : "—"}
+                    <td class="mono run-symbols-cell">
+                      <${TradingPairList} symbols=${symbols} />
                     </td>
                     <td class="mono" title=${runParametersText(r)} style=${{ fontSize: 11, color: "var(--text-muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       ${runParametersText(r)}

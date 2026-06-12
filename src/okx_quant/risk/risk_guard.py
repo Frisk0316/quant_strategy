@@ -2,7 +2,7 @@
 Hard-coded risk gate — every order MUST pass through this.
 No strategy can bypass it.
 
-Extracted from §5.5 of Crypto_Quant_Plan_v1.md.
+Extracted from §5.5 of docs/archive/Crypto_Quant_Plan_v1.md.
 Iron laws from §6: 5% daily loss, 10% soft stop, 15% hard stop.
 """
 from __future__ import annotations

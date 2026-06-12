@@ -5,6 +5,7 @@ Each result.json matches the artifacts schema produced by backtesting/artifacts.
 """
 from __future__ import annotations
 
+import csv
 import json
 import math
 import os
@@ -76,6 +77,36 @@ def _attach_idealized_fill_warning(payload: dict[str, Any], source: Any | None =
     if isinstance(validation, dict):
         validation["idealized_fill"] = True
     return payload
+
+
+def _display_slug(value: Any, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    if not text:
+        text = fallback
+    text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
+    return text.lower() or fallback
+
+
+def _backtest_display_name(row: dict[str, Any]) -> str:
+    existing = row.get("display_name")
+    if existing:
+        return str(existing)
+    created = row.get("created_at") or row.get("start") or row.get("start_date")
+    try:
+        ts = pd.Timestamp(created) if created else pd.Timestamp.now(tz="UTC")
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        day = ts.tz_convert("UTC").strftime("%Y/%m/%d")
+    except Exception:
+        day = datetime.now(timezone.utc).strftime("%Y/%m/%d")
+    strategies = row.get("strategies") or ([row.get("strategy")] if row.get("strategy") else [])
+    symbols = row.get("symbols") or ([row.get("symbol")] if row.get("symbol") else [])
+    strategy = _display_slug("_".join(str(s) for s in strategies if s) or "strategy")
+    symbol_values = [str(s) for s in symbols if s]
+    symbol = _display_slug("_".join(symbol_values[:3]) if symbol_values else "multi_symbol")
+    if len(symbol_values) > 3:
+        symbol = f"{symbol}_plus{len(symbol_values) - 3}"
+    return f"{day}_{strategy}_{symbol}"
 
 
 def _get_price_series_cache(key: tuple[str, str]) -> list[dict[str, Any]] | None:
@@ -418,6 +449,8 @@ def _post_process_ohlcv_rotation(
     artifact_refs = {
         key: filename
         for key, filename in {
+            "price_series": "price_series.csv",
+            "signals": "signals.csv",
             "equity": "equity_curve.csv",
             "returns": "returns.csv",
             "drawdown": "drawdown.csv",
@@ -428,6 +461,16 @@ def _post_process_ohlcv_rotation(
         }.items()
         if (out_dir / filename).exists()
     }
+    parameters = _request_parameters(req)
+    rotation_params = parameters.setdefault("strategies", {}).setdefault("ohlcv_rotation", {})
+    rotation_params.update({
+        "benchmark_inst_id": req.benchmark or "BTC-USDT-SWAP",
+        "bar": req.bar or "1H",
+        "rebalance_minutes": req.rebalance_minutes or 60,
+        "top_k": req.top_k or 3,
+        "rank_exit_buffer": req.rank_exit_buffer or 6,
+        "fill_all_signals": bool(req.fill_all_signals),
+    })
 
     result = {
         "run_id": run_id,
@@ -435,10 +478,11 @@ def _post_process_ohlcv_rotation(
         "strategies": ["ohlcv_rotation"],
         "symbols": req.universe or [],
         "bar": req.bar or "1H",
+        "benchmark": req.benchmark or "BTC-USDT-SWAP",
         "start": req.start or "",
         "end": req.end or "",
         "metrics": metrics,
-        "parameters": _request_parameters(req),
+        "parameters": parameters,
         "artifacts": artifact_refs,
     }
     if validation:
@@ -564,6 +608,7 @@ def _run_daily_winner_job(
         )
         _attach_daily_winner_validation(result_json, result.daily_returns, req.validation)
         result_json = _json_sanitize(result_json)
+        _write_daily_winner_artifacts(out_dir, dfs, result_json)
         (out_dir / "result.json").write_text(
             json.dumps(result_json, allow_nan=False, indent=2),
             encoding="utf-8",
@@ -676,6 +721,125 @@ def _daily_winner_float(value: Any, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
     return out if math.isfinite(out) else default
+
+
+def _write_daily_winner_artifacts(
+    out_dir: Path,
+    dfs: dict[str, pd.DataFrame],
+    payload: dict[str, Any],
+) -> None:
+    artifact_refs = payload.setdefault("artifacts", {})
+
+    price_series = _daily_winner_price_series_frame(dfs)
+    if not price_series.empty:
+        price_series.to_csv(out_dir / "price_series.csv", index=False)
+        artifact_refs["price_series"] = "price_series.csv"
+
+    signals = _daily_winner_signal_rows(payload)
+    pd.DataFrame(
+        signals,
+        columns=["ts", "datetime", "strategy", "inst_id", "side", "fair_value"],
+    ).to_csv(out_dir / "signals.csv", index=False)
+    artifact_refs["signals"] = "signals.csv"
+
+    for key, filename in {
+        "trades": "trades.csv",
+        "round_trips": "round_trips.csv",
+        "equity": "equity_curve.csv",
+        "returns": "returns.csv",
+    }.items():
+        rows = payload.get(key) or []
+        if isinstance(rows, list):
+            pd.DataFrame(rows).to_csv(out_dir / filename, index=False)
+            artifact_refs[key] = filename
+
+    pd.DataFrame(columns=["ts", "datetime", "strategy", "inst_id"]).to_csv(
+        out_dir / "indicator_series.csv",
+        index=False,
+    )
+    pd.DataFrame().to_csv(out_dir / "fills.csv", index=False)
+
+
+def _daily_winner_price_series_frame(dfs: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for inst_id, df in dfs.items():
+        if df is None or df.empty:
+            continue
+        data = df.sort_index().copy()
+        for ts_value, row in data.iterrows():
+            ts_ms, dt = _visual_time_values(ts_value)
+            if ts_ms is None:
+                continue
+            rows.append({
+                "ts": ts_ms,
+                "datetime": dt,
+                "inst_id": inst_id,
+                "open": _daily_winner_float(row.get("open"), float("nan")),
+                "high": _daily_winner_float(row.get("high"), float("nan")),
+                "low": _daily_winner_float(row.get("low"), float("nan")),
+                "close": _daily_winner_float(row.get("close"), float("nan")),
+                "vol": _daily_winner_float(row.get("vol", row.get("volume")), 0.0),
+            })
+    return pd.DataFrame(rows, columns=["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"])
+
+
+def _daily_winner_signal_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    round_trips = [row for row in payload.get("round_trips") or [] if isinstance(row, dict)]
+    trades = [row for row in payload.get("trades") or [] if isinstance(row, dict)]
+    source_rows = round_trips or trades
+    for row in source_rows:
+        phase = str(row.get("execution_phase") or "").lower()
+        is_execution = phase in {"entry", "exit"} or str(row.get("type") or "") == "validation_synthetic_fill"
+        if is_execution:
+            signal = _daily_winner_signal_row(
+                inst_id=str(row.get("inst_id") or row.get("symbol") or ""),
+                side=str(row.get("side") or "").lower(),
+                ts_value=row.get("datetime") or row.get("ts"),
+                fair_value=row.get("price", row.get("fill_px")),
+            )
+            if signal:
+                rows.append(signal)
+            continue
+        entry = _daily_winner_signal_row(
+            inst_id=str(row.get("inst_id") or row.get("symbol") or ""),
+            side="buy",
+            ts_value=row.get("entry_ts") or row.get("datetime") or row.get("ts"),
+            fair_value=row.get("entry_price", row.get("price")),
+        )
+        if entry:
+            rows.append(entry)
+        exit_row = _daily_winner_signal_row(
+            inst_id=str(row.get("inst_id") or row.get("symbol") or ""),
+            side="sell",
+            ts_value=row.get("exit_ts") or row.get("close_ts"),
+            fair_value=row.get("exit_price", row.get("close_price")),
+        )
+        if exit_row:
+            rows.append(exit_row)
+    return rows
+
+
+def _daily_winner_signal_row(
+    *,
+    inst_id: str,
+    side: str,
+    ts_value: Any,
+    fair_value: Any,
+) -> dict[str, Any] | None:
+    if not inst_id or side not in {"buy", "sell"}:
+        return None
+    ts_ms, dt = _visual_time_values(ts_value)
+    if ts_ms is None:
+        return None
+    return {
+        "ts": ts_ms,
+        "datetime": dt,
+        "strategy": "daily_winner",
+        "inst_id": inst_id,
+        "side": side,
+        "fair_value": _daily_winner_float(fair_value, float("nan")),
+    }
 
 
 def _daily_winner_equity_seed(
@@ -1194,6 +1358,22 @@ def _downsample_records_by_symbol(records: list[dict[str, Any]], n: int) -> list
         sampled.extend(_downsample_records(groups[symbol], per_symbol))
     sampled.sort(key=lambda row: (str(row.get("ts") or row.get("datetime") or ""), row.get("inst_id") or ""))
     return sampled
+
+
+def _record_symbol(row: dict[str, Any]) -> str:
+    return str(row.get("inst_id") or row.get("symbol") or "")
+
+
+def _filter_records_by_symbol(records: list[dict[str, Any]], symbol: str | None) -> list[dict[str, Any]]:
+    if not symbol:
+        return records
+    return [row for row in records if _record_symbol(row) == symbol]
+
+
+def _limit_records(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if limit <= 0 or len(records) <= limit:
+        return records
+    return _downsample_records(records, limit)
 
 
 def _data_source_exchange(result: dict[str, Any] | None) -> str:
@@ -1842,19 +2022,34 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             run_dir = results_dir / Path(run_id).name
             if run_dir.is_dir():
                 result_payload["parameters"] = _parameters_from_config(run_dir, result_payload)
+        if not result_payload.get("display_name"):
+            result_payload["display_name"] = _backtest_display_name(result_payload)
         return _attach_idealized_fill_warning(result_payload)
 
-    async def _read_records_artifact(run_id: str, artifact_type: str, filename: str) -> list[dict[str, Any]]:
+    async def _read_records_artifact(
+        run_id: str,
+        artifact_type: str,
+        filename: str,
+        symbol: str | None = None,
+    ) -> list[dict[str, Any]]:
         payload = await _read_db_artifact(run_id, artifact_type)
         records = _as_record_list(payload)
         if records:
-            return records
+            return _filter_records_by_symbol(records, symbol)
         d = results_dir / Path(run_id).name
         if not d.is_dir():
             return []
         path = d / filename
         if not path.exists():
             return []
+        if symbol:
+            rows: list[dict[str, Any]] = []
+            with path.open("r", encoding="utf-8", newline="") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    if _record_symbol(row) == symbol:
+                        rows.append(row)
+            return rows
         return _as_record_list(_read_csv(path))
 
     # ------------------------------------------------------------------
@@ -1880,8 +2075,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     if not (run_dir / "returns.csv").exists() and not data.get("returns"):
                         continue
                     run_id = data.get("run_id", run_dir.name)
-                    merged[run_id] = _attach_idealized_fill_warning({
+                    item = {
                         "run_id": run_id,
+                        "display_name": data.get("display_name"),
                         "created_at": data.get("created_at"),
                         "strategies": data.get("strategies", [data.get("strategy", "")]),
                         "symbols": data.get("symbols", [data.get("symbol", "")]),
@@ -1894,7 +2090,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         "order_count": metrics.get("order_count"),
                         "real_fill_count": metrics.get("real_fill_count", metrics.get("fill_count")),
                         "parameters": _parameters_from_config(run_dir, data),
-                    }, data)
+                    }
+                    item["display_name"] = _backtest_display_name(item)
+                    merged[run_id] = _attach_idealized_fill_warning(item, data)
                 except Exception:
                     pass
 
@@ -1942,6 +2140,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     item["end"] = item.get("end_date")
                     metadata = _metadata_dict(item.get("metadata"))
                     existing = merged.get(item["run_id"], {})
+                    item["display_name"] = item.get("display_name") or existing.get("display_name")
+                    item["display_name"] = _backtest_display_name(item)
                     item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
                     merged[item["run_id"]] = _attach_idealized_fill_warning(item, metadata)
         except Exception:
@@ -2139,6 +2339,20 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         from backtesting.differential_validation import list_strategy_validation_results
 
         return list_strategy_validation_results(results_dir, strategy)
+
+    @router.get("/strategy-validation/contracts")
+    async def get_strategy_validation_contracts(strategy: str | None = None):
+        from backtesting.differential_validation import (
+            REFERENCE_VALIDATION_CONTRACTS,
+            strategy_reference_validation_contract,
+        )
+
+        if strategy:
+            return strategy_reference_validation_contract(Path(strategy).name)
+        return [
+            strategy_reference_validation_contract(name)
+            for name in sorted(REFERENCE_VALIDATION_CONTRACTS)
+        ]
 
     @router.get("/strategy-validation/{strategy}")
     async def list_strategy_validations_for_strategy(strategy: str):
@@ -2431,20 +2645,28 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         return _read_csv(_run_dir(run_id) / "cancel_log.csv")
 
     @router.get("/{run_id}/execution-markers")
-    async def get_execution_markers(run_id: str):
-        records = await _read_records_artifact(run_id, "execution_markers", "execution_markers.csv")
+    async def get_execution_markers(
+        run_id: str,
+        symbol: str | None = Query(default=None),
+        limit: int = Query(default=0, ge=0),
+    ):
+        if symbol and not _SAFE_SYMBOL_RE.match(symbol):
+            raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
+        records = await _read_records_artifact(run_id, "execution_markers", "execution_markers.csv", symbol=symbol)
         if records:
-            return records
+            return _limit_records(records, limit)
         result = await _read_result_payload(run_id)
-        fills = await _read_records_artifact(run_id, "fills", "fills.csv")
-        trades = await _read_records_artifact(run_id, "trades", "trades.csv")
+        fills = await _read_records_artifact(run_id, "fills", "fills.csv", symbol=symbol)
+        trades = await _read_records_artifact(run_id, "trades", "trades.csv", symbol=symbol)
         if not trades:
             trades = _as_record_list(result.get("trades"))
-        return _fallback_execution_markers_from_records(
+            trades = _filter_records_by_symbol(trades, symbol)
+        markers = _fallback_execution_markers_from_records(
             fills=fills,
             trades=trades,
             result=result,
         )
+        return _limit_records(_filter_records_by_symbol(markers, symbol), limit)
 
     @router.get("/{run_id}/price-series")
     async def get_price_series(
@@ -2456,7 +2678,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
         clean_run_id = Path(run_id).name
-        records = await _read_records_artifact(run_id, "price_series", "price_series.csv")
+        records = await _read_records_artifact(run_id, "price_series", "price_series.csv", symbol=symbol)
         result: dict[str, Any] | None = None
         fills: list[dict[str, Any]] = []
         trades: list[dict[str, Any]] = []
@@ -2474,7 +2696,6 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             return result, fills, trades
 
         if symbol:
-            records = [row for row in records if row.get("inst_id") == symbol]
             if not records:
                 cache_key = (clean_run_id, symbol)
                 cached = _get_price_series_cache(cache_key)
@@ -2524,18 +2745,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         symbol: str | None = Query(default=None),
         n: int = Query(default=0, ge=0),
     ):
-        payload = await _read_db_artifact(run_id, "indicator_series")
-        if payload is not None:
-            records = payload
-        else:
-            indicator_path = _run_dir(run_id) / "indicator_series.csv"
-            if not indicator_path.exists():
-                return []
-            records = _read_csv(indicator_path)
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
-            records = [row for row in records if row.get("inst_id") == symbol]
+        records = await _read_records_artifact(run_id, "indicator_series", "indicator_series.csv", symbol=symbol)
         return _downsample_records(records, n)
 
     # ------------------------------------------------------------------

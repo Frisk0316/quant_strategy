@@ -6,7 +6,7 @@ Routes spot requests to api.binance.com and futures to fapi.binance.com.
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -173,18 +173,23 @@ class BinancePublicClient:
         bar: str,
         start_ms: int,
         end_ms: int,
-        limit: int = 500,
+        limit: int = 1500,
         market_type: str = "futures",
+        should_cancel: Callable[[], bool] | None = None,
     ) -> list[dict]:
         """Paginate Binance klines across a time range. Returns ascending."""
         all_rows: list[dict] = []
         cursor = start_ms
         while cursor < end_ms:
+            if should_cancel and should_cancel():
+                break
             time.sleep(self._rate_sleep)
             page = self.get_klines(symbol, bar, start_ms=cursor, end_ms=end_ms,
                                    limit=limit, market_type=market_type)
             if not page:
                 break
             all_rows.extend(page)
+            if should_cancel and should_cancel():
+                break
             cursor = page[-1]["ts_ms"] + 1
         return [r for r in all_rows if start_ms <= r["ts_ms"] <= end_ms]

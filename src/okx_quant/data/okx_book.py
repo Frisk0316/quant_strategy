@@ -1,6 +1,6 @@
 """
 OKX L2 order book with checksum validation.
-Extracted from §2.2 of Crypto_Quant_Plan_v1.md and extended with
+Extracted from §2.2 of docs/archive/Crypto_Quant_Plan_v1.md and extended with
 accessor methods needed by signal generators.
 
 CRITICAL: Keep original server price strings — do NOT reformat.

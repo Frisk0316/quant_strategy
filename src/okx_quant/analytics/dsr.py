@@ -2,7 +2,7 @@
 Statistical validation: Deflated Sharpe Ratio (DSR) and
 Probabilistic Sharpe Ratio (PSR).
 
-Extracted from §3.6 and §4.4 of Crypto_Quant_Plan_v1.md.
+Extracted from §3.6 and §4.4 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 DSR < 0.95: backtest result cannot be distinguished from luck.
 PSR(0) < 0.95: live track record indistinguishable from zero.

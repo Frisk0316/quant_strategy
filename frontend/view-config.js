@@ -90,6 +90,13 @@ const DERIVABLE_FROM_1M_BARS = new Set(["3m", "5m", "15m", "30m", "1H", "2H", "4
 const todayUtc = new Date();
 todayUtc.setUTCHours(0, 0, 0, 0);
 const yesterday = new Date(todayUtc - 86400000).toISOString().slice(0, 10);
+const FETCH_QUERY_INPUT_ID = "market-data-fetch-query";
+const FETCH_EXCHANGE_SELECT_ID = "market-data-fetch-exchange";
+const FETCH_BAR_SELECT_ID = "market-data-fetch-bar";
+const FETCH_START_INPUT_ID = "market-data-fetch-start";
+const FETCH_END_INPUT_ID = "market-data-fetch-end";
+let marketDataInstrumentSearchSeq = 0;
+const FETCH_TERMINAL_STATUSES = new Set(["done", "error", "cancelled"]);
 
 const fmtPct = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(d)}%`);
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? "-" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
@@ -1133,7 +1140,11 @@ function MarketDataCard() {
   const [exportJob, setExportJob] = useConfigState(null);
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
-  const [fetchForm, setFetchForm] = useConfigState({ symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
+  const [fetchForm, setFetchForm] = useConfigState({ exchange: "okx", symbols: [], bar: "1m", start: "2024-01-01", end: yesterday });
+  const [instrumentQuery, setInstrumentQuery] = useConfigState("");
+  const [instrumentSearch, setInstrumentSearch] = useConfigState({ status: "idle", exchange: "okx", query: "", message: "" });
+  const [fetchStartPending, setFetchStartPending] = useConfigState(false);
+  const [fetchCancelPending, setFetchCancelPending] = useConfigState(false);
   const [exportForm, setExportForm] = useConfigState({ kind: "ohlcv", symbols: [], datasets: ["cme_btc_yfinance"], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
@@ -1170,30 +1181,191 @@ function MarketDataCard() {
   const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
   const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
   const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
+  const existingDbFetchSymbols = [...new Set((coverage || [])
+    .filter((row) => (row.data_kind || "ohlcv") === "ohlcv" && row.bar === fetchForm.bar)
+    .map((row) => row.inst_id)
+    .filter(Boolean))]
+    .sort();
+  const fetchSearchQuery = String(instrumentQuery || "").trim();
+  const searchResultSymbols = instruments.map((inst) => inst.inst_id).filter(Boolean);
+  const allSearchResultsSelected = searchResultSymbols.length > 0
+    && searchResultSymbols.every((symbol) => (fetchForm.symbols || []).includes(symbol));
+  const fetchBusy = fetchJob && !FETCH_TERMINAL_STATUSES.has(fetchJob.status);
+  const fetchCanCancel = !!fetchJob?.job_id && ["running", "cancelling"].includes(fetchJob.status);
 
   function refreshCoverage() {
     window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
   }
 
+  function currentFetchForm(overrides = {}) {
+    const exchange = document.getElementById(FETCH_EXCHANGE_SELECT_ID)?.value || fetchForm.exchange || "okx";
+    const bar = document.getElementById(FETCH_BAR_SELECT_ID)?.value || fetchForm.bar;
+    const start = document.getElementById(FETCH_START_INPUT_ID)?.value || fetchForm.start;
+    const end = document.getElementById(FETCH_END_INPUT_ID)?.value || fetchForm.end;
+    return { ...fetchForm, exchange, bar, start, end, ...overrides };
+  }
+
+  function currentInstrumentQuery() {
+    return String(document.getElementById(FETCH_QUERY_INPUT_ID)?.value ?? instrumentQuery ?? "").trim();
+  }
+
+  function refreshInstruments(exchange = fetchForm.exchange || "okx", query = instrumentQuery) {
+    const cleanQuery = String(query || "").trim();
+    const cleanExchange = String(exchange || "okx").toLowerCase();
+    const searchSeq = ++marketDataInstrumentSearchSeq;
+    if (!cleanQuery) {
+      setInstruments([]);
+      setInstrumentSearch({ status: "idle", exchange: cleanExchange, query: "", message: "" });
+      return;
+    }
+    setInstrumentSearch({ status: "loading", exchange: cleanExchange, query: cleanQuery, message: "Searching..." });
+    window.API.fetchDataInstruments(cleanExchange, cleanQuery)
+      .then((rows) => {
+        if (searchSeq !== marketDataInstrumentSearchSeq) return;
+        setInstruments(rows || []);
+        setInstrumentSearch({
+          status: "done",
+          exchange: cleanExchange,
+          query: cleanQuery,
+          message: `${(rows || []).length} match${(rows || []).length === 1 ? "" : "es"}`,
+        });
+      })
+      .catch((err) => {
+        if (searchSeq !== marketDataInstrumentSearchSeq) return;
+        setInstruments([]);
+        setInstrumentSearch({
+          status: "error",
+          exchange: cleanExchange,
+          query: cleanQuery,
+          message: err?.message || "Search failed",
+        });
+      });
+  }
+
+  function searchInstruments() {
+    const form = currentFetchForm();
+    const query = currentInstrumentQuery();
+    setInstrumentQuery(query);
+    setFetchForm((f) => ({ ...f, exchange: form.exchange, bar: form.bar, start: form.start, end: form.end, symbols: [] }));
+    refreshInstruments(form.exchange, query);
+  }
+
   useConfigEffect(() => {
     refreshCoverage();
-    window.API.fetchDataInstruments().then((rows) => setInstruments(rows || [])).catch(() => setInstruments([]));
+    setInstruments([]);
+  }, []);
+
+  useConfigEffect(() => {
+    setInstruments([]);
+    setInstrumentSearch({ status: "idle", exchange: fetchForm.exchange || "okx", query: "", message: "" });
+  }, [fetchForm.exchange]);
+
+  useConfigEffect(() => {
+    const savedJobId = localStorage.getItem("activeDataFetchJobId");
+    if (!savedJobId || !window.API.fetchDataFetchStatus) {
+      window.API.fetchDataFetchJobs?.()
+        .then((jobs) => {
+          const running = (jobs || []).find((j) => ["running", "cancelling"].includes(j.status));
+          if (running?.job_id) {
+            localStorage.setItem("activeDataFetchJobId", running.job_id);
+            setFetchJob(running);
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+    let stopped = false;
+    let intervalId = null;
+    const poll = () => {
+      window.API.fetchDataFetchStatus(savedJobId).then((state) => {
+        if (stopped) return;
+        setFetchJob(state);
+        if (FETCH_TERMINAL_STATUSES.has(state.status)) {
+          localStorage.removeItem("activeDataFetchJobId");
+          refreshCoverage();
+          if (intervalId) clearInterval(intervalId);
+        }
+      }).catch(() => {
+        localStorage.removeItem("activeDataFetchJobId");
+        if (intervalId) clearInterval(intervalId);
+      });
+    };
+    poll();
+    intervalId = setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   function triggerFetch() {
-    const body = { ...fetchForm };
+    startFetch(currentFetchForm({ existing_only: false }));
+  }
+
+  function triggerExistingOnlyFetch() {
+    startFetch(currentFetchForm({ symbols: [], existing_only: true }));
+  }
+
+  function startFetch(body) {
+    const exchange = String(body.exchange || "okx").toLowerCase();
+    setFetchStartPending(true);
+    setFetchJob({
+      status: "running",
+      progress: 1,
+      exchange,
+      existing_only: !!body.existing_only,
+      symbols: body.symbols || [],
+      symbol_count: body.existing_only ? existingDbFetchSymbols.length : (body.symbols || []).length,
+      message: `Queueing ${exchange.toUpperCase()} ${body.existing_only ? "DB pair update" : "fetch"}...`,
+    });
     window.API.triggerDataFetch(body).then((job) => {
+      setFetchStartPending(false);
       setFetchJob(job);
+      localStorage.setItem("activeDataFetchJobId", job.job_id);
       const iv = setInterval(() => {
         window.API.fetchDataFetchStatus(job.job_id).then((s) => {
           setFetchJob(s);
-          if (s.status === "done" || s.status === "error") {
+          if (FETCH_TERMINAL_STATUSES.has(s.status)) {
             clearInterval(iv);
+            localStorage.removeItem("activeDataFetchJobId");
             refreshCoverage();
           }
-        }).catch(() => clearInterval(iv));
+        }).catch(() => {
+          clearInterval(iv);
+          localStorage.removeItem("activeDataFetchJobId");
+        });
       }, 2000);
+    }).catch((err) => {
+      setFetchStartPending(false);
+      setFetchJob({
+        status: "error",
+        progress: 0,
+        exchange,
+        message: err?.message || "Fetch request failed",
+      });
     });
+  }
+
+  function cancelFetchJob() {
+    if (!fetchJob?.job_id || fetchCancelPending || !window.API.cancelDataFetch) return;
+    setFetchCancelPending(true);
+    window.API.cancelDataFetch(fetchJob.job_id).then((job) => {
+      setFetchJob(job);
+      if (FETCH_TERMINAL_STATUSES.has(job.status)) {
+        localStorage.removeItem("activeDataFetchJobId");
+        refreshCoverage();
+      }
+    }).catch((err) => {
+      setFetchJob((job) => job ? {
+        ...job,
+        status: job.status || "running",
+        message: `Cancel failed: ${err?.message || "request failed"}`,
+      } : {
+        status: "error",
+        progress: 0,
+        message: `Cancel failed: ${err?.message || "request failed"}`,
+      });
+    }).finally(() => setFetchCancelPending(false));
   }
 
   function toggleFetchSymbol(symbol) {
@@ -1204,6 +1376,10 @@ function MarketDataCard() {
         : [...symbols, symbol];
       return { ...f, symbols: next };
     });
+  }
+
+  function toggleAllFetchSymbols() {
+    setFetchForm((f) => ({ ...f, symbols: allSearchResultsSelected ? [] : searchResultSymbols }));
   }
 
   function toggleExportSymbol(symbol) {
@@ -1260,7 +1436,7 @@ function MarketDataCard() {
         </div>
         <div class="row" style=${{ gap: 8 }}>
           <button class="btn sm" onClick=${() => setShowExportPanel((v) => !v)}>Export CSV</button>
-          <button class="btn sm" onClick=${() => setShowFetchPanel((v) => !v)}>+ Fetch from Exchange</button>
+          <button class="btn sm" onClick=${() => setShowFetchPanel((v) => !v)}>+ Add Pair Data</button>
         </div>
       </div>
 
@@ -1370,47 +1546,95 @@ function MarketDataCard() {
 
       ${showFetchPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Fetch 1m OHLCV from OKX</div>
-          <div class="grid" style=${{ gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Add Trading Pair Data to DB</div>
+          <div class="field" style=${{ maxWidth: 760 }}>
+            <div class="field-label">USDT swap trading pairs</div>
+            <div class="row" style=${{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <input
+                id=${FETCH_QUERY_INPUT_ID}
+                class="input mono"
+                style=${{ minWidth: 220, flex: "1 1 260px" }}
+                placeholder="Search BTC, ETH, PEPE..."
+                value=${instrumentQuery}
+                onInput=${(e) => setInstrumentQuery(e.currentTarget.value)}
+                onKeyDown=${(e) => {
+                  if (e.key === "Enter") searchInstruments();
+                }}
+              />
+              <button
+                class="btn sm"
+                onClick=${searchInstruments}
+              >
+                ${instrumentSearch.status === "loading" ? "Searching" : "Search"}
+              </button>
+              <button class="btn ghost sm" disabled=${!searchResultSymbols.length} onClick=${toggleAllFetchSymbols}>
+                ${allSearchResultsSelected ? "Deselect All" : "Select All"}
+              </button>
+            </div>
+            <div class="tbl-wrap" style=${{ maxHeight: 180 }}>
+              <table class="tbl" style=${{ fontSize: 12 }}>
+                <tbody>
+                  ${instruments.length ? instruments.map((inst) => html`
+                    <tr key=${inst.inst_id}>
+                      <td style=${{ width: 28 }}>
+                        <input
+                          type="checkbox"
+                          checked=${(fetchForm.symbols || []).includes(inst.inst_id)}
+                          onChange=${() => toggleFetchSymbol(inst.inst_id)}
+                        />
+                      </td>
+                      <td class="mono">${inst.inst_id}</td>
+                      <td class="mono" style=${{ color: "var(--text-subtle)" }}>${inst.native_symbol && inst.native_symbol !== inst.inst_id ? inst.native_symbol : inst.exchange || ""}</td>
+                      <td class="num mono" style=${{ color: "var(--text-subtle)" }}>${inst.list_date || "-"}</td>
+                    </tr>
+                  `) : html`
+                    <tr>
+                      <td colSpan=${4} class="field-hint" style=${{ padding: 12 }}>
+                        ${instrumentSearch.status === "loading"
+                          ? `Searching ${(fetchForm.exchange || "okx").toUpperCase()}...`
+                          : instrumentSearch.status === "error"
+                            ? `Search failed: ${instrumentSearch.message}`
+                            : instrumentSearch.status === "done" && instrumentSearch.query
+                              ? `No ${(instrumentSearch.exchange || fetchForm.exchange || "okx").toUpperCase()} matches for ${instrumentSearch.query || fetchSearchQuery}.`
+                              : "Search exchange pairs, or update existing DB pairs only."}
+                      </td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+            <div class="field-hint">
+              ${(fetchForm.symbols || []).length} selected from search - ${existingDbFetchSymbols.length} DB trading pairs available for ${fetchForm.bar}
+            </div>
+          </div>
+          <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>
             <div class="field">
-              <div class="field-label">USDT swap trading pairs</div>
-              <div class="tbl-wrap" style=${{ maxHeight: 160 }}>
-                <table class="tbl" style=${{ fontSize: 12 }}>
-                  <tbody>
-                    ${(instruments.length ? instruments : MOCK.SYMBOLS.filter((s) => s.includes("SWAP")).map((s) => ({ inst_id: s }))).map((inst) => html`
-                      <tr key=${inst.inst_id}>
-                        <td style=${{ width: 28 }}>
-                          <input
-                            type="checkbox"
-                            checked=${(fetchForm.symbols || []).includes(inst.inst_id)}
-                            onChange=${() => toggleFetchSymbol(inst.inst_id)}
-                          />
-                        </td>
-                        <td class="mono">${inst.inst_id}</td>
-                        <td class="num mono" style=${{ color: "var(--text-subtle)" }}>${inst.list_date || "-"}</td>
-                      </tr>
-                    `)}
-                  </tbody>
-                </table>
-              </div>
-              <div class="field-hint">${(fetchForm.symbols || []).length} selected - listing dates from OKX instruments</div>
+              <div class="field-label">Exchange</div>
+              <select id=${FETCH_EXCHANGE_SELECT_ID} class="select mono" value=${fetchForm.exchange || "okx"}
+                onChange=${(e) => {
+                  setInstruments([]);
+                  setFetchForm((f) => ({ ...f, exchange: e.target.value, symbols: [] }));
+                }}>
+                <option value="okx">OKX</option>
+                <option value="binance">Binance</option>
+              </select>
             </div>
             <div class="field">
               <div class="field-label">Bar</div>
-              <select class="select mono" value=${fetchForm.bar}
+              <select id=${FETCH_BAR_SELECT_ID} class="select mono" value=${fetchForm.bar}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, bar: e.target.value }))}>
                 ${["1m", "5m", "15m", "1H", "4H", "1D"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
             </div>
             <div class="field">
               <div class="field-label">Start</div>
-              <input class="input mono" type="date" value=${fetchForm.start}
+              <input id=${FETCH_START_INPUT_ID} class="input mono" type="date" value=${fetchForm.start}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, start: e.target.value }))} />
               ${latestSelectedListing && html`<div class="field-hint">trading pairs listed after start auto-fetch from their listing date; latest selected listing: ${latestSelectedListing}</div>`}
             </div>
             <div class="field">
               <div class="field-label">End</div>
-              <input class="input mono" type="date" value=${fetchForm.end} max=${yesterday}
+              <input id=${FETCH_END_INPUT_ID} class="input mono" type="date" value=${fetchForm.end} max=${yesterday}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, end: e.target.value > yesterday ? yesterday : e.target.value }))} />
             </div>
           </div>
@@ -1422,14 +1646,28 @@ function MarketDataCard() {
               <${ProgressStage} job=${fetchJob} />
             </div>
           `}
-          <button class="btn primary sm" style=${{ marginTop: 12 }}
-            disabled=${fetchJob?.status === "running" || !(fetchForm.symbols || []).length}
-            onClick=${triggerFetch}>
-            Fetch selected data
-          </button>
+          <div class="row" style=${{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button class="btn primary sm"
+              disabled=${fetchStartPending || fetchBusy || !(fetchForm.symbols || []).length || fetchForm.start >= fetchForm.end}
+              onClick=${triggerFetch}>
+              Confirm and Fetch to DB
+            </button>
+            <button class="btn sm"
+              disabled=${fetchStartPending || fetchBusy || !existingDbFetchSymbols.length || fetchForm.start >= fetchForm.end}
+              onClick=${triggerExistingOnlyFetch}>
+              Update DB Pairs Only (${existingDbFetchSymbols.length})
+            </button>
+            ${fetchCanCancel && html`
+              <button class="btn ghost sm"
+                disabled=${fetchCancelPending || fetchJob.status === "cancelling"}
+                onClick=${cancelFetchJob}>
+                ${fetchCancelPending || fetchJob.status === "cancelling" ? "Cancelling..." : "Cancel"}
+              </button>
+            `}
+          </div>
           ${fetchJob?.results?.length > 0 && html`
             <div class="field-hint" style=${{ marginTop: 8 }}>
-              ${fetchJob.results.map((r) => `${r.symbol}: ${r.rows?.toLocaleString?.() ?? r.rows} rows from ${r.effective_start || r.list_date || "-"}`).join(" - ")}
+              ${fetchJob.results.map((r) => `${(r.exchange || fetchForm.exchange || "").toUpperCase()} ${r.symbol}${r.native_symbol && r.native_symbol !== r.symbol ? ` (${r.native_symbol})` : ""}: ${r.rows?.toLocaleString?.() ?? r.rows} rows from ${r.effective_start || r.list_date || "-"}`).join(" - ")}
             </div>
           `}
         </div>

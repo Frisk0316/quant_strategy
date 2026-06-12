@@ -155,7 +155,7 @@ Deployment readiness:
 | Historical backtest | 必須有可重現 artifact 與 `validation_status`；`in_sample` 或 `naive_backtest` 不得勾選此 gate、不得引用為 edge evidence、不得作為 promotion 依據。 |
 | Walk-forward 或 CPCV | 必須由 `validation_status: walk_forward` 或 `validation_status: cpcv` artifact 滿足；不得有 train/test leakage。CPCV 必須誠實申報 `n_trials`，且 DSR >= 0.95、PSR >= 0.95。 |
 | Idealized fill 排除 | 任何 `result.validation.fill_all_signals == true`（或同義的 `result.validation.idealized_fill == true`）的 artifact，不論 `validation_status` 為何，皆 **不得勾選任何 Deployment Gate stage**、不得引用為 edge evidence、不得作為 promotion 依據。`fill_all_signals` 是 research-only 的 capacity / execution sensitivity 工具，禁止當作 live readiness 證據；理由與排除清單見 `research/strategy_synthesis.md#validation-status-convention`。 |
-| Differential validation | 技術指標策略（`ma_crossover`、`ema_crossover`、`macd_crossover`）必須通過：在 `results/<run_id>/validation/<validation_id>/validation_result.json` 中，至少有一個 reference engine（vectorbt 或 backtrader）回報 `engines.<engine>.comparison.signal_logic.status == "PASS"` 且 `engines.<engine>.comparison.signal_logic.actionable_mismatch_count == 0`。Scope 限定 **signal-logic only**：indicator/signal 方向與時序差異列入；PnL、equity、metric mismatches 為 advisory，不阻擋本 gate。Advisory scope（`trade_execution` / `pnl_semantics` / `metrics`）mismatch 不自動 FAIL Differential validation gate，但 reviewer 可在 promotion ADR 引用非零 `actionable_mismatch_counts` 作為拒絕或暫緩理由；advisory 表示「不自動 gate fail」，不是「可忽略」。`funding_carry`、`pairs_trading`、`as_market_maker`、`obi_market_maker`、`ohlcv_rotation`、`daily_winner` 及 external-feature 策略 (`cme_gap_fill`、`fear_greed_sentiment` 等)：not applicable；promotion ADR 必須明文記載「no external reference engine applies」並說明替代驗證來源（內部 regression test、shadow trading、analyzer 對照）。**無 override**：FAIL 為硬性阻擋，不接受 reviewer attestation 推翻；如需排除須由 user 顯式批准並更新本 gate 條文。**追溯適用**：適用於所有現存與未來的技術指標策略 artifact；現存 artifact 若未跑 differential validation、或未產出上述 signal-logic 欄位，視同 FAIL。本 gate 與「Idealized fill 排除」、下節「ct_val 來源檢查」皆為獨立必過項目，互不取代。 |
+| Differential validation | 每個策略都必須在 `backtesting/differential_validation.py::REFERENCE_VALIDATION_CONTRACTS` 宣告至少一條可攜到外部 reference engine 的驗證路徑。技術指標策略（`ma_crossover`、`ema_crossover`、`macd_crossover`）目前已實作 vectorbt / backtrader signal-logic reference：在 `results/<run_id>/validation/<validation_id>/validation_result.json` 中，至少有一個 reference engine（vectorbt 或 backtrader）回報 `engines.<engine>.comparison.signal_logic.status == "PASS"` 且 `engines.<engine>.comparison.signal_logic.actionable_mismatch_count == 0`。Scope 限定 **signal-logic only**：indicator/signal 方向與時序差異列入；PnL、equity、metric mismatches 為 advisory，不阻擋本 gate。Advisory scope（`trade_execution` / `pnl_semantics` / `metrics`）mismatch 不自動 FAIL Differential validation gate，但 reviewer 可在 promotion ADR 引用非零 `actionable_mismatch_counts` 作為拒絕或暫緩理由；advisory 表示「不自動 gate fail」，不是「可忽略」。非技術策略不得再以永久 `not applicable` 結案；vectorbt/backtrader 的 artifact signal replay 只能證明外部引擎可重播 artifact signals 與 OHLCV 時間軸，`reference_role: advisory`，不得讓 `portable_validation_gate` 通過。若完整 reference adapter 尚未實作，`portable_validation_gate.passed` 必須為 `false`，並以 `adapter_required_engines` 或 `blocked_reason: only_advisory_reference_replay_completed` 標示 blocking gap；promotion ADR 必須把它列為 blocking gap 或由使用者顯式批准並更新本 gate 條文。**無 override**：FAIL 為硬性阻擋，不接受 reviewer attestation 推翻；如需排除須由 user 顯式批准並更新本 gate 條文。**追溯適用**：適用於所有現存與未來策略 artifact；現存 artifact 若未跑 differential validation、未產出必要欄位，或 `portable_validation_gate.passed != true`，不得作為 promotion evidence。本 gate 與「Idealized fill 排除」、下節「ct_val 來源檢查」皆為獨立必過項目，互不取代。 |
 | Replay 或 shadow 檢查 | 必須使用同碼 replay 或 shadow 對照，並保留 fill log、order log、equity curve、fees、funding cashflow。 |
 | OKX demo | 需要使用者批准，且 demo 期間風控、告警、rollback 可驗證。 |
 | 小資金 live | 需要使用者再次批准，使用明確資金上限與 kill switch。 |
@@ -193,6 +193,13 @@ Deployment readiness:
 
 ### Deployment gate：ct_val 來源檢查
 
+### Differential validation：資料來源與結論輸出
+
+`backtesting/differential_validation.py` 必須在每次 validation artifact 中輸出 `source_data_validation` 與 `validation_conclusion`。
+`source_data_validation` 至少檢查 artifact 層級的 `price_series.csv` OHLCV 結構、必要 artifact 是否存在、funding artifact 是否存在（策略需要時）、funding cashflow 公式、external-feature observations（策略需要時）、以及 `ct_val` provenance 欄位。
+若未設定 `DIFF_VALIDATION_ENABLE_DB_PARITY=1` 與 DSN，`checks.db_parity.status`、需要 funding 的 `checks.funding_db_parity.status`、以及需要外部資料的 `checks.external_observations_db_parity.status` 必須明確為 `SKIP`，不得宣稱 DB parity 已通過；目前 DB parity 覆蓋 canonical OHLCV、策略需要的 funding rates、以及策略需要的 external_observations。
+`validation_conclusion.status == "ADVISORY_ONLY"` 表示外部引擎已能重播/匯出 advisory evidence，但仍不是 promotion evidence。
+
 任何 SWAP backtest 在進入 live / shadow / demo gate 前，**必須通過 ct_val provenance gate**：
 
 - 來源：`result.validation.ct_val_sources` 與 `result.validation.ct_val_all_authoritative`（自 2026-05 起由 `backtesting.replay._attach_ct_val_provenance()` 寫入 result.json）。
@@ -221,8 +228,9 @@ Deployment readiness:
 1. **後端 `routes_backtest.py`**：在 `allowed` 集合加入策略名稱，實作對應的 `_run_<strategy>_job` 函式，確保 `result.json` 符合 ADR-0002 schema（必含 `run_id`、`created_at`、`strategies`、`symbols`、`bar`、`start`、`end`、`metrics`、`artifacts`，metrics 必含 `total_return`、`sharpe`、`max_drawdown`、`order_count`、`fill_rate`、`bankrupt`）。
 2. **前端 `data.js`**：在 `STRATEGIES` 陣列加入策略描述物件（含 `id`, `name`, `tag`, `desc`）。
 3. **前端 `view-config.js`**：加入對應的 UI 控制項（universe、bar、參數欄位等），並在 `StrategyParams` 加入說明文字。
+4. **Reference portability contract**：在 `backtesting/differential_validation.py::REFERENCE_VALIDATION_CONTRACTS` 宣告此策略可由哪些 reference engine 驗證、目前狀態是 `implemented`、`adapter_required` 或 `not_targeted`、需要哪些 artifact，以及限制。新增策略若缺此 contract，單元測試必須失敗，且不得進入 review 或 demo/shadow 流程。
 
-不符合上述三點的策略，視為未完成，不得進入 review 或 demo/shadow 流程。
+不符合上述四點的策略，視為未完成，不得進入 review 或 demo/shadow 流程。
 
 ### 驗證專用策略
 

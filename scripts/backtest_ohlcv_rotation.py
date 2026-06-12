@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -90,6 +91,78 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="results/ohlcv_rotation")
 
     return parser.parse_args()
+
+
+def _utc_fields(value):
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return int(ts.timestamp() * 1000), ts.isoformat().replace("+00:00", "Z")
+
+
+def _write_price_series_artifact(out_dir: Path, dfs: dict[str, pd.DataFrame]) -> None:
+    rows = []
+    for inst_id, df in dfs.items():
+        if df is None or df.empty:
+            continue
+        for ts_value, row in df.sort_index().iterrows():
+            ts_ms, dt = _utc_fields(ts_value)
+            rows.append({
+                "ts": ts_ms,
+                "datetime": dt,
+                "inst_id": inst_id,
+                "open": float(row.get("open", np.nan)),
+                "high": float(row.get("high", np.nan)),
+                "low": float(row.get("low", np.nan)),
+                "close": float(row.get("close", np.nan)),
+                "vol": float(row.get("vol", row.get("volume", 0.0))),
+            })
+    pd.DataFrame(rows, columns=["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"]).to_csv(
+        out_dir / "price_series.csv",
+        index=False,
+    )
+
+
+def _write_signal_artifact(
+    out_dir: Path,
+    target_weights: pd.DataFrame,
+    dfs: dict[str, pd.DataFrame],
+) -> None:
+    close = pd.DataFrame({inst: df["close"] for inst, df in dfs.items() if df is not None and not df.empty})
+    weights = target_weights.sort_index()
+    aligned_close = close.reindex(weights.index, method="ffill") if not close.empty else pd.DataFrame()
+    prev = pd.Series(0.0, index=weights.columns)
+    rows = []
+    for ts_value, curr in weights.iterrows():
+        ts_ms, dt = _utc_fields(ts_value)
+        for inst_id in weights.columns:
+            before = float(prev.get(inst_id, 0.0) or 0.0)
+            after = float(curr.get(inst_id, 0.0) or 0.0)
+            side = ""
+            if before <= 0.0 and after > 0.0:
+                side = "buy"
+            elif before > 0.0 and after <= 0.0:
+                side = "sell"
+            if not side:
+                continue
+            fair_value = np.nan
+            if not aligned_close.empty and ts_value in aligned_close.index and inst_id in aligned_close.columns:
+                fair_value = float(aligned_close.loc[ts_value, inst_id])
+            rows.append({
+                "ts": ts_ms,
+                "datetime": dt,
+                "strategy": "ohlcv_rotation",
+                "inst_id": inst_id,
+                "side": side,
+                "fair_value": fair_value,
+            })
+        prev = curr
+    pd.DataFrame(rows, columns=["ts", "datetime", "strategy", "inst_id", "side", "fair_value"]).to_csv(
+        out_dir / "signals.csv",
+        index=False,
+    )
 
 
 def main() -> None:
@@ -187,6 +260,8 @@ def main() -> None:
     drawdown_df.index.name = "ts"
     drawdown_df.to_csv(out_dir / "drawdown.csv")
 
+    _write_price_series_artifact(out_dir, dfs)
+    _write_signal_artifact(out_dir, result.target_weights, dfs)
     result.target_weights.to_csv(out_dir / "target_weights.csv")
     result.positions.to_csv(out_dir / "positions.csv")
     result.trades.to_csv(out_dir / "trades.csv", index=False)

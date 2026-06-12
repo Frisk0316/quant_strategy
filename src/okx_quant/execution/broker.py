@@ -1,6 +1,6 @@
 """
 Broker abstraction — same strategy code works for backtesting and live.
-Extracted from §5.4 of Crypto_Quant_Plan_v1.md.
+Extracted from §5.4 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 OKXBroker: real exchange via python-okx TradeAPI
 SimBroker: immediate simulated fill at mid-price with configurable slippage

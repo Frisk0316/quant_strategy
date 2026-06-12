@@ -2,7 +2,7 @@
 BTC-ETH Pairs Trading Strategy (Strategy 4).
 Kalman filter dynamic hedge ratio + OU spread z-score.
 
-Extracted from §1.6 of Crypto_Quant_Plan_v1.md.
+Extracted from §1.6 of docs/archive/Crypto_Quant_Plan_v1.md.
 
 Entry: |z| > 2.0  (buy laggard, sell leader)
 Exit:  |z| < 0.3  (close both legs)
@@ -27,7 +27,7 @@ from okx_quant.strategies.base import Strategy
 def estimate_ou(spread: pd.Series) -> dict:
     """
     Estimate Ornstein-Uhlenbeck parameters via AR(1) regression.
-    From §1.6 of Crypto_Quant_Plan_v1.md.
+    From §1.6 of docs/archive/Crypto_Quant_Plan_v1.md.
 
     Returns:
         dict with theta, mu, sigma, half_life in observed bars
