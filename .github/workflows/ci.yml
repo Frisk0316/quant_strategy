@@ -29,3 +29,34 @@ jobs:
 
       - name: Run unit tests
         run: pytest tests/unit -v
+
+  docs:
+    name: Documentation checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Doc lifecycle metadata and feature-map links
+        run: |
+          python scripts/docs/check_doc_metadata.py
+          python scripts/docs/check_feature_map_links.py
+
+      - name: Doc impact matrix (strict on PRs, advisory on push)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            git fetch --no-tags --prune origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            DOC_IMPACT_BASE="origin/${BASE_REF}" python scripts/docs/check_doc_impact.py --strict
+          else
+            python scripts/docs/check_doc_impact.py
+          fi

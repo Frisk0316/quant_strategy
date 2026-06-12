@@ -140,6 +140,17 @@ Full verification, including DB/data-dependent checks:
 make verify-full
 ```
 
+Doc Sync Harness check (business-rule changes must carry a Change Manifest and
+the docs listed in `docs/DOC_IMPACT_MATRIX.md`):
+
+```bash
+make docs-impact                              # advisory: warnings, exit 0
+DOC_IMPACT_BASE=origin/main python scripts/docs/check_doc_impact.py --strict   # enforce
+```
+
+CI runs `docs-impact` strict on pull requests (`.github/workflows/ci.yml`,
+`docs` job) and advisory on push to `main`.
+
 ## Rollback
 
 For scoped docs/harness changes:

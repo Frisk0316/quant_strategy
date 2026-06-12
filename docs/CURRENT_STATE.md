@@ -20,25 +20,28 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Stand up the Doc Sync, Intelligence, and Context Resilience
-  harnesses (docs/process scaffolding) without touching trading-core behavior.
+- **Current goal:** Doc Sync, Intelligence, and Context Resilience harnesses are
+  in place; `docs-impact` is now wired into CI. No trading-core behavior touched.
 - **Current branch:** `feature/chart-ux-overhaul`.
-- **Last known good state:** repo builds; `make docs-check` is the doc gate;
-  `make docs-impact` is newly added (advisory).
-- **In progress:** harness documents and the doc-impact check.
-- **Active risks:** several pre-existing uncommitted changes in the working tree
-  (backtesting, scripts, src) are unrelated to this harness work — do not
-  overwrite them.
+- **Last known good state:** harness scaffolding committed (`7d7128a`) and
+  pushed; `make verify` green. `docs-impact` runs strict on PRs, advisory on
+  push to `main` (`.github/workflows/ci.yml` `docs` job).
+- **In progress:** none for the harness; CI wiring + PR template + runbook update
+  are the active uncommitted change.
+- **Active risks:** the in-flight backtest-validation work (`backtesting/`,
+  `scripts/run_replay_backtest.py`, `tests/`) is a business-rule change (A5/A9)
+  and will need its own Change Manifest before its PR can pass strict
+  `docs-impact`. Do not overwrite that work — it is another session's.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, DB schema, API and
   frontend behavior, deployment gates. This task is docs/process only.
 
 ## Next steps
 
-- Run `make docs-check`, `make docs-impact`, and `make verify`; record results
-  in the session handoff.
-- Adopt the harnesses in the next real change (create the first Change Manifest,
-  first Context Pack for the active feature).
+- The backtest-validation session must add a Change Manifest (A5/A9) so its PR
+  passes the new strict CI gate.
+- Decide via branch protection whether the `docs` CI job is a required check.
+- Backfill lifecycle metadata on the 11 pre-existing metadata-less docs.
 
 ## How to update
 
