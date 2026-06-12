@@ -27,17 +27,6 @@ import numpy as np
 import pandas as pd
 
 from okx_quant.analytics.performance import max_drawdown, sharpe
-from okx_quant.signals.obi_ofi import (
-    book_to_l1_snap,
-    compute_mlofi_increment,
-    compute_obi_features,
-    compute_ofi,
-    ewma_ofi,
-)
-from okx_quant.signals.vpin import compute_vpin, vpin_toxicity_controls
-from okx_quant.strategies.as_market_maker import _bounded_fair_value, as_quote
-
-
 TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 ENGINE_NAMES = {"vectorbt", "backtrader", "nautilus"}
 SIGNAL_POINT_ENGINE_ORDER = ["vectorbt", "backtrader", "nautilus"]
@@ -286,60 +275,6 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
                 "role": "advisory",
                 "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "external_observations.csv"],
                 "limitation": "Exports Nautilus-compatible CME gap signal evidence only; full Nautilus feature feed and matching engine execution are not run.",
-            },
-        },
-    },
-    "as_market_maker": {
-        "strategy_class": "execution_sensitive_market_maker",
-        "minimum_reference_engines": 1,
-        "portable_validation_required": True,
-        "engines": {
-            "nautilus": {
-                "status": "implemented",
-                "role": "advisory",
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "order_log.csv", "fills.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Exports Nautilus-compatible advisory replay evidence only; reference_full still needs Nautilus catalog/L2/trade data and queue/fill model mapping.",
-            },
-            "backtrader": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "trades.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Independently recomputes book-derived AS quote signal timing and target quotes; queue-aware fills, VPIN trade-tick recalculation, and PnL remain advisory.",
-            },
-            "vectorbt": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Independently recomputes book-derived AS quote signal timing and target quotes; vectorbt portfolio semantics, queue fills, VPIN trade-tick recalculation, and PnL remain advisory.",
-            },
-        },
-    },
-    "obi_market_maker": {
-        "strategy_class": "execution_sensitive_market_maker",
-        "minimum_reference_engines": 1,
-        "portable_validation_required": True,
-        "engines": {
-            "nautilus": {
-                "status": "implemented",
-                "role": "advisory",
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "order_log.csv", "fills.csv", "book_snapshots"],
-                "limitation": "Exports Nautilus-compatible advisory replay evidence only; reference_full still needs Nautilus catalog/L2 data, OBI/OFI replay, and queue/fill model mapping.",
-            },
-            "backtrader": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "trades.csv", "book_snapshots"],
-                "limitation": "Independently recomputes OBI/OFI/MLOFI quote signal timing and target quotes; queue-aware fills and PnL remain advisory.",
-            },
-            "vectorbt": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "book_snapshots"],
-                "limitation": "Independently recomputes OBI/OFI/MLOFI quote signal timing and target quotes; vectorbt portfolio semantics, queue fills, and PnL remain advisory.",
             },
         },
     },
@@ -1506,20 +1441,12 @@ def _external_observations_required(bundle: ArtifactBundle, required_artifacts: 
 
 def _book_snapshots_required(bundle: ArtifactBundle, required_artifacts: list[str]) -> bool:
     required = set(required_artifacts)
-    return (
-        bundle.primary_strategy in {"as_market_maker", "obi_market_maker"}
-        or "book_snapshots" in required
-        or "book_snapshots.csv" in required
-    )
+    return "book_snapshots" in required or "book_snapshots.csv" in required
 
 
 def _trade_ticks_required(bundle: ArtifactBundle, required_artifacts: list[str]) -> bool:
     required = set(required_artifacts)
-    return (
-        bundle.primary_strategy == "as_market_maker"
-        or "trade_ticks" in required
-        or "trade_ticks.csv" in required
-    )
+    return "trade_ticks" in required or "trade_ticks.csv" in required
 
 
 def _external_dataset_id(bundle: ArtifactBundle) -> str:
@@ -2938,8 +2865,6 @@ class VectorBTReferenceAdapter(ReferenceAdapter):
             return _funding_carry_reference_result(bundle, self.engine)
         if strategy in {"fear_greed_sentiment", "cme_gap_fill"}:
             return _external_feature_reference_result(bundle, self.engine)
-        if strategy in {"as_market_maker", "obi_market_maker"}:
-            return _market_maker_reference_result(bundle, self.engine)
 
         import vectorbt as vbt
 
@@ -3035,8 +2960,6 @@ class BacktraderReferenceAdapter(ReferenceAdapter):
             return _funding_carry_reference_result(bundle, self.engine)
         if strategy in {"fear_greed_sentiment", "cme_gap_fill"}:
             return _external_feature_reference_result(bundle, self.engine)
-        if strategy in {"as_market_maker", "obi_market_maker"}:
-            return _market_maker_reference_result(bundle, self.engine)
 
         import backtrader as bt
 
@@ -3110,10 +3033,6 @@ class NautilusReferenceAdapter(ReferenceAdapter):
             signals, trades, equity, price_input = _external_feature_reference_components(bundle)
             reference_mode = f"nautilus_{bundle.primary_strategy}_recompute_export"
             scope_limit = "external feature signal recompute/export only; no Nautilus feature feed or matching engine execution"
-        elif bundle.primary_strategy in {"as_market_maker", "obi_market_maker"}:
-            signals, trades, equity, price_input = _market_maker_reference_components(bundle)
-            reference_mode = f"nautilus_{bundle.primary_strategy}_quote_recompute_export"
-            scope_limit = "market-maker book-derived quote signal recompute/export only; no Nautilus catalog or matching engine execution"
         else:
             signals = _artifact_reference_signals(bundle)
             trades, equity = _simulate_long_flat_trades(bundle, signals)
@@ -3632,73 +3551,6 @@ def _nautilus_price_frame_for_smoke(
     return frame.sort_values(["_dt", "_inst_id"]).reset_index(drop=True)
 
 
-def _market_maker_reference_result(bundle: ArtifactBundle, engine: str) -> ReferenceResult:
-    snapshot_path = _resolve_artifact_path(bundle.run_dir, "book_snapshots")
-    if snapshot_path is None:
-        return ReferenceResult(
-            engine=engine,
-            status="SKIP",
-            reason="book_snapshots.csv is required for market-maker quote reference recompute",
-            reference_role="skipped_dependency",
-            categories=["unsupported_reference_scope"],
-            metadata={"required_artifact": "book_snapshots.csv"},
-        )
-    signals, trades, equity, price_input = _market_maker_reference_components(bundle)
-    return ReferenceResult(
-        engine=engine,
-        status="OK",
-        reason=(
-            "book-derived quote signal comparison is strict; queue-aware fills, "
-            "exchange matching, PnL, and metrics remain advisory"
-        ),
-        reference_role="reference_signals_only",
-        signals=signals,
-        trades=trades,
-        equity_curve=equity,
-        metrics=neutral_metrics(equity, bundle.periods),
-        metadata={
-            "strategy": bundle.primary_strategy,
-            "reference_mode": f"{bundle.primary_strategy}_book_quote_recompute",
-            "price_input": price_input,
-            "signal_position_source": _signal_position_source(bundle),
-            "scope_limit": (
-                "book-derived quote signal timing and target quote recompute only; "
-                "queue fills, matching-engine execution, and PnL are advisory"
-            ),
-            "required_artifacts": ["book_snapshots.csv", "signals.csv", "price_series.csv"],
-            "timestamp_throttle": "event_ts_ms",
-        },
-    )
-
-
-def _market_maker_reference_components(
-    bundle: ArtifactBundle,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    if bundle.primary_strategy == "as_market_maker":
-        signals = _as_market_maker_reference_signals(bundle)
-    elif bundle.primary_strategy == "obi_market_maker":
-        signals = _obi_market_maker_reference_signals(bundle)
-    else:
-        signals = pd.DataFrame(columns=_market_maker_signal_columns())
-    trades, equity = _simulate_long_flat_trades(bundle, signals)
-    return signals, trades, equity, _reference_price_input_metadata(bundle)
-
-
-def _market_maker_signal_columns() -> list[str]:
-    return [
-        "ts",
-        "datetime",
-        "strategy",
-        "inst_id",
-        "side",
-        "strength",
-        "fair_value",
-        "target_bid",
-        "target_ask",
-        "metadata",
-    ]
-
-
 def _book_snapshot_events(bundle: ArtifactBundle) -> list[dict[str, Any]]:
     path = _resolve_artifact_path(bundle.run_dir, "book_snapshots")
     if path is None:
@@ -3743,39 +3595,6 @@ def _book_snapshot_events(bundle: ArtifactBundle) -> list[dict[str, Any]]:
     return events
 
 
-def _fill_inventory_events(bundle: ArtifactBundle, strategy: str) -> list[dict[str, Any]]:
-    source = bundle.fills if not bundle.fills.empty else bundle.trades
-    if source.empty:
-        return []
-    work = source.copy()
-    if "strategy" in work.columns:
-        work = work[work["strategy"].astype(str) == strategy]
-    if work.empty:
-        return []
-    qty_col = "fill_sz" if "fill_sz" in work.columns else "qty"
-    if qty_col not in work.columns or "side" not in work.columns:
-        return []
-    if "state" in work.columns:
-        state = work["state"].astype(str).str.lower()
-        work = work[state.isin(["filled", "partially_filled", ""])]
-    rows: list[dict[str, Any]] = []
-    for _, row in work.iterrows():
-        dt = _to_datetime(row.get("datetime", row.get("ts")))
-        qty = _safe_float(row.get(qty_col), float("nan"))
-        if pd.isna(dt) or not math.isfinite(qty) or qty <= 0:
-            continue
-        side = str(row.get("side") or "").lower()
-        if side not in {"buy", "sell"}:
-            continue
-        rows.append({
-            "dt": dt,
-            "inst_id": str(row.get("inst_id") or ""),
-            "delta": qty if side == "buy" else -qty,
-        })
-    rows.sort(key=lambda item: item["dt"])
-    return rows
-
-
 def _trade_tick_frame(bundle: ArtifactBundle) -> pd.DataFrame:
     path = _resolve_artifact_path(bundle.run_dir, "trade_ticks")
     if path is None:
@@ -3794,304 +3613,6 @@ def _trade_tick_frame(bundle: ArtifactBundle) -> pd.DataFrame:
     if work.empty:
         return pd.DataFrame(columns=["dt", "inst_id", "trade_id", "price", "size", "side"])
     return work[["dt", "inst_id", "trade_id", "price", "size", "side"]].sort_values("dt").reset_index(drop=True)
-
-
-def _apply_inventory_events(
-    inventory_events: list[dict[str, Any]],
-    inventory_index: int,
-    inventory: dict[str, float],
-    dt: pd.Timestamp,
-) -> int:
-    while inventory_index < len(inventory_events) and inventory_events[inventory_index]["dt"] < dt:
-        event = inventory_events[inventory_index]
-        inst_id = event["inst_id"]
-        inventory[inst_id] = inventory.get(inst_id, 0.0) + float(event["delta"])
-        inventory_index += 1
-    return inventory_index
-
-
-def _target_quote(value: Any) -> float | None:
-    val = _safe_float(value, float("nan"))
-    return val if math.isfinite(val) else None
-
-
-def _quote_signal_row(
-    *,
-    ts: int,
-    dt: pd.Timestamp,
-    strategy: str,
-    inst_id: str,
-    strength: float,
-    fair_value: float,
-    target_bid: float | None,
-    target_ask: float | None,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "ts": ts,
-        "datetime": _iso(dt),
-        "strategy": strategy,
-        "inst_id": inst_id,
-        "side": "neutral",
-        "strength": strength,
-        "fair_value": fair_value,
-        "target_bid": target_bid,
-        "target_ask": target_ask,
-        "metadata": metadata,
-    }
-
-
-def _obi_market_maker_reference_signals(bundle: ArtifactBundle) -> pd.DataFrame:
-    params = bundle.strategy_params("obi_market_maker")
-    symbols = [str(symbol) for symbol in params.get("symbols", bundle.symbols or []) if symbol]
-    symbol_set = set(symbols) if symbols else set(bundle.symbols)
-    depth = int(params.get("depth", 5))
-    alpha_decay = float(params.get("alpha_decay", 0.5))
-    ewma_halflife_ms = float(params.get("ewma_halflife_ms", 200.0))
-    obi_threshold = float(params.get("obi_threshold", 0.15))
-    c_alpha = float(params.get("c_alpha", 100.0))
-    mlofi_weight = float(params.get("mlofi_weight", 1.0))
-    refresh_ms = float(params.get("refresh_interval_ms", 500.0))
-    max_inventory = float(params.get("max_inventory", 50))
-    prev_snap: dict[str, dict | None] = {}
-    prev_book: dict[str, tuple[np.ndarray, np.ndarray] | None] = {}
-    ofi_series: dict[str, deque] = {}
-    last_quote_ts: dict[str, int] = {}
-    inventory = {symbol: 0.0 for symbol in symbol_set}
-    inventory_events = _fill_inventory_events(bundle, "obi_market_maker")
-    inventory_index = 0
-    rows: list[dict[str, Any]] = []
-    for event in _book_snapshot_events(bundle):
-        inst_id = event["inst_id"]
-        if symbol_set and inst_id not in symbol_set:
-            continue
-        inventory_index = _apply_inventory_events(inventory_events, inventory_index, inventory, event["dt"])
-        last_ts = last_quote_ts.get(inst_id)
-        if last_ts is not None and event["ts"] - last_ts < refresh_ms:
-            continue
-        last_quote_ts[inst_id] = event["ts"]
-        bids = event["bids"]
-        asks = event["asks"]
-        bids_list = [(float(bids[i, 0]), float(bids[i, 1])) for i in range(len(bids)) if bids[i, 0] > 0]
-        asks_list = [(float(asks[i, 0]), float(asks[i, 1])) for i in range(len(asks)) if asks[i, 0] > 0]
-        if not bids_list or not asks_list:
-            continue
-        features = compute_obi_features(bids_list, asks_list, depth=depth, alpha=alpha_decay)
-        mid = float(features["mid"])
-        spread = float(features["spread"])
-        if mid <= 0:
-            continue
-        curr_snap = book_to_l1_snap(bids, asks)
-        if prev_snap.get(inst_id) is not None:
-            ofi_series.setdefault(inst_id, deque(maxlen=50)).append(compute_ofi(prev_snap[inst_id], curr_snap))
-        prev_snap[inst_id] = curr_snap
-        mlofi_signal = 0.0
-        if prev_book.get(inst_id) is not None:
-            prev_bids, prev_asks = prev_book[inst_id]
-            mlofi_signal = compute_mlofi_increment(
-                prev_bids,
-                prev_asks,
-                bids,
-                asks,
-                depth=depth,
-                decay_alpha=alpha_decay,
-                normalize=True,
-            )
-        prev_book[inst_id] = (bids.copy(), asks.copy())
-        ewma_ofi_val = ewma_ofi(np.array(ofi_series.get(inst_id, [])), halflife_ms=ewma_halflife_ms)
-        alpha_signal = ewma_ofi_val + mlofi_weight * mlofi_signal
-        if abs(float(features["obi_l1"])) < obi_threshold and abs(alpha_signal) < 1e-6:
-            continue
-        fair = _bounded_fair_value(mid, c_alpha * alpha_signal)
-        tick = spread / 2 if spread > 0 else 0.1
-        half_spread = max(tick, spread * 0.3)
-        bid = round((fair - half_spread) / tick) * tick
-        ask = round((fair + half_spread) / tick) * tick
-        inv = inventory.get(inst_id, 0.0)
-        target_bid = bid if inv < max_inventory else None
-        target_ask = ask if inv > -max_inventory else None
-        if target_bid is None and target_ask is None:
-            continue
-        rows.append(_quote_signal_row(
-            ts=event["ts"],
-            dt=event["dt"],
-            strategy="obi_market_maker",
-            inst_id=inst_id,
-            strength=min(abs(float(features["obi_l1"])), 1.0),
-            fair_value=fair,
-            target_bid=_target_quote(target_bid),
-            target_ask=_target_quote(target_ask),
-            metadata={
-                "obi_l1": features["obi_l1"],
-                "obi_multi": features["obi_multi"],
-                "ewma_ofi": ewma_ofi_val,
-                "mlofi_signal": mlofi_signal,
-                "alpha_signal": alpha_signal,
-                "mid": mid,
-                "spread": spread,
-                "inventory": inv,
-                "reference_throttle": "event_ts_ms",
-            },
-        ))
-    return pd.DataFrame(rows, columns=_market_maker_signal_columns())
-
-
-def _as_market_maker_reference_signals(bundle: ArtifactBundle) -> pd.DataFrame:
-    params = bundle.strategy_params("as_market_maker")
-    symbols = [str(symbol) for symbol in params.get("symbols", bundle.symbols or []) if symbol]
-    symbol_set = set(symbols) if symbols else set(bundle.symbols)
-    gamma = float(params.get("gamma", 0.1))
-    kappa = float(params.get("kappa", 1.5))
-    max_pos = int(params.get("max_pos_contracts", 50))
-    c_alpha = float(params.get("c_alpha", 100.0))
-    beta_vpin = float(params.get("beta_vpin", 2.0))
-    mlofi_depth = int(params.get("mlofi_depth", 5))
-    mlofi_decay = float(params.get("mlofi_decay", 0.5))
-    mlofi_weight = float(params.get("mlofi_weight", 1.0))
-    toxic_size_multiplier = float(params.get("toxic_size_multiplier", 0.25))
-    elevated_size_multiplier = float(params.get("elevated_size_multiplier", 0.5))
-    vpin_bucket_divisor = int(params.get("vpin_bucket_divisor", 75))
-    vpin_window = int(params.get("vpin_window", 50))
-    refresh_ms = float(params.get("refresh_interval_ms", 500.0))
-    sigma_lookback = int(params.get("sigma_lookback_min", 5))
-    prev_snap: dict[str, dict | None] = {}
-    prev_book: dict[str, tuple[np.ndarray, np.ndarray] | None] = {}
-    ofi_series: dict[str, deque] = {}
-    last_quote_ts: dict[str, int] = {}
-    inventory = {symbol: 0.0 for symbol in symbol_set}
-    sigma_ewma = {symbol: 0.003 for symbol in symbol_set}
-    vpin_cdf = {symbol: 0.1 for symbol in symbol_set}
-    last_mid = {symbol: 0.0 for symbol in symbol_set}
-    inventory_events = _fill_inventory_events(bundle, "as_market_maker")
-    inventory_index = 0
-    trade_ticks = _trade_tick_frame(bundle)
-    trade_index = 0
-    trade_buffers: dict[str, list[dict[str, Any]]] = {symbol: [] for symbol in symbol_set}
-    vpin_source = "trade_ticks.csv" if not trade_ticks.empty else "default_without_trade_ticks"
-    rows: list[dict[str, Any]] = []
-    for event in _book_snapshot_events(bundle):
-        inst_id = event["inst_id"]
-        if symbol_set and inst_id not in symbol_set:
-            continue
-        inventory_index = _apply_inventory_events(inventory_events, inventory_index, inventory, event["dt"])
-        while trade_index < len(trade_ticks) and trade_ticks.loc[trade_index, "dt"] <= event["dt"]:
-            trade = trade_ticks.loc[trade_index]
-            trade_inst = str(trade.get("inst_id") or "")
-            if not symbol_set or trade_inst in symbol_set:
-                buffer = trade_buffers.setdefault(trade_inst, [])
-                buffer.append({
-                    "ts": trade.get("dt"),
-                    "price": float(trade.get("price")),
-                    "size": float(trade.get("size")),
-                })
-                if len(buffer) > 10_000:
-                    del buffer[:5_000]
-            trade_index += 1
-        last_ts = last_quote_ts.get(inst_id)
-        if last_ts is not None and event["ts"] - last_ts < refresh_ms:
-            continue
-        last_quote_ts[inst_id] = event["ts"]
-        bids = event["bids"]
-        asks = event["asks"]
-        bids_list = [(float(bids[i, 0]), float(bids[i, 1])) for i in range(len(bids)) if bids[i, 0] > 0]
-        asks_list = [(float(asks[i, 0]), float(asks[i, 1])) for i in range(len(asks)) if asks[i, 0] > 0]
-        if not bids_list or not asks_list:
-            continue
-        features = compute_obi_features(
-            bids_list,
-            asks_list,
-            depth=min(mlofi_depth, len(bids_list)),
-            alpha=mlofi_decay,
-        )
-        mid = float(features["mid"])
-        if mid <= 0:
-            continue
-        prev_mid = last_mid.get(inst_id, 0.0)
-        if prev_mid > 0:
-            ret = (mid - prev_mid) / prev_mid
-            alpha_sigma = 1 - np.exp(-np.log(2) * 1 / max(sigma_lookback * 60, 1))
-            sigma_ewma[inst_id] = alpha_sigma * abs(ret) + (1 - alpha_sigma) * sigma_ewma.get(inst_id, 0.003)
-        last_mid[inst_id] = mid
-        curr_snap = book_to_l1_snap(bids, asks)
-        if prev_snap.get(inst_id) is not None:
-            ofi_series.setdefault(inst_id, deque(maxlen=100)).append(compute_ofi(prev_snap[inst_id], curr_snap))
-        prev_snap[inst_id] = curr_snap
-        mlofi_signal = 0.0
-        if prev_book.get(inst_id) is not None:
-            prev_bids, prev_asks = prev_book[inst_id]
-            mlofi_signal = compute_mlofi_increment(
-                prev_bids,
-                prev_asks,
-                bids,
-                asks,
-                depth=mlofi_depth,
-                decay_alpha=mlofi_decay,
-                normalize=True,
-            )
-        prev_book[inst_id] = (bids.copy(), asks.copy())
-        alpha_signal = ewma_ofi(
-            np.array(ofi_series.get(inst_id, [])),
-            halflife_ms=200.0,
-        ) + mlofi_weight * mlofi_signal
-        trades = trade_buffers.get(inst_id, [])
-        if len(trades) > 200:
-            try:
-                trades_df = pd.DataFrame(trades)
-                daily_vol_est = float(trades_df["size"].sum()) * 24 * 3600 / max(1, len(trades))
-                v_bucket = max(daily_vol_est / vpin_bucket_divisor, 1.0)
-                vpin_df = compute_vpin(trades_df, v_bucket, n_window=vpin_window)
-                if not vpin_df.empty and "CDF" in vpin_df.columns:
-                    last_cdf = float(vpin_df["CDF"].iloc[-1])
-                    if not np.isnan(last_cdf):
-                        vpin_cdf[inst_id] = last_cdf
-            except Exception:
-                pass
-        controls = vpin_toxicity_controls(
-            vpin_cdf.get(inst_id, 0.1),
-            beta=beta_vpin,
-            elevated_multiplier=elevated_size_multiplier,
-            toxic_multiplier=toxic_size_multiplier,
-        )
-        bid, ask = as_quote(
-            mid=mid,
-            inventory=inventory.get(inst_id, 0.0),
-            alpha_signal=alpha_signal,
-            vpin=vpin_cdf.get(inst_id, 0.1),
-            gamma=gamma,
-            sigma=sigma_ewma.get(inst_id, 0.003),
-            kappa=kappa,
-            T_minus_t=1.0,
-            tick=0.1,
-            max_pos=max_pos,
-            c_alpha=c_alpha,
-            beta_vpin=beta_vpin,
-        )
-        rows.append(_quote_signal_row(
-            ts=event["ts"],
-            dt=event["dt"],
-            strategy="as_market_maker",
-            inst_id=inst_id,
-            strength=0.5,
-            fair_value=mid,
-            target_bid=_target_quote(bid),
-            target_ask=_target_quote(ask),
-            metadata={
-                "obi_l1": features["obi_l1"],
-                "obi_multi": features["obi_multi"],
-                "alpha_signal": alpha_signal,
-                "mlofi_signal": mlofi_signal,
-                "vpin_cdf": vpin_cdf.get(inst_id, 0.1),
-                "vpin_regime": controls["regime"],
-                "size_multiplier": controls["size_multiplier"],
-                "spread_multiplier": controls["spread_multiplier"],
-                "sigma": sigma_ewma.get(inst_id, 0.003),
-                "inventory": inventory.get(inst_id, 0.0),
-                "reference_throttle": "event_ts_ms",
-                "vpin_source": vpin_source,
-                "trade_tick_count": len(trades),
-            },
-        ))
-    return pd.DataFrame(rows, columns=_market_maker_signal_columns())
 
 
 def neutral_metrics(equity_curve: pd.DataFrame, periods: int) -> dict[str, float]:

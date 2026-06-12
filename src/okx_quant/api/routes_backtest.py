@@ -2161,8 +2161,6 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.post("/run")
     async def start_backtest(req: RunBacktestRequest, bg: BackgroundTasks):
         allowed = {
-            "obi_market_maker",
-            "as_market_maker",
             "funding_carry",
             "pairs_trading",
             "ohlcv_rotation",

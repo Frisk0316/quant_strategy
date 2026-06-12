@@ -5,6 +5,13 @@ current OKX system. These are not live recommendations. Each idea must survive
 OKX-specific fees, maker-only constraints, replay or walk-forward testing, and
 Deflated Sharpe Ratio checks before promotion.
 
+> 2026-06-12 active-scope decision: order-book market-making strategies
+> (`as_market_maker`, `obi_market_maker`, and related MM variants) are removed
+> from active strategy/config/replay/UI/API and portable-validation scope because
+> this project will not maintain order-book data. Strategies 1-2 below are
+> retained as archival research context only; all remaining active strategies
+> still require portable validation before any promotion claim.
+
 ## Strategy 1: Multi-Level OFI Maker Skew
 
 - **Theoretical basis:** Glosten and Milgrom 1985; Cont, Kukanov and Stoikov
@@ -16,17 +23,16 @@ Deflated Sharpe Ratio checks before promotion.
   short EWMA half-lives.
 - **Sizing rule:** Base clip from `portfolio/sizing.py`; reduce size when OFI
   disagreement across levels is high or when VPIN is above threshold.
-- **Execution:** Compute fair value = mid + alpha coefficient * MLOFI; feed into
-  `strategies/as_market_maker.py` quote logic; submit `post_only` orders only.
+- **Execution:** Archived only; the strategy modules were removed from active
+  code because the project will not maintain order-book data.
 - **Applicable instruments:** BTC-USDT-SWAP, ETH-USDT-SWAP first; alts only
   after liquidity and tick-size review.
 - **Expected edge:** Microstructure edge from short-horizon order-book pressure.
 - **Risk controls:** Max inventory, VPIN spread multiplier, cancel on crossed
   quote, stale-book guard, queue-age filter for spoofing.
-- **Fit with existing system:** Extend `src/okx_quant/signals/obi_ofi.py`; plug
-  into `strategies/as_market_maker.py` and `strategies/obi_market_maker.py`.
-- **Backtest path:** Use `backtesting/replay.py` or `nautilus_backtest.py` with
-  L2/tick data, maker fill assumptions, and fee-aware PnL.
+- **Fit with existing system:** None in active code. Do not reopen without a
+  user-approved order-book data plan.
+- **Backtest path:** None in active scope.
 
 ## Strategy 2: VPIN Jump-Risk Throttled Market Making
 
@@ -628,7 +634,7 @@ A correctly-classified `fill_all_signals` artefact therefore carries:
 | Execution | Maker-only by default; taker usage explicitly justified for risk exits. |
 | ct_val provenance | `validation.ct_val_all_authoritative = true` (every symbol's ctVal from `db`, `config_override`, or `spot_unit`). |
 | Reduce-only audit (per ADR-0006) | Shadow run produced at least one `allowed_reduce_only_bypass:*` event sample for reviewer inspection (or a documented attestation that none occurred in the window). |
-| Differential validation review | All strategies require portable validation evidence per `backtesting/differential_validation.py::REFERENCE_VALIDATION_CONTRACTS`; this is no longer MA/EMA/MACD-only. Reviewer MUST inspect `validation/<validation_id>/validation_result.json::portable_validation_gate`, `signal_point_correctness`, `source_data_validation`, and `engines.<engine>.comparison.actionable_mismatch_counts.{trade_execution,pnl_semantics,metrics}`. Promotion evidence requires `portable_validation_gate.passed == true` with an independent `reference_signals_only` or `reference_full` path passing strict signal-point/signal-logic checks. Advisory replay/export, including current Nautilus advisory evidence, may support review but does not by itself satisfy promotion evidence. Non-zero advisory-scope mismatches remain admissible as a promotion ADR rejection reason even when the Differential validation Deployment Gate is PASS; the ADR author may not request to disregard them on the basis that the scope is advisory. Differential gate PASS only attests portable signal-point/signal-logic equivalence to a reference engine — it does not attest PnL, trade, fee, slippage, funding, or metric correctness, and does not substitute for ct_val provenance, Idealized-fill exclusion, or Walk-forward/CPCV. |
+| Differential validation review | All active/declared strategies require portable validation evidence per `backtesting/differential_validation.py::REFERENCE_VALIDATION_CONTRACTS`; this is no longer MA/EMA/MACD-only. User-retired strategies that no longer appear in UI/API/contracts are outside promotion scope. Reviewer MUST inspect `validation/<validation_id>/validation_result.json::portable_validation_gate`, `signal_point_correctness`, `source_data_validation`, and `engines.<engine>.comparison.actionable_mismatch_counts.{trade_execution,pnl_semantics,metrics}`. Promotion evidence requires `portable_validation_gate.passed == true` with an independent `reference_signals_only` or `reference_full` path passing strict signal-point/signal-logic checks. Advisory replay/export, including current Nautilus advisory evidence, may support review but does not by itself satisfy promotion evidence. Non-zero advisory-scope mismatches remain admissible as a promotion ADR rejection reason even when the Differential validation Deployment Gate is PASS; the ADR author may not request to disregard them on the basis that the scope is advisory. Differential gate PASS only attests portable signal-point/signal-logic equivalence to a reference engine — it does not attest PnL, trade, fee, slippage, funding, or metric correctness, and does not substitute for ct_val provenance, Idealized-fill exclusion, or Walk-forward/CPCV. |
 
 ### External-Feature Coverage Gate
 

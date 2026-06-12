@@ -126,41 +126,6 @@ class SystemConfig(BaseModel):
 # Strategy params — from strategies.yaml
 # ---------------------------------------------------------------------------
 
-class OBIMarketMakerParams(BaseModel):
-    enabled: bool = True
-    symbols: list[str] = ["BTC-USDT-SWAP"]
-    depth: int = 5
-    alpha_decay: float = 0.5
-    ewma_halflife_ms: float = 200.0
-    obi_threshold: float = 0.15
-    c_alpha: float = 100.0
-    mlofi_weight: float = 1.0
-    refresh_interval_ms: float = 500.0
-    max_inventory: int = 50
-    td_mode: str = "cross"
-
-
-class ASMarketMakerParams(BaseModel):
-    enabled: bool = True
-    symbols: list[str] = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
-    gamma: float = 0.1
-    sigma_lookback_min: int = 5
-    kappa: float = 1.5
-    max_pos_contracts: int = 50
-    c_alpha: float = 100.0
-    mlofi_depth: int = 5
-    mlofi_decay: float = 0.5
-    mlofi_weight: float = 1.0
-    beta_vpin: float = 2.0
-    elevated_size_multiplier: float = 0.5
-    toxic_size_multiplier: float = 0.25
-    vpin_bucket_divisor: int = 75
-    vpin_window: int = 50
-    refresh_interval_ms: float = 500.0
-    kappa_recal_interval_secs: int = 3600
-    td_mode: str = "cross"
-
-
 class FundingCarryParams(BaseModel):
     enabled: bool = True
     perp_symbol: str = "BTC-USDT-SWAP"
@@ -345,8 +310,6 @@ class CMEGapFillParams(BaseModel):
 
 
 class StrategiesConfig(BaseModel):
-    obi_market_maker: OBIMarketMakerParams = OBIMarketMakerParams()
-    as_market_maker: ASMarketMakerParams = ASMarketMakerParams()
     funding_carry: FundingCarryParams = FundingCarryParams()
     pairs_trading: PairsTradingParams = PairsTradingParams()
     ma_crossover: MACrossoverParams = MACrossoverParams()

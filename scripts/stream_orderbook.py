@@ -3,7 +3,7 @@ OKX WebSocket Order Book Streamer — tick-level data collector.
 
 串接 OKX 公開 WebSocket，訂閱 BTC-USDT-SWAP / ETH-USDT-SWAP 的
 books (L2 400-level) 及 trades 頻道，記錄每次 book update 的微結構特徵，
-flush 至 Parquet 供 AS Market Maker 回測使用。
+flush 至 Parquet 供歷史微結構研究使用。
 
 每個 tick snapshot 包含：
   ts_ns       — 本地接收時間 (nanoseconds, int64)

@@ -30,8 +30,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategy", action="append", required=True,
                         choices=[
-                            "obi_market_maker",
-                            "as_market_maker",
                             "funding_carry",
                             "pairs_trading",
                             "ma_crossover",
@@ -46,7 +44,7 @@ def main() -> None:
     parser.add_argument("--periods", type=int, default=None,
                         help="Annualization periods for the selected bar size")
     parser.add_argument("--symbol", action="append", default=[],
-                        help="Instrument symbol for single/multi-symbol market-making strategies")
+                        help="Instrument symbol for single/multi-symbol strategies")
     parser.add_argument("--symbol-x", default=None,
                         help="Reference/independent symbol for pairs_trading")
     parser.add_argument("--symbol-y", default=None,
@@ -98,10 +96,6 @@ def main() -> None:
 
     if args.symbol:
         args.symbol = [normalize_swap_symbol(symbol) for symbol in args.symbol]
-        if "obi_market_maker" in args.strategy:
-            cfg.strategies.obi_market_maker.symbols = args.symbol
-        if "as_market_maker" in args.strategy:
-            cfg.strategies.as_market_maker.symbols = args.symbol
         if "ma_crossover" in args.strategy:
             cfg.strategies.ma_crossover = cfg.strategies.ma_crossover.model_copy(
                 update={"symbols": args.symbol}

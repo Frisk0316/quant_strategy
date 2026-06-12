@@ -222,7 +222,7 @@ def test_backtest_api_surfaces_idealized_fill_warning(tmp_path):
         json.dumps({
             "run_id": "idealized_fill_run",
             "created_at": "2024-01-01T00:00:00Z",
-            "strategies": ["as_market_maker"],
+            "strategies": ["ma_crossover"],
             "symbols": ["BTC-USDT-SWAP"],
             "bar": "1H",
             "start": "2024-01-01",

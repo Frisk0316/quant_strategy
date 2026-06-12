@@ -42,11 +42,9 @@ from okx_quant.portfolio.positions import PositionLedger
 from okx_quant.portfolio.sizing import validate_ct_val
 from okx_quant.risk.drawdown_tracker import DrawdownTracker
 from okx_quant.risk.risk_guard import RiskGuard
-from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
 from okx_quant.strategies.external_features import CMEGapFillStrategy, FearGreedSentimentStrategy
-from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 from okx_quant.strategies.technical_indicators import (
     EMACrossoverStrategy,
@@ -919,8 +917,6 @@ class ReplayBacktestEngine:
         specs = {}
         db_specs = self._load_db_instrument_specs()
         swap_symbols = set(self._cfg.system.symbols)
-        swap_symbols.update(self._cfg.strategies.obi_market_maker.symbols)
-        swap_symbols.update(self._cfg.strategies.as_market_maker.symbols)
         swap_symbols.update({
             self._cfg.strategies.funding_carry.perp_symbol,
             self._cfg.strategies.pairs_trading.symbol_y,
@@ -1079,8 +1075,6 @@ class ReplayBacktestEngine:
         strategies: list[Strategy] = []
         strat_cfg = self._cfg.strategies
         candidates: list[tuple[str, Strategy]] = [
-            ("obi_market_maker", OBIMarketMaker(strat_cfg.obi_market_maker.model_dump())),
-            ("as_market_maker", ASMarketMaker(strat_cfg.as_market_maker.model_dump())),
             ("funding_carry", FundingCarryStrategy(strat_cfg.funding_carry.model_dump())),
             (
                 "pairs_trading",
@@ -1096,8 +1090,6 @@ class ReplayBacktestEngine:
             ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
         ]
         enabled = {
-            "obi_market_maker": strat_cfg.obi_market_maker.enabled,
-            "as_market_maker": strat_cfg.as_market_maker.enabled,
             "funding_carry": strat_cfg.funding_carry.enabled,
             "pairs_trading": strat_cfg.pairs_trading.enabled,
             "ma_crossover": strat_cfg.ma_crossover.enabled,
@@ -1614,38 +1606,6 @@ def build_feed_for_strategies(
     trade_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
-    if "obi_market_maker" in strategy_set:
-        for symbol in cfg.strategies.obi_market_maker.symbols:
-            market_frames.append(load_l1_books(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                bar=bar,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-
-    if "as_market_maker" in strategy_set:
-        for symbol in cfg.strategies.as_market_maker.symbols:
-            market_frames.append(load_l1_books(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                bar=bar,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-            trade_frames.append(load_trade_events(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-
     if "pairs_trading" in strategy_set:
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_y,

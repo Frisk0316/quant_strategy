@@ -94,33 +94,17 @@
 建議分兩段：
 
 1. 短中期：先在現有專案內完成 replay engine，讓大部分策略先實現同碼與正確記帳。
-2. 中長期：對 `ASMarketMaker` 與任何 order-book-driven 策略，接入 Nautilus 或等價的 L2/L3 撮合框架，專門處理 queue priority、book walk 與微結構回測。
+2. 中長期：若未來 user 明確恢復 order-book 資料計畫，才重新評估 Nautilus 或等價 L2/L3 撮合框架；目前 active scope 先以 signal-point / indicator parity 為主。
 
 原因是目前 `backtesting/nautilus_backtest.py` 還只是 skeleton，若直接全量切過去，專案風險高、交付時間長。
 
 ## 6. 分策略改善方案
 
-### 6.1 AS Market Maker
+### 6.1 已刪除的 Order-Book Market Making
 
-目標：從 bar proxy 升級為真實掛單回測。
+`as_market_maker`、`obi_market_maker` 與相關 MM 變體已依 user 決策自 active strategy / config / replay / UI / API / portable-validation scope 刪除。專案目前不維護 order-book data，因此這類策略不再列為待補驗證、promotion target 或 Nautilus 接入任務。
 
-必做項目：
-
-1. 使用歷史 order book / trade tick 重建 decision-time 的 best bid/ask 與深度。
-2. 訂單建立後必須「掛在簿上」，直到成交、撤單或改價。
-3. 模擬 post-only rejection，若價格穿價則 reject，而不是偷轉 taker。
-4. 模擬 queue position 與 partial fill。
-5. 模擬 quote refresh latency、cancel latency 與 market data latency。
-6. 將 maker fee / rebate、inventory carry、mark-to-mid 與 fill-to-fill PnL 分開記錄。
-
-建議指標：
-
-1. Quote fill rate
-2. Quote lifetime
-3. Realized spread
-4. Inventory half-life
-5. Adverse selection after fill
-6. Cancel-to-fill ratio
+若未來要恢復 order-book market making，必須先由 user 明確批准新的資料計畫與策略 ADR，並重新定義 L2/L3 ingest、queue-aware matching、partial fill、cancel latency、funding/fee accounting 與 portable-validation gate。
 
 ### 6.2 Funding Carry
 
@@ -210,7 +194,7 @@
 2. `ReplayClock`
 3. `BacktestRunner`
 4. `BacktestRecorder`
-5. 可讓現有 `ASMarketMaker` / `PairsTradingStrategy` / `FundingCarryStrategy` 跑在 replay bus 上
+5. 可讓現有 `PairsTradingStrategy` / `FundingCarryStrategy` / technical crossover strategies 跑在 replay bus 上
 
 ### Phase 2：模擬撮合器升級
 
@@ -251,11 +235,10 @@
 建議把「可升級到實盤前一階段」的條件寫死：
 
 1. 所有策略回測都必須產出 fill log、order log、equity curve、fees、funding cashflow。
-2. AS 做市策略至少在一段 L2 歷史資料上跑過 queue-aware replay。
-3. Funding carry 與 pairs 一律以雙腿成交紀錄驗證，不接受單腿近似。
-4. CPCV / walk-forward 的 OOS 結果來自 replay，而非手寫 return proxy。
-5. 每筆 artifact 必須宣告 IS/OOS `validation_status`（`naive_backtest`, `in_sample`, `hold_out`, `walk_forward`, `cpcv`），並依 [`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention) 判定；`naive_backtest` 與 `in_sample` 皆不得作為 promotion evidence。
-6. shadow / demo 對照中，fill rate、slippage、latency 的誤差落在預設門檻內。
+2. Funding carry 與 pairs 一律以雙腿成交紀錄驗證，不接受單腿近似。
+3. CPCV / walk-forward 的 OOS 結果來自 replay，而非手寫 return proxy。
+4. 每筆 artifact 必須宣告 IS/OOS `validation_status`（`naive_backtest`, `in_sample`, `hold_out`, `walk_forward`, `cpcv`），並依 [`research/strategy_synthesis.md#validation-status-convention`](../research/strategy_synthesis.md#validation-status-convention) 判定；`naive_backtest` 與 `in_sample` 皆不得作為 promotion evidence。
+5. shadow / demo 對照中，fill rate、slippage、latency 的誤差落在預設門檻內。
 
 ## 10. 優先順序建議
 
@@ -263,11 +246,11 @@
 
 1. 先修 Phase 0 blocker。
 2. 再做 Phase 1 replay kernel。
-3. 優先把 ASMarketMaker 搬到高擬真回測。
-4. 接著補 funding carry 的雙腿與 funding settlement。
-5. 最後補 pairs 的 linked execution 與 Nautilus 深化。
+3. 優先補 funding carry 的雙腿與 funding settlement。
+4. 接著補 pairs 的 linked execution。
+5. 最後補 technical/external-feature strategies 的 validation artifacts 與 shadow 對照。
 
-原因很直接：目前做市策略對 execution realism 最敏感，funding carry 對記帳與 cashflow 最敏感，pairs 則對多腿 execution 最敏感。三者共通底盤先完成，後續擴充成本最低。
+原因很直接：order-book 做市策略已刪除；現存策略中 funding carry 對記帳與 cashflow 最敏感，pairs 對多腿 execution 最敏感，technical/external-feature strategies 則先以 signal-point / indicator parity 為主要驗證目標。共通底盤先完成，後續擴充成本最低。
 
 ## 11. 結論
 
@@ -278,6 +261,6 @@
 1. 停止擴寫 `scripts/run_backtest.py` 這類手工近似回測。
 2. 先在現有架構內完成同碼 replay backtest。
 3. 用 shadow / demo 校準模擬撮合器。
-4. 再把最依賴微結構的策略接上 Nautilus 級別的 L2 回測。
+4. 若 user 未來恢復 order-book 資料計畫，再評估 Nautilus 級別的 L2/L3 回測。
 
 這樣做，回測結果才會真正接近未來上線時會看到的成交品質、庫存風險與權益曲線。

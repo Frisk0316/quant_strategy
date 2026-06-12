@@ -26,16 +26,15 @@ A production-grade quantitative trading system for OKX exchange, targeting $1k�
 
 | Strategy | Module | Description |
 | -------- | ------ | ----------- |
-| AS Market Maker | `strategies/as_market_maker.py` | Avellaneda-Stoikov quotes with VPIN spread multiplier and OBI/OFI alpha skew |
-| OBI Market Maker | `strategies/obi_market_maker.py` | Order book imbalance-driven post-only market making |
 | Funding Carry | `strategies/funding_carry.py` | Delta-neutral long spot / short perp, earns 8h funding |
 | Pairs Trading | `strategies/pairs_trading.py` | Kalman filter hedge ratio + Ornstein-Uhlenbeck spread z-score |
+| MA/EMA/MACD Crossover | `strategies/technical_indicators.py` | Long/flat technical-indicator baselines |
+| Fear & Greed / CME Gap | `strategies/external_features.py` | Research-only external-feature baselines |
 
 **Key design rules:**
 
 - All orders use `post_only`. Error 51026 (price crossed book) is logged and dropped — never retried as market orders.
-- `T_minus_t = 1.0` fixed for AS MM (24/7 market has no expiry horizon).
-- VPIN controls spread width only — it is directionless. OBI/OFI drive directional alpha.
+- Order-book market-making strategies were removed because the project will not maintain order-book data.
 - Delta-neutral carry holds long spot + short perp to earn funding without directional exposure.
 
 ---
@@ -57,8 +56,8 @@ src/okx_quant/
 │   ├── exchange_clients/        Public REST clients: okx_public, binance_public, bybit_public
 │   ├── validators/              cross_exchange.py — Z-score cross-exchange validation
 │   └── migrations/              001_ohlcv_pipeline_v2.sql, 002_market_canonical_bridge.sql
-├── signals/        obi_ofi, vpin, regime (HMM + GARCH + CUSUM)
-├── strategies/     as_market_maker, obi_market_maker, funding_carry, pairs_trading
+├── signals/        regime (HMM + GARCH + CUSUM), technical/external feature helpers
+├── strategies/     funding_carry, pairs_trading, technical_indicators, external_features
 ├── portfolio/      sizing (vol-target, quarter-Kelly, fixed-fractional), positions, portfolio_manager
 ├── risk/           risk_guard, drawdown_tracker, circuit_breaker
 ├── execution/      broker (OKXBroker / SimBroker / ShadowBroker), execution_handler,
@@ -70,7 +69,7 @@ src/okx_quant/
 
 backtesting/
 ├── replay.py               Event-driven replay engine (fills market/funding events through full stack)
-├── replay_validation.py    AS MM replay walk-forward and CPCV helpers
+├── differential_validation.py Portable reference-engine validation
 ├── cpcv.py                 Combinatorial Purged Cross-Validation (López de Prado)
 ├── walk_forward.py         Rolling walk-forward (non-overlapping IS/OOS windows)
 ├── data_loader.py          Parquet / PostgreSQL / market-layer loaders + return helpers
@@ -138,7 +137,7 @@ cp .env.example .env
 | File | What to set |
 | ---- | ----------- |
 | `config/settings.yaml` | `system.mode` (demo/shadow/live), `symbols`, `equity_usd` |
-| `config/strategies.yaml` | Per-strategy parameters: `gamma`, `kappa`, `beta_vpin`, etc. |
+| `config/strategies.yaml` | Per-strategy parameters for active/research strategies |
 | `config/risk.yaml` | Hard risk limits and `backtest:` execution parameters |
 
 ---
@@ -425,30 +424,18 @@ when `storage.candle_backend: postgres`.
 
 ---
 
-### Step 2 — Bar-proxy backtest (fast, all three strategies)
+### Step 2 — Legacy bar-proxy backtest
 
-Runs bar-level proxy returns for AS MM, Funding Carry, and Pairs Trading.
-Includes CPCV with N=27 research trials for AS MM overfitting correction.
-Takes ~1–2 minutes. Produces 6 PNG charts and a `result.json`.
+`scripts/run_backtest.py` is deprecated. The old bar-proxy workflow depended on
+order-book market-making proxies that have been removed. Use the replay and
+differential-validation steps below for active strategies.
 
 ```bash
 python scripts/run_backtest.py
 ```
 
-Output in `results/backtest_<dates>_<timestamp>/`:
-
-- `result.json` — all metrics, equity curves, trade logs
-- `01_market_data.png` through `06_performance_summary.png`
-
-Printed summary example:
-
-```text
-AS MM         sharpe=1.42  mdd=-0.08  psr=0.87  dsr=0.71
-Funding Carry sharpe=2.11  mdd=-0.03
-Pairs Trading sharpe=0.94  mdd=-0.11
-```
-
-**Gate:** `dsr >= 0.95` required before proceeding to replay validation.
+The command prints a deprecation notice and points to
+`scripts/run_replay_backtest.py` and `scripts/run_differential_validation.py`.
 
 ---
 
@@ -457,18 +444,15 @@ Pairs Trading sharpe=0.94  mdd=-0.11
 Runs the event-driven replay engine (actual fill simulation with fees, slippage, partial fills, cancel latency). Smoke defaults: `n_splits=3, k_test=1`.
 
 ```bash
-python scripts/run_replay_validation.py \
-    --mode   both \
-    --symbol BTC-USDT-SWAP \
-    --bar    1H \
-    --n-splits 3 \
-    --k-test   1 \
-    --gamma-grid     0.05 0.1 0.2 \
-    --kappa-grid     1.0 1.5 \
-    --beta-vpin-grid 2.0
+python scripts/run_replay_backtest.py \
+    --strategy ma_crossover \
+    --start 2024-01-01 \
+    --end   2024-03-01 \
+    --bar   1H \
+    --validate both
 ```
 
-Output in `results/replay_validation_<timestamp>/result.json`.
+Output is saved under `results/<run_id>/`.
 
 This step verifies that:
 
@@ -483,13 +467,6 @@ This step verifies that:
 Run the full event-driven stack for any strategy combination:
 
 ```bash
-# AS Market Maker only
-python scripts/run_replay_backtest.py \
-    --strategy as_market_maker \
-    --start 2024-01-01 \
-    --end   2026-05-01 \
-    --bar   1H
-
 # Funding Carry only
 python scripts/run_replay_backtest.py \
     --strategy funding_carry \
@@ -499,7 +476,7 @@ python scripts/run_replay_backtest.py \
 
 # Multiple strategies together
 python scripts/run_replay_backtest.py \
-    --strategy as_market_maker \
+    --strategy ma_crossover \
     --strategy funding_carry \
     --start 2024-01-01 \
     --end   2026-05-01
@@ -511,24 +488,20 @@ Prints orders placed, fill count, Sharpe, MDD, and other metrics.
 
 ### Step 5 — Full replay CPCV gate (pre-demo requirement)
 
-Full combinatorial purged cross-validation with replay-based returns.
-Uses n_splits=6, k_test=2, full 27-combo parameter grid.
-Takes ~30–60 minutes depending on data range.
+Full replay CPCV can be requested through the generic replay CLI for active
+strategies. Runtime depends on data range and strategy count.
 
 ```bash
-python scripts/run_replay_validation.py \
-    --mode   both \
-    --symbol BTC-USDT-SWAP \
-    --bar    1H \
+python scripts/run_replay_backtest.py \
+    --strategy ma_crossover \
     --start  2024-01-01 \
     --end    2026-05-01 \
-    --n-splits 6 \
-    --k-test   2 \
-    --gamma-grid     0.05 0.1 0.2 \
-    --kappa-grid     1.0 1.5 2.0 \
-    --beta-vpin-grid 1.0 2.0 3.0 \
-    --is-days  30 \
-    --oos-days  7
+    --bar    1H \
+    --validate both \
+    --cpcv-n-splits 6 \
+    --cpcv-k-test 2 \
+    --wf-is-days 30 \
+    --wf-oos-days 7
 ```
 
 Printed summary:
@@ -568,7 +541,7 @@ It starts automatically when the engine runs. No separate server command is need
 | ---- | -------- | ----------- |
 | Overview | `/` | Live equity curve, open positions, recent fills |
 | Backtest Results | `/results` | All saved runs in `results/`; click to inspect equity curve, trade log, performance stats |
-| Walk-Forward | `/walk-forward` | Per-window IS/OOS Sharpe table from the last `run_replay_validation.py` run |
+| Walk-Forward | `/walk-forward` | Per-window IS/OOS Sharpe table from the latest replay validation run |
 | CPCV | `/cpcv` | CPCV path Sharpes, DSR, PSR for the last validation run |
 | Trades | `/trades` | Live trade log with fill_px, fill_sz, fee, strategy |
 | Risk | `/risk` | Live: daily loss %, drawdown %, positions per instrument, circuit breaker status |
@@ -615,9 +588,9 @@ API docs (Swagger UI): `http://localhost:8080/api/docs`
 The three-layer validation gate before any live capital deployment:
 
 ```text
-Layer 1  scripts/run_backtest.py           bar-proxy CPCV    N=27 trials   fast (~2 min)
-Layer 2  run_replay_validation.py smoke    replay CPCV       n_splits=3    infra check
-Layer 3  run_replay_validation.py full     replay CPCV       n_splits=6    pre-demo gate
+Layer 1  scripts/run_replay_backtest.py --validate both     replay WF/CPCV smoke
+Layer 2  scripts/run_differential_validation.py             vectorbt/backtrader/nautilus point validation
+Layer 3  shadow/demo calibration                            execution/fill parity
 ```
 
 The replay engine (`backtesting/replay.py`) models:
@@ -833,16 +806,15 @@ system:
   json_logs: false
 ```
 
-### `config/strategies.yaml` (key AS MM params)
+### `config/strategies.yaml` (example active strategy params)
 
 ```yaml
-as_market_maker:
+ma_crossover:
   enabled: true
-  gamma: 0.1             # risk-aversion (spread width)
-  kappa: 1.5             # order arrival intensity
-  beta_vpin: 2.0         # VPIN spread multiplier
-  max_pos_contracts: 50
-  refresh_interval_ms: 500.0
+  symbols:
+    - BTC-USDT-SWAP
+  fast_window: 20
+  slow_window: 50
 ```
 
 ### `config/risk.yaml` (backtest section)

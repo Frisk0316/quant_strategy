@@ -59,7 +59,7 @@ class PortfolioManager:
             self._positions.update_price(payload.inst_id, mid)
 
     async def on_signal(self, event: Event) -> None:
-        """Convert a SignalPayload to one or two OrderPayloads (bid + ask for MM strategies)."""
+        """Convert a SignalPayload to one or more OrderPayloads."""
         sig: SignalPayload = event.payload
         strategy = sig.strategy
         inst_id = sig.inst_id
@@ -94,7 +94,7 @@ class PortfolioManager:
 
         td_mode = specs.get("tdMode", "cross")
 
-        # Market-making: place bid and ask simultaneously
+        # Paired quote signal: place bid and ask simultaneously.
         if sig.target_bid is not None and sig.target_ask is not None:
             await self._place_mm_quotes(sig, size_usd, td_mode)
         elif sig.side in ("buy", "sell"):
@@ -144,7 +144,7 @@ class PortfolioManager:
         size_usd: float,
         td_mode: str,
     ) -> None:
-        """Place bid and ask quotes for market-making strategies."""
+        """Place bid and ask orders for a paired quote signal."""
         pos = self._positions.get_position(sig.inst_id)
         tick_sz = float(self._specs.get(sig.inst_id, {}).get("tickSz", 0.1))
 
