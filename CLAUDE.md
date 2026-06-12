@@ -38,9 +38,24 @@ In addition to `AGENTS.md`, Claude should prioritize:
 4. `docs/FEATURE_MAP.md`, `docs/UI_MAP.md`, or `docs/DATA_FLOW.md` when the task
    needs file ownership or flow mapping.
 5. Relevant ADRs under `docs/ADR/`.
+6. `docs/CONTEXT_INDEX.md` to rebuild context from files, `docs/CURRENT_STATE.md`
+   for the one-screen snapshot, and the relevant `docs/CONTEXT_PACKS/` pack.
 
 Repo files override chat memory. If files conflict, use the authority order in
 `AI_CONTEXT.md` and `docs/DOC_LIFECYCLE.md`.
+
+### Harness obligations
+
+- **Doc Sync:** business-rule changes (per `docs/DOMAIN_RULES.md` /
+  `docs/DOC_IMPACT_MATRIX.md`) need a Change Manifest; major rule changes need an
+  ADR. Run `make docs-impact` when reviewing such a change.
+- **Intelligence:** design-heavy work starts with `docs/DESIGN_SPACE.md`;
+  reviews use `docs/REVIEW_QUESTIONS.md` and `docs/CRITIQUE_PROTOCOL.md` against
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, and `docs/GOLDEN_CASES.md`;
+  experiments update `docs/HYPOTHESIS_LEDGER.md` and `docs/EXPERIMENT_REGISTRY.md`.
+- **Context Resilience:** spend context per `docs/CONTEXT_BUDGET.md`, compress
+  per `docs/COMPRESSION_RULES.md`, and end every session with a Context Handoff
+  (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) including Human Learning Notes.
 
 ---
 
@@ -87,6 +102,7 @@ Before reviewing any PR or diff, check:
 - `AGENTS.md` and `docs/AI_WORKFLOW.md`.
 - `AI_CONTEXT.md`.
 - `docs/AI_HANDOFF.md`.
+- `docs/REVIEW_QUESTIONS.md` and `docs/CRITIQUE_PROTOCOL.md` as the review checklist.
 - Relevant issue/task scope.
 - Relevant ADRs.
 
@@ -100,6 +116,10 @@ Review must catch:
 - Orphan positions and partial-fill state regressions.
 - API schema breaks.
 - Missing tests or docs.
+- Missing Change Manifest or skipped `docs/DOC_IMPACT_MATRIX.md` rows on a
+  business-rule change; missing ADR on a major rule change.
+- Invariant regressions (`docs/INVARIANTS.md`) and unrecorded new failure modes
+  (`docs/FAILURE_MODES.md`).
 - Live-readiness claims before gates and explicit user approval.
 
 ---
@@ -121,7 +141,11 @@ Review must catch:
 
 Before finishing:
 
-- Update `docs/AI_HANDOFF.md` only for current state and next actions.
+- Update `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` for current state and
+  next actions.
+- Write a Context Handoff (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) and Session
+  Handoff (`tasks/SESSION_HANDOFF_TEMPLATE.md`), including **Human Learning
+  Notes**.
 - Move durable history to `docs/CHANGELOG_AI.md` over time.
 - Move durable bug backlog to `docs/KNOWN_ISSUES.md` over time.
 - List unresolved risks and follow-up issues.

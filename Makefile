@@ -5,7 +5,7 @@ NODE ?= node
 
 FRONTEND_JS = frontend/data.js frontend/charts.js frontend/view-config.js frontend/view-backtest.js frontend/view-results.js frontend/view-validation.js frontend/view-trades.js frontend/view-glossary.js frontend/app.js
 
-.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check api-smoke backtest-smoke smoke docs-check verify verify-full all
+.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
 
 setup:
 	$(PYTHON) -m pip install -e ".[dev,backtest]"
@@ -53,6 +53,9 @@ smoke: frontend-check api-smoke backtest-smoke
 docs-check:
 	$(PYTHON) scripts/docs/check_doc_metadata.py
 	$(PYTHON) scripts/docs/check_feature_map_links.py
+
+docs-impact:
+	$(PYTHON) scripts/docs/check_doc_impact.py
 
 verify: lint docs-check frontend-check check-config test-unit api-smoke backtest-smoke
 
