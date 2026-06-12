@@ -30,8 +30,30 @@ def _stub_nautilus_engine_smoke(monkeypatch):
     )
 
 
-def _write_json(path, payload):
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+def _authoritative_ct_val_validation(symbols):
+    sources = {}
+    for symbol in [str(item) for item in symbols if item]:
+        if symbol.endswith("-SWAP"):
+            sources[symbol] = {"value": 0.01, "source": "config_override"}
+        else:
+            sources[symbol] = {"value": 1.0, "source": "spot_unit"}
+    return {
+        "ct_val_sources": sources,
+        "ct_val_all_authoritative": True,
+        "ct_val_non_authoritative_symbols": [],
+        "ct_val_gate_passed": True,
+    }
+
+
+def _write_json(path, payload, *, add_ct_val=True):
+    data = dict(payload)
+    if add_ct_val and path.name == "result.json":
+        validation = data.get("validation") if isinstance(data.get("validation"), dict) else {}
+        if "ct_val_all_authoritative" not in validation:
+            validation = dict(validation)
+            validation.update(_authoritative_ct_val_validation(data.get("symbols") or []))
+            data["validation"] = validation
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _base_run(tmp_path, run_id="diff_run", strategy="ma_crossover"):
@@ -971,7 +993,7 @@ def test_missing_optional_engines_skip_but_nautilus_export_still_runs(tmp_path, 
 
     assert summary["status"] == "PASS"
     assert summary["ohlcv_source_validation"] == "artifact_pass_db_skipped"
-    assert summary["source_data_validation"]["status"] == "WARN"
+    assert summary["source_data_validation"]["status"] == "PASS"
     assert summary["source_data_validation"]["checks"]["price_series"]["status"] == "PASS"
     assert summary["source_data_validation"]["checks"]["db_parity"]["status"] == "SKIP"
     assert summary["validation_conclusion"]["status"] == "ADVISORY_ONLY"
@@ -993,6 +1015,8 @@ def test_missing_optional_engines_skip_but_nautilus_export_still_runs(tmp_path, 
     assert summary["portable_validation_gate"]["passed"] is False
     assert summary["portable_validation_gate"]["advisory_passing_engines"] == ["nautilus"]
     assert summary["portable_validation_gate"]["blocked_reason"] == "only_advisory_reference_replay_completed"
+    assert summary["signal_point_correctness"]["passed"] is False
+    assert summary["signal_point_correctness"]["missing_or_failed_target_engines"] == ["vectorbt", "backtrader"]
     assert summary["promotion_gate_evidence"] is False
     matrix = {row["engine"]: row for row in summary["engine_execution_matrix"]}
     assert matrix["vectorbt"]["execution_state"] == "skipped"
@@ -1008,6 +1032,89 @@ def test_missing_optional_engines_skip_but_nautilus_export_still_runs(tmp_path, 
     assert summary["mismatch_counts"]["metrics"]["actionable"] > 0
     assert (run_dir / "validation" / "skip_test" / "validation_result.json").exists()
     assert (run_dir / "validation" / "skip_test" / "reference_nautilus_export_manifest.json").exists()
+
+
+def test_ct_val_provenance_missing_fails_source_validation(tmp_path):
+    run_dir = _base_run(tmp_path, "missing_ct_val_provenance")
+    result_path = run_dir / "result.json"
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    payload.pop("validation", None)
+    _write_json(result_path, payload, add_ct_val=False)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="missing_ct_val_validation",
+    )
+
+    ct_val_check = summary["source_data_validation"]["checks"]["ct_val_provenance"]
+    assert summary["status"] == "FAIL"
+    assert summary["source_data_validation"]["status"] == "FAIL"
+    assert summary["validation_conclusion"]["status"] == "FAIL"
+    assert ct_val_check["status"] == "FAIL"
+    assert "missing from result.validation" in ct_val_check["reason"]
+    assert "source_data_validation" in summary
+    assert "validation_conclusion" in summary
+    assert "portable_validation_gate" in summary
+
+
+def test_signal_point_correctness_matrix_reports_three_engine_rows():
+    engine_results = {
+        "vectorbt": {
+            "status": "OK",
+            "reference_role": "reference_signals_only",
+            "comparison": {
+                "status": "PASS",
+                "signal_logic": {"status": "PASS", "actionable_mismatch_count": 0},
+                "mismatch_counts": {"trades": {"total": 1}, "pnl": {"total": 2}, "metrics": {"total": 3}},
+            },
+        },
+        "backtrader": {
+            "status": "OK",
+            "reference_role": "reference_signals_only",
+            "comparison": {
+                "status": "PASS",
+                "signal_logic": {"status": "PASS", "actionable_mismatch_count": 0},
+                "mismatch_counts": {},
+            },
+        },
+        "nautilus": {
+            "status": "OK",
+            "reference_role": "advisory",
+            "comparison": {
+                "status": "PASS",
+                "signal_logic": {"status": "ADVISORY_MISMATCH", "actionable_mismatch_count": 1},
+                "mismatch_counts": {"pnl": {"total": 5}},
+            },
+        },
+    }
+    matrix = dv._signal_point_correctness_matrix(
+        engine_results,
+        ["vectorbt", "backtrader", "nautilus"],
+        {
+            "signals": [
+                {
+                    "engine": "nautilus",
+                    "field": "datetime",
+                    "sequence": 0,
+                    "project_value": "2024-01-01T00:00:00Z",
+                    "reference_value": "2024-01-01T01:00:00Z",
+                    "status": "value_mismatch",
+                }
+            ],
+        },
+    )
+
+    rows = {row["engine"]: row for row in matrix["rows"]}
+    assert matrix["passed"] is False
+    assert matrix["missing_or_failed_target_engines"] == ["nautilus"]
+    assert rows["vectorbt"]["point_correctness_status"] == "PASS"
+    assert rows["backtrader"]["point_correctness_status"] == "PASS"
+    assert rows["nautilus"]["point_correctness_status"] == "FAIL"
+    assert rows["nautilus"]["mismatch_count"] == 1
+    assert rows["nautilus"]["mismatch_examples"][0]["field"] == "datetime"
+    assert rows["nautilus"]["portable_gate_eligible"] is False
+    assert rows["vectorbt"]["advisory_differences"]["metrics"]["total"] == 3
 
 
 def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):

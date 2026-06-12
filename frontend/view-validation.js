@@ -519,6 +519,68 @@ function EngineExecutionMatrix({ matrix }) {
   `;
 }
 
+function SignalPointCorrectnessMatrix({ matrix }) {
+  const rows = Array.isArray(matrix?.rows) ? matrix.rows : [];
+  if (!rows.length) return null;
+  const strictFields = matrix.strict_fields || [];
+  const advisoryScope = matrix.advisory_scope || [];
+  const advisoryText = (diffs) => {
+    const value = diffs || {};
+    return ["trades", "pnl", "metrics"]
+      .map((name) => `${name}: ${fmtCount(value[name])}`)
+      .join(" / ");
+  };
+  return html`
+    <div class="card">
+      <div class="row wrap" style=${{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div>
+          <div class="card-title">Signal point correctness</div>
+          <div class="card-sub">
+            ${strictFields.length ? strictFields.join(", ") : "timestamp/bar, symbol, side, action"}
+            ${advisoryScope.length ? html` · Advisory: ${advisoryScope.join(", ")}` : ""}
+          </div>
+        </div>
+        <${StatusChip} status=${matrix.status || (matrix.passed ? "PASS" : "FAIL")} />
+      </div>
+      <div class="tbl-wrap" style=${{ marginTop: 10 }}>
+        <table class="tbl compact">
+          <thead>
+            <tr>
+              <th>Engine</th>
+              <th>Point correctness</th>
+              <th>Mismatches</th>
+              <th>Examples</th>
+              <th>Advisory differences</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => {
+              const examples = Array.isArray(row.mismatch_examples) ? row.mismatch_examples : [];
+              const exampleText = examples.length
+                ? examples.map((item) => `${item.field || "field"} #${item.sequence ?? "-"}`).join(", ")
+                : "-";
+              return html`
+                <tr key=${row.engine}>
+                  <td class="mono">${row.engine}</td>
+                  <td><${StatusChip} status=${row.point_correctness_status || row.status} note=${roleLabel(row.reference_role)} /></td>
+                  <td><${CountCell} value=${{ total: row.mismatch_count || 0, actionable: row.actionable_mismatch_count || 0, downstream: row.downstream_mismatch_count || 0 }} /></td>
+                  <td title=${JSON.stringify(examples)}>${exampleText}</td>
+                  <td title=${(row.advisory_differences?.advisory_scope || []).join(", ")}>${advisoryText(row.advisory_differences)}</td>
+                </tr>
+              `;
+            })}
+          </tbody>
+        </table>
+      </div>
+      ${matrix.missing_or_failed_target_engines?.length ? html`
+        <div class="field-hint" style=${{ marginTop: 10 }}>
+          Target gaps: ${matrix.missing_or_failed_target_engines.join(", ")}
+        </div>
+      ` : null}
+    </div>
+  `;
+}
+
 function MismatchPreview({ strategy, validationId }) {
   const [active, setActive] = useState("metrics");
   const [rows, setRows] = useState([]);
@@ -851,6 +913,7 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
         </div>
         <${EngineSummary} detail=${activeDetail} contract=${activeContract} />
         <${EngineExecutionMatrix} matrix=${activeDetail.engine_execution_matrix} />
+        <${SignalPointCorrectnessMatrix} matrix=${activeDetail.signal_point_correctness} />
         <${MismatchPreview} strategy=${strategy} validationId=${activeDetail.validation_id} />
       `}
     </div>

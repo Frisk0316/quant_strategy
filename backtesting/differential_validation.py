@@ -40,6 +40,9 @@ from okx_quant.strategies.as_market_maker import _bounded_fair_value, as_quote
 
 TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 ENGINE_NAMES = {"vectorbt", "backtrader", "nautilus"}
+SIGNAL_POINT_ENGINE_ORDER = ["vectorbt", "backtrader", "nautilus"]
+SIGNAL_POINT_SCOPE = ["timestamp_or_bar", "symbol", "side", "action_or_entry_exit"]
+SIGNAL_POINT_ADVISORY_SCOPE = ["pnl", "fee", "slippage", "funding", "metrics"]
 STRATEGY_VALIDATION_DIR = "strategy_validation"
 REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
     "ma_crossover": {
@@ -827,6 +830,131 @@ def _engine_execution_matrix(
     return rows
 
 
+def _coerce_count(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _comparison_dict(result: dict[str, Any]) -> dict[str, Any]:
+    comparison = result.get("comparison")
+    return comparison if isinstance(comparison, dict) else {}
+
+
+def _signal_logic_dict(result: dict[str, Any]) -> dict[str, Any]:
+    comparison = _comparison_dict(result)
+    signal_logic = comparison.get("signal_logic")
+    return signal_logic if isinstance(signal_logic, dict) else {}
+
+
+def _signal_mismatch_examples(
+    all_mismatches: dict[str, list[dict[str, Any]]],
+    engine: str,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    examples = []
+    for row in all_mismatches.get("signals", []):
+        if str(row.get("engine") or "") != engine:
+            continue
+        examples.append({
+            "field": row.get("field", ""),
+            "sequence": row.get("sequence", ""),
+            "project_value": row.get("project_value", ""),
+            "reference_value": row.get("reference_value", ""),
+            "status": row.get("status", ""),
+        })
+        if len(examples) >= limit:
+            break
+    return examples
+
+
+def _advisory_difference_counts(comparison: dict[str, Any]) -> dict[str, Any]:
+    mismatch_counts = comparison.get("mismatch_counts")
+    if not isinstance(mismatch_counts, dict):
+        mismatch_counts = {}
+    return {
+        "advisory_scope": list(SIGNAL_POINT_ADVISORY_SCOPE),
+        "trades": mismatch_counts.get("trades", {}),
+        "pnl": mismatch_counts.get("pnl", {}),
+        "metrics": mismatch_counts.get("metrics", {}),
+        "indicators": mismatch_counts.get("indicators", {}),
+    }
+
+
+def _signal_point_correctness_matrix(
+    engine_results: dict[str, dict[str, Any]],
+    selected_engines: list[str],
+    all_mismatches: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    ordered_selected = [
+        engine for engine in SIGNAL_POINT_ENGINE_ORDER
+        if engine in selected_engines
+    ]
+    ordered_selected.extend(
+        engine for engine in selected_engines
+        if engine not in SIGNAL_POINT_ENGINE_ORDER
+    )
+    missing_target_engines = [
+        engine for engine in SIGNAL_POINT_ENGINE_ORDER
+        if engine not in selected_engines
+    ]
+    rows: list[dict[str, Any]] = []
+    missing_or_failed = list(missing_target_engines)
+    for engine in ordered_selected:
+        result = engine_results.get(engine, {})
+        comparison = _comparison_dict(result)
+        signal_logic = _signal_logic_dict(result)
+        actionable = _coerce_count(
+            signal_logic.get("actionable_mismatch_count", signal_logic.get("actionable", 0))
+        )
+        downstream = _coerce_count(
+            signal_logic.get("downstream_mismatch_count", signal_logic.get("downstream", 0))
+        )
+        result_status = str(result.get("status") or "SKIP").upper()
+        signal_status = str(signal_logic.get("status") or comparison.get("status") or result_status).upper()
+        if result_status == "OK" and signal_status == "PASS" and actionable == 0:
+            point_status = "PASS"
+        elif result_status == "SKIP" or signal_status == "SKIP":
+            point_status = "SKIP"
+        else:
+            point_status = "FAIL"
+        if engine in SIGNAL_POINT_ENGINE_ORDER and point_status != "PASS":
+            missing_or_failed.append(engine)
+        reference_role = str(result.get("reference_role") or "not_applicable")
+        rows.append({
+            "engine": engine,
+            "point_correctness_status": point_status,
+            "status": point_status,
+            "reference_role": reference_role,
+            "portable_gate_eligible": (
+                result_status == "OK"
+                and reference_role in INDEPENDENT_REFERENCE_ROLES
+                and point_status == "PASS"
+            ),
+            "strict_fields": list(SIGNAL_POINT_SCOPE),
+            "mismatch_count": actionable,
+            "actionable_mismatch_count": actionable,
+            "downstream_mismatch_count": downstream,
+            "comparison_status": comparison.get("status", result.get("status", "SKIP")),
+            "signal_logic_status": signal_logic.get("status", "SKIP"),
+            "mismatch_examples": _signal_mismatch_examples(all_mismatches, engine),
+            "advisory_differences": _advisory_difference_counts(comparison),
+        })
+    missing_or_failed = _unique_strings(missing_or_failed)
+    return {
+        "status": "PASS" if not missing_or_failed else "FAIL",
+        "passed": not missing_or_failed,
+        "target_engines": list(SIGNAL_POINT_ENGINE_ORDER),
+        "selected_engines": list(selected_engines),
+        "missing_target_engines": missing_target_engines,
+        "missing_or_failed_target_engines": missing_or_failed,
+        "strict_fields": list(SIGNAL_POINT_SCOPE),
+        "advisory_scope": list(SIGNAL_POINT_ADVISORY_SCOPE),
+        "rows": rows,
+    }
+
+
 def _external_validation_conclusion(
     validation_conclusion: dict[str, Any],
     source_data_validation: dict[str, Any],
@@ -1212,7 +1340,7 @@ def _validate_ct_val_provenance(bundle: ArtifactBundle) -> dict[str, Any]:
         return {"status": "PASS", "reason": "No SWAP symbols require ct_val provenance."}
     if not isinstance(validation, dict) or "ct_val_all_authoritative" not in validation:
         return {
-            "status": "WARN",
+            "status": "FAIL",
             "symbols": swap_symbols,
             "reason": "ct_val provenance is missing from result.validation.",
         }
@@ -2530,6 +2658,11 @@ def run_differential_validation(
         selected_engines,
         source_data_validation,
     )
+    signal_point_correctness = _signal_point_correctness_matrix(
+        engine_results,
+        selected_engines,
+        all_mismatches,
+    )
     validation_conclusion = _validation_conclusion(
         source_data_validation,
         portability_gate,
@@ -2567,6 +2700,7 @@ def run_differential_validation(
         "reference_validation_contract": reference_contract,
         "portable_validation_gate": portability_gate,
         "engine_execution_matrix": engine_execution_matrix,
+        "signal_point_correctness": signal_point_correctness,
         "source_data_validation": source_data_validation,
         "validation_conclusion": validation_conclusion,
         "external_validation_conclusion": external_validation_conclusion,
@@ -3994,6 +4128,7 @@ def list_validation_results(run_dir: str | Path) -> list[dict[str, Any]]:
             "promotion_gate_evidence": payload.get("promotion_gate_evidence"),
             "signal_logic_gate": payload.get("signal_logic_gate"),
             "portable_validation_gate": payload.get("portable_validation_gate"),
+            "signal_point_correctness": payload.get("signal_point_correctness"),
             "reference_validation_contract": payload.get("reference_validation_contract"),
             "materialized_from_sweep_summary": bool(payload.get("materialized_from_sweep_summary")),
             "engines": list((payload.get("engines") or {}).keys()),
@@ -4052,6 +4187,7 @@ def list_strategy_validation_results(results_dir: str | Path, strategy: str | No
                 "promotion_gate_evidence": payload.get("promotion_gate_evidence"),
                 "signal_logic_gate": payload.get("signal_logic_gate"),
                 "portable_validation_gate": payload.get("portable_validation_gate"),
+                "signal_point_correctness": payload.get("signal_point_correctness"),
                 "reference_validation_contract": payload.get("reference_validation_contract"),
                 "engines": list((payload.get("engines") or {}).keys()),
                 "mismatch_counts": payload.get("mismatch_counts", {}),
