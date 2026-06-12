@@ -1,19 +1,61 @@
+PYTHON ?= python
+PYTEST ?= pytest
+RUFF ?= ruff
+NODE ?= node
+
+FRONTEND_JS = frontend/data.js frontend/charts.js frontend/view-config.js frontend/view-backtest.js frontend/view-results.js frontend/view-validation.js frontend/view-trades.js frontend/view-glossary.js frontend/app.js
+
+.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check api-smoke backtest-smoke smoke docs-check verify verify-full all
+
+setup:
+	$(PYTHON) -m pip install -e ".[dev,backtest]"
+
+dev:
+	$(PYTHON) scripts/run_server.py
+
 test-unit:
-	pytest tests/unit/ -v --tb=short
+	$(PYTEST) tests/unit/ -v --tb=short
 
 test-integration:
-	pytest tests/integration/ -v --tb=short
+	$(PYTEST) tests/integration/ -v --tb=short
 
 test-all:
-	pytest tests/ -v --tb=short
+	$(PYTEST) tests/ -v --tb=short
 
 validate-data:
-	python scripts/validate_pipeline.py --data-dir data/ticks --inst BTC-USDT-SWAP
+	$(PYTHON) scripts/validate_pipeline.py --data-dir data/ticks --inst BTC-USDT-SWAP
 
 check-config:
-	python scripts/validate_pipeline.py --check-config-only
+	$(PYTHON) scripts/validate_pipeline.py --check-config-only
 
 lint:
-	ruff check src/ tests/ backtesting/ scripts/
+	$(RUFF) check src/ tests/ backtesting/ scripts/
 
-all: lint check-config test-unit test-integration validate-data
+frontend-check:
+	$(NODE) --check frontend/data.js
+	$(NODE) --check frontend/charts.js
+	$(NODE) --check frontend/view-config.js
+	$(NODE) --check frontend/view-backtest.js
+	$(NODE) --check frontend/view-results.js
+	$(NODE) --check frontend/view-validation.js
+	$(NODE) --check frontend/view-trades.js
+	$(NODE) --check frontend/view-glossary.js
+	$(NODE) --check frontend/app.js
+
+api-smoke:
+	$(PYTHON) scripts/smoke/api_smoke.py
+
+backtest-smoke:
+	$(PYTHON) scripts/smoke/backtest_smoke.py
+
+smoke: frontend-check api-smoke backtest-smoke
+
+docs-check:
+	$(PYTHON) scripts/docs/check_doc_metadata.py
+	$(PYTHON) scripts/docs/check_feature_map_links.py
+
+verify: lint docs-check frontend-check check-config test-unit api-smoke backtest-smoke
+
+verify-full: verify test-integration validate-data
+
+all: verify-full
