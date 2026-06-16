@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-17
 expires: none
 superseded_by: null
 ---
@@ -36,7 +36,8 @@ over time.
   `codex_20260616_signal_validation` fixture batch verify source-data validation,
   portable validation gates, signal-point correctness, and active-strategy
   `reference_signals_only` contracts. These fixtures are signal-point evidence,
-  not live execution or profitability evidence.
+  not live execution or profitability evidence. CI now runs this fixture batch as
+  a regression gate.
 - Nautilus remains advisory in v1. Full Nautilus matching-engine parity for
   order/fill/PnL/funding semantics is not implemented.
 - The signal-validation runner disables Numba JIT by default for vectorbt fixture
@@ -44,6 +45,9 @@ over time.
   tiny fixture workloads.
 - Advisory validation evidence, in-sample backtests, idealized-fill artifacts, and
   DB parity SKIP states are not promotion evidence.
+- The source-provenance gate exists, but no current artifact has been confirmed as
+  passing it with reachable canonical DB candles and authoritative `ct_val`
+  evidence in this session.
 
 ## Operations
 

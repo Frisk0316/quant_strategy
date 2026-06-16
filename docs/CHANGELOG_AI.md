@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-17
 expires: none
 superseded_by: null
 ---
@@ -29,6 +29,24 @@ on current state, current goal, do-not-touch constraints, and next actions.
   avoid Windows import/JIT stalls on tiny fixtures.
 - Generated batch `codex_20260616_signal_validation`, which produced PASS rows
   for all active strategies under `results/strategy_validation/`.
+
+## 2026-06-17 - Strategy Signal Validation CI
+
+- Added a CI `strategy-signal-validation` job that installs validation extras and
+  runs the active-strategy fixture signal-validation batch.
+- Added `VALIDATION_RESULTS_DIR` to `make strategy-signal-validation` so CI can
+  keep generated validation artifacts in runner temp storage.
+- Recorded the next validation priority as real-data/source-provenance evidence
+  before full execution parity work.
+
+## 2026-06-17 - Source Provenance Validation Gate
+
+- Added `scripts/run_source_provenance_validation.py` to gate existing or freshly
+  generated differential-validation evidence for real-data/source provenance.
+- Added `make source-provenance-validation` as a thin wrapper around the script.
+- Locked the rule that DB parity `SKIP` is not enough: the gate requires
+  `source_data_validation`, `ct_val_provenance`, and `db_parity` to pass, with
+  `ohlcv_source_validation == "db_parity_pass"`.
 
 ## Pending Migration
 

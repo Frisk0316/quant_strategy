@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-17
 expires: none
 superseded_by: null
 ---
@@ -20,17 +20,23 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Backtest-correctness validation is focused on active-strategy
-  portable signal-point evidence. Unit-level differential-validation tests and a
-  dependency-backed all-strategy signal-validation batch are green.
+- **Current goal:** Backtest-correctness validation has promoted active-strategy
+  portable signal-point fixtures into the CI surface. A manual real-data/source
+  provenance gate now exists; the next validation priority is running it with
+  canonical DB candles and authoritative `ct_val` evidence, not full execution
+  parity.
 - **Current branch:** `feature/chart-ux-overhaul`.
-- **Last known good state:** `tests/unit/test_differential_validation.py` plus the
-  signal-validation CLI interface tests pass locally. Batch
+- **Last known good state:** `tests/unit/test_differential_validation.py`, the
+  signal-validation CLI interface tests, and
+  `tests/unit/test_source_provenance_validation.py` pass locally. Batch
   `codex_20260616_signal_validation` produced PASS rows for all active strategies
   under `results/strategy_validation/`.
 - **In progress:** `scripts/run_all_strategy_signal_validation.py` has a
-  selectable `--engines` CLI, and `make strategy-signal-validation` is the
-  standard entrypoint. No existing result artifacts were modified.
+  selectable `--engines` CLI, `make strategy-signal-validation` is the standard
+  entrypoint, and CI runs the fixture batch with artifacts in runner temp storage.
+  `scripts/run_source_provenance_validation.py` gates existing or freshly
+  generated differential-validation evidence and fails DB parity `SKIP`. No
+  existing result artifacts were modified.
 - **Active risks:** the batch fixtures verify signal-point portability only. They
   do not validate live execution, queue behavior, fees/slippage, funding
   settlement, PnL parity, WalkForward/CPCV, or DB-backed real-market data. The
@@ -42,9 +48,11 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Next steps
 
-- Review the new `results/strategy_validation/*/codex_20260616_signal_validation_three_engine_signal_point/validation_result.json`
-  artifacts, then decide whether to promote this fixture batch into a CI check.
-- Decide via branch protection whether the `docs` CI job is a required check.
+- Run the source-provenance gate against a DB-backed saved run with canonical
+  candles and authoritative `ct_val` evidence.
+- Configure branch protection so `strategy-signal-validation` is a required check
+  after the workflow is pushed; GitHub repository settings are outside the local
+  code diff.
 - Backfill lifecycle metadata on the 11 pre-existing metadata-less docs.
 
 ## How to update

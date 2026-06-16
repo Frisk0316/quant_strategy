@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-17
 expires: none
 superseded_by: null
 ---
@@ -142,13 +142,60 @@ To run a smaller slice:
 make strategy-signal-validation VALIDATION_STRATEGIES=ma_crossover VALIDATION_ENGINES=vectorbt,backtrader
 ```
 
-Outputs are written under `results/strategy_validation/` plus a batch summary JSON.
+Outputs are written under `results/strategy_validation/` plus a batch summary JSON
+by default. Use `VALIDATION_RESULTS_DIR` to keep generated artifacts outside the
+repo workspace:
+
+```bash
+make strategy-signal-validation VALIDATION_RESULTS_DIR=/tmp/strategy_validation
+```
+
 `source_data_validation` can pass in no-DB fixture mode because the generated
 fixtures mark `ct_val` as `config_override`; real promotion evidence still needs
 the relevant deployment gates. If `vectorbt` or `backtrader` is missing, those
 engines skip and `portable_validation_gate.passed` remains false. The batch runner
 sets `NUMBA_DISABLE_JIT=1` by default when `vectorbt` is selected because the
 fixture workloads are tiny and this avoids vectorbt import/JIT stalls on Windows.
+
+## Source Provenance Validation
+
+Second-stage real-data/source-provenance validation gates an existing
+`validation_result.json` or a newly generated differential-validation run. It
+requires:
+
+- `source_data_validation.status == "PASS"`
+- `source_data_validation.checks.ct_val_provenance.status == "PASS"`
+- `source_data_validation.checks.db_parity.status == "PASS"`
+- `ohlcv_source_validation == "db_parity_pass"`
+
+Fixture evidence with DB parity `SKIP` fails this gate by design.
+
+To gate an existing validation result:
+
+```bash
+python scripts/run_source_provenance_validation.py --validation-result results/<run_id>/validation/<validation_id>/validation_result.json
+make source-provenance-validation SOURCE_PROVENANCE_ARGS="--validation-result results/<run_id>/validation/<validation_id>/validation_result.json"
+```
+
+To generate and gate fresh evidence for a saved run, enable DB parity and provide
+a reachable TimescaleDB/Postgres DSN:
+
+```bash
+DIFF_VALIDATION_ENABLE_DB_PARITY=1 \
+DIFF_VALIDATION_DB_DSN=postgresql://user:pass@localhost:5432/quant \
+python scripts/run_source_provenance_validation.py --run-id <run_id> --validation-id <validation_id>
+```
+
+PowerShell equivalent:
+
+```powershell
+$env:DIFF_VALIDATION_ENABLE_DB_PARITY = "1"
+$env:DIFF_VALIDATION_DB_DSN = "postgresql://user:pass@localhost:5432/quant"
+python scripts/run_source_provenance_validation.py --run-id <run_id> --validation-id <validation_id>
+```
+
+This gate does not prove Nautilus full execution parity, PnL parity, or live
+readiness.
 
 ## Full Verification
 
@@ -173,7 +220,9 @@ DOC_IMPACT_BASE=origin/main python scripts/docs/check_doc_impact.py --strict   #
 ```
 
 CI runs `docs-impact` strict on pull requests (`.github/workflows/ci.yml`,
-`docs` job) and advisory on push to `main`.
+`docs` job) and advisory on push to `main`. CI also runs the active-strategy
+fixture signal-validation batch in the `strategy-signal-validation` job, writing
+validation artifacts to runner temp storage.
 
 ## Rollback
 
