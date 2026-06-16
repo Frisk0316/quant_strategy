@@ -209,9 +209,10 @@ implementation exists.
   `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`.
 - Docs to update: `docs/ai_collaboration.md`, `docs/backtest_live_parity_plan.md`,
   `docs/results_validation_manifest.md`, `docs/AI_HANDOFF.md`.
-- Do-not-touch notes: this session is not the differential-validation implementation
-  session; do not edit validation engine files here. Advisory validation output is
-  not live-readiness evidence.
+- Do-not-touch notes: validation harness/interface changes must not alter strategy,
+  risk, portfolio, execution, DB schema, existing result artifacts, or reference
+  adapter tolerances unless the task explicitly permits it. Advisory validation
+  output is not live-readiness evidence.
 
 ## Shadow / Demo / Live Deployment Gate
 

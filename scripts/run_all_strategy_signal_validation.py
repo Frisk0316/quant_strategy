@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -586,18 +587,55 @@ def _strategy_list(raw: str) -> list[str]:
     return strategies
 
 
-def main() -> None:
+def _engine_list(raw: str) -> list[str]:
+    engines = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if not engines:
+        raise ValueError("--engines must include at least one engine")
+    unknown = sorted(set(engines) - dv.ENGINE_NAMES)
+    if unknown:
+        raise ValueError(f"Unknown engine ids: {', '.join(unknown)}")
+    return engines
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--strategies", default="all", help="Comma-separated strategy IDs or 'all'")
+    parser.add_argument(
+        "--engines",
+        default=",".join(ENGINES),
+        help="Comma-separated engines: vectorbt,backtrader,nautilus",
+    )
     parser.add_argument("--batch-id", default=None, help="Stable suffix for fixture and validation IDs")
     parser.add_argument("--force", action="store_true", help="Allow overwriting files in an existing generated fixture dir")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    try:
+        args.strategies = _strategy_list(args.strategies)
+        args.engines = _engine_list(args.engines)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
+
+def _validation_scope(engines: list[str]) -> str:
+    if "nautilus" in engines:
+        return "signal_point_indicator_plus_nautilus_signal_replay_order_fill"
+    return "signal_point_indicator"
+
+
+def _prepare_engine_environment(engines: list[str]) -> None:
+    if "vectorbt" in engines:
+        os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     results_dir = Path(args.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     batch_id = args.batch_id or f"portable_signal_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-    strategies = _strategy_list(args.strategies)
+    strategies = args.strategies
+    engines = args.engines
+    _prepare_engine_environment(engines)
 
     rows = []
     for strategy in strategies:
@@ -607,7 +645,7 @@ def main() -> None:
         summary = dv.run_strategy_differential_validation(
             results_dir,
             strategy,
-            engines=ENGINES,
+            engines=engines,
             fixture_run_id=run_dir.name,
             validation_id=validation_id,
         )
@@ -626,8 +664,8 @@ def main() -> None:
 
     report = {
         "batch_id": batch_id,
-        "engines": ENGINES,
-        "scope": "signal_point_indicator_plus_nautilus_signal_replay_order_fill",
+        "engines": engines,
+        "scope": _validation_scope(engines),
         "out_of_scope": [
             "project_strategy_source_execution_in_nautilus",
             "l2_l3_queue_priority_parity",
@@ -649,7 +687,7 @@ def main() -> None:
         or row["source_data_validation"] != "PASS"
         or row["portable_validation_gate"] is not True
         or row["signal_point_correctness"] is not True
-        or row["nautilus_order_fill_parity"] != "PASS"
+        or ("nautilus" in engines and row["nautilus_order_fill_parity"] != "PASS")
     ]
     if failed:
         raise SystemExit(1)

@@ -32,8 +32,16 @@ over time.
 
 ## Validation
 
-- Differential-validation implementation is being handled by a separate session.
-  This AI-context/harness task intentionally does not edit validation engine files.
+- Differential-validation unit coverage and the
+  `codex_20260616_signal_validation` fixture batch verify source-data validation,
+  portable validation gates, signal-point correctness, and active-strategy
+  `reference_signals_only` contracts. These fixtures are signal-point evidence,
+  not live execution or profitability evidence.
+- Nautilus remains advisory in v1. Full Nautilus matching-engine parity for
+  order/fill/PnL/funding semantics is not implemented.
+- The signal-validation runner disables Numba JIT by default for vectorbt fixture
+  validation because vectorbt import/JIT initialization can stall on Windows for
+  tiny fixture workloads.
 - Advisory validation evidence, in-sample backtests, idealized-fill artifacts, and
   DB parity SKIP states are not promotion evidence.
 

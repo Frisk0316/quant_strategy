@@ -2,10 +2,12 @@ PYTHON ?= python
 PYTEST ?= pytest
 RUFF ?= ruff
 NODE ?= node
+VALIDATION_STRATEGIES ?= all
+VALIDATION_ENGINES ?= vectorbt,backtrader,nautilus
 
 FRONTEND_JS = frontend/data.js frontend/charts.js frontend/view-config.js frontend/view-backtest.js frontend/view-results.js frontend/view-validation.js frontend/view-trades.js frontend/view-glossary.js frontend/app.js
 
-.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
+.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check strategy-signal-validation api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
 
 setup:
 	$(PYTHON) -m pip install -e ".[dev,backtest]"
@@ -24,6 +26,9 @@ test-all:
 
 validate-data:
 	$(PYTHON) scripts/validate_pipeline.py --data-dir data/ticks --inst BTC-USDT-SWAP
+
+strategy-signal-validation:
+	$(PYTHON) scripts/run_all_strategy_signal_validation.py --strategies "$(VALIDATION_STRATEGIES)" --engines "$(VALIDATION_ENGINES)"
 
 check-config:
 	$(PYTHON) scripts/validate_pipeline.py --check-config-only

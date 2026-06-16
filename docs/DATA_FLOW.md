@@ -96,7 +96,10 @@ itself. If API fields are missing, inspect artifacts before changing UI defaults
 saved run artifacts -> validation runner and reference adapters -> validation result directory -> validation API endpoints -> frontend Validation Lab -> promotion review
 ```
 
-Current: validation views and APIs exist. This AI-context/harness task does not
-modify differential-validation implementation because another session owns that
-work. Known gap status must come from `docs/AI_HANDOFF.md`,
-`docs/ai_collaboration.md`, and fresh validation artifacts.
+Current: validation views, APIs, and a batch portable signal-validation harness
+exist. `make strategy-signal-validation` generates deterministic active-strategy
+fixtures and writes validation artifacts under `results/strategy_validation/`.
+Known gap status must come from `docs/AI_HANDOFF.md`,
+`docs/ai_collaboration.md`, and fresh validation artifacts; missing optional
+reference-engine dependencies produce SKIP rows and do not satisfy
+`portable_validation_gate`.

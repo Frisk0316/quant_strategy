@@ -126,6 +126,30 @@ make validate-data
 This may require local data files or DB-backed data, depending on configuration and
 environment.
 
+## Strategy Signal Validation
+
+First-stage portable validation builds deterministic signal-point fixtures for
+active strategies and validates them against the selected reference engines:
+
+```bash
+python -m pip install -e ".[dev,validation]"
+make strategy-signal-validation
+```
+
+To run a smaller slice:
+
+```bash
+make strategy-signal-validation VALIDATION_STRATEGIES=ma_crossover VALIDATION_ENGINES=vectorbt,backtrader
+```
+
+Outputs are written under `results/strategy_validation/` plus a batch summary JSON.
+`source_data_validation` can pass in no-DB fixture mode because the generated
+fixtures mark `ct_val` as `config_override`; real promotion evidence still needs
+the relevant deployment gates. If `vectorbt` or `backtrader` is missing, those
+engines skip and `portable_validation_gate.passed` remains false. The batch runner
+sets `NUMBA_DISABLE_JIT=1` by default when `vectorbt` is selected because the
+fixture workloads are tiny and this avoids vectorbt import/JIT stalls on Windows.
+
 ## Full Verification
 
 Lightweight, no-DB-oriented verification:
