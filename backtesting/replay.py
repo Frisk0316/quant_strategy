@@ -897,6 +897,7 @@ class ReplayBacktestEngine:
         self._cfg = cfg
         self._strategy_names = strategy_names
         self._ct_val_sources: dict[str, dict] = {}
+        exchange = str(getattr(self._cfg.storage, "primary_exchange", "okx") or "okx").lower()
         if instrument_specs:
             self._instrument_specs = instrument_specs
             # Caller-supplied specs are treated as per-symbol authoritative
@@ -906,6 +907,7 @@ class ReplayBacktestEngine:
                 self._ct_val_sources[sym] = {
                     "value": float(ct_val) if ct_val is not None else None,
                     "source": "config_override",
+                    "exchange": exchange,
                 }
         else:
             self._instrument_specs = self._default_instrument_specs()
@@ -941,13 +943,13 @@ class ReplayBacktestEngine:
                 "tickSz": 0.1,
                 "tdMode": "cross",
             }
-            self._ct_val_sources[symbol] = {"value": ct_val, "source": source}
+            self._ct_val_sources[symbol] = {"value": ct_val, "source": source, "exchange": exchange}
         spot_symbols = set(self._cfg.system.spot_symbols)
         spot_symbols.add(self._cfg.strategies.funding_carry.spot_symbol)
         for symbol in spot_symbols:
             specs[symbol] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
             # USDT spot pairs trade in base units so ctVal=1.0 is exact, not a fallback.
-            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit"}
+            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit", "exchange": exchange}
         return specs
 
     def _load_db_instrument_specs(self, exchange: str = "okx") -> dict:
@@ -2205,14 +2207,16 @@ def _attach_ct_val_provenance(result: Any, engine: "ReplayBacktestEngine") -> No
         sym: info for sym, info in sources.items()
         if info.get("source") not in authoritative
     }
+    run_exchanges = {info.get("exchange") for info in sources.values() if info.get("exchange")}
     payload = {
         "ct_val_sources": {
-            sym: {"value": info.get("value"), "source": info.get("source")}
+            sym: {"value": info.get("value"), "source": info.get("source"), "exchange": info.get("exchange")}
             for sym, info in sources.items()
         },
         "ct_val_all_authoritative": len(non_authoritative) == 0,
         "ct_val_non_authoritative_symbols": sorted(non_authoritative.keys()),
         "ct_val_gate_passed": len(non_authoritative) == 0,
+        "exchange": next(iter(run_exchanges)) if len(run_exchanges) == 1 else "+".join(sorted(map(str, run_exchanges))),
     }
     try:
         existing = getattr(result, "validation", None) or {}
