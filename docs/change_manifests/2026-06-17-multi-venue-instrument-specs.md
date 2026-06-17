@@ -17,12 +17,18 @@ superseded_by: null
 Introduce an `exchange` dimension so the same logical pair can be backtested on
 a chosen single venue (Binance/OKX/Bybit) with that venue's correct
 `ct_val/lot/tick/min`, via a new `venue_instrument_specs` table, with the
-ct_val provenance gate tagged by venue.
+ct_val provenance gate tagged by venue. Normal Binance/Bybit USDT-M perps may
+resolve `ct_val = 1.0` from the structural base-unit contract identity without
+per-symbol seeding; canonical `1000...` multiplier contracts still require a DB
+row.
 
 ## Business rule(s) affected
 - R1.1-R1.4 (PnL/sizing/accounting): ct_val multiplier resolution becomes
   venue-aware. Values themselves are unchanged in backtest PnL (ct_val cancels
   under notional sizing); the rule change is *provenance*, not accounting.
+- R2-R5 reviewed: no fee, funding, sizing/risk, or fill-semantics rule changes;
+  the structural source only changes `ct_val` provenance for normal
+  Binance/Bybit USDT-M perps.
 - R7 (validation/gates): ct_val authoritative source + db_parity become
   venue-scoped.
 
@@ -49,7 +55,9 @@ allowed exchanges).
 - Before: ct_val resolves single-venue (DB `instruments.contract_value` →
   OKX-labelled registry); provenance is venue-blind.
 - After: ct_val resolves per `(exchange, symbol)`; a run is single-venue and its
-  provenance PASS attests the venue.
+  provenance PASS attests the venue. For Binance/Bybit normal USDT-M perps with
+  no DB row, `exchange_base_unit` is authoritative `ct_val = 1.0`; canonical
+  `1000...` multiplier contracts fall through and require explicit DB specs.
 - Money/risk impact: **none in backtest PnL** (ct_val cancels under notional
   sizing). Impact is at live execution and in which runs can pass the
   live-readiness provenance gate. Per-venue fee/funding divergence is deferred
@@ -78,6 +86,14 @@ allowed exchanges).
   strategy/params, Binance vs OKX; identical metrics within `1e-6`).
 
 ## Tests / checks run
+- `python -m pytest tests/unit/test_replay_ct_val_resolution.py -q` - red run
+  failed as expected before implementation: Binance/Bybit base-unit resolution
+  and `exchange_base_unit` authority were missing.
+- `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py -q` - 58 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
+- `python scripts/docs/check_doc_impact.py --strict` with per-process
+  `safe.directory` config - passed: 10 changed file(s), no impact-matrix violations.
+- `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
+- `python scripts/docs/check_feature_map_links.py` - passed: 93 concrete path(s) checked.
 - `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_replay_ct_val_provenance_tag.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_multi_venue_convergence.py -q` - 56 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
 - `python -m pytest tests/unit/test_backtest_request_exchange.py -q` - 2 passed, 1 pytest cache permission warning.
 - `node --check frontend/view-config.js` - passed.
@@ -90,7 +106,8 @@ allowed exchanges).
 ## Risks and rollback
 - Risks: provenance field shape drifting from the gate if P1 splits across
   sessions (ADR-0007 forbids this); seeding a wrong per-venue ct_val (mitigated
-  by db_parity + authoritative source requirement); accidentally repurposing
+  by db_parity + authoritative source requirement); accidentally treating
+  `1000...` multiplier contracts as base-unit identity; accidentally repurposing
   `instruments` instead of the new table.
 - Rollback: P0 is additive docs — delete the two files and the index row. P1
   rollback restores single-venue resolution (additive table/resolver).

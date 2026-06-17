@@ -879,11 +879,16 @@ class HistoricalEventFeed:
 
 
 class ReplayBacktestEngine:
-    # Authoritative sources whose ct_val came from a verified upstream (DB
-    # instruments registry or an explicit per-symbol config override). Any other
-    # source (registry yaml, BTC/ETH hardcoded fallback) is non-authoritative
-    # and downstream live-deployment gates should refuse such runs.
-    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = ("db", "config_override", "spot_unit")
+    # Authoritative sources whose ct_val came from a verified upstream, an
+    # explicit per-symbol config override, or an exchange structural identity.
+    # Any other source (OKX registry yaml, BTC/ETH hardcoded fallback) is
+    # non-authoritative and downstream live-deployment gates should refuse it.
+    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = (
+        "db",
+        "config_override",
+        "spot_unit",
+        "exchange_base_unit",
+    )
 
     def __init__(
         self,
@@ -1035,9 +1040,10 @@ class ReplayBacktestEngine:
 
         Lookup priority (highest = most authoritative):
           1. `db` — DB-backed `venue_instrument_specs(exchange, symbol)`.
-          2. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
-          3. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
-          4. Raise — unknown swap; never silently fall back to 1.0 because the
+          2. `exchange_base_unit` — Binance/Bybit USDT-M base-unit perps.
+          3. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
+          4. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
+          5. Raise — unknown swap; never silently fall back to 1.0 because the
              ct_val multiplier directly drives PnL / notional / funding.
         """
         if isinstance(exchange, dict) and db_specs is None:
@@ -1057,6 +1063,13 @@ class ReplayBacktestEngine:
                     inst_id=symbol,
                 )
                 return 0.01, "hardcoded_btc_eth"
+        base_symbol = symbol.split("-", 1)[0].upper()
+        if (
+            exchange in {"binance", "bybit"}
+            and symbol.upper().endswith("-USDT-SWAP")
+            and not base_symbol.startswith("1000")
+        ):
+            return 1.0, "exchange_base_unit"
         logger.error(
             "Instrument ctVal missing for swap; seed venue_instrument_specs or add OKX registry fallback",
             inst_id=symbol,

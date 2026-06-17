@@ -21,14 +21,17 @@ handoff between sessions; this is the one-screen "where are we" that
 ## Snapshot
 
 - **Current goal:** ADR-0007 P1 multi-venue instrument specs are locally
-  implemented and verified on `codex/impl-multi-venue-instrument-specs`.
+  implemented and verified on `codex/impl-multi-venue-instrument-specs`,
+  including structural Binance/Bybit USDT-M base-unit `ct_val` resolution.
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
 - **Last known good state:** Commits through `7be7f65` implement Tasks 1-5:
   venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
   provenance, source-gate exchange surfacing, and Run Backtest exchange selection.
 - **Current working state:** Task 6 adds the convergence golden case, required
-  docs/manifest updates, and final local verification. No existing result
-  artifacts were modified.
+  docs/manifest updates, and final local verification. A follow-up fixes
+  unseeded normal Binance/Bybit USDT-M swaps by resolving `ct_val = 1.0` as
+  `exchange_base_unit`; canonical `1000...` multiplier contracts still require
+  explicit DB specs. No existing result artifacts were modified.
 - **Active risks:** DB seed/application was not run in this shell because
   `DATABASE_URL` and `psql` were unavailable. The first DB-backed source
   provenance PASS is still unverified.

@@ -116,7 +116,11 @@ For the multi-venue architecture, as a **rule** future work must follow:
    `venue_instrument_specs(exchange, symbol)` (`db`) → `config_override` →
    registry yaml (`registry`, non-authoritative) → hardcoded. Correct per-venue
    values: Binance/Bybit USDT-M perps `ct_val = 1.0` (base-unit); OKX SWAP
-   `BTC = 0.01`, `ETH = 0.1`.
+   `BTC = 0.01`, `ETH = 0.1`. P1 follow-up: unseeded Binance/Bybit
+   normal USDT-M perps may resolve as `exchange_base_unit` (authoritative
+   structural `ct_val = 1.0`) after DB lookup; canonical bases that encode a
+   1000x multiplier, such as `1000SHIB`/`1000PEPE`, must still use an explicit
+   `venue_instrument_specs` row.
 5. **The provenance gate stays shape-compatible and gains a venue tag.**
    `_validate_ct_val_provenance` keeps reading `ct_val_all_authoritative` and
    symbol-keyed `ct_val_sources`; the run's `exchange` is propagated into the

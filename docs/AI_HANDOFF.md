@@ -26,8 +26,11 @@ Current session goal: finish ADR-0007 P1 multi-venue instrument specs on
 `codex/impl-multi-venue-instrument-specs`. Tasks 1-6 are locally implemented:
 venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
 provenance/source gates, Run Backtest exchange selection, convergence golden
-case, and docs/manifest updates. Remaining unverified item: DB-backed
-source-provenance PASS after applying the SQL seed to a reachable dev DB.
+case, and docs/manifest updates. Follow-up implemented: normal Binance/Bybit
+USDT-M perps can resolve `ct_val = 1.0` structurally as `exchange_base_unit`;
+canonical `1000...` multiplier contracts still require DB specs. Remaining
+unverified item: DB-backed source-provenance PASS after applying the SQL seed
+to a reachable dev DB.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -42,8 +45,9 @@ gate** (`backtesting/differential_validation.py`) is the contended surface.
 2. **Backtest-system validation** (source-provenance / differential / signal
    validation). May progress in parallel **except** the ct_val provenance gate
    surface and the "first DB-backed PASS on the primary (Binance) venue"
-   milestone — both wait for P1 (a Binance run needs P1's `db` venue ct_val to
-   pass; today it falls back to non-authoritative `registry`). Non-gate chores
+   milestone — both wait for P1. Normal Binance/Bybit USDT-M `ct_val` can pass
+   provenance via `exchange_base_unit`; DB-backed source provenance still needs
+   reachable canonical candles and seed/application checks. Non-gate chores
    (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
 3. **Universal price chart + progressive load** — separate branch, brief:
    `tasks/2026-06-17-price-chart-universal-task.md`. Independent of 1 and 2;
@@ -59,8 +63,9 @@ Must be checked with `git branch --show-current` at session start. Observed in t
 ## Last Known Good Commit
 
 ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
-verified locally; DB-backed source-provenance PASS still requires a reachable
-TimescaleDB/Postgres DSN and seeded `venue_instrument_specs` rows.
+verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
+`exchange_base_unit`; DB-backed source-provenance PASS still requires a
+reachable TimescaleDB/Postgres DSN and seeded canonical/spec rows.
 
 ## System Overview
 

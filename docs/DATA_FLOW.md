@@ -35,7 +35,10 @@ venue instrument source -> venue_instrument_specs(exchange, symbol) seed/table -
 Current: P1 seeds OKX and Binance BTC/ETH SWAP specs manually. The bundled
 `config/instrument_specs.yaml` registry remains an OKX-only fallback for local
 replay when DB specs are unavailable; promotion evidence must use DB-backed or
-explicit `instrument_specs` provenance tagged with the run `exchange`.
+explicit `instrument_specs` provenance tagged with the run `exchange`. Normal
+Binance/Bybit USDT-M perps can use the authoritative `exchange_base_unit`
+structural identity (`ct_val = 1.0`) without a DB row; canonical `1000...`
+multiplier contracts still require explicit `venue_instrument_specs` rows.
 
 ## Funding Ingestion Flow
 
