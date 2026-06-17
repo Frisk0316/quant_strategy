@@ -29,6 +29,29 @@ behavior unchanged. User agreed that `strategy-signal-validation` should become 
 required branch protection check after the workflow is pushed/configured; full
 execution parity remains later.
 
+## Workstream Sequencing (2026-06-17) — read before parallel sessions
+
+Three workstreams may run across sessions. Ownership of the **ct_val provenance
+gate** (`backtesting/differential_validation.py`) is the contended surface.
+
+1. **Multi-venue instrument specs (ADR-0007, P1)** — branch
+   `codex/impl-multi-venue-instrument-specs` (plan:
+   `docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md`,
+   design: `claude/design-multi-venue`). **Owns the ct_val provenance gate
+   change.** Must land the venue tag + venue-aware resolution atomically.
+2. **Backtest-system validation** (source-provenance / differential / signal
+   validation). May progress in parallel **except** the ct_val provenance gate
+   surface and the "first DB-backed PASS on the primary (Binance) venue"
+   milestone — both wait for P1 (a Binance run needs P1's `db` venue ct_val to
+   pass; today it falls back to non-authoritative `registry`). Non-gate chores
+   (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
+3. **Universal price chart + progressive load** — separate branch, brief:
+   `tasks/2026-06-17-price-chart-universal-task.md`. Independent of 1 and 2;
+   **must not touch** `differential_validation.py`.
+
+Rule: only the multi-venue branch edits the ct_val provenance gate until P1
+merges. Other sessions coordinate around it, not into it.
+
 ## Current Branch
 
 Must be checked with `git branch --show-current` at session start. Observed in this session: `feature/chart-ux-overhaul`.
