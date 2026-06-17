@@ -12,7 +12,7 @@ superseded_by: null
 
 ## Status
 
-Proposed - 2026-06-17, pending human approval before any P1 implementation.
+Accepted - 2026-06-17, human-approved for P1 implementation.
 
 ## Context
 

@@ -59,7 +59,7 @@ allowed exchanges).
 - research/strategy_synthesis.md: N/A for P0; P1 should note the venue/contract
   assumption and the cross-venue convergence expectation.
 - config/: N/A for P0; P1 adds default/allowed `exchange`.
-- ADR: ADR-0007 added (Proposed).
+- ADR: ADR-0007 accepted for P1 implementation on 2026-06-17.
 
 ## Docs updated (from DOC_IMPACT_MATRIX row)
 - [ ] `docs/DATA_FLOW.md` — P1 (new table + venue in resolution path)
@@ -92,6 +92,5 @@ allowed exchanges).
   rollback restores single-venue resolution (additive table/resolver).
 
 ## Approval
-- Human approval required: **yes** — ADR-0007 is Proposed; P1 implementation
-  must not start until the user approves and a permitted-files task is issued.
-  Obtained? Not yet.
+- Human approval required: **yes**. ADR-0007 is accepted for P1 implementation.
+  Obtained? Yes - user approved ADR-0007 P1 on 2026-06-17.
