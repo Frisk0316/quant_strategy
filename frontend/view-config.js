@@ -280,6 +280,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [spotSymbol, setSpotSymbol] = useConfigState("BTC-USDT");
   const [symbolX, setSymbolX] = useConfigState("BTC-USDT-SWAP");
   const [symbolY, setSymbolY] = useConfigState("ETH-USDT-SWAP");
+  const [exchange, setExchange] = useConfigState("binance");
   const [bar, setBar] = useConfigState("1H");
   const [periodsOverride, setPeriodsOverride] = useConfigState(null);
   const [start, setStart] = useConfigState("2024-01-01");
@@ -440,6 +441,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   function triggerBacktest() {
     const body = {
       strategy,
+      exchange,
       bar: isDailyWinner ? "1D" : bar,
       periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
       start,
@@ -485,6 +487,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
       const body = {
         strategy,
+        exchange,
         bar,
         periods,
         start,
@@ -548,6 +551,13 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 ${MOCK.STRATEGIES.map((s) => html`<option key=${s.id} value=${s.id}>${s.name}</option>`)}
               </select>
               <div class="field-hint">${strat.desc}</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Exchange</div>
+              <select class="select mono" value=${exchange} onChange=${(e) => setExchange(e.target.value)}>
+                <option value="binance">Binance</option>
+                <option value="okx">OKX</option>
+              </select>
             </div>
             ${isDailyWinner ? html`
               <${Fragment}>

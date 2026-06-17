@@ -225,7 +225,7 @@ class RunBacktestRequest(BaseModel):
     validation: str | None = Field(default=None, alias="validate")
     # Exchange whose data the backtest should consume. Must match the live-target
     # exchange for deployment promotion (see ai_collaboration.md deployment gates).
-    exchange: str | None = None
+    exchange: str = "binance"
     universe: list[str] = []
     benchmark: str = "BTC-USDT-SWAP"
     rebalance_minutes: int = 60
@@ -246,7 +246,7 @@ class ParameterSweepRequest(BaseModel):
     start: str | None = None
     end: str | None = None
     sweep_id: str | None = None
-    exchange: str | None = None
+    exchange: str = "binance"
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
     parameter_grid: dict[str, Any] = Field(default_factory=dict)
