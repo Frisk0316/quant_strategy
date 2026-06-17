@@ -632,6 +632,7 @@ def _source_data_validation(
     ]
     return {
         "status": status,
+        "exchange": ct_val_check.get("exchange"),
         "ohlcv_source_validation": ohlcv_status,
         "checks": checks,
         "limitations": limitations,
@@ -1379,19 +1380,22 @@ def _validate_price_series(bundle: ArtifactBundle) -> dict[str, Any]:
 
 def _validate_ct_val_provenance(bundle: ArtifactBundle) -> dict[str, Any]:
     validation = bundle.result.get("validation") if isinstance(bundle.result, dict) else {}
+    exchange = validation.get("exchange") if isinstance(validation, dict) else None
     symbols = bundle.symbols
     swap_symbols = [symbol for symbol in symbols if symbol.endswith("-SWAP")]
     if not swap_symbols:
-        return {"status": "PASS", "reason": "No SWAP symbols require ct_val provenance."}
+        return {"status": "PASS", "exchange": exchange, "reason": "No SWAP symbols require ct_val provenance."}
     if not isinstance(validation, dict) or "ct_val_all_authoritative" not in validation:
         return {
             "status": "FAIL",
+            "exchange": exchange,
             "symbols": swap_symbols,
             "reason": "ct_val provenance is missing from result.validation.",
         }
     authoritative = bool(validation.get("ct_val_all_authoritative"))
     return {
         "status": "PASS" if authoritative else "FAIL",
+        "exchange": exchange,
         "symbols": swap_symbols,
         "sources": validation.get("ct_val_sources") or {},
         "reason": "" if authoritative else "ct_val provenance is not authoritative for all SWAP symbols.",
@@ -2106,9 +2110,12 @@ def _compare_trade_ticks_to_db(
 
 
 def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
+    validation = bundle.result.get("validation") if isinstance(bundle.result, dict) else {}
+    exchange = validation.get("exchange") if isinstance(validation, dict) else None
     if os.environ.get("DIFF_VALIDATION_ENABLE_DB_PARITY") != "1":
         return {
             "status": "SKIP",
+            "exchange": exchange,
             "reason": (
                 "DB parity check not requested; set DIFF_VALIDATION_ENABLE_DB_PARITY=1 "
                 "with DIFF_VALIDATION_DB_DSN or DATABASE_URL to compare canonical candles."
@@ -2118,6 +2125,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     if not dsn:
         return {
             "status": "SKIP",
+            "exchange": exchange,
             "reason": "DB parity requested but no DIFF_VALIDATION_DB_DSN or DATABASE_URL is configured.",
         }
     try:
@@ -2125,11 +2133,13 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     except Exception as exc:
         return {
             "status": "SKIP",
+            "exchange": exchange,
             "reason": f"DB parity loader unavailable: {type(exc).__name__}: {exc}",
         }
     if not _dsn_reachable(dsn):
         return {
             "status": "SKIP",
+            "exchange": exchange,
             "reason": "DB parity requested but PostgreSQL/TimescaleDB is not reachable.",
         }
 
@@ -2155,6 +2165,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
                 dsn=dsn,
                 start=start,
                 end=end,
+                exchange=exchange,
                 include_suspect=False,
             )
         except Exception as exc:
@@ -2172,6 +2183,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     return {
         "status": status,
         "backend": "postgres",
+        "exchange": exchange,
         "symbols": symbol_results,
         "reason": "" if status == "PASS" else "DB canonical candle parity mismatches were detected.",
     }

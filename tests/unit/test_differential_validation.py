@@ -1058,6 +1058,24 @@ def test_ct_val_provenance_missing_fails_source_validation(tmp_path):
     assert "portable_validation_gate" in summary
 
 
+def test_ct_val_provenance_surfaces_run_exchange():
+    from backtesting.differential_validation import _validate_ct_val_provenance
+
+    class _Bundle:
+        symbols = ["BTC-USDT-SWAP"]
+        result = {
+            "validation": {
+                "ct_val_all_authoritative": True,
+                "exchange": "binance",
+                "ct_val_sources": {"BTC-USDT-SWAP": {"value": 1.0, "source": "db"}},
+            }
+        }
+
+    out = _validate_ct_val_provenance(_Bundle())
+    assert out["status"] == "PASS"
+    assert out["exchange"] == "binance"
+
+
 def test_signal_point_correctness_matrix_reports_three_engine_rows():
     engine_results = {
         "vectorbt": {
