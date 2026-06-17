@@ -46,6 +46,10 @@ Main app views in `frontend/app.js`:
 - `frontend/charts.js` exports `LineChart`, `BarChart`, `HistogramChart`,
   `TradePriceChart`, `IndicatorChart`, `adaptiveDateLabel`, and `MAX_Y_ZOOM`.
 - `TradePriceChart` is used for market price series plus execution markers.
+- The Backtest "Price + Trade Markers" card is strategy-agnostic: every selected
+  chart symbol gets its own price panel, loading state, and empty/error state.
+  Technical indicator overlays remain gated to `ma_crossover`, `ema_crossover`,
+  and `macd_crossover`.
 - `IndicatorChart` is used for technical strategies and supports price, fast/slow
   series, MACD/signal/histogram, warmup source display, visible-series controls,
   shared market X range, and independent Y zoom.
