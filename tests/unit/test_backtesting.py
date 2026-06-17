@@ -37,6 +37,12 @@ from okx_quant.core.config import AppConfig, OKXSecrets, RiskConfig, StrategiesC
 from okx_quant.portfolio.positions import PositionLedger
 
 
+def _use_okx_registry(cfg: AppConfig) -> AppConfig:
+    cfg = cfg.model_copy(deep=True)
+    cfg.storage = cfg.storage.model_copy(update={"primary_exchange": "okx"})
+    return cfg
+
+
 def test_strategy_config_preserves_yaml_parameters_used_by_strategies():
     cfg = StrategiesConfig(**{
         "funding_carry": {
@@ -89,7 +95,7 @@ def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
     not BTC/ETH still raise — preserves the safety guard against silent ct_val
     fallback for unfamiliar contracts.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -103,7 +109,7 @@ def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
 
 
 def test_replay_default_specs_allow_btc_eth_swaps(minimal_cfg):
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -122,7 +128,7 @@ def test_replay_default_specs_resolve_registry_swaps(minimal_cfg):
     """SOL/ADA are in config/instrument_specs.yaml so they should resolve
     without falling back to BTC/ETH defaults or raising.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -150,7 +156,7 @@ def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
     """Caller-supplied instrument_specs should be labeled as `config_override`
     so the live-deployment gate treats them as authoritative.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -811,6 +817,7 @@ def test_replay_backtest_funding_carry_runs_dual_leg(tmp_path):
             telegram_chat_id=None,
         ),
     )
+    cfg = _use_okx_registry(cfg)
 
     result = run_replay_backtest(
         strategy_names=["funding_carry"],
@@ -862,6 +869,7 @@ def test_replay_funding_falls_back_to_avg_entry_when_mark_price_missing(monkeypa
             telegram_chat_id=None,
         ),
     )
+    cfg = _use_okx_registry(cfg)
     engine = ReplayBacktestEngine(cfg, strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
@@ -919,7 +927,7 @@ def _terminal_book(engine: ReplayBacktestEngine, inst_id: str, bid: float, ask: 
 
 
 def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -958,7 +966,7 @@ def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -991,7 +999,7 @@ def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_flags_missing_price(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -1024,7 +1032,7 @@ def test_replay_terminal_liquidation_flags_missing_price(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_closes_multiple_legs(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",

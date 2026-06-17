@@ -915,7 +915,8 @@ class ReplayBacktestEngine:
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
-        db_specs = self._load_db_instrument_specs()
+        exchange = str(getattr(self._cfg.storage, "primary_exchange", "okx") or "okx").lower()
+        db_specs = self._load_db_instrument_specs(exchange)
         swap_symbols = set(self._cfg.system.symbols)
         swap_symbols.update({
             self._cfg.strategies.funding_carry.perp_symbol,
@@ -932,7 +933,7 @@ class ReplayBacktestEngine:
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
-            ct_val, source = self._resolve_swap_ct_val(symbol, db_specs)
+            ct_val, source = self._resolve_swap_ct_val(symbol, exchange, db_specs)
             specs[symbol] = {
                 "ctVal": ct_val,
                 "minSz": 0.01,
@@ -949,13 +950,13 @@ class ReplayBacktestEngine:
             self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit"}
         return specs
 
-    def _load_db_instrument_specs(self) -> dict:
-        """Query `instruments.contract_value` for every active row, when DB is reachable.
+    def _load_db_instrument_specs(self, exchange: str = "okx") -> dict:
+        """Query venue instrument specs for the run exchange, when DB is reachable.
 
-        Returned shape: {inst_id: {"ct_val": float}}. Empty dict when DSN is
+        Returned shape: {symbol: {"ct_val": float}}. Empty dict when DSN is
         missing, unreachable, or query fails — caller falls through to the
-        bundled YAML registry. Errors are warnings, not exceptions, because the
-        DB-primary architecture must degrade gracefully to parquet.
+        bundled YAML registry for OKX only. Errors are warnings, not exceptions,
+        because the DB-primary architecture must degrade gracefully to parquet.
         """
         dsn = getattr(self._cfg.storage, "timescale_dsn", None)
         if not dsn:
@@ -976,10 +977,12 @@ class ReplayBacktestEngine:
                 try:
                     return await conn.fetch(
                         """
-                        SELECT inst_id, contract_value
-                        FROM instruments
-                        WHERE contract_value IS NOT NULL
-                        """
+                        SELECT symbol, ct_val
+                        FROM venue_instrument_specs
+                        WHERE exchange = $1
+                          AND ct_val IS NOT NULL
+                        """,
+                        exchange,
                     )
                 finally:
                     await conn.close()
@@ -990,12 +993,12 @@ class ReplayBacktestEngine:
             return {}
         out: dict = {}
         for row in rows:
-            ct_val = row.get("contract_value") if isinstance(row, dict) else row["contract_value"]
-            inst_id = row.get("inst_id") if isinstance(row, dict) else row["inst_id"]
+            ct_val = row.get("ct_val") if isinstance(row, dict) else row["ct_val"]
+            symbol = row.get("symbol") if isinstance(row, dict) else row["symbol"]
             if ct_val is None:
                 continue
             try:
-                out[inst_id] = {"ct_val": float(ct_val)}
+                out[symbol] = {"ct_val": float(ct_val)}
             except (TypeError, ValueError):
                 continue
         return out
@@ -1023,51 +1026,55 @@ class ReplayBacktestEngine:
         return registry
 
     @staticmethod
-    def _resolve_swap_ct_val(symbol: str, db_specs: dict | None = None) -> tuple[float, str]:
-        """Resolve a swap symbol's ctVal and report the provenance label.
+    def _resolve_swap_ct_val(
+        symbol: str, exchange: str | dict = "okx", db_specs: dict | None = None
+    ) -> tuple[float, str]:
+        """Resolve a swap symbol's ctVal for a venue and report provenance.
 
         Lookup priority (highest = most authoritative):
-          1. `db` — DB-backed `instruments.contract_value`. Verified upstream;
-             trusted for live deployment.
-          2. `registry` — bundled `config/instrument_specs.yaml`. Trusted for
-             backtest but flagged as non-authoritative for live gating because
-             it can drift from the exchange spec.
-          3. `hardcoded_btc_eth` — last-resort 0.01 for BTC/ETH symbols only.
-             Same authority class as `registry`.
+          1. `db` — DB-backed `venue_instrument_specs(exchange, symbol)`.
+          2. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
+          3. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
           4. Raise — unknown swap; never silently fall back to 1.0 because the
              ct_val multiplier directly drives PnL / notional / funding.
         """
+        if isinstance(exchange, dict) and db_specs is None:
+            db_specs = exchange
+            exchange = "okx"
+        exchange = str(exchange or "okx").lower()
         if db_specs and db_specs.get(symbol, {}).get("ct_val") is not None:
             return float(db_specs[symbol]["ct_val"]), "db"
-        registry = ReplayBacktestEngine._load_instrument_spec_registry()
-        spec = registry.get(symbol)
-        if spec and spec.get("ct_val") is not None:
-            return float(spec["ct_val"]), "registry"
-        if symbol.startswith(("BTC-", "ETH-")):
-            logger.warning(
-                "Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01",
-                inst_id=symbol,
-            )
-            return 0.01, "hardcoded_btc_eth"
+        if exchange == "okx":
+            registry = ReplayBacktestEngine._load_instrument_spec_registry()
+            spec = registry.get(symbol)
+            if spec and spec.get("ct_val") is not None:
+                return float(spec["ct_val"]), "registry"
+            if symbol.startswith(("BTC-", "ETH-")):
+                logger.warning(
+                    "Instrument ctVal missing; falling back to known OKX BTC/ETH swap ctVal=0.01",
+                    inst_id=symbol,
+                )
+                return 0.01, "hardcoded_btc_eth"
         logger.error(
-            "Instrument ctVal missing for swap; add it to config/instrument_specs.yaml "
-            "or populate instruments.contract_value in DB",
+            "Instrument ctVal missing for swap; seed venue_instrument_specs or add OKX registry fallback",
             inst_id=symbol,
+            exchange=exchange,
         )
         raise ValueError(
-            f"Missing ctVal for swap '{symbol}'. Add an entry under `swaps:` in "
-            f"config/instrument_specs.yaml or populate the DB instruments table."
+            f"Missing ctVal for swap '{symbol}' on exchange '{exchange}'. Seed "
+            f"venue_instrument_specs(exchange, symbol) or, for OKX, add it to "
+            f"config/instrument_specs.yaml."
         )
 
     @staticmethod
-    def _fallback_swap_ct_val(symbol: str) -> float:
+    def _fallback_swap_ct_val(symbol: str, exchange: str = "okx") -> float:
         """Backwards-compatible wrapper that drops the provenance label.
 
         Existing call sites (and tests) only care about the numeric value;
         new code should call `_resolve_swap_ct_val` directly to also record
         provenance.
         """
-        return ReplayBacktestEngine._resolve_swap_ct_val(symbol)[0]
+        return ReplayBacktestEngine._resolve_swap_ct_val(symbol, exchange)[0]
 
     def _build_strategies(self) -> list[Strategy]:
         wanted = set(self._strategy_names or [])
