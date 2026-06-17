@@ -203,10 +203,13 @@ Deployment readiness:
 任何 SWAP backtest 在進入 live / shadow / demo gate 前，**必須通過 ct_val provenance gate**：
 
 - 來源：`result.validation.ct_val_sources` 與 `result.validation.ct_val_all_authoritative`（自 2026-05 起由 `backtesting.replay._attach_ct_val_provenance()` 寫入 result.json）。
-- **Authoritative sources**：`db`（從 `instruments.contract_value` 查得，驗證過的權威值）、`config_override`（呼叫端顯式傳入 instrument_specs）、`spot_unit`（USDT 現貨對的恆等 1.0）。
-- **Non-authoritative sources**：`registry`（讀自 `config/instrument_specs.yaml`，bundled fallback）、`hardcoded_btc_eth`（離線情境下的 0.01 兜底）。
+- Venue tag: `result.validation.exchange` and each `ct_val_sources[<symbol>].exchange`
+  must identify the run's execution venue. A PASS attests the `ct_val` for that
+  symbol on that venue, not just for the canonical symbol name.
+- **Authoritative sources**：`db`（從 `venue_instrument_specs(exchange, symbol)` 查得，驗證過的權威值）、`config_override`（呼叫端顯式傳入 instrument_specs）、`spot_unit`（USDT 現貨對的恆等 1.0）。
+- **Non-authoritative sources**：`registry`（讀自 `config/instrument_specs.yaml`，OKX-only bundled fallback）、`hardcoded_btc_eth`（離線情境下的 0.01 兜底）。
 - Gate 規則：
-  - **PASS** ⇔ `ct_val_all_authoritative == true`（即所有 swap symbol 的 ct_val 都來自 `db` 或 `config_override`）。
+  - **PASS** ⇔ `ct_val_all_authoritative == true` 且 provenance 的 `exchange` 與本次 run 的 execution venue 一致（即所有 swap symbol 的 ct_val 都來自 `db` 或 `config_override`，且不是錯用其他 venue 的規格）。
   - **FAIL** 時必須拒絕該回測進入 live/shadow/demo gate；如要 override 必須在 PR 描述顯式說明每個 non-authoritative symbol 的核對方式，並由 human reviewer 顯式 approve。
 
 理由：ct_val 是 PnL / notional / funding / margin / liquidation 公式的線性乘子。非權威來源（即使 0.01 對 BTC/ETH 是真實值）在交易所改規格時會 silently drift，造成 backtest 與真實環境 PnL 偏差 10–1000 倍。CLAUDE.md hard rule 已要求 ct_val 一定要在公式裡，這條 gate 進一步要求它必須是「verified upstream」的值。

@@ -20,40 +20,30 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Backtest-correctness validation has promoted active-strategy
-  portable signal-point fixtures into the CI surface. A manual real-data/source
-  provenance gate now exists; the next validation priority is running it with
-  canonical DB candles and authoritative `ct_val` evidence, not full execution
-  parity.
-- **Current branch:** `feature/chart-ux-overhaul`.
-- **Last known good state:** `tests/unit/test_differential_validation.py`, the
-  signal-validation CLI interface tests, and
-  `tests/unit/test_source_provenance_validation.py` pass locally. Batch
-  `codex_20260616_signal_validation` produced PASS rows for all active strategies
-  under `results/strategy_validation/`.
-- **In progress:** `scripts/run_all_strategy_signal_validation.py` has a
-  selectable `--engines` CLI, `make strategy-signal-validation` is the standard
-  entrypoint, and CI runs the fixture batch with artifacts in runner temp storage.
-  `scripts/run_source_provenance_validation.py` gates existing or freshly
-  generated differential-validation evidence and fails DB parity `SKIP`. No
-  existing result artifacts were modified.
-- **Active risks:** the batch fixtures verify signal-point portability only. They
-  do not validate live execution, queue behavior, fees/slippage, funding
-  settlement, PnL parity, WalkForward/CPCV, or DB-backed real-market data. The
-  OHLCV rotation fixture emits benign zscore precision warnings from near-identical
-  synthetic rows.
+- **Current goal:** ADR-0007 P1 multi-venue instrument specs are locally
+  implemented and verified on `codex/impl-multi-venue-instrument-specs`.
+- **Current branch:** `codex/impl-multi-venue-instrument-specs`.
+- **Last known good state:** Commits through `7be7f65` implement Tasks 1-5:
+  venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
+  provenance, source-gate exchange surfacing, and Run Backtest exchange selection.
+- **Current working state:** Task 6 adds the convergence golden case, required
+  docs/manifest updates, and final local verification. No existing result
+  artifacts were modified.
+- **Active risks:** DB seed/application was not run in this shell because
+  `DATABASE_URL` and `psql` were unavailable. The first DB-backed source
+  provenance PASS is still unverified.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, DB schema, API and
   frontend behavior, deployment gates, and existing result artifacts.
 
 ## Next steps
 
-- Run the source-provenance gate against a DB-backed saved run with canonical
-  candles and authoritative `ct_val` evidence.
-- Configure branch protection so `strategy-signal-validation` is a required check
-  after the workflow is pushed; GitHub repository settings are outside the local
-  code diff.
-- Backfill lifecycle metadata on the 11 pre-existing metadata-less docs.
+- Apply `sql/migrations/0011_venue_instrument_specs.sql` and
+  `sql/seed_venue_instrument_specs.sql` against a reachable dev DB, then run the
+  source-provenance gate against a fresh Binance run.
+- Ask Claude to review ADR-0007 P1 docs/manifest and the seed values before a
+  shared DB application or PR merge.
+- Preserve the unrelated dirty `docs/backtest_external_validation_report_zh.pptx`.
 
 ## How to update
 

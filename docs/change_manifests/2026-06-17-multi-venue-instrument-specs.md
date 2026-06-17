@@ -10,10 +10,8 @@ superseded_by: null
 
 # Change Manifest: Multi-venue instrument specifications
 
-> **P0 skeleton.** This manifest records the intended blast radius of the
+> **P1 implementation manifest.** This manifest records the blast radius of the
 > multi-venue work decided in [ADR-0007](../ADR/0007-multi-venue-instrument-specs.md).
-> Code-level fields (Files changed, Tests run, Approval-obtained) are filled when
-> **P1** lands; P0 itself is docs-only.
 
 ## Summary
 Introduce an `exchange` dimension so the same logical pair can be backtested on
@@ -22,12 +20,11 @@ a chosen single venue (Binance/OKX/Bybit) with that venue's correct
 ct_val provenance gate tagged by venue.
 
 ## Business rule(s) affected
-- R1–R5 (PnL/sizing/accounting): ct_val multiplier resolution becomes
+- R1.1-R1.4 (PnL/sizing/accounting): ct_val multiplier resolution becomes
   venue-aware. Values themselves are unchanged in backtest PnL (ct_val cancels
   under notional sizing); the rule change is *provenance*, not accounting.
 - R7 (validation/gates): ct_val authoritative source + db_parity become
   venue-scoped.
-- Exact sub-ids to be confirmed against `docs/DOMAIN_RULES.md` when P1 edits it.
 
 ## Trigger area(s) (DOC_IMPACT_MATRIX)
 A6 (DB schema — Manifest + ADR), A9 (validation gate — Manifest + ADR), A2
@@ -38,12 +35,15 @@ allowed exchanges).
 ## Files changed
 - P0 (this change): `docs/ADR/0007-multi-venue-instrument-specs.md` (added),
   `docs/ADR/README.md` (index row), this manifest (added).
-- P1 (planned, to be enumerated by writing-plans): `sql/` migration (new
-  `venue_instrument_specs` table), `backtesting/replay.py` (venue-aware ct_val
-  resolution + run `exchange`), `backtesting/differential_validation.py` (venue
-  tag on provenance/source-data block), `config/settings.yaml`
-  (default/allowed exchanges), `src/okx_quant/api/routes_backtest.py` (request
-  `exchange`), `frontend/` (venue selector), symbol-mapping module, tests.
+- P1 implementation: `sql/migrations/0011_venue_instrument_specs.sql`,
+  `sql/seed_venue_instrument_specs.sql`, `backtesting/replay.py`,
+  `backtesting/differential_validation.py`,
+  `src/okx_quant/api/routes_backtest.py`, `frontend/view-config.js`,
+  `config/instrument_specs.yaml`, `tests/unit/test_replay_ct_val_resolution.py`,
+  `tests/unit/test_replay_ct_val_provenance_tag.py`,
+  `tests/unit/test_differential_validation.py`,
+  `tests/unit/test_backtest_request_exchange.py`,
+  `tests/unit/test_multi_venue_convergence.py`, and the docs checked below.
 
 ## Behavior delta
 - Before: ct_val resolves single-venue (DB `instruments.contract_value` →
@@ -58,30 +58,34 @@ allowed exchanges).
 ## Source-of-truth updates
 - research/strategy_synthesis.md: N/A for P0; P1 should note the venue/contract
   assumption and the cross-venue convergence expectation.
-- config/: N/A for P0; P1 adds default/allowed `exchange`.
+- config/: `config/settings.yaml` already defaults `storage.primary_exchange` to
+  `binance`; P1 documents `config/instrument_specs.yaml` as an OKX-only fallback.
 - ADR: ADR-0007 accepted for P1 implementation on 2026-06-17.
 
 ## Docs updated (from DOC_IMPACT_MATRIX row)
-- [ ] `docs/DATA_FLOW.md` — P1 (new table + venue in resolution path)
-- [ ] `docs/DOMAIN_RULES.md` — P1 (venue-aware ct_val provenance rule)
-- [ ] `docs/FEATURE_MAP.md` — P1 (venue selection ownership)
-- [ ] `docs/INVARIANTS.md` — P1 (per-venue ct_val authoritative invariant)
-- [ ] `docs/ai_collaboration.md` — P1 (ct_val gate venue tagging)
-- [ ] `docs/UI_MAP.md` — P1 (frontend venue selector)
-- [ ] `docs/KNOWN_ISSUES.md` — P1 (close registry-only ct_val provenance gap)
+- [x] `docs/DATA_FLOW.md` — P1 (new table + venue in resolution path)
+- [x] `docs/DOMAIN_RULES.md` — P1 (venue-aware ct_val provenance rule)
+- [x] `docs/FEATURE_MAP.md` — P1 (venue selection ownership)
+- [x] `docs/INVARIANTS.md` — P1 (per-venue ct_val authoritative invariant)
+- [x] `docs/ai_collaboration.md` — P1 (ct_val gate venue tagging)
+- [x] `docs/UI_MAP.md` — P1 (frontend venue selector)
+- [x] `docs/KNOWN_ISSUES.md` — P1 (close registry-only ct_val provenance gap)
 - [x] `docs/ADR/README.md` — P0, index row added
 
 ## Invariants / golden cases
-- Invariants checked: P1 to add "ct_val authoritative source must match the
-  run's execution venue".
-- Golden cases affected: P1 to add cross-venue convergence case (same
-  strategy/params, Binance vs OKX → identical metrics modulo lot-rounding).
+- Invariants checked: I1 and I16.
+- Golden cases affected: G-001 cross-venue convergence case (same
+  strategy/params, Binance vs OKX; identical metrics within `1e-6`).
 
 ## Tests / checks run
-- P0: docs-only; `make docs-impact` / `make docs-check` to confirm ADR + manifest
-  satisfy the gate. (run before commit)
-- P1: replay venue-resolution unit tests, provenance-gate venue-tag tests,
-  convergence golden case, plus existing differential/source-provenance suites.
+- `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_replay_ct_val_provenance_tag.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_multi_venue_convergence.py -q` - 56 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
+- `python -m pytest tests/unit/test_backtest_request_exchange.py -q` - 2 passed, 1 pytest cache permission warning.
+- `node --check frontend/view-config.js` - passed.
+- `git -c safe.directory=C:/quant_strategy diff --check` - passed; Git reported CRLF normalization warnings only.
+- `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
+- `python scripts/docs/check_doc_impact.py` with `safe.directory` env - passed: 18 changed file(s), no impact-matrix violations.
+- DB-backed end-to-end source-provenance PASS: not run in this local session because
+  `DATABASE_URL` and `psql` were unavailable; requires seeded DB and fresh run.
 
 ## Risks and rollback
 - Risks: provenance field shape drifting from the gate if P1 splits across

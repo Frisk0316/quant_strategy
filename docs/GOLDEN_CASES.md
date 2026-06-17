@@ -23,6 +23,7 @@ A golden case is not a substitute for the unit/integration tests that enforce it
 | ID | Scenario | Fixed inputs | Expected output | Guards | Enforcing test |
 |---|---|---|---|---|---|
 | G-000 | _example: single BTC-SWAP long, open then close at +Δ_ | _ct_val, entry/exit px, fee, qty_ | _realized PnL = qty·ct_val·Δ − fees_ | I1, I2 | _tests/unit/..._ |
+| G-001 | Same BTC-SWAP MA crossover replay on OKX vs Binance venue specs | Synthetic BTC-USDT-SWAP 1H parquet fixture; OKX `ctVal=0.01`; Binance `ctVal=1.0`; both via `instrument_specs` override | `total_return` and `sharpe` match within `1e-6`; run validation carries the selected `exchange` | I1, I16 | `tests/unit/test_multi_venue_convergence.py` |
 
 ## What makes a good golden case
 

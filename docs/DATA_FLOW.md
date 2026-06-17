@@ -26,6 +26,17 @@ Current: DB-backed ingestion is available when `DATABASE_URL` or
 `config/settings.yaml` DSN is reachable. Known gap: local environments without DB
 must rely on parquet fallback or skip DB-dependent validation.
 
+## Venue Instrument Spec Flow
+
+```text
+venue instrument source -> venue_instrument_specs(exchange, symbol) seed/table -> ReplayBacktestEngine._load_db_instrument_specs(exchange) -> per-symbol ct_val/lot/tick/min specs -> sizing, fills, funding, terminal liquidation, and result.validation.ct_val_sources
+```
+
+Current: P1 seeds OKX and Binance BTC/ETH SWAP specs manually. The bundled
+`config/instrument_specs.yaml` registry remains an OKX-only fallback for local
+replay when DB specs are unavailable; promotion evidence must use DB-backed or
+explicit `instrument_specs` provenance tagged with the run `exchange`.
+
 ## Funding Ingestion Flow
 
 ```text

@@ -60,6 +60,9 @@ Main app views in `frontend/app.js`:
 - Parameter defaults live in `STRATEGY_PARAM_DEFAULTS`.
 - Parameter sweep defaults/specs live in `SWEEP_PARAM_DEFAULTS` and
   `SWEEP_PARAM_SPECS`.
+- `frontend/view-config.js` owns the run-level Exchange selector. It sends
+  `exchange` on both run-backtest and parameter-sweep payloads; the API stores it
+  as `cfg.storage.primary_exchange`.
 - Technical strategies are `ma_crossover`, `ema_crossover`, and `macd_crossover`.
 - External-feature research baselines are `fear_greed_sentiment` and `cme_gap_fill`.
 - `daily_winner` is tagged as validation-only and is not deployment evidence.

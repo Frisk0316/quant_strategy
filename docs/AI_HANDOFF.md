@@ -22,12 +22,12 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Current session goal: continue backtest-correctness validation by promoting the
-all-strategy portable signal-validation fixture batch into CI and adding a
-minimal real-data/source-provenance validation gate, while keeping trading-core
-behavior unchanged. User agreed that `strategy-signal-validation` should become a
-required branch protection check after the workflow is pushed/configured; full
-execution parity remains later.
+Current session goal: finish ADR-0007 P1 multi-venue instrument specs on
+`codex/impl-multi-venue-instrument-specs`. Tasks 1-6 are locally implemented:
+venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
+provenance/source gates, Run Backtest exchange selection, convergence golden
+case, and docs/manifest updates. Remaining unverified item: DB-backed
+source-provenance PASS after applying the SQL seed to a reachable dev DB.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -54,12 +54,13 @@ merges. Other sessions coordinate around it, not into it.
 
 ## Current Branch
 
-Must be checked with `git branch --show-current` at session start. Observed in this session: `feature/chart-ux-overhaul`.
+Must be checked with `git branch --show-current` at session start. Observed in this session: `codex/impl-multi-venue-instrument-specs`.
 
 ## Last Known Good Commit
 
-`cb022c5` — Add TradesView, CompareView, and RiskView components  
-_(Status: tests/unit pass locally; integration tests require TimescaleDB — not confirmed clean in CI)_
+ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
+verified locally; DB-backed source-provenance PASS still requires a reachable
+TimescaleDB/Postgres DSN and seeded `venue_instrument_specs` rows.
 
 ## System Overview
 

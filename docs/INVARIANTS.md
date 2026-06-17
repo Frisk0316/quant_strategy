@@ -35,6 +35,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I13 | Trial count is recorded; no hidden trials in selection | R6.3 | REVIEW, differential validation |
 | I14 | `naive_backtest` / `in_sample` / idealized output never used as promotion evidence | R7.1 | REVIEW, gate logic |
 | I15 | No live/shadow/demo claim without all gates passed + human approval | R7.2 | `docs/ai_collaboration.md`, REVIEW |
+| I16 | A SWAP run's authoritative `ct_val` source matches the run execution venue | R1.4, R7.2 | `tests/unit/test_replay_ct_val_resolution.py`, `tests/unit/test_replay_ct_val_provenance_tag.py`, `tests/unit/test_differential_validation.py`, `tests/unit/test_multi_venue_convergence.py` |
 
 ## Usage
 

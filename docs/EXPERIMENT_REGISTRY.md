@@ -23,6 +23,7 @@ positive one and must stay in the log.
 | ID | Date | Hypothesis | Setup (data range, config, seed) | Trials | Artifact / run_id | Outcome | Notes |
 |---|---|---|---|---|---|---|---|
 | E-000 | 2026-06-12 | H-000 | _example: BTC-SWAP 1H, config/strategies.yaml@<sha>, seed=0_ | 1 | _results/<run_id>_ | template | replace; do not delete |
+| E-001 | 2026-06-17 | H-001 | BTC-USDT-SWAP MA crossover on synthetic 1H parquet fixture in `tests/unit/test_multi_venue_convergence.py`; two fixed venue configs (`okx`, `binance`); `instrument_specs` overrides; no DB/network; seed N/A | 1 | `tests/unit/test_multi_venue_convergence.py::test_swap_ct_val_cancels_under_notional_sizing` | supported | Unit golden case passed: 1 passed; validates convergence only, not deployability. |
 
 ## Required fields
 

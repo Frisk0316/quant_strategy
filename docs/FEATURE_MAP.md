@@ -17,8 +17,8 @@ implementation exists.
 ## Backtest Run UI
 
 - User-facing behavior: configure a strategy, symbols/universe, bar, date range,
-  capital, validation mode, risk overrides, and optional parameter sweep; queue a
-  run and poll job status.
+  execution exchange, capital, validation mode, risk overrides, and optional
+  parameter sweep; queue a run and poll job status.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, `frontend/view-config.js`,
   `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -27,10 +27,14 @@ implementation exists.
   `backtesting/replay.py`, `backtesting/parameter_sweep.py`,
   `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`.
 - Data / DB / artifact files: `src/okx_quant/data/candle_store.py`,
-  `backtesting/artifacts.py`, runtime artifacts under results run directories.
+  `backtesting/artifacts.py`, `sql/migrations/0011_venue_instrument_specs.sql`,
+  `sql/seed_venue_instrument_specs.sql`, runtime artifacts under results run
+  directories.
 - Config files: `config/settings.yaml`, `config/strategies.yaml`, `config/risk.yaml`,
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_backtesting.py`, `tests/unit/test_parameter_sweep.py`,
+  `tests/unit/test_backtest_request_exchange.py`,
+  `tests/unit/test_multi_venue_convergence.py`,
   `tests/integration/test_replay_engine.py`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
   `docs/AI_HANDOFF.md`.

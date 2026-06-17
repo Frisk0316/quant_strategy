@@ -39,6 +39,10 @@ current/target/known-gap distinction — do not silently "fix" either side.
   hard-coded constant copied between modules.
 - **R1.3** Realized and unrealized PnL must reconcile: closing a position must
   move the exact unrealized amount into realized, net of fees and funding.
+- **R1.4** For SWAP replay and promotion evidence, the authoritative `ct_val`
+  source must match the run's execution venue. `venue_instrument_specs(exchange,
+  symbol)` is the DB-backed authority; `config/instrument_specs.yaml` is an
+  OKX-only fallback and is not promotion-grade evidence for other venues.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

@@ -45,9 +45,10 @@ over time.
   tiny fixture workloads.
 - Advisory validation evidence, in-sample backtests, idealized-fill artifacts, and
   DB parity SKIP states are not promotion evidence.
-- The source-provenance gate exists, but no current artifact has been confirmed as
-  passing it with reachable canonical DB candles and authoritative `ct_val`
-  evidence in this session.
+- ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
+  adding venue-aware specs, provenance exchange tags, and frontend/API exchange
+  selection. Remaining gap: this session could not confirm a fresh DB-backed
+  artifact PASS because local `psql`/`DATABASE_URL` were unavailable.
 
 ## Operations
 
