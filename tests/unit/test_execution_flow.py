@@ -127,14 +127,14 @@ async def test_execution_handler_emits_immediate_fill_event_for_simulated_fills(
         sz="2",
         px="100.0",
         td_mode="cross",
-        strategy="as_market_maker",
+        strategy="ma_crossover",
     )
 
     await handler.on_order(Event(EvtType.ORDER, payload=order))
     queued = await asyncio.wait_for(bus._queue.get(), timeout=0.1)
 
     assert queued.type == EvtType.FILL
-    assert queued.payload.strategy == "as_market_maker"
+    assert queued.payload.strategy == "ma_crossover"
     assert queued.payload.fill_px == 100.0
 
 
@@ -696,6 +696,7 @@ def test_build_broker_demo_sim_override_uses_plain_sim_broker():
 @pytest.mark.asyncio
 async def test_shadow_broker_primary_receives_instrument_specs(monkeypatch):
     monkeypatch.setattr("okx_quant.engine.OKXBroker", lambda **_: PendingBroker())
+    monkeypatch.setattr("okx_quant.execution.broker.random.random", lambda: 0.0)
     broker = _build_broker(
         DummyCfg("shadow"),
         sim_broker=True,

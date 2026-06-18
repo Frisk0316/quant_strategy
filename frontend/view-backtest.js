@@ -658,7 +658,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
       if (!marketSymbolStatus[symbol]) {
         setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "loading" }));
         Promise.all([
-          window.API.fetchBacktestPriceSeries(runId, symbol, MARKET_PRICE_POINTS).catch(() => []),
+          window.API.fetchBacktestPriceSeries(runId, symbol, MARKET_PRICE_POINTS),
           window.API.fetchBacktestExecutionMarkers(runId, symbol, MARKET_MARKER_LIMIT).catch(() => []),
         ]).then(([ps, em]) => {
           if (cancelled) return;
@@ -854,14 +854,16 @@ function RunDetailView({ runId, onBack, onDelete }) {
       tradesMap.set(t.cl_ord_id, (tradesMap.get(t.cl_ord_id) ?? 0) + +t.net_realized_pnl);
     }
   }
-  const priceChartSymbols = effectiveSelectedChartSymbols.filter((sym) =>
-    filteredPriceSeries.some((row) => row.inst_id === sym)
-  );
-  const selectedMarketLoading = effectiveSelectedChartSymbols.some((sym) =>
+  const selectedMarketLoading = effectiveSelectedChartSymbols.filter((sym) =>
     !marketSymbolStatus[sym] || marketSymbolStatus[sym] === "loading"
   );
-  const marketLoading = selectedMarketLoading;
   const selectedMarketErrors = effectiveSelectedChartSymbols.filter((sym) => marketSymbolStatus[sym] === "error");
+  const marketSummary = [
+    `${filteredPriceSeries.length.toLocaleString()} price samples`,
+    `${filteredMarkers.length.toLocaleString()} markers`,
+    selectedMarketLoading.length ? `${selectedMarketLoading.length.toLocaleString()} loading` : null,
+    selectedMarketErrors.length ? `${selectedMarketErrors.length.toLocaleString()} failed` : null,
+  ].filter(Boolean).join(" · ");
   const selectedIndicatorLoading = isTechnicalRun && effectiveSelectedChartSymbols.some((sym) =>
     indicatorSymbolStatus[sym] === "loading"
   );
@@ -948,28 +950,28 @@ function RunDetailView({ runId, onBack, onDelete }) {
           <div>
             <div class="card-title">Price + Trade Markers</div>
             <div class="card-sub">
-              ${marketLoading ? "Loading…" : `${filteredPriceSeries.length.toLocaleString()} price samples · ${filteredMarkers.length.toLocaleString()} markers`}
+              ${marketSummary || "No chart symbols selected"}
             </div>
           </div>
         </div>
-        ${marketLoading
-          ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading price series…</div>`
-          : html`
-            <div class="chart-stack">
-              ${priceChartSymbols.length
-                ? priceChartSymbols.map((sym) => {
-                    const chartId = `price:${sym}`;
-                    const y = getChartYControls(chartId);
-                    const rows = filteredPriceSeries.filter((row) => row.inst_id === sym);
-                    const markerRows = filteredMarkers.filter((row) => row.inst_id === sym);
-                    return html`
-                      <div key=${sym} class="chart-panel">
-                        <div class="chart-panel-h">
-                          <div>
-                            <div class="card-title">${sym}</div>
-                            <div class="card-sub">${rows.length.toLocaleString()} price samples - ${markerRows.length.toLocaleString()} markers</div>
-                          </div>
-                        </div>
+        <div class="chart-stack">
+          ${effectiveSelectedChartSymbols.length
+            ? effectiveSelectedChartSymbols.map((sym) => {
+                const chartId = `price:${sym}`;
+                const y = getChartYControls(chartId);
+                const rows = filteredPriceSeries.filter((row) => row.inst_id === sym);
+                const markerRows = filteredMarkers.filter((row) => row.inst_id === sym);
+                const status = marketSymbolStatus[sym] || "loading";
+                return html`
+                  <div key=${sym} class="chart-panel">
+                    <div class="chart-panel-h">
+                      <div>
+                        <div class="card-title">${sym}</div>
+                        <div class="card-sub">${rows.length.toLocaleString()} price samples - ${markerRows.length.toLocaleString()} markers</div>
+                      </div>
+                    </div>
+                    ${rows.length
+                      ? html`
                         <${ChartZoomControls}
                           range=${marketRange}
                           onReset=${() => setMarketRange(null)}
@@ -992,22 +994,25 @@ function RunDetailView({ runId, onBack, onDelete }) {
                             yZoom=${y.yZoom}
                           />
                         </div>
-                      </div>
-                    `;
-                  })
-                : selectedMarketErrors.length
-                  ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Failed to load price series for ${selectedMarketErrors.join(", ")}.</div>`
-                  : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series rows were returned for the selected symbol.</div>`
-              }
-              <${SymbolPillBar}
-                symbols=${chartSymbols}
-                selected=${effectiveSelectedChartSymbols}
-                colors=${chartSymbolColors}
-                onChange=${setSelectedChartSymbols}
-              />
-            </div>
-          `
-        }
+                      `
+                      : status === "error"
+                        ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Failed to load price series for ${sym}.</div>`
+                        : status === "loading"
+                          ? html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>Loading ${sym} price data…</div>`
+                          : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No price series rows were returned for ${sym}.</div>`
+                    }
+                  </div>
+                `;
+              })
+            : html`<div class="field-hint" style=${{ padding: "28px 0", textAlign: "center" }}>No chart symbols available for this run.</div>`
+          }
+          <${SymbolPillBar}
+            symbols=${chartSymbols}
+            selected=${effectiveSelectedChartSymbols}
+            colors=${chartSymbolColors}
+            onChange=${setSelectedChartSymbols}
+          />
+        </div>
       </div>
 
       ${isTechnicalRun && indicatorSymbols.length > 0 && indicatorSymbols.map((sym) => {

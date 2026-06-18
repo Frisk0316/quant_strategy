@@ -64,8 +64,6 @@
 
   // Strategies catalog
   const STRATEGIES = [
-    { id: "as_market_maker", name: "Avellaneda–Stoikov MM", tag: "Market Making", desc: "AS quotes with VPIN spread multiplier and OBI/OFI alpha skew" },
-    { id: "obi_market_maker", name: "OBI Market Maker", tag: "Market Making", desc: "Order book imbalance-driven market making" },
     { id: "funding_carry", name: "Funding Carry", tag: "Carry", desc: "Delta-neutral long spot / short perp, earns 8h funding" },
     { id: "pairs_trading", name: "Pairs Trading", tag: "Stat Arb", desc: "Kalman filter hedge ratio + OU spread z-score" },
     { id: "ma_crossover", name: "MA Crossover", tag: "Trend", desc: "Long/flat moving-average crossover strategy with adjustable fast and slow windows" },
@@ -215,7 +213,7 @@
         fee,
         pnl,
         status,
-        strategy: ["funding_carry", "as_market_maker", "obi_market_maker"][Math.floor(rand() * 3)],
+        strategy: ["funding_carry", "pairs_trading", "macd_crossover"][Math.floor(rand() * 3)],
       });
     }
     return list.sort((a, b) => b.ts - a.ts);
@@ -224,9 +222,9 @@
 
   // Compare runs (3): conservative / baseline / aggressive
   const compareRuns = [
-    { id: "run-A", name: "Conservative · gamma=0.05", strategy: "as_market_maker", color: "var(--text-muted)", seed: 11, mu: 0.0004, sigma: 0.0028 },
-    { id: "run-B", name: "Baseline · gamma=0.10", strategy: "as_market_maker", color: "var(--accent)", seed: 7, mu: 0.0008, sigma: 0.0042 },
-    { id: "run-C", name: "Aggressive · gamma=0.20", strategy: "as_market_maker", color: "var(--loss)", seed: 23, mu: 0.0014, sigma: 0.0078 },
+    { id: "run-A", name: "Conservative · MACD 16/34/12", strategy: "macd_crossover", color: "var(--text-muted)", seed: 11, mu: 0.0004, sigma: 0.0028 },
+    { id: "run-B", name: "Baseline · MACD 12/26/9", strategy: "macd_crossover", color: "var(--accent)", seed: 7, mu: 0.0008, sigma: 0.0042 },
+    { id: "run-C", name: "Aggressive · MACD 8/21/6", strategy: "macd_crossover", color: "var(--loss)", seed: 23, mu: 0.0014, sigma: 0.0078 },
   ].map((r) => {
     const eqd = buildEquity(r.seed, N, r.mu, r.sigma);
     const stats = summarize(eqd.ret, PERIODS);

@@ -62,7 +62,8 @@ def load_candles(
         include_suspect: Include candles marked quality_status='suspect'
                          (only applies to backend='postgres').
         exchange: Filter by exchange name, e.g. 'binance'.
-                  Only used when backend='market'.
+                  Used as canonical `source_primary` for backend='postgres'
+                  and exchange filter for backend='market'.
     """
     if backend == "postgres":
         # Fallback applies to both "no DSN string" and "DSN string but DB not
@@ -70,7 +71,7 @@ def load_candles(
         # drop to parquet so backtests don't crash mid-run.
         if not dsn or not _dsn_reachable(dsn):
             return _load_candles_parquet(inst_id, bar, data_dir, start, end)
-        return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect)
+        return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect, exchange)
     if backend == "market":
         if not dsn:
             raise ValueError("dsn is required when backend='market'")
@@ -268,6 +269,7 @@ def _load_candles_pg(
     start: Optional[str],
     end: Optional[str],
     include_suspect: bool,
+    exchange: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Synchronous wrapper around CandleStore.get_canonical_candles().
@@ -300,12 +302,14 @@ def _load_candles_pg(
                 inst_id=inst_id, bar=bar,
                 start=start_dt, end=end_dt,
                 include_suspect=include_suspect,
+                source_primary=exchange,
             )
             if _can_derive_from_1m(bar) and _has_low_bar_coverage(df, start_dt, end_dt, bar):
                 df_1m = await store.get_canonical_candles(
                     inst_id=inst_id, bar="1m",
                     start=start_dt, end=end_dt,
                     include_suspect=include_suspect,
+                    source_primary=exchange,
                 )
                 if not df_1m.empty:
                     return df_1m, True

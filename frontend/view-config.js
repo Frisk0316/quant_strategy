@@ -280,6 +280,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [spotSymbol, setSpotSymbol] = useConfigState("BTC-USDT");
   const [symbolX, setSymbolX] = useConfigState("BTC-USDT-SWAP");
   const [symbolY, setSymbolY] = useConfigState("ETH-USDT-SWAP");
+  const [exchange, setExchange] = useConfigState("binance");
   const [bar, setBar] = useConfigState("1H");
   const [periodsOverride, setPeriodsOverride] = useConfigState(null);
   const [start, setStart] = useConfigState("2024-01-01");
@@ -440,6 +441,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   function triggerBacktest() {
     const body = {
       strategy,
+      exchange,
       bar: isDailyWinner ? "1D" : bar,
       periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
       start,
@@ -485,6 +487,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
       const body = {
         strategy,
+        exchange,
         bar,
         periods,
         start,
@@ -548,6 +551,13 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 ${MOCK.STRATEGIES.map((s) => html`<option key=${s.id} value=${s.id}>${s.name}</option>`)}
               </select>
               <div class="field-hint">${strat.desc}</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Exchange</div>
+              <select class="select mono" value=${exchange} onChange=${(e) => setExchange(e.target.value)}>
+                <option value="binance">Binance</option>
+                <option value="okx">OKX</option>
+              </select>
             </div>
             ${isDailyWinner ? html`
               <${Fragment}>
@@ -735,8 +745,12 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             ${(() => {
               // Warm-up clock-time per strategy (minutes)
-              const warmupMin = { funding_carry: 0, as_market_maker: 10, obi_market_maker: 10,
-                                  pairs_trading: 168 * 60, ohlcv_rotation: 240, daily_winner: 24 * 60 };
+              const warmupMin = {
+                funding_carry: 0,
+                pairs_trading: 168 * 60,
+                ohlcv_rotation: 240,
+                daily_winner: 24 * 60,
+              };
               const wm = warmupMin[strategy] || 0;
               if (!wm || !start || !end) return null;
               const days = (new Date(end) - new Date(start)) / 86400000;
@@ -857,19 +871,6 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fil
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
       ["rebalance_drift_threshold", "0.02", "spot/perp drift", "Max allowed deviation between spot and perp position sizes before rebalancing. Keeps delta-neutral exposure."],
       ["funding_check_interval_secs", "300", "poll cadence (s)", "How often (seconds) the strategy re-checks the funding rate via REST. Lower = more reactive, higher = fewer API calls."],
-    ],
-    as_market_maker: [
-      ["gamma", "0.10", "risk aversion", "Avellaneda-Stoikov risk aversion parameter. Higher gamma widens spreads and shrinks inventory faster. Tune to your risk tolerance."],
-      ["kappa", "1.5", "arrival intensity", "Expected order arrival rate. Affects bid/ask reservation prices. Higher kappa = tighter spreads."],
-      ["sigma_lookback_min", "5", "vol estimator window (min)", "Rolling window in minutes for mid-price volatility estimation. Shorter = more reactive to recent vol spikes."],
-      ["beta_vpin", "2.0", "VPIN spread scaler", "Multiplier applied to spread when VPIN (toxicity) is high. Wider spreads during informed order flow."],
-      ["max_pos_contracts", "50", "inventory cap (contracts)", "Maximum net inventory the strategy will hold. Orders are suppressed on the side that would exceed this limit."],
-    ],
-    obi_market_maker: [
-      ["depth", "5", "book levels", "Number of order book price levels to include in OBI calculation. More levels = smoother but slower signal."],
-      ["alpha_decay", "0.5", "OFI weight decay", "Exponential decay applied to older order flow imbalance observations. Lower = memory of past flow fades faster."],
-      ["obi_threshold", "0.15", "signal threshold", "Minimum absolute OBI score required to skew quotes. Below this, quotes are symmetric."],
-      ["c_alpha", "100.0", "alpha coefficient", "Scales the adverse selection component of the spread. Higher = wider quotes when OBI signal is strong."],
     ],
     pairs_trading: [
       ["kalman_delta", "0.0001", "process noise", "Kalman filter process variance. Lower = hedge ratio changes slowly, more stable but lags regime shifts."],

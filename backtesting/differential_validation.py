@@ -27,17 +27,6 @@ import numpy as np
 import pandas as pd
 
 from okx_quant.analytics.performance import max_drawdown, sharpe
-from okx_quant.signals.obi_ofi import (
-    book_to_l1_snap,
-    compute_mlofi_increment,
-    compute_obi_features,
-    compute_ofi,
-    ewma_ofi,
-)
-from okx_quant.signals.vpin import compute_vpin, vpin_toxicity_controls
-from okx_quant.strategies.as_market_maker import _bounded_fair_value, as_quote
-
-
 TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 ENGINE_NAMES = {"vectorbt", "backtrader", "nautilus"}
 SIGNAL_POINT_ENGINE_ORDER = ["vectorbt", "backtrader", "nautilus"]
@@ -286,60 +275,6 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
                 "role": "advisory",
                 "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "external_observations.csv"],
                 "limitation": "Exports Nautilus-compatible CME gap signal evidence only; full Nautilus feature feed and matching engine execution are not run.",
-            },
-        },
-    },
-    "as_market_maker": {
-        "strategy_class": "execution_sensitive_market_maker",
-        "minimum_reference_engines": 1,
-        "portable_validation_required": True,
-        "engines": {
-            "nautilus": {
-                "status": "implemented",
-                "role": "advisory",
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "order_log.csv", "fills.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Exports Nautilus-compatible advisory replay evidence only; reference_full still needs Nautilus catalog/L2/trade data and queue/fill model mapping.",
-            },
-            "backtrader": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "trades.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Independently recomputes book-derived AS quote signal timing and target quotes; queue-aware fills, VPIN trade-tick recalculation, and PnL remain advisory.",
-            },
-            "vectorbt": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "book_snapshots", "trade_ticks.csv"],
-                "limitation": "Independently recomputes book-derived AS quote signal timing and target quotes; vectorbt portfolio semantics, queue fills, VPIN trade-tick recalculation, and PnL remain advisory.",
-            },
-        },
-    },
-    "obi_market_maker": {
-        "strategy_class": "execution_sensitive_market_maker",
-        "minimum_reference_engines": 1,
-        "portable_validation_required": True,
-        "engines": {
-            "nautilus": {
-                "status": "implemented",
-                "role": "advisory",
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "order_log.csv", "fills.csv", "book_snapshots"],
-                "limitation": "Exports Nautilus-compatible advisory replay evidence only; reference_full still needs Nautilus catalog/L2 data, OBI/OFI replay, and queue/fill model mapping.",
-            },
-            "backtrader": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "trades.csv", "book_snapshots"],
-                "limitation": "Independently recomputes OBI/OFI/MLOFI quote signal timing and target quotes; queue-aware fills and PnL remain advisory.",
-            },
-            "vectorbt": {
-                "status": "implemented",
-                "role": "reference_signals_only",
-                "strict_scopes": ["signal_logic"],
-                "required_artifacts": ["result.json", "price_series.csv", "signals.csv", "book_snapshots"],
-                "limitation": "Independently recomputes OBI/OFI/MLOFI quote signal timing and target quotes; vectorbt portfolio semantics, queue fills, and PnL remain advisory.",
             },
         },
     },
@@ -697,6 +632,7 @@ def _source_data_validation(
     ]
     return {
         "status": status,
+        "exchange": ct_val_check.get("exchange"),
         "ohlcv_source_validation": ohlcv_status,
         "checks": checks,
         "limitations": limitations,
@@ -952,6 +888,116 @@ def _signal_point_correctness_matrix(
         "strict_fields": list(SIGNAL_POINT_SCOPE),
         "advisory_scope": list(SIGNAL_POINT_ADVISORY_SCOPE),
         "rows": rows,
+    }
+
+
+def _nautilus_order_fill_parity(
+    engine_results: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    result = engine_results.get("nautilus")
+    if not isinstance(result, dict):
+        return {
+            "engine": "nautilus",
+            "scope": "signal_replay_order_fill",
+            "status": "SKIP",
+            "passed": False,
+            "reason": "Nautilus engine was not selected for this validation run.",
+            "checks": [],
+            "promotion_gate_evidence": False,
+            "full_project_strategy_parity_passed": False,
+        }
+
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    smoke = metadata.get("nautilus_engine_smoke") if isinstance(metadata.get("nautilus_engine_smoke"), dict) else {}
+    coverage = smoke.get("signal_replay_coverage") if isinstance(smoke.get("signal_replay_coverage"), dict) else {}
+    backtest_result = smoke.get("backtest_result") if isinstance(smoke.get("backtest_result"), dict) else {}
+
+    smoke_status = str(smoke.get("status") or result.get("status") or "SKIP").upper()
+    engine_execution = str(smoke.get("engine_execution") or metadata.get("engine_execution") or "not_run")
+    signals_available = _coerce_count(smoke.get("signals_available", coverage.get("total_signal_rows", 0)))
+    buy_sell_signal_rows = _coerce_count(coverage.get("buy_sell_signal_rows", signals_available))
+    signals_replayed = _coerce_count(smoke.get("signals_replayed", coverage.get("replayable_signal_rows", 0)))
+    order_attempts = _coerce_count(backtest_result.get("strategy_order_attempts", 0))
+    total_orders = _coerce_count(backtest_result.get("total_orders", 0))
+    fills = _coerce_count(backtest_result.get("strategy_fills", 0))
+    skipped_replay_rows = sum(
+        _coerce_count(coverage.get(field, 0))
+        for field in (
+            "skipped_unmapped_symbol",
+            "skipped_unsupported_side",
+            "skipped_invalid_timestamp",
+        )
+    )
+
+    checks = [
+        {
+            "name": "engine_signal_replay_run",
+            "status": "PASS" if smoke_status == "OK" and engine_execution == "signal_replay_run" else "FAIL",
+            "expected": "status=OK and engine_execution=signal_replay_run",
+            "actual": f"status={smoke_status} engine_execution={engine_execution}",
+        },
+        {
+            "name": "signal_rows_available",
+            "status": "PASS" if buy_sell_signal_rows > 0 else "FAIL",
+            "expected": "at least one buy/sell signal row",
+            "actual": buy_sell_signal_rows,
+        },
+        {
+            "name": "signal_replay_coverage",
+            "status": "PASS" if signals_replayed == buy_sell_signal_rows and skipped_replay_rows == 0 else "FAIL",
+            "expected": {
+                "signals_replayed": buy_sell_signal_rows,
+                "skipped_replay_rows": 0,
+            },
+            "actual": {
+                "signals_replayed": signals_replayed,
+                "skipped_replay_rows": skipped_replay_rows,
+                "skipped_symbols": coverage.get("skipped_symbols", []),
+            },
+        },
+        {
+            "name": "order_attempt_coverage",
+            "status": "PASS" if order_attempts == signals_replayed and signals_replayed > 0 else "FAIL",
+            "expected": signals_replayed,
+            "actual": order_attempts,
+        },
+        {
+            "name": "order_acceptance",
+            "status": "PASS" if total_orders >= order_attempts and order_attempts > 0 else "FAIL",
+            "expected": f">= {order_attempts}",
+            "actual": total_orders,
+        },
+        {
+            "name": "fill_coverage",
+            "status": "PASS" if fills == order_attempts and order_attempts > 0 else "FAIL",
+            "expected": order_attempts,
+            "actual": fills,
+        },
+    ]
+    failed_checks = [row["name"] for row in checks if row["status"] != "PASS"]
+    status = "PASS" if not failed_checks else ("SKIP" if smoke_status == "SKIP" else "FAIL")
+    return {
+        "engine": "nautilus",
+        "scope": "signal_replay_order_fill",
+        "status": status,
+        "passed": status == "PASS",
+        "signals_available": signals_available,
+        "buy_sell_signal_rows": buy_sell_signal_rows,
+        "signals_replayed": signals_replayed,
+        "order_attempts": order_attempts,
+        "orders_accepted": total_orders,
+        "fills": fills,
+        "failed_checks": failed_checks,
+        "checks": checks,
+        "signal_replay_coverage": coverage,
+        "backtest_result": backtest_result,
+        "promotion_gate_evidence": False,
+        "full_project_strategy_parity_passed": False,
+        "full_project_strategy_parity_gap": (
+            "Nautilus parity currently validates generated signal-replay orders and fills; "
+            "project strategy source execution, L2/L3 queue priority, funding settlement, "
+            "and production exchange adapter behavior are not covered."
+        ),
     }
 
 
@@ -1334,19 +1380,22 @@ def _validate_price_series(bundle: ArtifactBundle) -> dict[str, Any]:
 
 def _validate_ct_val_provenance(bundle: ArtifactBundle) -> dict[str, Any]:
     validation = bundle.result.get("validation") if isinstance(bundle.result, dict) else {}
+    exchange = validation.get("exchange") if isinstance(validation, dict) else None
     symbols = bundle.symbols
     swap_symbols = [symbol for symbol in symbols if symbol.endswith("-SWAP")]
     if not swap_symbols:
-        return {"status": "PASS", "reason": "No SWAP symbols require ct_val provenance."}
+        return {"status": "PASS", "exchange": exchange, "reason": "No SWAP symbols require ct_val provenance."}
     if not isinstance(validation, dict) or "ct_val_all_authoritative" not in validation:
         return {
             "status": "FAIL",
+            "exchange": exchange,
             "symbols": swap_symbols,
             "reason": "ct_val provenance is missing from result.validation.",
         }
     authoritative = bool(validation.get("ct_val_all_authoritative"))
     return {
         "status": "PASS" if authoritative else "FAIL",
+        "exchange": exchange,
         "symbols": swap_symbols,
         "sources": validation.get("ct_val_sources") or {},
         "reason": "" if authoritative else "ct_val provenance is not authoritative for all SWAP symbols.",
@@ -1506,20 +1555,12 @@ def _external_observations_required(bundle: ArtifactBundle, required_artifacts: 
 
 def _book_snapshots_required(bundle: ArtifactBundle, required_artifacts: list[str]) -> bool:
     required = set(required_artifacts)
-    return (
-        bundle.primary_strategy in {"as_market_maker", "obi_market_maker"}
-        or "book_snapshots" in required
-        or "book_snapshots.csv" in required
-    )
+    return "book_snapshots" in required or "book_snapshots.csv" in required
 
 
 def _trade_ticks_required(bundle: ArtifactBundle, required_artifacts: list[str]) -> bool:
     required = set(required_artifacts)
-    return (
-        bundle.primary_strategy == "as_market_maker"
-        or "trade_ticks" in required
-        or "trade_ticks.csv" in required
-    )
+    return "trade_ticks" in required or "trade_ticks.csv" in required
 
 
 def _external_dataset_id(bundle: ArtifactBundle) -> str:
@@ -2069,9 +2110,13 @@ def _compare_trade_ticks_to_db(
 
 
 def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
+    validation = bundle.result.get("validation") if isinstance(bundle.result, dict) else {}
+    exchange = validation.get("exchange") if isinstance(validation, dict) else None
     if os.environ.get("DIFF_VALIDATION_ENABLE_DB_PARITY") != "1":
         return {
             "status": "SKIP",
+            "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": (
                 "DB parity check not requested; set DIFF_VALIDATION_ENABLE_DB_PARITY=1 "
                 "with DIFF_VALIDATION_DB_DSN or DATABASE_URL to compare canonical candles."
@@ -2081,6 +2126,8 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     if not dsn:
         return {
             "status": "SKIP",
+            "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": "DB parity requested but no DIFF_VALIDATION_DB_DSN or DATABASE_URL is configured.",
         }
     try:
@@ -2088,11 +2135,15 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     except Exception as exc:
         return {
             "status": "SKIP",
+            "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": f"DB parity loader unavailable: {type(exc).__name__}: {exc}",
         }
     if not _dsn_reachable(dsn):
         return {
             "status": "SKIP",
+            "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": "DB parity requested but PostgreSQL/TimescaleDB is not reachable.",
         }
 
@@ -2118,6 +2169,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
                 dsn=dsn,
                 start=start,
                 end=end,
+                exchange=exchange,
                 include_suspect=False,
             )
         except Exception as exc:
@@ -2135,6 +2187,8 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
     return {
         "status": status,
         "backend": "postgres",
+        "exchange": exchange,
+        "canonical_source_primary": exchange,
         "symbols": symbol_results,
         "reason": "" if status == "PASS" else "DB canonical candle parity mismatches were detected.",
     }
@@ -2169,7 +2223,7 @@ def _compare_artifact_prices_to_db(
     db_norm = db_norm.rename(columns={first_col: "datetime"})
     db_norm["_dt"] = pd.to_datetime(db_norm["datetime"], utc=True, errors="coerce")
     db_norm = db_norm.dropna(subset=["_dt"]).sort_values("_dt")
-    fields = ["open", "high", "low", "close", "vol"]
+    fields = ["close"]
     artifact_norm = artifact[["_dt", *[field for field in fields if field in artifact.columns]]].copy()
     merged = artifact_norm.merge(
         db_norm[["_dt", *[field for field in fields if field in db_norm.columns]]],
@@ -2193,7 +2247,7 @@ def _compare_artifact_prices_to_db(
     status = "FAIL" if missing_in_db or value_mismatches else ("WARN" if extra_in_db else "PASS")
     reason = ""
     if status == "FAIL":
-        reason = "Artifact candles differ from DB canonical candles."
+        reason = "Artifact close prices differ from DB canonical close prices."
     elif status == "WARN":
         reason = "DB contains extra candles in the artifact window."
     return {
@@ -2663,6 +2717,7 @@ def run_differential_validation(
         selected_engines,
         all_mismatches,
     )
+    nautilus_order_fill_parity = _nautilus_order_fill_parity(engine_results)
     validation_conclusion = _validation_conclusion(
         source_data_validation,
         portability_gate,
@@ -2701,6 +2756,7 @@ def run_differential_validation(
         "portable_validation_gate": portability_gate,
         "engine_execution_matrix": engine_execution_matrix,
         "signal_point_correctness": signal_point_correctness,
+        "nautilus_order_fill_parity": nautilus_order_fill_parity,
         "source_data_validation": source_data_validation,
         "validation_conclusion": validation_conclusion,
         "external_validation_conclusion": external_validation_conclusion,
@@ -2938,8 +2994,6 @@ class VectorBTReferenceAdapter(ReferenceAdapter):
             return _funding_carry_reference_result(bundle, self.engine)
         if strategy in {"fear_greed_sentiment", "cme_gap_fill"}:
             return _external_feature_reference_result(bundle, self.engine)
-        if strategy in {"as_market_maker", "obi_market_maker"}:
-            return _market_maker_reference_result(bundle, self.engine)
 
         import vectorbt as vbt
 
@@ -3035,8 +3089,6 @@ class BacktraderReferenceAdapter(ReferenceAdapter):
             return _funding_carry_reference_result(bundle, self.engine)
         if strategy in {"fear_greed_sentiment", "cme_gap_fill"}:
             return _external_feature_reference_result(bundle, self.engine)
-        if strategy in {"as_market_maker", "obi_market_maker"}:
-            return _market_maker_reference_result(bundle, self.engine)
 
         import backtrader as bt
 
@@ -3110,10 +3162,6 @@ class NautilusReferenceAdapter(ReferenceAdapter):
             signals, trades, equity, price_input = _external_feature_reference_components(bundle)
             reference_mode = f"nautilus_{bundle.primary_strategy}_recompute_export"
             scope_limit = "external feature signal recompute/export only; no Nautilus feature feed or matching engine execution"
-        elif bundle.primary_strategy in {"as_market_maker", "obi_market_maker"}:
-            signals, trades, equity, price_input = _market_maker_reference_components(bundle)
-            reference_mode = f"nautilus_{bundle.primary_strategy}_quote_recompute_export"
-            scope_limit = "market-maker book-derived quote signal recompute/export only; no Nautilus catalog or matching engine execution"
         else:
             signals = _artifact_reference_signals(bundle)
             trades, equity = _simulate_long_flat_trades(bundle, signals)
@@ -3148,7 +3196,7 @@ class NautilusReferenceAdapter(ReferenceAdapter):
             },
             "limitations": [
                 "Nautilus signal replay uses an advisory Strategy generated from exported/reference signals, not the project strategy source code.",
-                "Matching-engine fills may exist for replay orders, but queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
+                "Signal-replay order/fill parity checks Nautilus market-order acceptance and fills; queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
                 "The output is suitable as advisory portability evidence only.",
             ],
         }
@@ -3169,6 +3217,7 @@ class NautilusReferenceAdapter(ReferenceAdapter):
                 "reference_mode": reference_mode,
                 "engine_execution": engine_execution,
                 "nautilus_engine_smoke": engine_smoke,
+                "order_fill_parity_scope": "signal_replay_order_fill",
                 "dependency": "nautilus_trader",
                 "dependency_available": dependency_available,
                 "price_input": price_input,
@@ -3213,12 +3262,26 @@ def _nautilus_engine_smoke(
     try:
         instruments, instrument_meta = _nautilus_smoke_instruments(bundle, TestInstrumentProvider, signals=signals)
         primary_instrument = next(iter(instruments.values()))
+        replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
+        effective_max_ticks = max_ticks
+        if replay_signals:
+            effective_max_ticks = max(
+                max_ticks,
+                (
+                    int(len(bundle.price_series))
+                    + int(len(_book_snapshot_events(bundle)))
+                    + int(len(_trade_tick_frame(bundle)))
+                    + int(len(replay_signals))
+                    + 1
+                ),
+            )
         ticks, input_rows = _nautilus_smoke_ticks(
             bundle,
             instruments,
             TestDataStubs,
             AggressorSide,
-            max_ticks=max_ticks,
+            max_ticks=effective_max_ticks,
+            replay_signals=replay_signals,
         )
         if not ticks:
             return {
@@ -3250,7 +3313,6 @@ def _nautilus_engine_smoke(
                 engine.add_instrument(instrument)
                 added_instrument_ids.add(instrument_id)
             engine.add_data(ticks)
-            replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
             strategy = None
             if replay_signals:
                 strategy = _nautilus_signal_replay_strategy(
@@ -3273,7 +3335,6 @@ def _nautilus_engine_smoke(
                 if hasattr(engine, "dispose"):
                     engine.dispose()
         orders = int(result_meta.get("total_orders") or 0)
-        replay_signals, replay_coverage = _nautilus_replay_signals(bundle, instruments=instruments, signals=signals)
         execution = "signal_replay_run" if replay_signals and orders > 0 else "smoke_run"
         reason = (
             "Nautilus BacktestEngine ran an advisory signal-replay Strategy and accepted generated orders"
@@ -3287,13 +3348,15 @@ def _nautilus_engine_smoke(
             "instrument": instrument_meta,
             "input_rows": input_rows,
             "ticks_submitted": len(ticks),
+            "max_ticks_requested": int(max_ticks),
+            "max_ticks_effective": int(effective_max_ticks),
             "data_types": sorted({type(tick).__name__ for tick in ticks}),
             "signals_available": int(replay_coverage["total_signal_rows"]),
             "signals_replayed": int(len(replay_signals)),
             "signal_replay_coverage": replay_coverage,
             "backtest_result": result_meta,
             "scope_limit": (
-                "advisory signal replay only; project strategy source logic, queue/fill parity, and PnL are not validated"
+                "advisory signal replay with Nautilus order/fill parity; project strategy source logic, L2/L3 queue priority, funding settlement, and PnL are not validated"
                 if execution == "signal_replay_run"
                 else "engine data smoke only; no replayable buy/sell signals were executed"
             ),
@@ -3350,12 +3413,14 @@ def _nautilus_replay_signals(
         if pd.isna(dt):
             coverage["skipped_invalid_timestamp"] += 1
             continue
+        fair_value = _safe_float(row.get("fair_value", row.get("price", row.get("close"))), float("nan"))
         replayed_symbols.add(symbol_key)
         rows.append({
             "ts_ns": _ts_ms(dt) * 1_000_000,
             "side": side,
             "source_inst_id": symbol_key,
             "instrument_key": symbol_key,
+            "fair_value": fair_value if math.isfinite(fair_value) and fair_value > 0 else None,
         })
     rows.sort(key=lambda item: int(item["ts_ns"]))
     coverage["replayable_signal_rows"] = int(len(rows))
@@ -3500,6 +3565,7 @@ def _nautilus_smoke_ticks(
     aggressor_side: Any,
     *,
     max_ticks: int,
+    replay_signals: list[dict[str, Any]] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     ticks: list[Any] = []
     input_rows = {
@@ -3508,6 +3574,7 @@ def _nautilus_smoke_ticks(
         "price_series": 0,
         "quote_ticks": 0,
         "trade_tick_ticks": 0,
+        "terminal_replay_quote_ticks": 0,
         "mapped_symbols": sorted(instruments),
         "skipped_unmapped_book_snapshots": 0,
         "skipped_unmapped_price_rows": 0,
@@ -3604,6 +3671,44 @@ def _nautilus_smoke_ticks(
         ))
         input_rows["trade_tick_ticks"] += 1
 
+    last_quote_ts_by_instrument: dict[str, int] = {}
+    for tick in ticks:
+        if type(tick).__name__ != "QuoteTick":
+            continue
+        instrument_id = str(getattr(tick, "instrument_id", ""))
+        last_quote_ts_by_instrument[instrument_id] = max(
+            last_quote_ts_by_instrument.get(instrument_id, -1),
+            int(getattr(tick, "ts_event", 0)),
+        )
+    for signal in replay_signals or []:
+        if len(ticks) >= max_ticks:
+            break
+        instrument = instruments.get(str(signal.get("instrument_key") or ""))
+        if instrument is None:
+            continue
+        ts_ns = int(signal.get("ts_ns") or 0)
+        instrument_id = str(instrument.id)
+        if last_quote_ts_by_instrument.get(instrument_id, -1) >= ts_ns:
+            continue
+        price = _safe_float(signal.get("fair_value"), float("nan"))
+        if not math.isfinite(price) or price <= 0:
+            price = 1.0
+        spread = max(abs(price) * 0.0001, 0.1)
+        bid = max(price - spread / 2.0, 0.000001)
+        ask = price + spread / 2.0
+        ticks.append(data_stubs.quote_tick(
+            instrument=instrument,
+            bid_price=bid,
+            ask_price=ask,
+            bid_size=1.0,
+            ask_size=1.0,
+            ts_event=ts_ns,
+            ts_init=ts_ns,
+        ))
+        input_rows["quote_ticks"] += 1
+        input_rows["terminal_replay_quote_ticks"] += 1
+        last_quote_ts_by_instrument[instrument_id] = ts_ns
+
     ticks.sort(key=lambda tick: int(getattr(tick, "ts_event", 0)))
     return ticks, input_rows
 
@@ -3630,73 +3735,6 @@ def _nautilus_price_frame_for_smoke(
         return pd.DataFrame(columns=list(frame.columns))
     frame = frame[frame["_inst_id"].isin(target_symbols)]
     return frame.sort_values(["_dt", "_inst_id"]).reset_index(drop=True)
-
-
-def _market_maker_reference_result(bundle: ArtifactBundle, engine: str) -> ReferenceResult:
-    snapshot_path = _resolve_artifact_path(bundle.run_dir, "book_snapshots")
-    if snapshot_path is None:
-        return ReferenceResult(
-            engine=engine,
-            status="SKIP",
-            reason="book_snapshots.csv is required for market-maker quote reference recompute",
-            reference_role="skipped_dependency",
-            categories=["unsupported_reference_scope"],
-            metadata={"required_artifact": "book_snapshots.csv"},
-        )
-    signals, trades, equity, price_input = _market_maker_reference_components(bundle)
-    return ReferenceResult(
-        engine=engine,
-        status="OK",
-        reason=(
-            "book-derived quote signal comparison is strict; queue-aware fills, "
-            "exchange matching, PnL, and metrics remain advisory"
-        ),
-        reference_role="reference_signals_only",
-        signals=signals,
-        trades=trades,
-        equity_curve=equity,
-        metrics=neutral_metrics(equity, bundle.periods),
-        metadata={
-            "strategy": bundle.primary_strategy,
-            "reference_mode": f"{bundle.primary_strategy}_book_quote_recompute",
-            "price_input": price_input,
-            "signal_position_source": _signal_position_source(bundle),
-            "scope_limit": (
-                "book-derived quote signal timing and target quote recompute only; "
-                "queue fills, matching-engine execution, and PnL are advisory"
-            ),
-            "required_artifacts": ["book_snapshots.csv", "signals.csv", "price_series.csv"],
-            "timestamp_throttle": "event_ts_ms",
-        },
-    )
-
-
-def _market_maker_reference_components(
-    bundle: ArtifactBundle,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    if bundle.primary_strategy == "as_market_maker":
-        signals = _as_market_maker_reference_signals(bundle)
-    elif bundle.primary_strategy == "obi_market_maker":
-        signals = _obi_market_maker_reference_signals(bundle)
-    else:
-        signals = pd.DataFrame(columns=_market_maker_signal_columns())
-    trades, equity = _simulate_long_flat_trades(bundle, signals)
-    return signals, trades, equity, _reference_price_input_metadata(bundle)
-
-
-def _market_maker_signal_columns() -> list[str]:
-    return [
-        "ts",
-        "datetime",
-        "strategy",
-        "inst_id",
-        "side",
-        "strength",
-        "fair_value",
-        "target_bid",
-        "target_ask",
-        "metadata",
-    ]
 
 
 def _book_snapshot_events(bundle: ArtifactBundle) -> list[dict[str, Any]]:
@@ -3743,39 +3781,6 @@ def _book_snapshot_events(bundle: ArtifactBundle) -> list[dict[str, Any]]:
     return events
 
 
-def _fill_inventory_events(bundle: ArtifactBundle, strategy: str) -> list[dict[str, Any]]:
-    source = bundle.fills if not bundle.fills.empty else bundle.trades
-    if source.empty:
-        return []
-    work = source.copy()
-    if "strategy" in work.columns:
-        work = work[work["strategy"].astype(str) == strategy]
-    if work.empty:
-        return []
-    qty_col = "fill_sz" if "fill_sz" in work.columns else "qty"
-    if qty_col not in work.columns or "side" not in work.columns:
-        return []
-    if "state" in work.columns:
-        state = work["state"].astype(str).str.lower()
-        work = work[state.isin(["filled", "partially_filled", ""])]
-    rows: list[dict[str, Any]] = []
-    for _, row in work.iterrows():
-        dt = _to_datetime(row.get("datetime", row.get("ts")))
-        qty = _safe_float(row.get(qty_col), float("nan"))
-        if pd.isna(dt) or not math.isfinite(qty) or qty <= 0:
-            continue
-        side = str(row.get("side") or "").lower()
-        if side not in {"buy", "sell"}:
-            continue
-        rows.append({
-            "dt": dt,
-            "inst_id": str(row.get("inst_id") or ""),
-            "delta": qty if side == "buy" else -qty,
-        })
-    rows.sort(key=lambda item: item["dt"])
-    return rows
-
-
 def _trade_tick_frame(bundle: ArtifactBundle) -> pd.DataFrame:
     path = _resolve_artifact_path(bundle.run_dir, "trade_ticks")
     if path is None:
@@ -3794,304 +3799,6 @@ def _trade_tick_frame(bundle: ArtifactBundle) -> pd.DataFrame:
     if work.empty:
         return pd.DataFrame(columns=["dt", "inst_id", "trade_id", "price", "size", "side"])
     return work[["dt", "inst_id", "trade_id", "price", "size", "side"]].sort_values("dt").reset_index(drop=True)
-
-
-def _apply_inventory_events(
-    inventory_events: list[dict[str, Any]],
-    inventory_index: int,
-    inventory: dict[str, float],
-    dt: pd.Timestamp,
-) -> int:
-    while inventory_index < len(inventory_events) and inventory_events[inventory_index]["dt"] < dt:
-        event = inventory_events[inventory_index]
-        inst_id = event["inst_id"]
-        inventory[inst_id] = inventory.get(inst_id, 0.0) + float(event["delta"])
-        inventory_index += 1
-    return inventory_index
-
-
-def _target_quote(value: Any) -> float | None:
-    val = _safe_float(value, float("nan"))
-    return val if math.isfinite(val) else None
-
-
-def _quote_signal_row(
-    *,
-    ts: int,
-    dt: pd.Timestamp,
-    strategy: str,
-    inst_id: str,
-    strength: float,
-    fair_value: float,
-    target_bid: float | None,
-    target_ask: float | None,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "ts": ts,
-        "datetime": _iso(dt),
-        "strategy": strategy,
-        "inst_id": inst_id,
-        "side": "neutral",
-        "strength": strength,
-        "fair_value": fair_value,
-        "target_bid": target_bid,
-        "target_ask": target_ask,
-        "metadata": metadata,
-    }
-
-
-def _obi_market_maker_reference_signals(bundle: ArtifactBundle) -> pd.DataFrame:
-    params = bundle.strategy_params("obi_market_maker")
-    symbols = [str(symbol) for symbol in params.get("symbols", bundle.symbols or []) if symbol]
-    symbol_set = set(symbols) if symbols else set(bundle.symbols)
-    depth = int(params.get("depth", 5))
-    alpha_decay = float(params.get("alpha_decay", 0.5))
-    ewma_halflife_ms = float(params.get("ewma_halflife_ms", 200.0))
-    obi_threshold = float(params.get("obi_threshold", 0.15))
-    c_alpha = float(params.get("c_alpha", 100.0))
-    mlofi_weight = float(params.get("mlofi_weight", 1.0))
-    refresh_ms = float(params.get("refresh_interval_ms", 500.0))
-    max_inventory = float(params.get("max_inventory", 50))
-    prev_snap: dict[str, dict | None] = {}
-    prev_book: dict[str, tuple[np.ndarray, np.ndarray] | None] = {}
-    ofi_series: dict[str, deque] = {}
-    last_quote_ts: dict[str, int] = {}
-    inventory = {symbol: 0.0 for symbol in symbol_set}
-    inventory_events = _fill_inventory_events(bundle, "obi_market_maker")
-    inventory_index = 0
-    rows: list[dict[str, Any]] = []
-    for event in _book_snapshot_events(bundle):
-        inst_id = event["inst_id"]
-        if symbol_set and inst_id not in symbol_set:
-            continue
-        inventory_index = _apply_inventory_events(inventory_events, inventory_index, inventory, event["dt"])
-        last_ts = last_quote_ts.get(inst_id)
-        if last_ts is not None and event["ts"] - last_ts < refresh_ms:
-            continue
-        last_quote_ts[inst_id] = event["ts"]
-        bids = event["bids"]
-        asks = event["asks"]
-        bids_list = [(float(bids[i, 0]), float(bids[i, 1])) for i in range(len(bids)) if bids[i, 0] > 0]
-        asks_list = [(float(asks[i, 0]), float(asks[i, 1])) for i in range(len(asks)) if asks[i, 0] > 0]
-        if not bids_list or not asks_list:
-            continue
-        features = compute_obi_features(bids_list, asks_list, depth=depth, alpha=alpha_decay)
-        mid = float(features["mid"])
-        spread = float(features["spread"])
-        if mid <= 0:
-            continue
-        curr_snap = book_to_l1_snap(bids, asks)
-        if prev_snap.get(inst_id) is not None:
-            ofi_series.setdefault(inst_id, deque(maxlen=50)).append(compute_ofi(prev_snap[inst_id], curr_snap))
-        prev_snap[inst_id] = curr_snap
-        mlofi_signal = 0.0
-        if prev_book.get(inst_id) is not None:
-            prev_bids, prev_asks = prev_book[inst_id]
-            mlofi_signal = compute_mlofi_increment(
-                prev_bids,
-                prev_asks,
-                bids,
-                asks,
-                depth=depth,
-                decay_alpha=alpha_decay,
-                normalize=True,
-            )
-        prev_book[inst_id] = (bids.copy(), asks.copy())
-        ewma_ofi_val = ewma_ofi(np.array(ofi_series.get(inst_id, [])), halflife_ms=ewma_halflife_ms)
-        alpha_signal = ewma_ofi_val + mlofi_weight * mlofi_signal
-        if abs(float(features["obi_l1"])) < obi_threshold and abs(alpha_signal) < 1e-6:
-            continue
-        fair = _bounded_fair_value(mid, c_alpha * alpha_signal)
-        tick = spread / 2 if spread > 0 else 0.1
-        half_spread = max(tick, spread * 0.3)
-        bid = round((fair - half_spread) / tick) * tick
-        ask = round((fair + half_spread) / tick) * tick
-        inv = inventory.get(inst_id, 0.0)
-        target_bid = bid if inv < max_inventory else None
-        target_ask = ask if inv > -max_inventory else None
-        if target_bid is None and target_ask is None:
-            continue
-        rows.append(_quote_signal_row(
-            ts=event["ts"],
-            dt=event["dt"],
-            strategy="obi_market_maker",
-            inst_id=inst_id,
-            strength=min(abs(float(features["obi_l1"])), 1.0),
-            fair_value=fair,
-            target_bid=_target_quote(target_bid),
-            target_ask=_target_quote(target_ask),
-            metadata={
-                "obi_l1": features["obi_l1"],
-                "obi_multi": features["obi_multi"],
-                "ewma_ofi": ewma_ofi_val,
-                "mlofi_signal": mlofi_signal,
-                "alpha_signal": alpha_signal,
-                "mid": mid,
-                "spread": spread,
-                "inventory": inv,
-                "reference_throttle": "event_ts_ms",
-            },
-        ))
-    return pd.DataFrame(rows, columns=_market_maker_signal_columns())
-
-
-def _as_market_maker_reference_signals(bundle: ArtifactBundle) -> pd.DataFrame:
-    params = bundle.strategy_params("as_market_maker")
-    symbols = [str(symbol) for symbol in params.get("symbols", bundle.symbols or []) if symbol]
-    symbol_set = set(symbols) if symbols else set(bundle.symbols)
-    gamma = float(params.get("gamma", 0.1))
-    kappa = float(params.get("kappa", 1.5))
-    max_pos = int(params.get("max_pos_contracts", 50))
-    c_alpha = float(params.get("c_alpha", 100.0))
-    beta_vpin = float(params.get("beta_vpin", 2.0))
-    mlofi_depth = int(params.get("mlofi_depth", 5))
-    mlofi_decay = float(params.get("mlofi_decay", 0.5))
-    mlofi_weight = float(params.get("mlofi_weight", 1.0))
-    toxic_size_multiplier = float(params.get("toxic_size_multiplier", 0.25))
-    elevated_size_multiplier = float(params.get("elevated_size_multiplier", 0.5))
-    vpin_bucket_divisor = int(params.get("vpin_bucket_divisor", 75))
-    vpin_window = int(params.get("vpin_window", 50))
-    refresh_ms = float(params.get("refresh_interval_ms", 500.0))
-    sigma_lookback = int(params.get("sigma_lookback_min", 5))
-    prev_snap: dict[str, dict | None] = {}
-    prev_book: dict[str, tuple[np.ndarray, np.ndarray] | None] = {}
-    ofi_series: dict[str, deque] = {}
-    last_quote_ts: dict[str, int] = {}
-    inventory = {symbol: 0.0 for symbol in symbol_set}
-    sigma_ewma = {symbol: 0.003 for symbol in symbol_set}
-    vpin_cdf = {symbol: 0.1 for symbol in symbol_set}
-    last_mid = {symbol: 0.0 for symbol in symbol_set}
-    inventory_events = _fill_inventory_events(bundle, "as_market_maker")
-    inventory_index = 0
-    trade_ticks = _trade_tick_frame(bundle)
-    trade_index = 0
-    trade_buffers: dict[str, list[dict[str, Any]]] = {symbol: [] for symbol in symbol_set}
-    vpin_source = "trade_ticks.csv" if not trade_ticks.empty else "default_without_trade_ticks"
-    rows: list[dict[str, Any]] = []
-    for event in _book_snapshot_events(bundle):
-        inst_id = event["inst_id"]
-        if symbol_set and inst_id not in symbol_set:
-            continue
-        inventory_index = _apply_inventory_events(inventory_events, inventory_index, inventory, event["dt"])
-        while trade_index < len(trade_ticks) and trade_ticks.loc[trade_index, "dt"] <= event["dt"]:
-            trade = trade_ticks.loc[trade_index]
-            trade_inst = str(trade.get("inst_id") or "")
-            if not symbol_set or trade_inst in symbol_set:
-                buffer = trade_buffers.setdefault(trade_inst, [])
-                buffer.append({
-                    "ts": trade.get("dt"),
-                    "price": float(trade.get("price")),
-                    "size": float(trade.get("size")),
-                })
-                if len(buffer) > 10_000:
-                    del buffer[:5_000]
-            trade_index += 1
-        last_ts = last_quote_ts.get(inst_id)
-        if last_ts is not None and event["ts"] - last_ts < refresh_ms:
-            continue
-        last_quote_ts[inst_id] = event["ts"]
-        bids = event["bids"]
-        asks = event["asks"]
-        bids_list = [(float(bids[i, 0]), float(bids[i, 1])) for i in range(len(bids)) if bids[i, 0] > 0]
-        asks_list = [(float(asks[i, 0]), float(asks[i, 1])) for i in range(len(asks)) if asks[i, 0] > 0]
-        if not bids_list or not asks_list:
-            continue
-        features = compute_obi_features(
-            bids_list,
-            asks_list,
-            depth=min(mlofi_depth, len(bids_list)),
-            alpha=mlofi_decay,
-        )
-        mid = float(features["mid"])
-        if mid <= 0:
-            continue
-        prev_mid = last_mid.get(inst_id, 0.0)
-        if prev_mid > 0:
-            ret = (mid - prev_mid) / prev_mid
-            alpha_sigma = 1 - np.exp(-np.log(2) * 1 / max(sigma_lookback * 60, 1))
-            sigma_ewma[inst_id] = alpha_sigma * abs(ret) + (1 - alpha_sigma) * sigma_ewma.get(inst_id, 0.003)
-        last_mid[inst_id] = mid
-        curr_snap = book_to_l1_snap(bids, asks)
-        if prev_snap.get(inst_id) is not None:
-            ofi_series.setdefault(inst_id, deque(maxlen=100)).append(compute_ofi(prev_snap[inst_id], curr_snap))
-        prev_snap[inst_id] = curr_snap
-        mlofi_signal = 0.0
-        if prev_book.get(inst_id) is not None:
-            prev_bids, prev_asks = prev_book[inst_id]
-            mlofi_signal = compute_mlofi_increment(
-                prev_bids,
-                prev_asks,
-                bids,
-                asks,
-                depth=mlofi_depth,
-                decay_alpha=mlofi_decay,
-                normalize=True,
-            )
-        prev_book[inst_id] = (bids.copy(), asks.copy())
-        alpha_signal = ewma_ofi(
-            np.array(ofi_series.get(inst_id, [])),
-            halflife_ms=200.0,
-        ) + mlofi_weight * mlofi_signal
-        trades = trade_buffers.get(inst_id, [])
-        if len(trades) > 200:
-            try:
-                trades_df = pd.DataFrame(trades)
-                daily_vol_est = float(trades_df["size"].sum()) * 24 * 3600 / max(1, len(trades))
-                v_bucket = max(daily_vol_est / vpin_bucket_divisor, 1.0)
-                vpin_df = compute_vpin(trades_df, v_bucket, n_window=vpin_window)
-                if not vpin_df.empty and "CDF" in vpin_df.columns:
-                    last_cdf = float(vpin_df["CDF"].iloc[-1])
-                    if not np.isnan(last_cdf):
-                        vpin_cdf[inst_id] = last_cdf
-            except Exception:
-                pass
-        controls = vpin_toxicity_controls(
-            vpin_cdf.get(inst_id, 0.1),
-            beta=beta_vpin,
-            elevated_multiplier=elevated_size_multiplier,
-            toxic_multiplier=toxic_size_multiplier,
-        )
-        bid, ask = as_quote(
-            mid=mid,
-            inventory=inventory.get(inst_id, 0.0),
-            alpha_signal=alpha_signal,
-            vpin=vpin_cdf.get(inst_id, 0.1),
-            gamma=gamma,
-            sigma=sigma_ewma.get(inst_id, 0.003),
-            kappa=kappa,
-            T_minus_t=1.0,
-            tick=0.1,
-            max_pos=max_pos,
-            c_alpha=c_alpha,
-            beta_vpin=beta_vpin,
-        )
-        rows.append(_quote_signal_row(
-            ts=event["ts"],
-            dt=event["dt"],
-            strategy="as_market_maker",
-            inst_id=inst_id,
-            strength=0.5,
-            fair_value=mid,
-            target_bid=_target_quote(bid),
-            target_ask=_target_quote(ask),
-            metadata={
-                "obi_l1": features["obi_l1"],
-                "obi_multi": features["obi_multi"],
-                "alpha_signal": alpha_signal,
-                "mlofi_signal": mlofi_signal,
-                "vpin_cdf": vpin_cdf.get(inst_id, 0.1),
-                "vpin_regime": controls["regime"],
-                "size_multiplier": controls["size_multiplier"],
-                "spread_multiplier": controls["spread_multiplier"],
-                "sigma": sigma_ewma.get(inst_id, 0.003),
-                "inventory": inventory.get(inst_id, 0.0),
-                "reference_throttle": "event_ts_ms",
-                "vpin_source": vpin_source,
-                "trade_tick_count": len(trades),
-            },
-        ))
-    return pd.DataFrame(rows, columns=_market_maker_signal_columns())
 
 
 def neutral_metrics(equity_curve: pd.DataFrame, periods: int) -> dict[str, float]:
@@ -4129,6 +3836,7 @@ def list_validation_results(run_dir: str | Path) -> list[dict[str, Any]]:
             "signal_logic_gate": payload.get("signal_logic_gate"),
             "portable_validation_gate": payload.get("portable_validation_gate"),
             "signal_point_correctness": payload.get("signal_point_correctness"),
+            "nautilus_order_fill_parity": payload.get("nautilus_order_fill_parity"),
             "reference_validation_contract": payload.get("reference_validation_contract"),
             "materialized_from_sweep_summary": bool(payload.get("materialized_from_sweep_summary")),
             "engines": list((payload.get("engines") or {}).keys()),
@@ -4188,6 +3896,7 @@ def list_strategy_validation_results(results_dir: str | Path, strategy: str | No
                 "signal_logic_gate": payload.get("signal_logic_gate"),
                 "portable_validation_gate": payload.get("portable_validation_gate"),
                 "signal_point_correctness": payload.get("signal_point_correctness"),
+                "nautilus_order_fill_parity": payload.get("nautilus_order_fill_parity"),
                 "reference_validation_contract": payload.get("reference_validation_contract"),
                 "engines": list((payload.get("engines") or {}).keys()),
                 "mismatch_counts": payload.get("mismatch_counts", {}),

@@ -639,7 +639,6 @@ footer {
 │
 ├── scripts/
 │   ├── run_replay_backtest.py # CLI for replay backtest
-│   ├── run_replay_validation.py
 │   ├── run_calibration_apply.py
 │   └── market_data/           # DB init, ingest, canonicalize, repair, validate
 │
@@ -723,20 +722,6 @@ footer {
     <table>
       <thead><tr><th>Strategy</th><th>檔案</th><th>核心邏輯</th><th>主要資料</th><th>主要風險</th></tr></thead>
       <tbody>
-        <tr>
-          <td><b>OBI Market Maker</b></td>
-          <td><code>strategies/obi_market_maker.py</code></td>
-          <td>根據 order book imbalance / OFI 調整 fair value 與 quote。</td>
-          <td>L2 book、best bid/ask、OFI EWMA。</td>
-          <td>quote stale、inventory accumulation、maker fill 模型不準。</td>
-        </tr>
-        <tr>
-          <td><b>AS Market Maker</b></td>
-          <td><code>strategies/as_market_maker.py</code></td>
-          <td>Avellaneda-Stoikov quote + VPIN spread multiplier + OBI/OFI skew。</td>
-          <td>order book、realized vol、VPIN、OFI。</td>
-          <td>gamma/kappa calibration、VPIN 只應改 spread/size，不應作方向。</td>
-        </tr>
         <tr>
           <td><b>Funding Carry</b></td>
           <td><code>strategies/funding_carry.py</code></td>

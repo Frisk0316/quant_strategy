@@ -1,0 +1,4 @@
+engine,category,field,sequence,project_value,reference_value,abs_diff,tolerance,status,downstream
+nautilus,metric_formula_mismatch,sharpe,0,0.0,0.8470454010500309,0.8470454010500309,abs<=1e-06;rel<=1e-06,value_mismatch,False
+nautilus,metric_formula_mismatch,max_drawdown,0,0.0,-0.024182226254715555,0.024182226254715555,abs<=1e-06;rel<=1e-06,value_mismatch,False
+nautilus,metric_formula_mismatch,total_return,0,0.0,0.00373907645289151,0.00373907645289151,abs<=1e-06;rel<=1e-06,value_mismatch,False

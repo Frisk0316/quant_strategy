@@ -1,0 +1,2 @@
+engine,category,field,sequence,project_value,reference_value,abs_diff,tolerance,status,downstream
+nautilus,execution_semantics_mismatch,trade,0,missing,present,,,missing_in_project,False

@@ -1393,8 +1393,6 @@ PERMITTED FILES (only edit these):
 - docs/AI_HANDOFF.md
 
 FORBIDDEN (do not touch):
-- src/okx_quant/strategies/obi_market_maker.py
-- src/okx_quant/strategies/as_market_maker.py
 - src/okx_quant/risk/
 - src/okx_quant/portfolio/
 - src/okx_quant/execution/
@@ -1421,8 +1419,6 @@ ACCEPTANCE CRITERIA:
 <table>
 <thead><tr><th>策略</th><th>檔案</th><th>特殊注意事項</th></tr></thead>
 <tbody>
-<tr><td>AS Market Maker</td><td class="mono">strategies/as_market_maker.py</td><td class="cn">T_minus_t = 1.0 固定；VPIN 只控制價差寬度</td></tr>
-<tr><td>OBI Market Maker</td><td class="mono">strategies/obi_market_maker.py</td><td class="cn">Multi-level OFI；Post-only only</td></tr>
 <tr><td>Funding Carry</td><td class="mono">strategies/funding_carry.py</td><td class="cn">Spot/Perp 雙腿必須同步；ct_val 必填</td></tr>
 <tr><td>Pairs Trading</td><td class="mono">strategies/pairs_trading.py</td><td class="cn">Kalman filter hedge ratio；出場必須同時平兩腿</td></tr>
 </tbody>

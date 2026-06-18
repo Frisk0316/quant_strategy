@@ -3,7 +3,11 @@
 # Update by running `python scripts/refresh_instrument_specs.py` (or by hand).
 #
 # Used by backtesting.replay.ReplayBacktestEngine._default_instrument_specs as
-# a fallback when no DB-backed contract_value is available for a symbol.
+# an OKX-only fallback when no DB-backed venue_instrument_specs row is available
+# for a symbol. Authoritative per-venue P1 values live in
+# venue_instrument_specs(exchange, symbol), seeded by sql/seed_venue_instrument_specs.sql.
+# Binance/Bybit normal USDT-M base-unit defaults are resolved structurally in
+# replay.py; do not add non-OKX authority to this fallback file.
 # Backtests fail loudly for any swap symbol missing from BOTH the DB and this
 # file, so add new symbols here before introducing them into a strategy.
 swaps:

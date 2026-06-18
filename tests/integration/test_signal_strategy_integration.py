@@ -7,9 +7,7 @@ import pytest
 
 from okx_quant.core.events import Event, EvtType, MarketPayload
 from okx_quant.data.okx_book import OkxBook
-from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
-from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 import okx_quant.strategies.pairs_trading as pairs_module
 
@@ -39,42 +37,6 @@ def _book(payload: MarketPayload) -> OkxBook:
     for px, sz, *_ in payload.asks:
         book.asks[float(px)] = (px, sz)
     return book
-
-
-@pytest.mark.asyncio
-async def test_c_alpha_100_does_not_push_ask_5pct_above_mid():
-    strategy = OBIMarketMaker(
-        {
-            "symbols": ["BTC-USDT-SWAP"],
-            "refresh_interval_ms": 0,
-            "obi_threshold": 0.01,
-            "c_alpha": 100.0,
-        }
-    )
-    first = _payload(bid=99.0, ask=101.0, bid_sz=5.0, ask_sz=5.0)
-    await strategy.on_market(Event(EvtType.MARKET, payload=first), _book(first))
-    second = _payload(ts=2, bid=100.0, ask=102.0, bid_sz=1000.0, ask_sz=1.0)
-
-    signal = await strategy.on_market(Event(EvtType.MARKET, payload=second), _book(second))
-
-    assert signal is not None
-    assert signal.target_ask < signal.metadata["mid"] * 1.05
-
-
-@pytest.mark.asyncio
-async def test_obi_mm_returns_none_below_threshold():
-    strategy = OBIMarketMaker(
-        {
-            "symbols": ["BTC-USDT-SWAP"],
-            "refresh_interval_ms": 0,
-            "obi_threshold": 0.15,
-        }
-    )
-    payload = _payload(bid_sz=10.5, ask_sz=9.5)
-
-    signal = await strategy.on_market(Event(EvtType.MARKET, payload=payload), _book(payload))
-
-    assert signal is None
 
 
 @pytest.mark.asyncio
@@ -188,21 +150,3 @@ async def test_pairs_ou_recalibration_uses_simulated_event_time(monkeypatch):
 
     assert len(calls) == 1
 
-
-@pytest.mark.asyncio
-async def test_as_mm_max_inventory_omits_bid():
-    strategy = ASMarketMaker(
-        {
-            "symbols": ["BTC-USDT-SWAP"],
-            "refresh_interval_ms": 0,
-            "max_pos_contracts": 50,
-        }
-    )
-    strategy._inventory["BTC-USDT-SWAP"] = 50
-    payload = _payload(bid=99.0, ask=101.0)
-
-    signal = await strategy.on_market(Event(EvtType.MARKET, payload=payload), _book(payload))
-
-    assert signal is not None
-    assert signal.target_bid is None
-    assert signal.target_ask is not None

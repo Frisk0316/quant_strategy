@@ -42,11 +42,9 @@ from okx_quant.portfolio.positions import PositionLedger
 from okx_quant.portfolio.sizing import validate_ct_val
 from okx_quant.risk.drawdown_tracker import DrawdownTracker
 from okx_quant.risk.risk_guard import RiskGuard
-from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
 from okx_quant.strategies.external_features import CMEGapFillStrategy, FearGreedSentimentStrategy
-from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 from okx_quant.strategies.technical_indicators import (
     EMACrossoverStrategy,
@@ -881,11 +879,16 @@ class HistoricalEventFeed:
 
 
 class ReplayBacktestEngine:
-    # Authoritative sources whose ct_val came from a verified upstream (DB
-    # instruments registry or an explicit per-symbol config override). Any other
-    # source (registry yaml, BTC/ETH hardcoded fallback) is non-authoritative
-    # and downstream live-deployment gates should refuse such runs.
-    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = ("db", "config_override", "spot_unit")
+    # Authoritative sources whose ct_val came from a verified upstream, an
+    # explicit per-symbol config override, or an exchange structural identity.
+    # Any other source (OKX registry yaml, BTC/ETH hardcoded fallback) is
+    # non-authoritative and downstream live-deployment gates should refuse it.
+    AUTHORITATIVE_CT_VAL_SOURCES: tuple[str, ...] = (
+        "db",
+        "config_override",
+        "spot_unit",
+        "exchange_base_unit",
+    )
 
     def __init__(
         self,
@@ -899,6 +902,7 @@ class ReplayBacktestEngine:
         self._cfg = cfg
         self._strategy_names = strategy_names
         self._ct_val_sources: dict[str, dict] = {}
+        exchange = str(getattr(self._cfg.storage, "primary_exchange", "okx") or "okx").lower()
         if instrument_specs:
             self._instrument_specs = instrument_specs
             # Caller-supplied specs are treated as per-symbol authoritative
@@ -908,6 +912,7 @@ class ReplayBacktestEngine:
                 self._ct_val_sources[sym] = {
                     "value": float(ct_val) if ct_val is not None else None,
                     "source": "config_override",
+                    "exchange": exchange,
                 }
         else:
             self._instrument_specs = self._default_instrument_specs()
@@ -917,10 +922,9 @@ class ReplayBacktestEngine:
 
     def _default_instrument_specs(self) -> dict:
         specs = {}
-        db_specs = self._load_db_instrument_specs()
+        exchange = str(getattr(self._cfg.storage, "primary_exchange", "okx") or "okx").lower()
+        db_specs = self._load_db_instrument_specs(exchange)
         swap_symbols = set(self._cfg.system.symbols)
-        swap_symbols.update(self._cfg.strategies.obi_market_maker.symbols)
-        swap_symbols.update(self._cfg.strategies.as_market_maker.symbols)
         swap_symbols.update({
             self._cfg.strategies.funding_carry.perp_symbol,
             self._cfg.strategies.pairs_trading.symbol_y,
@@ -936,7 +940,7 @@ class ReplayBacktestEngine:
         for symbol in swap_symbols:
             if "SWAP" not in symbol:
                 continue
-            ct_val, source = self._resolve_swap_ct_val(symbol, db_specs)
+            ct_val, source = self._resolve_swap_ct_val(symbol, exchange, db_specs)
             specs[symbol] = {
                 "ctVal": ct_val,
                 "minSz": 0.01,
@@ -944,22 +948,22 @@ class ReplayBacktestEngine:
                 "tickSz": 0.1,
                 "tdMode": "cross",
             }
-            self._ct_val_sources[symbol] = {"value": ct_val, "source": source}
+            self._ct_val_sources[symbol] = {"value": ct_val, "source": source, "exchange": exchange}
         spot_symbols = set(self._cfg.system.spot_symbols)
         spot_symbols.add(self._cfg.strategies.funding_carry.spot_symbol)
         for symbol in spot_symbols:
             specs[symbol] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
             # USDT spot pairs trade in base units so ctVal=1.0 is exact, not a fallback.
-            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit"}
+            self._ct_val_sources[symbol] = {"value": 1.0, "source": "spot_unit", "exchange": exchange}
         return specs
 
-    def _load_db_instrument_specs(self) -> dict:
-        """Query `instruments.contract_value` for every active row, when DB is reachable.
+    def _load_db_instrument_specs(self, exchange: str = "okx") -> dict:
+        """Query venue instrument specs for the run exchange, when DB is reachable.
 
-        Returned shape: {inst_id: {"ct_val": float}}. Empty dict when DSN is
+        Returned shape: {symbol: {"ct_val": float}}. Empty dict when DSN is
         missing, unreachable, or query fails — caller falls through to the
-        bundled YAML registry. Errors are warnings, not exceptions, because the
-        DB-primary architecture must degrade gracefully to parquet.
+        bundled YAML registry for OKX only. Errors are warnings, not exceptions,
+        because the DB-primary architecture must degrade gracefully to parquet.
         """
         dsn = getattr(self._cfg.storage, "timescale_dsn", None)
         if not dsn:
@@ -980,10 +984,12 @@ class ReplayBacktestEngine:
                 try:
                     return await conn.fetch(
                         """
-                        SELECT inst_id, contract_value
-                        FROM instruments
-                        WHERE contract_value IS NOT NULL
-                        """
+                        SELECT symbol, ct_val
+                        FROM venue_instrument_specs
+                        WHERE exchange = $1
+                          AND ct_val IS NOT NULL
+                        """,
+                        exchange,
                     )
                 finally:
                     await conn.close()
@@ -994,12 +1000,12 @@ class ReplayBacktestEngine:
             return {}
         out: dict = {}
         for row in rows:
-            ct_val = row.get("contract_value") if isinstance(row, dict) else row["contract_value"]
-            inst_id = row.get("inst_id") if isinstance(row, dict) else row["inst_id"]
+            ct_val = row.get("ct_val") if isinstance(row, dict) else row["ct_val"]
+            symbol = row.get("symbol") if isinstance(row, dict) else row["symbol"]
             if ct_val is None:
                 continue
             try:
-                out[inst_id] = {"ct_val": float(ct_val)}
+                out[symbol] = {"ct_val": float(ct_val)}
             except (TypeError, ValueError):
                 continue
         return out
@@ -1027,51 +1033,63 @@ class ReplayBacktestEngine:
         return registry
 
     @staticmethod
-    def _resolve_swap_ct_val(symbol: str, db_specs: dict | None = None) -> tuple[float, str]:
-        """Resolve a swap symbol's ctVal and report the provenance label.
+    def _resolve_swap_ct_val(
+        symbol: str, exchange: str | dict = "okx", db_specs: dict | None = None
+    ) -> tuple[float, str]:
+        """Resolve a swap symbol's ctVal for a venue and report provenance.
 
         Lookup priority (highest = most authoritative):
-          1. `db` — DB-backed `instruments.contract_value`. Verified upstream;
-             trusted for live deployment.
-          2. `registry` — bundled `config/instrument_specs.yaml`. Trusted for
-             backtest but flagged as non-authoritative for live gating because
-             it can drift from the exchange spec.
-          3. `hardcoded_btc_eth` — last-resort 0.01 for BTC/ETH symbols only.
-             Same authority class as `registry`.
-          4. Raise — unknown swap; never silently fall back to 1.0 because the
+          1. `db` — DB-backed `venue_instrument_specs(exchange, symbol)`.
+          2. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
+          3. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
+          4. `exchange_base_unit` — Binance/Bybit USDT-M base-unit perps.
+          5. Raise — unknown swap; never silently fall back to 1.0 because the
              ct_val multiplier directly drives PnL / notional / funding.
         """
+        if isinstance(exchange, dict) and db_specs is None:
+            db_specs = exchange
+            exchange = "okx"
+        exchange = str(exchange or "okx").lower()
         if db_specs and db_specs.get(symbol, {}).get("ct_val") is not None:
             return float(db_specs[symbol]["ct_val"]), "db"
-        registry = ReplayBacktestEngine._load_instrument_spec_registry()
-        spec = registry.get(symbol)
-        if spec and spec.get("ct_val") is not None:
-            return float(spec["ct_val"]), "registry"
-        if symbol.startswith(("BTC-", "ETH-")):
-            logger.warning(
-                "Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01",
-                inst_id=symbol,
-            )
-            return 0.01, "hardcoded_btc_eth"
+        if exchange == "okx":
+            registry = ReplayBacktestEngine._load_instrument_spec_registry()
+            spec = registry.get(symbol)
+            if spec and spec.get("ct_val") is not None:
+                return float(spec["ct_val"]), "registry"
+            if symbol.startswith(("BTC-", "ETH-")):
+                logger.warning(
+                    "Instrument ctVal missing; falling back to known OKX BTC/ETH swap ctVal=0.01",
+                    inst_id=symbol,
+                )
+                return 0.01, "hardcoded_btc_eth"
+        base_symbol = symbol.split("-", 1)[0].upper()
+        if (
+            exchange in {"binance", "bybit"}
+            and symbol.upper().endswith("-USDT-SWAP")
+            and not base_symbol.startswith("1000")
+        ):
+            return 1.0, "exchange_base_unit"
         logger.error(
-            "Instrument ctVal missing for swap; add it to config/instrument_specs.yaml "
-            "or populate instruments.contract_value in DB",
+            "Instrument ctVal missing for swap; seed venue_instrument_specs or add OKX registry fallback",
             inst_id=symbol,
+            exchange=exchange,
         )
         raise ValueError(
-            f"Missing ctVal for swap '{symbol}'. Add an entry under `swaps:` in "
-            f"config/instrument_specs.yaml or populate the DB instruments table."
+            f"Missing ctVal for swap '{symbol}' on exchange '{exchange}'. Seed "
+            f"venue_instrument_specs(exchange, symbol) or, for OKX, add it to "
+            f"config/instrument_specs.yaml."
         )
 
     @staticmethod
-    def _fallback_swap_ct_val(symbol: str) -> float:
+    def _fallback_swap_ct_val(symbol: str, exchange: str = "okx") -> float:
         """Backwards-compatible wrapper that drops the provenance label.
 
         Existing call sites (and tests) only care about the numeric value;
         new code should call `_resolve_swap_ct_val` directly to also record
         provenance.
         """
-        return ReplayBacktestEngine._resolve_swap_ct_val(symbol)[0]
+        return ReplayBacktestEngine._resolve_swap_ct_val(symbol, exchange)[0]
 
     def _build_strategies(self) -> list[Strategy]:
         wanted = set(self._strategy_names or [])
@@ -1079,8 +1097,6 @@ class ReplayBacktestEngine:
         strategies: list[Strategy] = []
         strat_cfg = self._cfg.strategies
         candidates: list[tuple[str, Strategy]] = [
-            ("obi_market_maker", OBIMarketMaker(strat_cfg.obi_market_maker.model_dump())),
-            ("as_market_maker", ASMarketMaker(strat_cfg.as_market_maker.model_dump())),
             ("funding_carry", FundingCarryStrategy(strat_cfg.funding_carry.model_dump())),
             (
                 "pairs_trading",
@@ -1096,8 +1112,6 @@ class ReplayBacktestEngine:
             ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
         ]
         enabled = {
-            "obi_market_maker": strat_cfg.obi_market_maker.enabled,
-            "as_market_maker": strat_cfg.as_market_maker.enabled,
             "funding_carry": strat_cfg.funding_carry.enabled,
             "pairs_trading": strat_cfg.pairs_trading.enabled,
             "ma_crossover": strat_cfg.ma_crossover.enabled,
@@ -1614,38 +1628,6 @@ def build_feed_for_strategies(
     trade_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
-    if "obi_market_maker" in strategy_set:
-        for symbol in cfg.strategies.obi_market_maker.symbols:
-            market_frames.append(load_l1_books(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                bar=bar,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-
-    if "as_market_maker" in strategy_set:
-        for symbol in cfg.strategies.as_market_maker.symbols:
-            market_frames.append(load_l1_books(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                bar=bar,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-            trade_frames.append(load_trade_events(
-                symbol,
-                data_dir=data_dir,
-                start=start,
-                end=end,
-                backend=cfg.storage.candle_backend,
-                dsn=cfg.storage.timescale_dsn,
-            ))
-
     if "pairs_trading" in strategy_set:
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_y,
@@ -1900,6 +1882,7 @@ def make_replay_strategy_fn(
     bar: str = "1H",
     periods: int = 365 * 24,
     include_train_metrics: bool = False,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
 ) -> Callable[[pd.DataFrame, pd.DataFrame], dict[str, Any]]:
@@ -1921,6 +1904,8 @@ def make_replay_strategy_fn(
             "bar": bar,
             "periods": periods,
         }
+        if instrument_specs is not None:
+            kwargs["instrument_specs"] = instrument_specs
         if liquidate_on_end is not None:
             kwargs["liquidate_on_end"] = liquidate_on_end
         return replay_runner(**kwargs)
@@ -2063,6 +2048,7 @@ def run_replay_validations(
     cpcv_embargo_pct: float = 0.02,
     cpcv_purge_size: int = 1,
     n_trials: int = 1,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
     runner: ReplayValidationRunner | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
@@ -2130,6 +2116,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=True,
+                instrument_specs=instrument_specs,
                 liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
@@ -2169,6 +2156,7 @@ def run_replay_validations(
                 bar=bar,
                 periods=periods,
                 include_train_metrics=False,
+                instrument_specs=instrument_specs,
                 liquidate_on_end=liquidate_on_end,
                 runner=replay_runner,
             ),
@@ -2189,6 +2177,7 @@ def run_replay_backtest(
     end: Optional[str] = None,
     bar: str = "1H",
     periods: int = 365 * 24,
+    instrument_specs: Optional[dict] = None,
     liquidate_on_end: Optional[bool] = None,
 ) -> ReplayBacktestResult:
     cfg = cfg or load_config()
@@ -2206,6 +2195,7 @@ def run_replay_backtest(
     engine = ReplayBacktestEngine(
         cfg,
         strategy_names=strategy_names,
+        instrument_specs=instrument_specs,
         periods=periods,
         bar_seconds=_bar_to_seconds(bar),
         liquidate_on_end=liquidate_on_end,
@@ -2230,14 +2220,16 @@ def _attach_ct_val_provenance(result: Any, engine: "ReplayBacktestEngine") -> No
         sym: info for sym, info in sources.items()
         if info.get("source") not in authoritative
     }
+    run_exchanges = {info.get("exchange") for info in sources.values() if info.get("exchange")}
     payload = {
         "ct_val_sources": {
-            sym: {"value": info.get("value"), "source": info.get("source")}
+            sym: {"value": info.get("value"), "source": info.get("source"), "exchange": info.get("exchange")}
             for sym, info in sources.items()
         },
         "ct_val_all_authoritative": len(non_authoritative) == 0,
         "ct_val_non_authoritative_symbols": sorted(non_authoritative.keys()),
         "ct_val_gate_passed": len(non_authoritative) == 0,
+        "exchange": next(iter(run_exchanges)) if len(run_exchanges) == 1 else "+".join(sorted(map(str, run_exchanges))),
     }
     try:
         existing = getattr(result, "validation", None) or {}

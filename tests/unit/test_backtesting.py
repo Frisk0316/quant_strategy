@@ -31,27 +31,20 @@ from backtesting.replay import (
     run_replay_validations,
 )
 from backtesting.research_controls import FILL_ALL_MAX_ORDER_NOTIONAL_USD, FILL_ALL_MAX_POS_PCT_EQUITY
-from backtesting.replay_validation import (
-    ASMMReplayParamGrid,
-    evaluate_replay_asmm_cpcv,
-    replay_asmm_parameter_selection_returns,
-)
 from backtesting.walk_forward import WalkForward
 from okx_quant.core.events import MarketPayload
 from okx_quant.core.config import AppConfig, OKXSecrets, RiskConfig, StrategiesConfig, SystemConfig, load_config
 from okx_quant.portfolio.positions import PositionLedger
 
 
+def _use_okx_registry(cfg: AppConfig) -> AppConfig:
+    cfg = cfg.model_copy(deep=True)
+    cfg.storage = cfg.storage.model_copy(update={"primary_exchange": "okx"})
+    return cfg
+
+
 def test_strategy_config_preserves_yaml_parameters_used_by_strategies():
     cfg = StrategiesConfig(**{
-        "obi_market_maker": {"mlofi_weight": 0.7},
-        "as_market_maker": {
-            "mlofi_depth": 7,
-            "mlofi_decay": 0.4,
-            "mlofi_weight": 1.2,
-            "elevated_size_multiplier": 0.6,
-            "toxic_size_multiplier": 0.2,
-        },
         "funding_carry": {
             "max_abs_basis_z": 1.8,
             "max_crowding": 0.75,
@@ -62,12 +55,6 @@ def test_strategy_config_preserves_yaml_parameters_used_by_strategies():
         },
     })
 
-    assert cfg.obi_market_maker.mlofi_weight == 0.7
-    assert cfg.as_market_maker.mlofi_depth == 7
-    assert cfg.as_market_maker.mlofi_decay == 0.4
-    assert cfg.as_market_maker.mlofi_weight == 1.2
-    assert cfg.as_market_maker.elevated_size_multiplier == 0.6
-    assert cfg.as_market_maker.toxic_size_multiplier == 0.2
     assert cfg.funding_carry.max_abs_basis_z == 1.8
     assert cfg.funding_carry.max_crowding == 0.75
     assert cfg.pairs_trading.max_half_life_hours == 36.0
@@ -108,7 +95,7 @@ def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
     not BTC/ETH still raise — preserves the safety guard against silent ct_val
     fallback for unfamiliar contracts.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -122,7 +109,7 @@ def test_replay_default_specs_reject_unknown_swap_without_metadata(minimal_cfg):
 
 
 def test_replay_default_specs_allow_btc_eth_swaps(minimal_cfg):
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -141,7 +128,7 @@ def test_replay_default_specs_resolve_registry_swaps(minimal_cfg):
     """SOL/ADA are in config/instrument_specs.yaml so they should resolve
     without falling back to BTC/ETH defaults or raising.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -169,7 +156,7 @@ def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
     """Caller-supplied instrument_specs should be labeled as `config_override`
     so the live-deployment gate treats them as authoritative.
     """
-    cfg = minimal_cfg.model_copy(deep=True)
+    cfg = _use_okx_registry(minimal_cfg)
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
@@ -305,30 +292,6 @@ def test_cpcv_n_trials_changes_deflated_sharpe_penalty():
     assert high_trials["dsr"] <= low_trials["dsr"]
 
 
-def _stub_replay_runner(strategy_names, cfg, data_dir, start, end, bar, periods):
-    start_ts = pd.Timestamp(start)
-    end_ts = pd.Timestamp(end)
-    idx = pd.date_range(start_ts, end_ts - pd.Timedelta(hours=1), freq="1h", tz="UTC")
-    gamma = float(cfg.strategies.as_market_maker.gamma)
-    noise = np.linspace(-1e-6, 1e-6, len(idx)) if len(idx) else np.array([])
-    returns = pd.Series(gamma / 10_000.0 + noise, index=(idx.view("int64") // 1_000_000))
-    metrics = {
-        "sharpe": gamma,
-        "dsr": gamma / 10.0,
-        "psr": gamma / 10.0,
-        "fill_rate": 1.0,
-    }
-    return ReplayBacktestResult(
-        returns=returns,
-        equity_curve=pd.Series(dtype=float),
-        metrics=metrics,
-        order_log=pd.DataFrame([{"cl_ord_id": "o"}]),
-        fill_log=pd.DataFrame([{"cl_ord_id": "o"}]),
-        funding_log=pd.DataFrame(),
-        trade_log=pd.DataFrame(),
-    )
-
-
 def test_generic_replay_strategy_fn_runs_train_and_oos_windows():
     idx = pd.date_range("2024-01-01", periods=8, freq="1h", tz="UTC")
     df = pd.DataFrame({"event_count": 1}, index=idx)
@@ -457,7 +420,7 @@ def test_gate2_fill_rate_warning_triggers_when_low():
 
     _apply_post_run_gates(
         result,
-        ["as_market_maker"],
+        ["ma_crossover"],
         {"coverage_pct": 1.0, "note": "no_range_specified"},
     )
 
@@ -474,7 +437,7 @@ def test_gate2_fill_rate_warning_does_not_trigger_when_acceptable():
 
     _apply_post_run_gates(
         result,
-        ["as_market_maker"],
+        ["ma_crossover"],
         {"coverage_pct": 1.0, "note": "no_range_specified"},
     )
 
@@ -526,7 +489,7 @@ def test_gate4_funding_coverage_warning_does_not_trigger_for_other_strategies():
 
     _apply_post_run_gates(
         result,
-        ["as_market_maker"],
+        ["ma_crossover"],
         {"coverage_pct": 1.0, "note": "no_range_specified"},
     )
 
@@ -596,10 +559,10 @@ def test_save_backtest_artifacts_mirrors_fill_all_signals_to_idealized_fill(tmp_
     run_dir = save_backtest_artifacts(
         result=result,
         cfg=cfg,
-        args=SimpleNamespace(strategy=["as_market_maker"], start="2024-01-01", end="2024-01-02", bar="1H"),
+        args=SimpleNamespace(strategy=["ma_crossover"], start="2024-01-01", end="2024-01-02", bar="1H"),
         output_dir=str(tmp_path),
         run_id="idealized_fill_result",
-        strategy_names=["as_market_maker"],
+        strategy_names=["ma_crossover"],
         start="2024-01-01",
         end="2024-01-02",
         bar="1H",
@@ -762,59 +725,6 @@ def test_save_artifacts_records_indicator_warmup_sources(tmp_path, monkeypatch):
     }
 
 
-def test_replay_asmm_parameter_selection_uses_is_and_oos_windows():
-    idx = pd.date_range("2024-01-01", periods=8, freq="1h", tz="UTC")
-    df = pd.DataFrame({"close": np.linspace(100.0, 107.0, len(idx))}, index=idx)
-    cfg = AppConfig(
-        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
-        strategies=StrategiesConfig(),
-        risk=RiskConfig(),
-        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
-    )
-
-    result = replay_asmm_parameter_selection_returns(
-        df.iloc[:4],
-        df.iloc[4:],
-        cfg=cfg,
-        param_grid=ASMMReplayParamGrid(gamma=(0.05, 0.2), kappa=(1.5,), beta_vpin=(2.0,)),
-        runner=_stub_replay_runner,
-    )
-
-    assert result["selected_params"]["gamma"] == pytest.approx(0.2)
-    assert len(result["returns"]) == 4
-    assert isinstance(result["returns"].index, pd.DatetimeIndex)
-    assert result["oos_order_count"] == 1
-    assert result["returns_source"] == "replay_asmm_parameter_selection"
-
-
-def test_replay_asmm_cpcv_marks_replay_cost_model():
-    idx = pd.date_range("2024-01-01", periods=12, freq="1h", tz="UTC")
-    df = pd.DataFrame({"close": np.linspace(100.0, 111.0, len(idx))}, index=idx)
-    cfg = AppConfig(
-        system=SystemConfig(mode="demo", symbols=["BTC-USDT-SWAP"], equity_usd=10_000.0),
-        strategies=StrategiesConfig(),
-        risk=RiskConfig(),
-        secrets=OKXSecrets.model_construct(okx_api_key="x", okx_secret="y", okx_passphrase="z"),
-    )
-
-    results = evaluate_replay_asmm_cpcv(
-        df,
-        cfg=cfg,
-        param_grid=ASMMReplayParamGrid(gamma=(0.1,), kappa=(1.5,), beta_vpin=(2.0,)),
-        n_splits=3,
-        k_test=1,
-        embargo_pct=0.0,
-        purge_size=0,
-        runner=_stub_replay_runner,
-    )
-
-    assert results["n_combinations"] == 3
-    assert results["n_trials"] == 1
-    assert results["cost_model_complete"] is True
-    assert results["calibration_required"] is True
-    assert results["returns_source"] == "replay_asmm_parameter_selection"
-
-
 def test_load_funding_derives_apr_when_missing(tmp_path):
     data_dir = tmp_path / "data" / "ticks" / "BTC_USDT_SWAP"
     data_dir.mkdir(parents=True)
@@ -907,6 +817,7 @@ def test_replay_backtest_funding_carry_runs_dual_leg(tmp_path):
             telegram_chat_id=None,
         ),
     )
+    cfg = _use_okx_registry(cfg)
 
     result = run_replay_backtest(
         strategy_names=["funding_carry"],
@@ -958,6 +869,7 @@ def test_replay_funding_falls_back_to_avg_entry_when_mark_price_missing(monkeypa
             telegram_chat_id=None,
         ),
     )
+    cfg = _use_okx_registry(cfg)
     engine = ReplayBacktestEngine(cfg, strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
@@ -1015,7 +927,7 @@ def _terminal_book(engine: ReplayBacktestEngine, inst_id: str, bid: float, ask: 
 
 
 def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -1054,7 +966,7 @@ def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -1087,7 +999,7 @@ def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_flags_missing_price(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -1120,7 +1032,7 @@ def test_replay_terminal_liquidation_flags_missing_price(minimal_cfg):
 
 
 def test_replay_terminal_liquidation_closes_multiple_legs(minimal_cfg):
-    engine = ReplayBacktestEngine(minimal_cfg, strategy_names=["funding_carry"])
+    engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
     positions.on_fill(
         "BTC-USDT-SWAP",
@@ -1186,12 +1098,57 @@ def test_run_replay_backtest_cli_passes_no_liquidate_on_end(monkeypatch, minimal
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run_replay_backtest.py", "--strategy", "as_market_maker", "--no-liquidate-on-end"],
+        ["run_replay_backtest.py", "--strategy", "ma_crossover", "--no-liquidate-on-end"],
     )
 
     cli.main()
 
     assert calls["liquidate_on_end"] is False
+
+
+def test_run_replay_backtest_cli_passes_instrument_specs_json(monkeypatch, minimal_cfg):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"bankrupt": False, "fill_rate": 0.0},
+            order_log=pd.DataFrame(),
+            fill_log=pd.DataFrame(),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    specs = {
+        "BTC-USDT-SWAP": {
+            "ctVal": 0.01,
+            "minSz": 0.01,
+            "lotSz": 0.01,
+            "tickSz": 0.1,
+            "tdMode": "cross",
+        }
+    }
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_replay_backtest.py",
+            "--strategy",
+            "ma_crossover",
+            "--instrument-specs-json",
+            json.dumps(specs),
+        ],
+    )
+
+    cli.main()
+
+    assert calls["instrument_specs"] == specs
 
 
 def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_cfg):
@@ -1216,7 +1173,7 @@ def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_c
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run_replay_backtest.py", "--strategy", "as_market_maker", "--fill-all-signals"],
+        ["run_replay_backtest.py", "--strategy", "ma_crossover", "--fill-all-signals"],
     )
 
     cli.main()

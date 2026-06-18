@@ -1058,6 +1058,24 @@ def test_ct_val_provenance_missing_fails_source_validation(tmp_path):
     assert "portable_validation_gate" in summary
 
 
+def test_ct_val_provenance_surfaces_run_exchange():
+    from backtesting.differential_validation import _validate_ct_val_provenance
+
+    class _Bundle:
+        symbols = ["BTC-USDT-SWAP"]
+        result = {
+            "validation": {
+                "ct_val_all_authoritative": True,
+                "exchange": "binance",
+                "ct_val_sources": {"BTC-USDT-SWAP": {"value": 1.0, "source": "db"}},
+            }
+        }
+
+    out = _validate_ct_val_provenance(_Bundle())
+    assert out["status"] == "PASS"
+    assert out["exchange"] == "binance"
+
+
 def test_signal_point_correctness_matrix_reports_three_engine_rows():
     engine_results = {
         "vectorbt": {
@@ -1117,6 +1135,80 @@ def test_signal_point_correctness_matrix_reports_three_engine_rows():
     assert rows["vectorbt"]["advisory_differences"]["metrics"]["total"] == 3
 
 
+def test_nautilus_order_fill_parity_passes_signal_replay_orders_and_fills():
+    matrix = dv._nautilus_order_fill_parity({
+        "nautilus": {
+            "status": "OK",
+            "metadata": {
+                "engine_execution": "signal_replay_run",
+                "nautilus_engine_smoke": {
+                    "status": "OK",
+                    "engine_execution": "signal_replay_run",
+                    "signals_available": 2,
+                    "signals_replayed": 2,
+                    "signal_replay_coverage": {
+                        "total_signal_rows": 2,
+                        "buy_sell_signal_rows": 2,
+                        "replayable_signal_rows": 2,
+                        "skipped_unmapped_symbol": 0,
+                        "skipped_unsupported_side": 0,
+                        "skipped_invalid_timestamp": 0,
+                    },
+                    "backtest_result": {
+                        "strategy_order_attempts": 2,
+                        "total_orders": 2,
+                        "strategy_fills": 2,
+                    },
+                },
+            },
+        }
+    })
+
+    assert matrix["status"] == "PASS"
+    assert matrix["passed"] is True
+    assert matrix["order_attempts"] == 2
+    assert matrix["orders_accepted"] == 2
+    assert matrix["fills"] == 2
+    assert matrix["full_project_strategy_parity_passed"] is False
+
+
+def test_nautilus_order_fill_parity_fails_partial_replay_or_fill_gap():
+    matrix = dv._nautilus_order_fill_parity({
+        "nautilus": {
+            "status": "OK",
+            "metadata": {
+                "engine_execution": "signal_replay_run",
+                "nautilus_engine_smoke": {
+                    "status": "OK",
+                    "engine_execution": "signal_replay_run",
+                    "signals_available": 3,
+                    "signals_replayed": 2,
+                    "signal_replay_coverage": {
+                        "total_signal_rows": 3,
+                        "buy_sell_signal_rows": 3,
+                        "replayable_signal_rows": 2,
+                        "skipped_unmapped_symbol": 1,
+                        "skipped_unsupported_side": 0,
+                        "skipped_invalid_timestamp": 0,
+                        "skipped_symbols": ["SOL-USDT-SWAP"],
+                    },
+                    "backtest_result": {
+                        "strategy_order_attempts": 2,
+                        "total_orders": 2,
+                        "strategy_fills": 1,
+                    },
+                },
+            },
+        }
+    })
+
+    assert matrix["status"] == "FAIL"
+    assert matrix["passed"] is False
+    assert "signal_replay_coverage" in matrix["failed_checks"]
+    assert "fill_coverage" in matrix["failed_checks"]
+    assert matrix["signal_replay_coverage"]["skipped_symbols"] == ["SOL-USDT-SWAP"]
+
+
 def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):
     run_dir = _base_run(tmp_path, "nautilus_smoke_metadata")
     smoke = {
@@ -1145,6 +1237,7 @@ def test_nautilus_manifest_records_engine_smoke_metadata(tmp_path, monkeypatch):
     metadata = summary["engines"]["nautilus"]["metadata"]
     assert metadata["engine_execution"] == "smoke_run"
     assert metadata["nautilus_engine_smoke"] == smoke
+    assert summary["nautilus_order_fill_parity"]["status"] == "FAIL"
     matrix = {row["engine"]: row for row in summary["engine_execution_matrix"]}
     assert matrix["nautilus"]["signals_replayed"] == 2
     assert matrix["nautilus"]["signal_replay_coverage"]["skipped_symbols"] == ["SOL-USDT-SWAP"]
@@ -1172,6 +1265,11 @@ def test_real_nautilus_engine_smoke_runs_signal_replay_when_available(tmp_path):
     assert smoke["signal_replay_coverage"]["replayable_signal_rows"] == 1
     assert smoke["backtest_result"]["strategy_order_attempts"] >= 1
     assert smoke["backtest_result"]["total_orders"] >= 1
+    assert smoke["backtest_result"]["strategy_fills"] >= 1
+    parity = dv._nautilus_order_fill_parity({
+        "nautilus": {"status": "OK", "metadata": {"nautilus_engine_smoke": smoke}}
+    })
+    assert parity["status"] == "PASS"
 
 
 def test_real_nautilus_engine_smoke_replays_mapped_daily_winner_symbols(tmp_path):
@@ -1192,6 +1290,7 @@ def test_real_nautilus_engine_smoke_replays_mapped_daily_winner_symbols(tmp_path
     assert coverage["skipped_symbols"] == ["SOL-USDT-SWAP"]
     assert smoke["signals_replayed"] == 4
     assert smoke["backtest_result"]["strategy_order_attempts"] >= 4
+    assert smoke["backtest_result"]["strategy_fills"] >= 4
 
 
 def test_source_data_validation_fails_invalid_ohlcv_artifact(tmp_path):
@@ -1215,262 +1314,20 @@ def test_source_data_validation_fails_invalid_ohlcv_artifact(tmp_path):
     assert summary["validation_conclusion"]["status"] == "FAIL"
 
 
-def test_market_maker_source_validation_accepts_book_snapshots(tmp_path):
-    run_dir = _base_run(tmp_path, "obi_books", "obi_market_maker")
-    pd.DataFrame(
-        {
-            "ts": [1_704_067_200_000] * 4,
-            "datetime": ["2024-01-01T00:00:00Z"] * 4,
-            "inst_id": ["BTC-USDT-SWAP"] * 4,
-            "side": ["bid", "bid", "ask", "ask"],
-            "level": [0, 1, 0, 1],
-            "px": [99.9, 99.8, 100.1, 100.2],
-            "sz": [2.0, 1.5, 2.1, 1.4],
-            "seq_id": [101] * 4,
-            "channel": ["books"] * 4,
-            "source": ["market_payload"] * 4,
-        }
-    ).to_csv(run_dir / "book_snapshots.csv", index=False)
+def test_orderbook_market_makers_are_deleted_from_portable_validation_scope():
+    deleted = {"as_market_maker", "obi_market_maker"}
 
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["nautilus"],
-        validation_id="obi_books_validation",
-    )
-
-    book_check = summary["source_data_validation"]["checks"]["book_snapshots"]
-    assert book_check["status"] == "PASS"
-    assert book_check["rows"] == 4
-    assert book_check["sides"] == ["ask", "bid"]
-    assert book_check["max_depth_by_side"] == {"bid": 2, "ask": 2}
-    manifest = json.loads(
-        (run_dir / "validation" / "obi_books_validation" / "reference_nautilus_export_manifest.json")
-        .read_text(encoding="utf-8")
-    )
-    assert manifest["inputs"]["book_snapshots"] == "book_snapshots.csv"
-
-
-def test_market_maker_source_validation_warns_when_book_snapshots_missing(tmp_path):
-    run_dir = _base_run(tmp_path, "as_missing_books", "as_market_maker")
-    contract = dv.strategy_reference_validation_contract("as_market_maker")
-
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["nautilus"],
-        validation_id="as_missing_books_validation",
-    )
-
-    required = contract["engines"]["nautilus"]["required_artifacts"]
-    book_check = summary["source_data_validation"]["checks"]["book_snapshots"]
-    assert "book_snapshots" in required
-    assert book_check["status"] == "WARN"
-    assert book_check["required"] is True
-    assert "book_snapshots.csv" in book_check["reason"]
-
-
-def _write_market_maker_book_snapshots(run_dir):
-    pd.DataFrame(
-        {
-            "ts": [
-                1_704_067_200_000,
-                1_704_067_200_000,
-                1_704_067_200_000,
-                1_704_067_200_000,
-                1_704_067_201_000,
-                1_704_067_201_000,
-                1_704_067_201_000,
-                1_704_067_201_000,
-            ],
-            "datetime": [
-                "2024-01-01T00:00:00Z",
-                "2024-01-01T00:00:00Z",
-                "2024-01-01T00:00:00Z",
-                "2024-01-01T00:00:00Z",
-                "2024-01-01T00:00:01Z",
-                "2024-01-01T00:00:01Z",
-                "2024-01-01T00:00:01Z",
-                "2024-01-01T00:00:01Z",
-            ],
-            "inst_id": ["BTC-USDT-SWAP"] * 8,
-            "side": ["bid", "bid", "ask", "ask", "bid", "bid", "ask", "ask"],
-            "level": [0, 1, 0, 1, 0, 1, 0, 1],
-            "px": [99.9, 99.8, 100.1, 100.2, 100.0, 99.9, 100.2, 100.3],
-            "sz": [3.0, 2.0, 1.0, 1.0, 3.5, 2.1, 1.0, 1.2],
-            "seq_id": [101, 101, 101, 101, 102, 102, 102, 102],
-            "channel": ["books"] * 8,
-            "source": ["market_payload"] * 8,
-        }
-    ).to_csv(run_dir / "book_snapshots.csv", index=False)
-
-
-def _write_market_maker_trade_ticks(run_dir):
-    pd.DataFrame(
-        {
-            "ts": [1_704_067_199_500, 1_704_067_199_700, 1_704_067_200_500],
-            "datetime": [
-                "2023-12-31T23:59:59.500Z",
-                "2023-12-31T23:59:59.700Z",
-                "2024-01-01T00:00:00.500Z",
-            ],
-            "inst_id": ["BTC-USDT-SWAP"] * 3,
-            "trade_id": ["t1", "t2", "t3"],
-            "price": [100.0, 100.05, 100.1],
-            "size": [0.4, 0.3, 0.5],
-            "side": ["buy", "sell", "buy"],
-            "source": ["market_payload"] * 3,
-        }
-    ).to_csv(run_dir / "trade_ticks.csv", index=False)
-
-
-def _market_maker_reference_run(tmp_path, run_id, strategy):
-    run_dir = _base_run(tmp_path, run_id, strategy)
-    _write_market_maker_book_snapshots(run_dir)
-    if strategy == "as_market_maker":
-        _write_market_maker_trade_ticks(run_dir)
-    bundle = dv.load_artifact_bundle(run_dir)
-    reference = dv._market_maker_reference_result(bundle, "vectorbt")
-    assert reference.status == "OK"
-    assert not reference.signals.empty
-    reference.signals.to_csv(run_dir / "signals.csv", index=False)
-    return run_dir
-
-
-def test_obi_market_maker_reference_recomputes_quote_signal_gate(tmp_path, monkeypatch):
-    run_dir = _market_maker_reference_run(tmp_path, "obi_quote_reference", "obi_market_maker")
-
-    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["vectorbt", "backtrader", "nautilus"],
-        validation_id="obi_quote_reference_validation",
-    )
-
-    assert summary["status"] == "PASS"
-    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
-    assert summary["external_validation_conclusion"]["status"] == "REFERENCE_PASS"
-    assert summary["external_validation_conclusion"]["external_engines"]["independent_reference"] == ["vectorbt", "backtrader"]
-    assert summary["portable_validation_gate"]["passed"] is True
-    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
-    assert summary["engines"]["vectorbt"]["reference_role"] == "reference_signals_only"
-    assert summary["engines"]["vectorbt"]["metadata"]["reference_mode"] == "obi_market_maker_book_quote_recompute"
-    assert summary["engines"]["vectorbt"]["comparison"]["signal_logic"]["status"] == "PASS"
-    assert summary["engines"]["nautilus"]["reference_role"] == "advisory"
-
-
-def test_as_market_maker_reference_recomputes_quote_signal_gate(tmp_path, monkeypatch):
-    run_dir = _market_maker_reference_run(tmp_path, "as_quote_reference", "as_market_maker")
-
-    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["vectorbt", "backtrader", "nautilus"],
-        validation_id="as_quote_reference_validation",
-    )
-
-    assert summary["status"] == "PASS"
-    assert summary["validation_conclusion"]["status"] == "REFERENCE_PASS"
-    assert summary["portable_validation_gate"]["passed"] is True
-    assert summary["portable_validation_gate"]["independent_passing_engines"] == ["vectorbt", "backtrader"]
-    assert summary["engines"]["backtrader"]["reference_role"] == "reference_signals_only"
-    assert summary["engines"]["backtrader"]["metadata"]["reference_mode"] == "as_market_maker_book_quote_recompute"
-    assert summary["engines"]["backtrader"]["comparison"]["signal_logic"]["status"] == "PASS"
-    assert summary["source_data_validation"]["checks"]["trade_ticks"]["status"] == "PASS"
-
-
-def test_trade_ticks_db_parity_compares_artifact_to_store(tmp_path, monkeypatch):
-    from backtesting import data_loader
-
-    run_dir = _market_maker_reference_run(tmp_path, "as_trade_tick_db_parity", "as_market_maker")
-
-    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
-    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
-    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
-
-    def fake_load_candles(
-        inst_id,
-        bar="1m",
-        data_dir="data/ticks",
-        start=None,
-        end=None,
-        backend="parquet",
-        dsn=None,
-        include_suspect=False,
-        exchange=None,
-    ):
-        prices = pd.read_csv(run_dir / "price_series.csv")
-        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
-        return pd.DataFrame(
-            {
-                "open": prices["open"].astype(float).to_numpy(),
-                "high": prices["high"].astype(float).to_numpy(),
-                "low": prices["low"].astype(float).to_numpy(),
-                "close": prices["close"].astype(float).to_numpy(),
-                "vol": prices["vol"].astype(float).to_numpy(),
-            },
-            index=idx,
-        )
-
-    def fake_load_trade_ticks(
-        inst_id,
-        data_dir="data/ticks",
-        start=None,
-        end=None,
-        backend="parquet",
-        dsn=None,
-    ):
-        assert inst_id == "BTC-USDT-SWAP"
-        ticks = pd.read_csv(run_dir / "trade_ticks.csv")
-        return pd.DataFrame(
-            {
-                "ts": pd.to_datetime(ticks["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None),
-                "trade_id": ticks["trade_id"].astype(str),
-                "price": ticks["price"].astype(float),
-                "size": ticks["size"].astype(float),
-                "side": ticks["side"].astype(str),
-            }
-        )
-
-    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
-    monkeypatch.setattr(data_loader, "load_trade_ticks", fake_load_trade_ticks)
-    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
-
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["vectorbt"],
-        validation_id="as_trade_tick_db_parity_validation",
-    )
-
-    tick_db = summary["source_data_validation"]["checks"]["trade_ticks_db_parity"]
-    assert tick_db["status"] == "PASS"
-    assert tick_db["symbols"][0]["status"] == "PASS"
-    assert tick_db["symbols"][0]["key"] == "trade_id"
-    assert tick_db["symbols"][0]["value_mismatches"] == 0
-
-
-def test_market_maker_quote_reference_detects_target_quote_mismatch(tmp_path, monkeypatch):
-    run_dir = _market_maker_reference_run(tmp_path, "obi_quote_mismatch", "obi_market_maker")
-    signals = pd.read_csv(run_dir / "signals.csv")
-    signals.loc[0, "target_bid"] = float(signals.loc[0, "target_bid"]) + 1.0
-    signals.to_csv(run_dir / "signals.csv", index=False)
-
-    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: object())
-    summary = dv.run_differential_validation(
-        run_dir,
-        engines=["vectorbt"],
-        validation_id="obi_quote_mismatch_validation",
-    )
-
-    signal_logic = summary["engines"]["vectorbt"]["comparison"]["signal_logic"]
-    assert summary["status"] == "FAIL"
-    assert signal_logic["status"] == "FAIL"
-    assert signal_logic["actionable_mismatch_count"] == 1
-    assert summary["mismatch_counts"]["signals"]["actionable"] == 1
+    assert deleted.isdisjoint(dv.REFERENCE_VALIDATION_CONTRACTS)
+    assert deleted.isdisjoint(_declared_strategy_ids())
 
 
 def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch):
     from backtesting import data_loader
 
     run_dir = _base_run(tmp_path, "db_parity")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    payload["validation"]["exchange"] = "binance"
+    (run_dir / "result.json").write_text(json.dumps(payload), encoding="utf-8")
 
     monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
     monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
@@ -1491,6 +1348,7 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
         assert inst_id == "BTC-USDT-SWAP"
         assert bar == "1H"
         assert backend == "postgres"
+        assert exchange == "binance"
         idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
         return pd.DataFrame(
             {
@@ -1514,7 +1372,59 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
     db_check = summary["source_data_validation"]["checks"]["db_parity"]
     assert summary["ohlcv_source_validation"] == "db_parity_pass"
     assert db_check["status"] == "PASS"
+    assert db_check["canonical_source_primary"] == "binance"
     assert db_check["symbols"][0]["status"] == "PASS"
+    assert db_check["symbols"][0]["value_mismatches"] == 0
+
+
+def test_db_parity_uses_close_only_for_close_flattened_artifacts(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "db_parity_close_only")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    payload["validation"]["exchange"] = "binance"
+    (run_dir / "result.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        close = prices["close"].astype(float).to_numpy()
+        return pd.DataFrame(
+            {
+                "open": close - 1.0,
+                "high": close + 2.0,
+                "low": close - 3.0,
+                "close": close,
+                "vol": prices["vol"].astype(float).to_numpy() * 1000.0,
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="db_parity_close_only_validation",
+    )
+
+    db_check = summary["source_data_validation"]["checks"]["db_parity"]
+    assert summary["ohlcv_source_validation"] == "db_parity_pass"
+    assert db_check["status"] == "PASS"
     assert db_check["symbols"][0]["value_mismatches"] == 0
 
 
@@ -1541,7 +1451,6 @@ def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkey
         prices = pd.read_csv(run_dir / "price_series.csv")
         db_prices = prices.copy()
         db_prices.loc[2, "close"] = 202.0
-        db_prices.loc[2, "high"] = 202.0
         idx = pd.to_datetime(db_prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
         return pd.DataFrame(
             {
@@ -1564,8 +1473,10 @@ def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkey
 
     price_input = summary["engines"]["nautilus"]["metadata"]["price_input"]
     equity = pd.read_csv(run_dir / "validation" / "db_reference_prices_validation" / "reference_nautilus_equity_curve.csv")
+    db_check = summary["source_data_validation"]["checks"]["db_parity"]
     assert price_input["source"] == "db_canonical_candles"
-    assert summary["source_data_validation"]["checks"]["db_parity"]["status"] == "FAIL"
+    assert db_check["status"] == "FAIL"
+    assert db_check["symbols"][0]["value_mismatches"] == 1
     assert equity["equity"].iloc[-1] == pytest.approx(2000.0)
 
 

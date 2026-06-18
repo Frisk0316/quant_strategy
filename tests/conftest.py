@@ -83,10 +83,6 @@ class PendingBroker(Broker):
 @pytest.fixture
 def minimal_cfg() -> AppConfig:
     strategies = StrategiesConfig()
-    strategies.obi_market_maker.symbols = ["BTC-USDT-SWAP"]
-    strategies.as_market_maker.symbols = ["BTC-USDT-SWAP"]
-    strategies.as_market_maker.refresh_interval_ms = 0
-    strategies.obi_market_maker.refresh_interval_ms = 0
     strategies.funding_carry.perp_symbol = "BTC-USDT-SWAP"
     strategies.funding_carry.spot_symbol = "BTC-USDT"
     return AppConfig(

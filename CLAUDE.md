@@ -1,52 +1,69 @@
 # Claude Code Instructions
 
-This repository uses `docs/ai_collaboration.md` as the governance contract and `docs/AI_WORKFLOW.md` as the session operating procedure.
+@AGENTS.md
+
+This file imports the shared repository rules from `AGENTS.md`. The sections below
+are Claude-specific addenda for planning, review, risk analysis, and acceptance
+criteria.
 
 ---
 
-## Session Start (mandatory every new session)
+## Claude Role
 
-Read these in order before doing anything else:
-
-1. `docs/AI_HANDOFF.md` — current state, known bugs, do-not-touch list, next steps
-2. `docs/AI_WORKFLOW.md` — role rules, commit format, branch naming, prohibited actions
-3. `docs/ai_collaboration.md` — deployment gates, conflict resolution, truth sources
-4. The specific issue or task being addressed
-5. Any relevant ADR in `docs/ADR/`
-
-Repo files override chat memory. If this document conflicts with a repo file, the repo file wins.
-
----
-
-## Role
-
-Claude's primary role is **planning, review, risk analysis, and acceptance criteria definition**.
+Claude's primary role is planning, review, risk analysis, and acceptance criteria
+definition.
 
 Claude produces:
-- Diagnosis of which layer a problem is in
-- Fix plan with exact files to change and files NOT to change
-- Risks and regression scenarios
-- Test plan with exact commands
-- Acceptance criteria (binary, checkable)
 
-Claude does not produce working code for trading-core modules by default. That is Codex's job.
+- Diagnosis of which layer a problem is in.
+- Fix plan with exact permitted files and explicit forbidden files.
+- Risks and regression scenarios.
+- Test plan with exact commands.
+- Binary acceptance criteria.
+- Review notes for Codex diffs.
 
----
-
-## Mandatory Before Advising or Editing
-
-1. Read `docs/AI_HANDOFF.md` for current state and known issues.
-2. Treat `research/strategy_synthesis.md`, `docs/backtest_live_parity_plan.md`, and `config/` as truth sources.
-3. Check `docs/ADR/` for relevant architectural decisions before proposing changes.
-4. Do not modify `src/okx_quant/strategies/`, `signals/`, `risk/`, `portfolio/`, or `execution/` unless the issue explicitly lists these files as permitted.
+Claude does not produce working code for trading-core modules by default. Codex owns
+implementation unless the user explicitly assigns a documentation-only or review-only
+task to Claude.
 
 ---
 
-## When Handing Work to Codex
+## Session Start
 
-Always include the full task block from `docs/AI_WORKFLOW.md`:
+In addition to `AGENTS.md`, Claude should prioritize:
 
-```
+1. `docs/AI_HANDOFF.md` for current state, do-not-touch list, and next actions.
+2. `docs/AI_WORKFLOW.md` for task format and role boundaries.
+3. `docs/ai_collaboration.md` for deployment gates and conflict handling.
+4. `docs/FEATURE_MAP.md`, `docs/UI_MAP.md`, or `docs/DATA_FLOW.md` when the task
+   needs file ownership or flow mapping.
+5. Relevant ADRs under `docs/ADR/`.
+6. `docs/CONTEXT_INDEX.md` to rebuild context from files, `docs/CURRENT_STATE.md`
+   for the one-screen snapshot, and the relevant `docs/CONTEXT_PACKS/` pack.
+
+Repo files override chat memory. If files conflict, use the authority order in
+`AI_CONTEXT.md` and `docs/DOC_LIFECYCLE.md`.
+
+### Harness obligations
+
+- **Doc Sync:** business-rule changes (per `docs/DOMAIN_RULES.md` /
+  `docs/DOC_IMPACT_MATRIX.md`) need a Change Manifest; major rule changes need an
+  ADR. Run `make docs-impact` when reviewing such a change.
+- **Intelligence:** design-heavy work starts with `docs/DESIGN_SPACE.md`;
+  reviews use `docs/REVIEW_QUESTIONS.md` and `docs/CRITIQUE_PROTOCOL.md` against
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, and `docs/GOLDEN_CASES.md`;
+  experiments update `docs/HYPOTHESIS_LEDGER.md` and `docs/EXPERIMENT_REGISTRY.md`.
+- **Context Resilience:** spend context per `docs/CONTEXT_BUDGET.md`, compress
+  per `docs/COMPRESSION_RULES.md`, and end every session with a Context Handoff
+  (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) including Human Learning Notes.
+
+---
+
+## Planning Rules
+
+Before handing work to Codex, include:
+
+```text
 Task:
 Strategy/spec source:
 Required behavior:
@@ -58,6 +75,7 @@ FORBIDDEN (do not touch):
 - src/okx_quant/strategies/
 - src/okx_quant/risk/
 - src/okx_quant/portfolio/
+- src/okx_quant/execution/
 - config/risk.yaml
 - <add others>
 
@@ -67,8 +85,8 @@ Fix only what is described. Do not refactor adjacent code.
 REQUIRED ON COMPLETION:
 - List changed files
 - Run: <exact test command>
-- Update docs/AI_HANDOFF.md
-- Commit with AI-Origin: Codex trailer
+- Update relevant docs/handoff
+- Commit with AI-Origin: Codex trailer when committing is requested
 
 ACCEPTANCE CRITERIA:
 - [ ]
@@ -77,43 +95,57 @@ ACCEPTANCE CRITERIA:
 
 ---
 
-## When Reviewing a Diff
+## Review Rules
 
 Before reviewing any PR or diff, check:
-- `docs/AI_WORKFLOW.md` — review checklist
-- `docs/AI_HANDOFF.md` — do-not-touch list and known bugs
-- `.github/pull_request_template.md` — required sections
-- The issue the PR closes
-- Any relevant ADR
+
+- `AGENTS.md` and `docs/AI_WORKFLOW.md`.
+- `AI_CONTEXT.md`.
+- `docs/AI_HANDOFF.md`.
+- `docs/REVIEW_QUESTIONS.md` and `docs/CRITIQUE_PROTOCOL.md` as the review checklist.
+- Relevant issue/task scope.
+- Relevant ADRs.
 
 Review must catch:
-- Scope violations — files touched outside the permitted list
-- PnL accounting errors — `ct_val` missing for SWAP, wrong funding sign
-- Lookahead bias — future data used in signal generation
-- Orphan positions — exit closes main leg but not hedge leg
-- API schema breaks — field renamed, removed, or type-changed
-- Missing tests — bug fixed without a regression test
-- Handoff not updated — `docs/AI_HANDOFF.md` not updated before merge
+
+- Scope violations.
+- Strategy drift or research assumptions changed without source-of-truth updates.
+- PnL accounting errors, especially missing `ct_val` for SWAP.
+- Funding cashflow sign errors.
+- Lookahead bias, leakage, and hidden trial-count drift.
+- Orphan positions and partial-fill state regressions.
+- API schema breaks.
+- Missing tests or docs.
+- Missing Change Manifest or skipped `docs/DOC_IMPACT_MATRIX.md` rows on a
+  business-rule change; missing ADR on a major rule change.
+- Invariant regressions (`docs/INVARIANTS.md`) and unrecorded new failure modes
+  (`docs/FAILURE_MODES.md`).
+- Live-readiness claims before gates and explicit user approval.
 
 ---
 
 ## Hard Rules
 
-- Never claim a strategy is ready for live trading unless all gates in `docs/ai_collaboration.md` have passed and the user has explicitly approved.
-- Any change to strategy assumptions must update `research/strategy_synthesis.md` first, then implementation.
+- Do not modify trading-core modules by default: `src/okx_quant/strategies/`,
+  `src/okx_quant/signals/`, `src/okx_quant/risk/`, `src/okx_quant/portfolio/`,
+  or `src/okx_quant/execution/`.
 - Do not overwrite unrelated user or Codex changes.
-- Do not treat **Target architecture** sections in `docs/ARCHITECTURE.md` or ADRs as implemented behavior.
-- Do not approve a PR that does not update `docs/AI_HANDOFF.md`.
-- Do not expand the scope of a task without explicit user approval.
-- SWAP PnL must always include `ct_val`: `unrealized_pnl = size × ct_val × (price − avg_entry)`.
-- Funding cashflow sign: `funding_cashflow = −perp_size × ct_val × funding_rate × mark_price`.
+- Do not treat target architecture or known-gap text as implemented behavior.
+- Do not approve a PR that skips required tests without a concrete reason.
+- Do not approve live/shadow/demo readiness claims unless all gates pass and the
+  user explicitly approves.
 
 ---
 
 ## Session End
 
-Before finishing any session:
+Before finishing:
 
-- [ ] Update `docs/AI_HANDOFF.md` (Recent Changes, Known Bugs if resolved, Next Steps)
-- [ ] Ensure every commit in this session has `AI-Origin: Claude` trailer
-- [ ] List any unresolved risks or follow-up issues
+- Update `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` for current state and
+  next actions.
+- Write a Context Handoff (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) and Session
+  Handoff (`tasks/SESSION_HANDOFF_TEMPLATE.md`), including **Human Learning
+  Notes**.
+- Move durable history to `docs/CHANGELOG_AI.md` over time.
+- Move durable bug backlog to `docs/KNOWN_ISSUES.md` over time.
+- List unresolved risks and follow-up issues.

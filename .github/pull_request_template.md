@@ -47,6 +47,20 @@ Closes #
 - [ ] Regression test added or updated for this bug/feature
 - [ ] `ruff check src/ tests/` — no new errors
 
+## Doc Sync / Harness
+
+<!-- See docs/DOC_IMPACT_MATRIX.md. A business-rule change is any PnL, fee, funding,
+sizing, risk, fill, data-provenance, or gate change. -->
+
+- [ ] Is this a business-rule change? If yes, a Change Manifest is included
+      (`docs/change_manifests/<date>-<slug>.md`) and `make docs-impact` passes.
+- [ ] `docs/DOC_IMPACT_MATRIX.md` rows for the changed areas were checked and the
+      listed docs updated (or explicitly confirmed unchanged in the manifest).
+- [ ] Major rule/policy change has an ADR (`docs/ADR/`).
+- [ ] Experiments updated `docs/HYPOTHESIS_LEDGER.md` and
+      `docs/EXPERIMENT_REGISTRY.md`; new bug classes updated `docs/FAILURE_MODES.md`.
+- [ ] `docs/INVARIANTS.md` / `docs/GOLDEN_CASES.md` still hold (or were updated).
+
 ## Branch / Version Management
 
 - [ ] Branch name follows `docs/BRANCH_VERSIONING.md`
@@ -63,4 +77,6 @@ Closes #
 
 <!-- What does the next AI session need to know? Update docs/AI_HANDOFF.md before merging. -->
 
-- [ ] `docs/AI_HANDOFF.md` updated (Current Change Context, Known Bugs, Next Steps)
+- [ ] `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` updated
+- [ ] Context Handoff written (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) including
+      **Human Learning Notes**

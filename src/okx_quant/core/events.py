@@ -73,7 +73,7 @@ class SignalPayload:
     side: str              # 'buy' | 'sell' | 'neutral'
     strength: float        # [0, 1]
     fair_value: float      # Estimated fair price
-    # For market-making strategies
+    # Optional explicit quote targets for strategies that emit paired quotes.
     target_bid: Optional[float] = None
     target_ask: Optional[float] = None
     # Metadata for monitoring and audit trail

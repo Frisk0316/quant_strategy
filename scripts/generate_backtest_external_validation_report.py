@@ -578,8 +578,8 @@ def build_slides() -> list[Slide]:
         "研究掃描補充",
         [
             "vectorbt_scanner.py 用於快速參數掃描",
-            "AS: gamma / kappa / c_alpha / commission_pct",
             "Funding: APR threshold / entry fee proxy",
+            "Order-book MM scanners 已移除",
         ],
         "orange",
     )
@@ -651,7 +651,7 @@ def build_slides() -> list[Slide]:
         inch(2.05),
         inch(4.85),
         inch(1.05),
-        "Nautilus catalog + L2/L3 order book + order/fill events + funding cashflows → OKX venue / matching engine → queue-aware fills / post-only / book walk / settlement",
+        "目前 v1：artifact / signal-point export。未來若恢復 order-book data，再規劃 Nautilus catalog + L2/L3 book + order/fill events + funding cashflows → OKX venue / matching engine",
         size=9.7,
         color=COLORS["text"],
     )
@@ -662,8 +662,8 @@ def build_slides() -> list[Slide]:
         inch(4.0),
         inch(5.35),
         inch(1.58),
-        "skeleton runner 參數",
-        ["data_dir=data/ticks, inst_id=BTC-USDT-SWAP, start/end", "AS MM params: gamma=0.1, kappa=1.5, c_alpha=100.0", "OKX venue, NETTING, MARGIN, 10,000 USDT starting balance"],
+        "current v1 參數",
+        ["strategy / fixture-run-id / engines", "artifact OHLCV + signal-point export", "order/fill and matching-engine semantics remain advisory"],
         "orange",
     )
     add_card(
@@ -673,7 +673,7 @@ def build_slides() -> list[Slide]:
         inch(5.35),
         inch(1.58),
         "目前限制",
-        ["full Nautilus integration requires OKX adapter + Parquet catalog", "尚未驗證 order-book queue priority、partial fill、funding settlement", "不能作 live readiness 或 promotion evidence"],
+        ["standalone L2 runner 已停用", "目前不維護 order-book data；queue priority / partial fill 留待下一階段", "不能作 live readiness 或 promotion evidence"],
         "red",
     )
     add_source(s, "Source: NautilusReferenceAdapter, backtesting/nautilus_backtest.py, docs/backtest_live_parity_plan.md")
@@ -707,10 +707,10 @@ def build_slides() -> list[Slide]:
                 "僅驗證 DB 聚合與 artifact 串接；不得 live",
             ],
             [
-                "Execution-sensitive MM",
+                "Removed order-book MM",
                 "as_market_maker\nobi_market_maker",
-                "Nautilus advisory export；vectorbt/backtrader OHLC replay",
-                "需要 L2/L3 queue-aware replay 才可討論高保真",
+                "已自 active UI/API/validation scope 刪除",
+                "不維護 order-book data；不得作為 promotion target",
             ],
         ],
     )
@@ -861,7 +861,7 @@ def build_slides() -> list[Slide]:
         inch(3.75),
         inch(2.4),
         "長期：完整 Nautilus adapter",
-        ["建立 Nautilus catalog 與 OKX adapter mapping", "接 L2/L3 order book、order/fill events、funding cashflows", "讓 execution-sensitive 策略能跑 queue-aware independent reference"],
+        ["若 user 恢復 order-book data plan，建立 Nautilus catalog 與 OKX adapter mapping", "接 L2/L3 order book、order/fill events、funding cashflows", "讓 execution-sensitive 策略能跑 queue-aware independent reference"],
         "orange",
     )
     s.shape(

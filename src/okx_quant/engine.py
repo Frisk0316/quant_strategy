@@ -42,10 +42,8 @@ from okx_quant.portfolio.positions import PositionLedger
 from okx_quant.risk.circuit_breaker import CircuitBreaker
 from okx_quant.risk.drawdown_tracker import DrawdownTracker
 from okx_quant.risk.risk_guard import RiskGuard
-from okx_quant.strategies.as_market_maker import ASMarketMaker
 from okx_quant.strategies.base import Strategy
 from okx_quant.strategies.funding_carry import FundingCarryStrategy
-from okx_quant.strategies.obi_market_maker import OBIMarketMaker
 from okx_quant.strategies.pairs_trading import PairsTradingStrategy
 
 
@@ -234,18 +232,6 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # ------------------------------------------------------------------
     strategies: list[Strategy] = []
     strat_cfg = cfg.strategies
-
-    if strat_cfg.obi_market_maker.enabled:
-        strat = OBIMarketMaker(strat_cfg.obi_market_maker.model_dump())
-        strategies.append(strat)
-        risk_guard.register_strategy(strat.name)
-        logger.info("Strategy enabled", name=strat.name)
-
-    if strat_cfg.as_market_maker.enabled:
-        strat = ASMarketMaker(strat_cfg.as_market_maker.model_dump())
-        strategies.append(strat)
-        risk_guard.register_strategy(strat.name)
-        logger.info("Strategy enabled", name=strat.name)
 
     if strat_cfg.funding_carry.enabled:
         strat = FundingCarryStrategy(strat_cfg.funding_carry.model_dump())

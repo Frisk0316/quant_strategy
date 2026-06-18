@@ -103,10 +103,10 @@ Control methods called only by RiskGuard: `halt()`, `soft_stop()`, `resume()`.
 
 | Strategy | File | Signal Logic |
 |---|---|---|
-| `OBIMarketMaker` | `obi_market_maker.py` | Quotes at `fair_value ± half_spread`. Entry when `\|OBI_L1\| > threshold`. Max inventory ±50 contracts. Throttled 500ms. |
-| `ASMarketMaker` | `as_market_maker.py` | Avellaneda-Stoikov ergodic limit. VPIN toxicity modulates spread width (not direction). Kappa recalibrated hourly. |
 | `FundingCarryStrategy` | `funding_carry.py` | Long spot + short perp (delta-neutral carry). Entry: `APR > min_threshold AND basis_z < max`. Exit: APR negative or 8h rebalance. |
 | `PairsTradingStrategy` | `pairs_trading.py` | BTC-ETH spread. Entry `\|z\| > 2.0`, exit `\|z\| < 0.3`, stop `\|z\| > 4.0`. Kalman filter dynamic hedge ratio. OU parameters recalibrated every 100 bars. |
+| Technical crossover strategies | `technical_indicators.py` | Long/flat MA, EMA, and MACD crossover baselines. |
+| External-feature baselines | `external_features.py` | Research-only Fear & Greed and CME daily gap baselines. |
 
 ---
 
@@ -116,10 +116,9 @@ Control methods called only by RiskGuard: `halt()`, `soft_stop()`, `resume()`.
 
 Pure functions — no state, no side effects.
 
-- `obi_ofi.py`: `compute_obi_features()`, `compute_ofi()`, `compute_mlofi_increment()`, `ewma_ofi()`
-  — Order Book Imbalance and Order Flow Imbalance (Cont-Kukanov-Stoikov 2014)
-- `vpin.py`: `compute_vpin()`, `vpin_regime()`, `vpin_spread_multiplier()`
-  — Volume-Synchronized Probability of Informed Trading (BVC method). Returns CDF percentile; `vpin_regime()` maps to `normal / elevated / toxic`.
+- `regime.py`: HMM / GARCH / CUSUM style regime helpers used by research hooks.
+- Historical microstructure helpers may exist for archived research, but
+  order-book market-making strategies are not active strategy modules.
 
 ---
 
@@ -156,7 +155,7 @@ Sizing chain (in order):
 3. Vol-targeted notional: `equity × (target_vol / realized_vol)`
 4. Cap to `max_order_notional_usd`
 
-For market-making: emits both bid and ask orders simultaneously with distinct `cl_ord_id`.
+For paired-quote signals: emits both bid and ask orders simultaneously with distinct `cl_ord_id`.
 For pairs trading: calls `_place_linked_hedges()` to emit hedge leg order.
 
 ### Sizing (`sizing.py`)
