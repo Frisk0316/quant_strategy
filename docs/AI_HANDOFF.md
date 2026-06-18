@@ -59,16 +59,19 @@ gate** (`backtesting/differential_validation.py`) is the contended surface.
    `price_series.csv`; durable evidence passed with
    `checks.db_parity.canonical_source_primary == "binance"`. Non-gate chores
    (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
-3. **Universal price chart + progressive load** — separate branch, brief:
-   `tasks/2026-06-17-price-chart-universal-task.md`. Independent of 1 and 2;
-   **must not touch** `differential_validation.py`.
+3. **Universal price chart + progressive load** — implemented on
+   `codex/fix-price-chart-universal` (`76dcecc`) and merged into the P1
+   integration branch. Independent of 1 and 2; **must not touch**
+   `differential_validation.py`.
 
 Rule: only the multi-venue branch edits the ct_val provenance gate until P1
 merges. Other sessions coordinate around it, not into it.
 
 ## Current Branch
 
-Must be checked with `git branch --show-current` at session start. Observed in this session: `codex/impl-multi-venue-instrument-specs`.
+Must be checked with `git branch --show-current` at session start. Observed in
+this session: `codex/impl-multi-venue-instrument-specs` after integrating
+`claude/design-multi-venue` and `codex/fix-price-chart-universal`.
 
 ## Last Known Good Commit
 
@@ -103,6 +106,7 @@ with `db_parity.status == "PASS"`,
 
 | Commit / PR | Change | Risk |
 |---|---|---|
+| Universal price chart + progressive load `(complete; Codex 2026-06-17)` | `frontend/view-backtest.js` now renders one Price + Trade Markers panel per selected symbol, so loaded symbols draw while other symbols are still loading/empty/failed. The base price chart stays strategy-agnostic; MA/EMA/MACD indicator overlay cards remain gated by `isTechnicalRun`. Backend price-series fallback was checked and already reconstructs missing `price_series.csv` rows from `result.json` visual symbols and the candle loader. | UI-only chart behavior. No strategy logic, risk/portfolio/execution behavior, DB schema, result artifacts, deployment gates, or differential-validation gate files changed. Browser-level interaction coverage remains a known gap in `docs/KNOWN_ISSUES.md`. |
 | Source provenance validation slice `(in progress; Codex 2026-06-17)` | `scripts/run_source_provenance_validation.py` and `make source-provenance-validation` gate existing or freshly generated `validation_result.json` evidence. The gate requires `source_data_validation.status == PASS`, `ct_val_provenance.status == PASS`, `db_parity.status == PASS`, and `ohlcv_source_validation == db_parity_pass`; DB parity `SKIP` fails by design. | This is DB-backed evidence gating only. It does not alter strategy logic, reference-adapter tolerances, PnL/fill semantics, risk, portfolio, execution, DB schema, deployment gates, existing result artifacts, or Nautilus full execution parity. It still needs a reachable TimescaleDB/Postgres DSN and canonical candles to produce passing real-data evidence. |
 | Strategy signal-validation CI gate `(complete; Codex 2026-06-17)` | `.github/workflows/ci.yml` adds a `strategy-signal-validation` job that installs `.[dev,validation]` and runs `make strategy-signal-validation`. `Makefile` now accepts `VALIDATION_RESULTS_DIR`, so CI writes generated validation artifacts to runner temp storage instead of repo `results/`. User agreed this job should be configured as a required branch protection check once pushed. | This is CI/harness wiring only. It does not alter strategy logic, reference-adapter tolerances, PnL/fill semantics, risk, portfolio, execution, DB schema, deployment gates, or existing result artifacts. The job remains fixture signal-point evidence, not real-data parity, execution parity, or live-readiness evidence. |
 | Strategy signal-validation harness interface `(complete; Codex 2026-06-16)` | `scripts/run_all_strategy_signal_validation.py` accepts an explicit `--engines` list, sets `NUMBA_DISABLE_JIT=1` by default for vectorbt fixture validation, and can be called through `make strategy-signal-validation` with `VALIDATION_STRATEGIES` / `VALIDATION_ENGINES`. Batch `codex_20260616_signal_validation` produced PASS rows for all active strategies under `results/strategy_validation/`. | This is a harness/interface change only. It does not alter strategy logic, reference-adapter tolerances, PnL/fill semantics, risk, portfolio, execution, or DB schema. New validation artifacts are fixture evidence only: signal-point portability, source-data shape/provenance, portable gate, and Nautilus advisory order/fill replay passed; live execution, PnL parity, fees/slippage, funding settlement, WalkForward/CPCV, and DB-backed real-market evidence remain out of scope. |

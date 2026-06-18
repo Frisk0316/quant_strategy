@@ -29,6 +29,9 @@ over time.
 - `make backtest-smoke` verifies entrypoints only. Known gap: add a tiny frozen
   no-DB fixture before treating it as replay execution coverage.
 - `make verify-full` may require TimescaleDB and seeded data.
+- Frontend backtest-chart behavior is still mostly covered by syntax/static
+  checks plus API artifact tests. Known gap: add a browser-level interaction test
+  before treating progressive multi-symbol chart loading as fully guarded.
 
 ## Validation
 
