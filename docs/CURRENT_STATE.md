@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-18
 expires: none
 superseded_by: null
 ---
@@ -20,20 +20,18 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** ADR-0007 P1 multi-venue instrument specs are locally
-  implemented and verified on `codex/impl-multi-venue-instrument-specs`,
-  including structural Binance/Bybit USDT-M base-unit `ct_val` resolution.
+- **Current goal:** ADR-0007 P1 multi-venue instrument specs are locally closed
+  out on `codex/impl-multi-venue-instrument-specs`; the validation workstream's
+  Binance DB-backed PASS milestone is unblocked by code/docs and now waits on a
+  reachable seeded DB.
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
-- **Last known good state:** Commits through `7be7f65` implement Tasks 1-5:
-  venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
-  provenance, source-gate exchange surfacing, and Run Backtest exchange selection.
-- **Current working state:** Task 6 adds the convergence golden case, required
-  docs/manifest updates, and final local verification. A follow-up fixes
-  unseeded normal Binance/Bybit USDT-M swaps by resolving `ct_val = 1.0` as
-  `exchange_base_unit`; canonical `1000...` multiplier contracts still require
-  explicit DB specs. Task 4 DB parity exchange scoping is repaired:
-  postgres canonical candle reads now filter `source_primary` by the run
-  exchange. No existing result artifacts were modified.
+- **Last known good state:** Commits through `d48361c`, plus this follow-up,
+  implement Tasks 1-6, structural Binance/Bybit USDT-M `ct_val =
+  exchange_base_unit`, DB parity exchange scoping, and source-scoped regression
+  coverage. No existing result artifacts were modified.
+- **Current working state:** Local unit/docs checks pass for the ADR-0007 P1
+  closeout. `db_parity` now reports `canonical_source_primary`, and Binance
+  PASS evidence must show it is `binance`.
 - **Active risks:** DB-backed Binance source-provenance PASS is still blocked by
   local dependency state: `DATABASE_URL` is unset in the shell, the configured
   `.env` DSN on port 5432 refuses connections, local PostgreSQL on port 5433
@@ -47,10 +45,9 @@ handoff between sessions; this is the one-screen "where are we" that
 - Provide or start a reachable dev DB DSN, apply
   `sql/migrations/0011_venue_instrument_specs.sql` and
   `sql/seed_venue_instrument_specs.sql`, then run the source-provenance gate
-  against a fresh Binance run.
-- Ask Claude to review ADR-0007 P1 docs/manifest and the seed values before a
-  shared DB application or PR merge.
-- Preserve the unrelated dirty `docs/backtest_external_validation_report_zh.pptx`.
+  against a fresh Binance run following `docs/RUNBOOK.md`.
+- Ask Claude to review ADR-0007 P1 docs/manifest, seed values, and the
+  source-scoped DB parity evidence requirement before PR merge.
 
 ## How to update
 

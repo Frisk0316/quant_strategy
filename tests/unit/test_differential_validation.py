@@ -1372,6 +1372,7 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
     db_check = summary["source_data_validation"]["checks"]["db_parity"]
     assert summary["ohlcv_source_validation"] == "db_parity_pass"
     assert db_check["status"] == "PASS"
+    assert db_check["canonical_source_primary"] == "binance"
     assert db_check["symbols"][0]["status"] == "PASS"
     assert db_check["symbols"][0]["value_mismatches"] == 0
 

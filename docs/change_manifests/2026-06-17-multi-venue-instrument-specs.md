@@ -69,6 +69,18 @@ allowed exchanges).
     `backtesting/data_loader.py`, `src/okx_quant/data/candle_store.py`,
     `tests/unit/test_data_loader.py`, `tests/unit/test_differential_validation.py`,
     docs, and task handoffs.
+- `d48361c` - P1 Task 6 docs/manifest closeout:
+  `docs/DATA_FLOW.md`, `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`,
+  `docs/GOLDEN_CASES.md`, `docs/HYPOTHESIS_LEDGER.md`,
+  `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`, `docs/UI_MAP.md`,
+  `docs/ai_collaboration.md`, `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`,
+  `docs/change_manifests/2026-06-17-multi-venue-instrument-specs.md`,
+  `config/instrument_specs.yaml`, and task handoffs.
+- Source-scoped evidence follow-up in this change:
+  `backtesting/differential_validation.py`, `backtesting/replay.py`,
+  `tests/unit/test_data_loader.py`, `tests/unit/test_differential_validation.py`,
+  `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`, `docs/KNOWN_ISSUES.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, this manifest, and task handoffs.
 - P1 closeout docs in this session: `docs/DOMAIN_RULES.md`,
   `docs/ai_collaboration.md`, `docs/GOLDEN_CASES.md`,
   `docs/HYPOTHESIS_LEDGER.md`, `docs/KNOWN_ISSUES.md`,
@@ -82,7 +94,9 @@ allowed exchanges).
   no DB row, `exchange_base_unit` is authoritative `ct_val = 1.0`; canonical
   `1000...` multiplier contracts fall through and require explicit DB specs.
   DB candle parity reads canonical candles with `source_primary` filtered to the
-  run exchange when `result.validation.exchange` is present.
+  run exchange when `result.validation.exchange` is present, and the
+  `db_parity` check reports `canonical_source_primary` so the Binance DB-backed
+  PASS must prove it compared Binance-tagged canonical candles.
 - Money/risk impact: **none in backtest PnL** (ct_val cancels under notional
   sizing). Impact is at live execution and in which runs can pass the
   live-readiness provenance gate. Per-venue fee/funding divergence is deferred
@@ -114,6 +128,12 @@ Closeout notes:
 - `docs/DOMAIN_RULES.md`, `docs/ai_collaboration.md`, `docs/KNOWN_ISSUES.md`,
   `docs/GOLDEN_CASES.md`, `docs/HYPOTHESIS_LEDGER.md`, and
   `config/instrument_specs.yaml` were updated in this closeout.
+- `docs/RUNBOOK.md` now records the ADR-0007 Binance DB-backed PASS flow:
+  apply migration + seed, run a fresh Binance backtest, enable DB parity, and
+  require `checks.db_parity.canonical_source_primary == "binance"`.
+- `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` now mark P1 code/docs
+  closeout as complete locally and move the Binance DB-backed PASS blocker to
+  reachable DB/data state.
 - Real rule sub-ids confirmed: R1.1/R1.2/R1.4, R6.2, and R7.2. R2-R5 were
   reviewed with no fee, funding, sizing/risk, or fill-semantics rule change.
 
@@ -130,6 +150,14 @@ Closeout notes:
 - `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py -q` - 58 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
 - `python -m pytest tests/unit/test_data_loader.py -q` - red run failed before implementation because postgres candle loading did not forward exchange and `CandleStore.get_canonical_candles()` had no `source_primary` filter.
 - `python -m pytest tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_data_loader.py -q` - 51 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
+- Source-scoped DB parity evidence red run, 2026-06-18:
+  `python -m pytest tests/unit/test_differential_validation.py::test_db_parity_compares_artifact_to_canonical_candles tests/unit/test_data_loader.py -q`
+  - 1 failed, 3 passed, 2 warnings. Expected failure:
+  `KeyError: 'canonical_source_primary'`, proving the test caught missing
+  source-scoped output.
+- Source-scoped DB parity evidence green run, 2026-06-18:
+  `python -m pytest tests/unit/test_differential_validation.py::test_db_parity_compares_artifact_to_canonical_candles tests/unit/test_data_loader.py -q`
+  - 4 passed, 1 warning.
 - `python scripts/docs/check_doc_impact.py --strict` with per-process
   `safe.directory` config - passed: 11 changed file(s), no impact-matrix violations.
 - `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
@@ -146,6 +174,13 @@ Closeout notes:
     `safe.directory` config - passed: 12 changed file(s), no impact-matrix violations.
   - `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
   - `python scripts/docs/check_feature_map_links.py` - passed: 93 concrete path(s) checked.
+- Source-scope follow-up verification, 2026-06-18:
+  - `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_multi_venue_convergence.py tests/unit/test_data_loader.py -q` - 62 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
+  - `python scripts/docs/check_doc_impact.py --strict` with per-process
+    `safe.directory` config - passed: 12 changed file(s), no impact-matrix violations.
+  - `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
+  - `python scripts/docs/check_feature_map_links.py` - passed: 93 concrete path(s) checked.
+  - `git -c safe.directory=C:/quant_strategy diff --check` - passed; Git reported CRLF normalization warnings only.
 - DB-backed end-to-end Binance source-provenance PASS, 2026-06-18: **BLOCKED,
   not passed**. No gate was loosened. Evidence:
   - `asyncpg.connect("postgresql://quant:changeme@localhost:5432/quant")`
@@ -160,6 +195,9 @@ Closeout notes:
     `sql/seed_venue_instrument_specs.sql`, the fresh Binance backtest, and
     `scripts/run_source_provenance_validation.py` could not be run to PASS in
     this session. A reachable seeded DSN is still required.
+  - When rerun with a reachable DSN, the PASS evidence must include
+    `source_data_validation.checks.db_parity.canonical_source_primary ==
+    "binance"`; exit 0 alone is insufficient.
 
 ## Risks and rollback
 - Risks: provenance field shape drifting from the gate if P1 splits across

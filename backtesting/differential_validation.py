@@ -2116,6 +2116,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
         return {
             "status": "SKIP",
             "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": (
                 "DB parity check not requested; set DIFF_VALIDATION_ENABLE_DB_PARITY=1 "
                 "with DIFF_VALIDATION_DB_DSN or DATABASE_URL to compare canonical candles."
@@ -2126,6 +2127,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
         return {
             "status": "SKIP",
             "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": "DB parity requested but no DIFF_VALIDATION_DB_DSN or DATABASE_URL is configured.",
         }
     try:
@@ -2134,12 +2136,14 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
         return {
             "status": "SKIP",
             "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": f"DB parity loader unavailable: {type(exc).__name__}: {exc}",
         }
     if not _dsn_reachable(dsn):
         return {
             "status": "SKIP",
             "exchange": exchange,
+            "canonical_source_primary": exchange,
             "reason": "DB parity requested but PostgreSQL/TimescaleDB is not reachable.",
         }
 
@@ -2184,6 +2188,7 @@ def _db_parity_validation(bundle: ArtifactBundle) -> dict[str, Any]:
         "status": status,
         "backend": "postgres",
         "exchange": exchange,
+        "canonical_source_primary": exchange,
         "symbols": symbol_results,
         "reason": "" if status == "PASS" else "DB canonical candle parity mismatches were detected.",
     }

@@ -194,6 +194,33 @@ $env:DIFF_VALIDATION_DB_DSN = "postgresql://user:pass@localhost:5432/quant"
 python scripts/run_source_provenance_validation.py --run-id <run_id> --validation-id <validation_id>
 ```
 
+ADR-0007 Binance DB-backed PASS flow:
+
+```powershell
+$env:DATABASE_URL = "postgresql://user:pass@localhost:5432/quant"
+psql $env:DATABASE_URL -f sql/migrations/0011_venue_instrument_specs.sql
+psql $env:DATABASE_URL -f sql/seed_venue_instrument_specs.sql
+
+python scripts/run_replay_backtest.py --strategy ma_crossover --symbol BTC-USDT-SWAP --bar 1H --exchange binance --run-id <run_id>
+
+$env:DIFF_VALIDATION_ENABLE_DB_PARITY = "1"
+$env:DIFF_VALIDATION_DB_DSN = $env:DATABASE_URL
+python scripts/run_source_provenance_validation.py --run-id <run_id> --engines vectorbt,backtrader --validation-id <validation_id>
+```
+
+Required evidence for that milestone:
+
+- `source_data_validation.status == "PASS"`
+- `source_data_validation.checks.ct_val_provenance.status == "PASS"`
+- `source_data_validation.checks.db_parity.status == "PASS"`
+- `source_data_validation.checks.db_parity.canonical_source_primary == "binance"`
+- `ohlcv_source_validation == "db_parity_pass"`
+- `result.validation.exchange == "binance"`
+- `ct_val_sources["BTC-USDT-SWAP"].source` is `exchange_base_unit` or `db`
+
+If `db_parity` has no rows or compares another source, fix the
+`canonical_candles.source_primary` data/source tagging. Do not relax the gate.
+
 This gate does not prove Nautilus full execution parity, PnL parity, or live
 readiness.
 

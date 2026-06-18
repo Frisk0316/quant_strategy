@@ -1040,9 +1040,9 @@ class ReplayBacktestEngine:
 
         Lookup priority (highest = most authoritative):
           1. `db` — DB-backed `venue_instrument_specs(exchange, symbol)`.
-          2. `exchange_base_unit` — Binance/Bybit USDT-M base-unit perps.
-          3. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
-          4. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
+          2. `registry` — bundled OKX `config/instrument_specs.yaml` fallback.
+          3. `hardcoded_btc_eth` — last-resort OKX 0.01 for BTC/ETH symbols only.
+          4. `exchange_base_unit` — Binance/Bybit USDT-M base-unit perps.
           5. Raise — unknown swap; never silently fall back to 1.0 because the
              ct_val multiplier directly drives PnL / notional / funding.
         """

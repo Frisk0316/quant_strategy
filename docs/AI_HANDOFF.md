@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-18
 expires: none
 superseded_by: null
 ---
@@ -22,7 +22,7 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Current session goal: finish ADR-0007 P1 multi-venue instrument specs on
+Current session goal: close out ADR-0007 P1 multi-venue instrument specs on
 `codex/impl-multi-venue-instrument-specs`. Tasks 1-6 are locally implemented:
 venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
 provenance/source gates, Run Backtest exchange selection, convergence golden
@@ -30,8 +30,10 @@ case, and docs/manifest updates. Follow-up implemented: normal Binance/Bybit
 USDT-M perps can resolve `ct_val = 1.0` structurally as `exchange_base_unit`;
 canonical `1000...` multiplier contracts still require DB specs. Task 4 DB
 parity exchange scoping is repaired: postgres canonical candle reads now filter
-`source_primary` by the run exchange. Remaining blocked item: DB-backed
-source-provenance PASS needs a reachable dev DB DSN; 2026-06-18 checks found
+`source_primary` by the run exchange, and DB parity emits
+`canonical_source_primary` so a Binance PASS must prove it compared Binance
+candles. Remaining blocked item: DB-backed source-provenance PASS needs a
+reachable dev DB DSN; 2026-06-18 checks found
 port 5432 refusing the repo DSN, local PostgreSQL on port 5433 rejecting repo
 `quant` credentials, and Docker Desktop unavailable from this session.
 
@@ -44,14 +46,13 @@ gate** (`backtesting/differential_validation.py`) is the contended surface.
    `codex/impl-multi-venue-instrument-specs` (plan:
    `docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md`,
    design: `claude/design-multi-venue`). **Owns the ct_val provenance gate
-   change.** Must land the venue tag + venue-aware resolution atomically.
+   change until merge.** Venue tag + venue-aware resolution are in place.
 2. **Backtest-system validation** (source-provenance / differential / signal
-   validation). May progress in parallel **except** the ct_val provenance gate
-   surface and the "first DB-backed PASS on the primary (Binance) venue"
-   milestone — both wait for P1. Normal Binance/Bybit USDT-M `ct_val` can pass
-   provenance via `exchange_base_unit`; DB-backed source provenance still needs
-   reachable canonical candles and seed/application checks. Non-gate chores
-   (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
+   validation). P1 no longer blocks the first DB-backed PASS on the primary
+   (Binance) venue. That milestone now waits on a reachable seeded DB and must
+   show `checks.db_parity.canonical_source_primary == "binance"`. Non-gate
+   chores (branch protection, signal-validation CI, OKX/fixture work) are
+   unblocked.
 3. **Universal price chart + progressive load** — separate branch, brief:
    `tasks/2026-06-17-price-chart-universal-task.md`. Independent of 1 and 2;
    **must not touch** `differential_validation.py`.
@@ -68,8 +69,9 @@ Must be checked with `git branch --show-current` at session start. Observed in t
 ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
 verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
 `exchange_base_unit`; DB parity now filters canonical candles by run exchange
-via `source_primary`; DB-backed source-provenance PASS still requires a
-reachable TimescaleDB/Postgres DSN and seeded canonical/spec rows.
+via `source_primary` and exposes the chosen canonical source in validation
+output; DB-backed source-provenance PASS still requires a reachable
+TimescaleDB/Postgres DSN and seeded canonical/spec rows.
 Latest closeout attempt confirmed the code/docs checks pass locally, but the
 first DB-backed Binance PASS remains environment-blocked until a reachable DSN
 is supplied.

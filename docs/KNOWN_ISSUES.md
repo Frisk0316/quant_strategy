@@ -52,6 +52,11 @@ over time.
   2026-06-18, `DATABASE_URL` was unset, the configured `.env` DSN on port 5432
   refused connections, local PostgreSQL on port 5433 rejected the repo `quant`
   credentials, and Docker Desktop could not be started from this session.
+- Source-scoped canonical reads are now a validation boundary: DB parity for
+  exchange `<x>` must query `canonical_candles.source_primary = <x>` and emit
+  `checks.db_parity.canonical_source_primary == <x>`. If a Binance validation
+  run compares OKX-tagged candles or omits this field, fix the candle source
+  tagging / DB read path instead of loosening the gate.
 
 ## Operations
 

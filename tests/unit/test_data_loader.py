@@ -45,3 +45,41 @@ async def test_canonical_candles_can_filter_source_primary():
 
     assert "source_primary=$3" in pool.sql
     assert pool.params == ("BTC-USDT-SWAP", "1H", "binance")
+
+
+@pytest.mark.asyncio
+async def test_canonical_candles_source_primary_changes_result_set():
+    class _Pool:
+        async def fetch(self, sql, *params):
+            assert "source_primary=$3" in sql
+            source = params[2]
+            if source != "binance":
+                return []
+            return [
+                {
+                    "ts": pd.Timestamp("2026-01-01T00:00:00Z"),
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": 1.5,
+                    "vol_contract": 10.0,
+                    "vol_base": 10.0,
+                    "vol_quote": 15.0,
+                }
+            ]
+
+    store = CandleStore(_Pool())
+
+    binance = await store.get_canonical_candles(
+        inst_id="BTC-USDT-SWAP",
+        bar="1H",
+        source_primary="binance",
+    )
+    okx = await store.get_canonical_candles(
+        inst_id="BTC-USDT-SWAP",
+        bar="1H",
+        source_primary="okx",
+    )
+
+    assert len(binance) == 1
+    assert okx.empty

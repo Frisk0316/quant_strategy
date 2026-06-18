@@ -69,7 +69,9 @@ Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the
-execution venue rather than only the canonical symbol.
+execution venue rather than only the canonical symbol. The validation output
+must surface that scope as `checks.db_parity.canonical_source_primary`; a
+Binance DB-backed PASS must show `binance` there.
 
 ## Backtest Run Flow
 
