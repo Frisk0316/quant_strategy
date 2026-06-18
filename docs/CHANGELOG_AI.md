@@ -48,6 +48,45 @@ on current state, current goal, do-not-touch constraints, and next actions.
   `source_data_validation`, `ct_val_provenance`, and `db_parity` to pass, with
   `ohlcv_source_validation == "db_parity_pass"`.
 
+## 2026-06-17 - Multi-Venue Instrument Specs (ADR-0007) Design + Coordination
+
+Claude session (planning/review/risk; ponytail full). Design + plan + review;
+implementation by Codex.
+
+- Diagnosed the open "which saved run for the first DB-backed source-provenance
+  PASS" question: no existing run qualifies (fixtures → `db_parity` SKIP; real
+  BTC and `ui_sweep` MA/EMA/MACD runs → ct_val from `registry`, non-authoritative
+  → FAIL). The gate reads ct_val from the artifact, not live DB.
+- Established the key correctness fact: ct_val cancels in notional-sized backtest
+  PnL (`n=notional/(ct_val·price)`, `pnl=n·Δprice·ct_val` → `notional·Δprice/price`).
+  The ct_val provenance gate is therefore a **live-readiness gate, not a
+  backtest-correctness gate**.
+- Authored ADR-0007 (multi-venue instrument specs): single venue per run; new
+  `venue_instrument_specs (exchange, symbol)` table; canonical symbol + thin
+  native mapping; venue-aware ct_val resolution (Binance/Bybit USDT-M = 1.0, OKX
+  BTC 0.01 / ETH 0.1); provenance gate stays shape-compatible + gains a venue
+  tag. Added Change Manifest skeleton and ADR index row.
+- Wrote the P1 implementation plan
+  (`docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md`) as the
+  Codex task spec (6 TDD tasks).
+- Added a workstream sequencing note to `AI_HANDOFF.md` (multi-venue P1 owns the
+  ct_val provenance gate; validation parallelizes except that surface + the
+  Binance DB-backed PASS milestone; price chart independent).
+- Reviewed the price-chart fix (`76dcecc`, branch `codex/fix-price-chart-universal`):
+  per-symbol loading/empty/error states and indicator-overlay gating scoping are
+  correct. Pass; pending human sign-off + merge.
+- Diagnosed a backtest crash (Binance run on unseeded swap): `venue_instrument_specs`
+  not applied to DB + resolver raises for non-OKX unseeded swaps. Provided a seed
+  stopgap (A) and the structural fix (B): Binance/Bybit USDT-M perps resolve to
+  `exchange_base_unit` (authoritative 1.0); 1000x-multiplier symbols still need an
+  explicit DB row.
+- Codex implemented P1 on `codex/impl-multi-venue-instrument-specs`: table+seed
+  (`171b3f4`), exchange-aware resolution (`1aa85e2`), provenance tag (`e7eb3ed`),
+  gate venue-tag (`519385e`), API+frontend exchange selector (`7be7f65`),
+  convergence golden case (`71cd90c`), and the structural base-unit fix
+  (`9bef416`). Remaining: Task 6 docs/Manifest fill-in + end-to-end DB-backed
+  Binance PASS verification.
+
 ## Pending Migration
 
 Historical session records in `docs/AI_HANDOFF.md` should move here over time when
