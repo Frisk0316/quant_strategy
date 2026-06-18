@@ -42,6 +42,10 @@ with `db_parity.status == "PASS"`, `canonical_source_primary == "binance"`,
 and `ohlcv_source_validation == "db_parity_pass"`. The older
 `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact remains a
 pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as PASS.
+2026-06-18 branch consolidation merged `claude/design-multi-venue`
+(`4006733`) and `codex/fix-price-chart-universal` (`76dcecc`) into this P1
+branch. Preferred integration path is one consolidated P1 PR; Binance promotion
+validation and GitHub branch-protection required-check setup stay separate.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -226,7 +230,9 @@ Note: focused indicator artifact tests used explicit pytest node ids because pyt
 
 ## Documentation Cleanup Next Step
 
-After PR4 is merged, classify existing Markdown files with lifecycle metadata in a dedicated docs-only cleanup PR. Do not change strategy assumptions or implementation behavior during that cleanup.
+After the consolidated P1 PR is merged, classify existing Markdown files with
+lifecycle metadata in a dedicated docs-only cleanup PR. Do not change strategy
+assumptions or implementation behavior during that cleanup.
 
 ## Open Questions
 
