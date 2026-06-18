@@ -41,8 +41,11 @@ current/target/known-gap distinction — do not silently "fix" either side.
   move the exact unrealized amount into realized, net of fees and funding.
 - **R1.4** For SWAP replay and promotion evidence, the authoritative `ct_val`
   source must match the run's execution venue. `venue_instrument_specs(exchange,
-  symbol)` is the DB-backed authority; `config/instrument_specs.yaml` is an
-  OKX-only fallback and is not promotion-grade evidence for other venues.
+  symbol)` is the DB-backed authority; normal Binance/Bybit USDT-M perpetuals
+  may use the structural `exchange_base_unit` identity (`ct_val = 1.0`) after
+  DB lookup; canonical `1000...` multiplier contracts still require DB specs.
+  `config/instrument_specs.yaml` is an OKX-only fallback and is not
+  promotion-grade evidence for other venues.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

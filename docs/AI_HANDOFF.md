@@ -30,8 +30,10 @@ case, and docs/manifest updates. Follow-up implemented: normal Binance/Bybit
 USDT-M perps can resolve `ct_val = 1.0` structurally as `exchange_base_unit`;
 canonical `1000...` multiplier contracts still require DB specs. Task 4 DB
 parity exchange scoping is repaired: postgres canonical candle reads now filter
-`source_primary` by the run exchange. Remaining unverified item: DB-backed
-source-provenance PASS after applying the SQL seed to a reachable dev DB.
+`source_primary` by the run exchange. Remaining blocked item: DB-backed
+source-provenance PASS needs a reachable dev DB DSN; 2026-06-18 checks found
+port 5432 refusing the repo DSN, local PostgreSQL on port 5433 rejecting repo
+`quant` credentials, and Docker Desktop unavailable from this session.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -68,6 +70,9 @@ verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
 `exchange_base_unit`; DB parity now filters canonical candles by run exchange
 via `source_primary`; DB-backed source-provenance PASS still requires a
 reachable TimescaleDB/Postgres DSN and seeded canonical/spec rows.
+Latest closeout attempt confirmed the code/docs checks pass locally, but the
+first DB-backed Binance PASS remains environment-blocked until a reachable DSN
+is supplied.
 
 ## System Overview
 

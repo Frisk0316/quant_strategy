@@ -47,8 +47,11 @@ over time.
   DB parity SKIP states are not promotion evidence.
 - ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
   adding venue-aware specs, provenance exchange tags, and frontend/API exchange
-  selection. Remaining gap: this session could not confirm a fresh DB-backed
-  artifact PASS because local `psql`/`DATABASE_URL` were unavailable.
+  selection; Known Issue 20's root cause is closed. Remaining environment gap:
+  a fresh DB-backed artifact PASS still needs a reachable seeded DSN. On
+  2026-06-18, `DATABASE_URL` was unset, the configured `.env` DSN on port 5432
+  refused connections, local PostgreSQL on port 5433 rejected the repo `quant`
+  credentials, and Docker Desktop could not be started from this session.
 
 ## Operations
 

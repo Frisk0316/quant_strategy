@@ -34,18 +34,20 @@ handoff between sessions; this is the one-screen "where are we" that
   explicit DB specs. Task 4 DB parity exchange scoping is repaired:
   postgres canonical candle reads now filter `source_primary` by the run
   exchange. No existing result artifacts were modified.
-- **Active risks:** DB seed/application was not run in this shell because
-  `DATABASE_URL` and `psql` were unavailable. The first DB-backed source
-  provenance PASS is still unverified.
+- **Active risks:** DB-backed Binance source-provenance PASS is still blocked by
+  local dependency state: `DATABASE_URL` is unset in the shell, the configured
+  `.env` DSN on port 5432 refuses connections, local PostgreSQL on port 5433
+  rejects the repo `quant` credentials, and Docker Desktop could not be started.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, DB schema, API and
   frontend behavior, deployment gates, and existing result artifacts.
 
 ## Next steps
 
-- Apply `sql/migrations/0011_venue_instrument_specs.sql` and
-  `sql/seed_venue_instrument_specs.sql` against a reachable dev DB, then run the
-  source-provenance gate against a fresh Binance run.
+- Provide or start a reachable dev DB DSN, apply
+  `sql/migrations/0011_venue_instrument_specs.sql` and
+  `sql/seed_venue_instrument_specs.sql`, then run the source-provenance gate
+  against a fresh Binance run.
 - Ask Claude to review ADR-0007 P1 docs/manifest and the seed values before a
   shared DB application or PR merge.
 - Preserve the unrelated dirty `docs/backtest_external_validation_report_zh.pptx`.
