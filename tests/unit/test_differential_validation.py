@@ -1325,6 +1325,9 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
     from backtesting import data_loader
 
     run_dir = _base_run(tmp_path, "db_parity")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    payload["validation"]["exchange"] = "binance"
+    (run_dir / "result.json").write_text(json.dumps(payload), encoding="utf-8")
 
     monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
     monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
@@ -1345,6 +1348,7 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
         assert inst_id == "BTC-USDT-SWAP"
         assert bar == "1H"
         assert backend == "postgres"
+        assert exchange == "binance"
         idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
         return pd.DataFrame(
             {

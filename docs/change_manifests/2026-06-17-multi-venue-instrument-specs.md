@@ -45,9 +45,12 @@ allowed exchanges).
   `sql/seed_venue_instrument_specs.sql`, `backtesting/replay.py`,
   `backtesting/differential_validation.py`,
   `src/okx_quant/api/routes_backtest.py`, `frontend/view-config.js`,
-  `config/instrument_specs.yaml`, `tests/unit/test_replay_ct_val_resolution.py`,
+  `config/instrument_specs.yaml`, `backtesting/data_loader.py`,
+  `src/okx_quant/data/candle_store.py`,
+  `tests/unit/test_replay_ct_val_resolution.py`,
   `tests/unit/test_replay_ct_val_provenance_tag.py`,
   `tests/unit/test_differential_validation.py`,
+  `tests/unit/test_data_loader.py`,
   `tests/unit/test_backtest_request_exchange.py`,
   `tests/unit/test_multi_venue_convergence.py`, and the docs checked below.
 
@@ -58,6 +61,8 @@ allowed exchanges).
   provenance PASS attests the venue. For Binance/Bybit normal USDT-M perps with
   no DB row, `exchange_base_unit` is authoritative `ct_val = 1.0`; canonical
   `1000...` multiplier contracts fall through and require explicit DB specs.
+  DB candle parity reads canonical candles with `source_primary` filtered to the
+  run exchange when `result.validation.exchange` is present.
 - Money/risk impact: **none in backtest PnL** (ct_val cancels under notional
   sizing). Impact is at live execution and in which runs can pass the
   live-readiness provenance gate. Per-venue fee/funding divergence is deferred
@@ -90,8 +95,10 @@ allowed exchanges).
   failed as expected before implementation: Binance/Bybit base-unit resolution
   and `exchange_base_unit` authority were missing.
 - `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py -q` - 58 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
+- `python -m pytest tests/unit/test_data_loader.py -q` - red run failed before implementation because postgres candle loading did not forward exchange and `CandleStore.get_canonical_candles()` had no `source_primary` filter.
+- `python -m pytest tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_data_loader.py -q` - 51 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
 - `python scripts/docs/check_doc_impact.py --strict` with per-process
-  `safe.directory` config - passed: 10 changed file(s), no impact-matrix violations.
+  `safe.directory` config - passed: 11 changed file(s), no impact-matrix violations.
 - `python scripts/docs/check_doc_metadata.py` - passed with 12 pre-existing lifecycle metadata warnings.
 - `python scripts/docs/check_feature_map_links.py` - passed: 93 concrete path(s) checked.
 - `python -m pytest tests/unit/test_replay_ct_val_resolution.py tests/unit/test_replay_ct_val_provenance_tag.py tests/unit/test_differential_validation.py tests/unit/test_source_provenance_validation.py tests/unit/test_multi_venue_convergence.py -q` - 56 passed, 1196 warnings (existing OHLCV zscore precision warnings plus pytest cache permission warning).
@@ -107,7 +114,8 @@ allowed exchanges).
 - Risks: provenance field shape drifting from the gate if P1 splits across
   sessions (ADR-0007 forbids this); seeding a wrong per-venue ct_val (mitigated
   by db_parity + authoritative source requirement); accidentally treating
-  `1000...` multiplier contracts as base-unit identity; accidentally repurposing
+  `1000...` multiplier contracts as base-unit identity; accidentally comparing
+  canonical DB candles from the wrong exchange; accidentally repurposing
   `instruments` instead of the new table.
 - Rollback: P0 is additive docs — delete the two files and the index row. P1
   rollback restores single-venue resolution (additive table/resolver).

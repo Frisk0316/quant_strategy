@@ -67,6 +67,9 @@ raw exchange rows -> CandleStore upsert and canonicalize methods -> raw_candles,
 
 Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
 Target: every promoted run should cite data coverage and source validation evidence.
+Validation DB parity filters canonical candles by `source_primary` when a run
+records `result.validation.exchange`, so the candle comparison is scoped to the
+execution venue rather than only the canonical symbol.
 
 ## Backtest Run Flow
 

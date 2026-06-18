@@ -982,16 +982,20 @@ class CandleStore:
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
         include_suspect: bool = False,
+        source_primary: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Query canonical_candles. For 5m/15m/1H also checks continuous aggregate views.
         Returns tz-aware UTC DatetimeIndex, cols [open,high,low,close,vol_contract,vol_base,vol_quote].
         """
-        view_map = {"5m": "canonical_candles_5m", "15m": "canonical_candles_15m", "1H": "canonical_candles_1h"}
+        view_map = {} if source_primary else {"5m": "canonical_candles_5m", "15m": "canonical_candles_15m", "1H": "canonical_candles_1h"}
         table = view_map.get(bar, "canonical_candles")
 
         conditions = ["inst_id=$1", "bar=$2"]
         params: list[Any] = [inst_id, bar]
+        if source_primary:
+            params.append(source_primary)
+            conditions.append(f"source_primary=${len(params)}")
         if start:
             params.append(start)
             conditions.append(f"ts >= ${len(params)}")

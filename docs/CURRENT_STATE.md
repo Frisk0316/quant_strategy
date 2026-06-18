@@ -31,7 +31,9 @@ handoff between sessions; this is the one-screen "where are we" that
   docs/manifest updates, and final local verification. A follow-up fixes
   unseeded normal Binance/Bybit USDT-M swaps by resolving `ct_val = 1.0` as
   `exchange_base_unit`; canonical `1000...` multiplier contracts still require
-  explicit DB specs. No existing result artifacts were modified.
+  explicit DB specs. Task 4 DB parity exchange scoping is repaired:
+  postgres canonical candle reads now filter `source_primary` by the run
+  exchange. No existing result artifacts were modified.
 - **Active risks:** DB seed/application was not run in this shell because
   `DATABASE_URL` and `psql` were unavailable. The first DB-backed source
   provenance PASS is still unverified.

@@ -28,9 +28,10 @@ venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
 provenance/source gates, Run Backtest exchange selection, convergence golden
 case, and docs/manifest updates. Follow-up implemented: normal Binance/Bybit
 USDT-M perps can resolve `ct_val = 1.0` structurally as `exchange_base_unit`;
-canonical `1000...` multiplier contracts still require DB specs. Remaining
-unverified item: DB-backed source-provenance PASS after applying the SQL seed
-to a reachable dev DB.
+canonical `1000...` multiplier contracts still require DB specs. Task 4 DB
+parity exchange scoping is repaired: postgres canonical candle reads now filter
+`source_primary` by the run exchange. Remaining unverified item: DB-backed
+source-provenance PASS after applying the SQL seed to a reachable dev DB.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -64,7 +65,8 @@ Must be checked with `git branch --show-current` at session start. Observed in t
 
 ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
 verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
-`exchange_base_unit`; DB-backed source-provenance PASS still requires a
+`exchange_base_unit`; DB parity now filters canonical candles by run exchange
+via `source_primary`; DB-backed source-provenance PASS still requires a
 reachable TimescaleDB/Postgres DSN and seeded canonical/spec rows.
 
 ## System Overview
