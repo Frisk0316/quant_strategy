@@ -197,7 +197,7 @@ Deployment readiness:
 
 `backtesting/differential_validation.py` 必須在每次 validation artifact 中輸出 `source_data_validation` 與 `validation_conclusion`。
 `source_data_validation` 至少檢查 artifact 層級的 `price_series.csv` OHLCV 結構、必要 artifact 是否存在、funding artifact 是否存在（策略需要時）、funding cashflow 公式、external-feature observations（策略需要時）、以及 `ct_val` provenance 欄位。
-若未設定 `DIFF_VALIDATION_ENABLE_DB_PARITY=1` 與 DSN，`checks.db_parity.status`、需要 funding 的 `checks.funding_db_parity.status`、以及需要外部資料的 `checks.external_observations_db_parity.status` 必須明確為 `SKIP`，不得宣稱 DB parity 已通過；目前 DB parity 覆蓋 canonical OHLCV、策略需要的 funding rates、以及策略需要的 external_observations。
+若未設定 `DIFF_VALIDATION_ENABLE_DB_PARITY=1` 與 DSN，`checks.db_parity.status`、需要 funding 的 `checks.funding_db_parity.status`、以及需要外部資料的 `checks.external_observations_db_parity.status` 必須明確為 `SKIP`，不得宣稱 DB parity 已通過；目前 `price_series.csv` 的 DB parity 以 timestamped close 對 canonical close 證明同源，artifact OHLCV 結構另由 artifact-level check 檢查，funding rates 與 external_observations 則各自由對應 DB parity 檢查。
 `validation_conclusion.status == "ADVISORY_ONLY"` 表示外部引擎已能重播/匯出 advisory evidence，但仍不是 promotion evidence。
 
 任何 SWAP backtest 在進入 live / shadow / demo gate 前，**必須通過 ct_val provenance gate**：

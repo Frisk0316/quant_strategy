@@ -1,0 +1,92 @@
+{
+  "engine": "nautilus",
+  "strategy": "ma_crossover",
+  "reference_mode": "nautilus_artifact_replay_export",
+  "engine_execution": "signal_replay_run",
+  "dependency": "nautilus_trader",
+  "dependency_available": true,
+  "nautilus_engine_smoke": {
+    "status": "OK",
+    "engine_execution": "signal_replay_run",
+    "reason": "Nautilus BacktestEngine ran an advisory signal-replay Strategy and accepted generated orders",
+    "instrument": {
+      "source_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "primary_symbol": "BTC-USDT-SWAP",
+      "smoke_instrument_id": "BTCUSDT-PERP.BINANCE",
+      "mapped_symbols": {
+        "BTC-USDT-SWAP": "BTCUSDT-PERP.BINANCE"
+      },
+      "unsupported_symbols": [],
+      "mapping": "Nautilus test-kit perpetual instruments are currently available for BTC and ETH symbols only."
+    },
+    "input_rows": {
+      "book_snapshots": 192,
+      "trade_ticks": 0,
+      "price_series": 0,
+      "quote_ticks": 192,
+      "trade_tick_ticks": 0,
+      "terminal_replay_quote_ticks": 0,
+      "mapped_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "skipped_unmapped_book_snapshots": 0,
+      "skipped_unmapped_price_rows": 0,
+      "skipped_unmapped_trade_ticks": 0
+    },
+    "ticks_submitted": 192,
+    "max_ticks_requested": 500,
+    "max_ticks_effective": 500,
+    "data_types": [
+      "QuoteTick"
+    ],
+    "signals_available": 1,
+    "signals_replayed": 1,
+    "signal_replay_coverage": {
+      "total_signal_rows": 1,
+      "buy_sell_signal_rows": 1,
+      "replayable_signal_rows": 1,
+      "skipped_non_primary_symbol": 0,
+      "skipped_unmapped_symbol": 0,
+      "skipped_unsupported_side": 0,
+      "skipped_invalid_timestamp": 0,
+      "primary_symbol": "BTC-USDT-SWAP",
+      "mapped_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "replayed_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "skipped_symbols": []
+    },
+    "backtest_result": {
+      "instance_id": "15a0c571-57ea-481a-9029-55a2ecf10662",
+      "total_events": 2,
+      "total_orders": 1,
+      "total_positions": 1,
+      "strategy_order_attempts": 1,
+      "strategy_fills": 1
+    },
+    "scope_limit": "advisory signal replay with Nautilus order/fill parity; project strategy source logic, L2/L3 queue priority, funding settlement, and PnL are not validated"
+  },
+  "inputs": {
+    "result": "result.json",
+    "prices": "price_series.csv",
+    "signals": "signals.csv",
+    "trades": "trades.csv",
+    "fills": "fills.csv",
+    "book_snapshots": "book_snapshots.csv",
+    "trade_ticks": "trade_ticks.csv"
+  },
+  "outputs": {
+    "signals": "reference_nautilus_signals.csv",
+    "trades": "reference_nautilus_trades.csv",
+    "equity_curve": "reference_nautilus_equity_curve.csv"
+  },
+  "limitations": [
+    "Nautilus signal replay uses an advisory Strategy generated from exported/reference signals, not the project strategy source code.",
+    "Signal-replay order/fill parity checks Nautilus market-order acceptance and fills; queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
+    "The output is suitable as advisory portability evidence only."
+  ]
+}

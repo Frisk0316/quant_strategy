@@ -168,7 +168,10 @@ requires:
 - `source_data_validation.checks.db_parity.status == "PASS"`
 - `ohlcv_source_validation == "db_parity_pass"`
 
-Fixture evidence with DB parity `SKIP` fails this gate by design.
+Fixture evidence with DB parity `SKIP` fails this gate by design. For
+`price_series.csv`, DB parity compares timestamped `close` values against
+canonical candle close values; O/H/L and volume are checked separately as
+artifact structure, not as like-for-like DB provenance fields.
 
 To gate an existing validation result:
 

@@ -1,0 +1,2 @@
+ts,datetime,strategy,inst_id,side,price,qty,pnl,equity_after
+1780819200000,2026-06-07T08:00:00Z,ma_crossover,BTC-USDT-SWAP,buy,62823.0,0.0795886856724448,0.0,5000.0

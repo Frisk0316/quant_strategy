@@ -36,7 +36,7 @@ failure modes say how it silently breaks.
 | F12 | Maker charged taker fees | Costs overstated, edge hidden | I3 fee tests | R2.1 |
 | F13 | Stale doc treated as current | Implementing target behavior as if it exists | DOC_LIFECYCLE status check | — |
 | F14 | Chat memory as source of truth | Strategy drift, untracked assumption | Read config/research, not memory | — |
-| F15 | Artifact OHLC collapsed to close/mid | DB parity compares the right exchange but every OHLC field mismatches canonical candles | Source-provenance `db_parity` with `canonical_source_primary` evidence; artifact vs DB first-row diff | R6.2, R7.2 |
+| F15 | Close-flattened artifact OHLC treated as canonical OHLC | DB parity compares the right exchange but fails on O/H/L or volume even though every close matches | Close-only `db_parity` regression plus artifact-level OHLCV structural checks | R6.2, R7.2 |
 
 ## How to add a failure mode
 

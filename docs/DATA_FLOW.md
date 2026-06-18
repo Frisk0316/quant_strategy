@@ -69,9 +69,12 @@ Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the
-execution venue rather than only the canonical symbol. The validation output
-must surface that scope as `checks.db_parity.canonical_source_primary`; a
-Binance DB-backed PASS must show `binance` there.
+execution venue rather than only the canonical symbol. For `price_series.csv`
+provenance, DB parity compares timestamped `close` values only; artifact OHLCV
+structure remains a separate artifact-level check because replay price series may
+carry close-flattened O/H/L and quote-volume units. The validation output must
+surface the venue scope as `checks.db_parity.canonical_source_primary`; a Binance
+DB-backed PASS must show `binance` there.
 
 ## Backtest Run Flow
 

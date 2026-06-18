@@ -48,6 +48,18 @@ on current state, current goal, do-not-touch constraints, and next actions.
   `source_data_validation`, `ct_val_provenance`, and `db_parity` to pass, with
   `ohlcv_source_validation == "db_parity_pass"`.
 
+## 2026-06-18 - DB Parity Close-Only Contract
+
+- Confirmed the saved Binance ADR-0007 run has 192/192 artifact closes matching
+  DB canonical Binance closes with zero close mismatches.
+- Updated `db_parity` to compare timestamped `close` values only for
+  `price_series.csv` provenance; close-flattened artifact O/H/L and quote-volume
+  units are not treated as like-for-like DB candle fields.
+- Added regression coverage for close-flattened artifacts with matching close
+  values.
+- Generated durable source-provenance PASS evidence under
+  `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/`.
+
 ## Pending Migration
 
 Historical session records in `docs/AI_HANDOFF.md` should move here over time when

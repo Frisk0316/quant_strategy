@@ -3,7 +3,7 @@ status: current
 type: manifest
 owner: claude
 created: 2026-06-17
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-18
 expires: none
 superseded_by: null
 ---
@@ -81,6 +81,17 @@ allowed exchanges).
   `tests/unit/test_data_loader.py`, `tests/unit/test_differential_validation.py`,
   `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`, `docs/KNOWN_ISSUES.md`, `docs/AI_HANDOFF.md`,
   `docs/CURRENT_STATE.md`, this manifest, and task handoffs.
+- Close-only DB parity input-contract follow-up:
+  `backtesting/differential_validation.py`,
+  `tests/unit/test_differential_validation.py`, `docs/DATA_FLOW.md`,
+  `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`,
+  `docs/RUNBOOK.md`, `docs/KNOWN_ISSUES.md`, `docs/ai_collaboration.md`,
+  `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `docs/CHANGELOG_AI.md`, this
+  manifest, and task handoffs.
+- Durable DB parity PASS evidence:
+  `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/`.
+- Superseded diagnostic artifact marker:
+  `results/adr0007_binance_btc_1h_db_pass_20260618/validation/adr0007_binance_btc_1h_db_pass_20260618_source_provenance/SUPERSEDED.md`.
 - P1 closeout docs in this session: `docs/DOMAIN_RULES.md`,
   `docs/ai_collaboration.md`, `docs/GOLDEN_CASES.md`,
   `docs/HYPOTHESIS_LEDGER.md`, `docs/KNOWN_ISSUES.md`,
@@ -96,7 +107,10 @@ allowed exchanges).
   DB candle parity reads canonical candles with `source_primary` filtered to the
   run exchange when `result.validation.exchange` is present, and the
   `db_parity` check reports `canonical_source_primary` so the Binance DB-backed
-  PASS must prove it compared Binance-tagged canonical candles.
+  PASS must prove it compared Binance-tagged canonical candles. For replay
+  `price_series.csv`, DB parity compares timestamped `close` values only; O/H/L
+  flattening and volume-unit differences are handled by artifact/data-quality
+  checks instead of the canonical close provenance check.
 - Money/risk impact: **none in backtest PnL** (ct_val cancels under notional
   sizing). Impact is at live execution and in which runs can pass the
   live-readiness provenance gate. Per-venue fee/funding divergence is deferred
@@ -120,6 +134,9 @@ allowed exchanges).
 - [x] `docs/UI_MAP.md` — P1 (frontend venue selector)
 - [x] `docs/KNOWN_ISSUES.md` — P1 (close registry-only ct_val provenance gap)
 - [x] `docs/ADR/README.md` — P0, index row added
+- [x] `docs/FAILURE_MODES.md` — close-only db_parity guard recorded for
+  close-flattened artifacts
+- [x] `docs/CHANGELOG_AI.md` — durable history for close-only db_parity follow-up
 
 Closeout notes:
 - `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/UI_MAP.md`,
@@ -134,6 +151,10 @@ Closeout notes:
 - `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` now mark P1 code/docs
   closeout as complete locally and move the Binance DB-backed PASS blocker to
   reachable DB/data state.
+- Close-only follow-up reviewed `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`,
+  `docs/ai_collaboration.md`, ADR-0005, and ADR-0007. No new ADR was added
+  because this restores the like-for-like DB parity input contract rather than
+  changing deployment-gate policy or ADR-0002 result schema.
 - Real rule sub-ids confirmed: R1.1/R1.2/R1.4, R6.2, and R7.2. R2-R5 were
   reviewed with no fee, funding, sizing/risk, or fill-semantics rule change.
 
@@ -220,14 +241,50 @@ Closeout notes:
     missing/extra rows = 0, value_mismatches = 768. First row example:
     artifact OHLC = `73855.0/73855.0/73855.0/73855.0`; DB Binance 1m-derived
     1H OHLC = `73653.2/74070.5/73620.0/73855.0`.
+- Close-only DB parity follow-up, 2026-06-18:
+  - Direct DB assertion on saved run
+    `adr0007_binance_btc_1h_db_pass_20260618`: artifact rows = 192, DB rows =
+    192, matched rows = 192, close mismatches = 0.
+  - Red test:
+    `python -m pytest tests/unit/test_differential_validation.py::test_db_parity_uses_close_only_for_close_flattened_artifacts -q`
+    failed as expected before implementation with
+    `ohlcv_source_validation == "artifact_warn"`.
+  - Teeth test confirmation:
+    `test_reference_replay_uses_db_canonical_prices_when_enabled` mutates
+    `close` only and asserts `db_parity.status == "FAIL"` with
+    `value_mismatches == 1`.
+  - Green slice:
+    `python -m pytest tests/unit/test_differential_validation.py::test_db_parity_compares_artifact_to_canonical_candles tests/unit/test_differential_validation.py::test_db_parity_uses_close_only_for_close_flattened_artifacts tests/unit/test_differential_validation.py::test_reference_replay_uses_db_canonical_prices_when_enabled -q`
+    - 3 passed, 1 pytest cache permission warning.
+  - Temp `scripts/run_source_provenance_validation.py` run with output under
+    `%TEMP%` timed out after 240s before producing output; no existing
+    `results/` artifact was modified.
+  - Temp source-data gate rerun with `--engines nautilus` and output under
+    `%TEMP%\codex_close_only_temp_validation` passed:
+    `source_data_validation=PASS`, `ct_val_provenance=PASS`,
+    `db_parity=PASS`, `canonical_source_primary=binance`, and
+    `ohlcv_source_validation=db_parity_pass`. This was source-data evidence only;
+    it was not used as a vectorbt/backtrader signal-quorum claim.
+  - Durable source-data gate rerun with `--engines nautilus` wrote
+    `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json`
+    and passed with `source_data_validation=PASS`, `ct_val_provenance=PASS`,
+    `db_parity=PASS`, `canonical_source_primary=binance`,
+    `value_mismatches=0`, and `ohlcv_source_validation=db_parity_pass`.
+  - Existing-result gate check:
+    `python scripts/run_source_provenance_validation.py --validation-result results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json`
+    - PASS.
+  - Old FAIL artifact marked superseded:
+    `results/adr0007_binance_btc_1h_db_pass_20260618/validation/adr0007_binance_btc_1h_db_pass_20260618_source_provenance/SUPERSEDED.md`
+    points reviewers to the durable PASS artifact.
 
 ## Risks and rollback
 - Risks: provenance field shape drifting from the gate if P1 splits across
   sessions (ADR-0007 forbids this); seeding a wrong per-venue ct_val (mitigated
   by db_parity + authoritative source requirement); accidentally treating
   `1000...` multiplier contracts as base-unit identity; accidentally comparing
-  canonical DB candles from the wrong exchange; accidentally repurposing
-  `instruments` instead of the new table.
+  canonical DB candles from the wrong exchange; accidentally treating artifact
+  O/H/L or quote-volume units as like-for-like DB candle fields; accidentally
+  repurposing `instruments` instead of the new table.
 - Rollback: P0 is additive docs — delete the two files and the index row. P1
   rollback restores single-venue resolution (additive table/resolver).
 

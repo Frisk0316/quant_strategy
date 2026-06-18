@@ -33,9 +33,15 @@ parity exchange scoping is repaired: postgres canonical candle reads now filter
 `source_primary` by the run exchange, and DB parity emits
 `canonical_source_primary` so a Binance PASS must prove it compared Binance
 candles. 2026-06-18 DB-backed rerun proved source scoping works
-(`canonical_source_primary == "binance"`) but source-provenance still FAILs:
-replay `price_series.csv` collapses OHLC to the close/mid while DB canonical
-Binance candles preserve true OHLC.
+(`canonical_source_primary == "binance"`). Follow-up fixed the DB parity input
+contract so `price_series.csv` provenance compares timestamped close only; a
+direct check matched 192/192 artifact closes to Binance canonical closes with
+zero mismatches. Durable PASS evidence now exists at
+`results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json`
+with `db_parity.status == "PASS"`, `canonical_source_primary == "binance"`,
+and `ohlcv_source_validation == "db_parity_pass"`. The older
+`adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact remains a
+pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as PASS.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -49,8 +55,8 @@ gate** (`backtesting/differential_validation.py`) is the contended surface.
    change until merge.** Venue tag + venue-aware resolution are in place.
 2. **Backtest-system validation** (source-provenance / differential / signal
    validation). P1 no longer blocks the first DB-backed PASS on the primary
-   (Binance) venue. That milestone now waits on fixing artifact OHLC semantics
-   or the DB parity input contract; it must still show
+   (Binance) venue. The DB parity input contract is now close-only for replay
+   `price_series.csv`; durable evidence passed with
    `checks.db_parity.canonical_source_primary == "binance"`. Non-gate chores
    (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
 3. **Universal price chart + progressive load** — separate branch, brief:
@@ -70,9 +76,13 @@ ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
 verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
 `exchange_base_unit`; DB parity now filters canonical candles by run exchange
 via `source_primary` and exposes the chosen canonical source in validation
-output. Latest DB-backed Binance attempt reached the DB and seed, but FAILed
-`db_parity` with 768 OHLC value mismatches because artifact OHLC is close/mid
-repeated and DB canonical OHLC is true candle OHLC.
+output. Latest code compares artifact close to DB canonical close for
+`price_series.csv` DB parity; the saved Binance run's 192 artifact close values
+match DB canonical Binance close values exactly under the existing tolerance.
+Durable source-provenance output under `results/` passed the source-data gate
+with `db_parity.status == "PASS"`,
+`canonical_source_primary == "binance"`, and
+`ohlcv_source_validation == "db_parity_pass"`.
 
 ## System Overview
 
@@ -188,7 +198,7 @@ Note: focused indicator artifact tests used explicit pytest node ids because pyt
 ## Next Steps (in order)
 
 0. **[P0 - fixture signal validation passed and is now CI-wired; broader correctness still blocked by real-data/execution evidence]** SWAP ct_val provenance gate is stricter in `backtesting/differential_validation.py`: missing provenance is `FAIL`, and validation artifacts emit `source_data_validation`, `validation_conclusion`, and `portable_validation_gate`. `scripts/run_all_strategy_signal_validation.py` generated deterministic active-strategy fixtures with explicit `config_override` ct_val provenance. Batch `codex_20260616_signal_validation` passed for all active strategies: `source_data_validation == PASS`, `portable_validation_gate.passed == true`, `signal_point_correctness.passed == true`, and `nautilus_order_fill_parity.status == "PASS"`. CI runs the fixture batch via `make strategy-signal-validation`; DB parity remains out of scope and opt-in `SKIP` until a DSN/data fixture is ready. This batch is not live-readiness evidence.
-0c. **[P0 - source-provenance slice implemented; needs DB-backed run]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. Next action is to run it against a saved run with reachable DB canonical candles and authoritative `ct_val` evidence. Do this before full execution parity; Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
+0c. **[P0 - source-provenance slice implemented; durable Binance DB-backed PASS evidence exists]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. Durable evidence now exists at `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json`: `source_data_validation == PASS`, `ct_val_provenance == PASS`, `db_parity == PASS`, and `ohlcv_source_validation == db_parity_pass`. Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
 0a. **[P0 — research checklist synced by explicit user request; pending Claude review]** `research/strategy_synthesis.md` Promotion Checklist no longer frames Differential validation as MA/EMA/MACD-only. It points reviewers to `REFERENCE_VALIDATION_CONTRACTS` for all active/declared strategies, requires `portable_validation_gate.passed == true` for promotion evidence, explains `reference_signals_only` versus advisory replay/export, and preserves advisory mismatch review authority.
 0b. **[P1 - unit-tested; pending real dependency-backed artifact review]** Differential-validation output includes `signal_point_correctness`, a three-engine (`vectorbt` / `backtrader` / `nautilus`) point-correctness matrix with PASS/FAIL, mismatch counts, examples, and advisory differences. Frontend `view-validation.js` renders this matrix; PnL/fill/metric differences remain advisory and Nautilus remains advisory for full execution/PnL parity.
 1. **[P0]** Claude re-review MA/MACD long-flat position fix follow-up, especially live/replay reduce-only bypass audit logging and ADR-0006.

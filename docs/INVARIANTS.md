@@ -31,7 +31,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I9 | No orphan or phantom positions after partial fills or pairs exits | R5.2 | `tests/unit/test_backtesting.py`, integration |
 | I10 | Terminal positions are liquidated (or run flagged bankrupt) | R5.2 | ADR-0005 Gate 1 |
 | I11 | Data coverage ≥ 80% before a dated replay starts | R6.2 | ADR-0005 Gate 3 |
-| I12 | DB and parquet sources agree for the same instrument/range | R6.2 | `validate-data`, REVIEW |
+| I12 | DB-backed source parity agrees on timestamped close values for the same instrument/range; OHLCV structure is checked separately | R6.2 | `validate-data`, `tests/unit/test_differential_validation.py` |
 | I13 | Trial count is recorded; no hidden trials in selection | R6.3 | REVIEW, differential validation |
 | I14 | `naive_backtest` / `in_sample` / idealized output never used as promotion evidence | R7.1 | REVIEW, gate logic |
 | I15 | No live/shadow/demo claim without all gates passed + human approval | R7.2 | `docs/ai_collaboration.md`, REVIEW |

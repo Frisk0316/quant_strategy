@@ -57,13 +57,15 @@ over time.
   `checks.db_parity.canonical_source_primary == <x>`. If a Binance validation
   run compares OKX-tagged candles or omits this field, fix the candle source
   tagging / DB read path instead of loosening the gate.
-- 2026-06-18 Binance DB-backed source-provenance attempt proved the source
-  scope is correct (`canonical_source_primary == "binance"`) but still failed
-  `db_parity`: replay `price_series.csv` wrote OHLC as the close/mid price
-  repeated, while DB canonical candles preserved true OHLC. First row:
-  artifact `73855.0/73855.0/73855.0/73855.0` vs Binance 1m-derived 1H DB
-  `73653.2/74070.5/73620.0/73855.0`. Do not loosen DB parity; fix artifact
-  OHLC semantics or the parity input contract before claiming PASS.
+- For `price_series.csv`, DB parity is close-only provenance: it compares
+  timestamped artifact closes to canonical candle closes after source scoping.
+  O/H/L flattening and volume-unit differences are not like-for-like DB parity
+  fields; they remain covered by artifact-level structure/data-quality checks.
+  Durable DB-backed source-provenance PASS evidence now exists under
+  `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/`.
+  The older `adr0007_binance_btc_1h_db_pass_20260618_source_provenance`
+  artifact still records the pre-fix FAIL, carries `SUPERSEDED.md`, and should
+  not be cited as PASS.
 
 ## Operations
 

@@ -88,7 +88,9 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 
 - **R6.1** No lookahead bias or feature leakage in research or replay.
 - **R6.2** DB and parquet sources must agree; a source switch must be explicit
-  and recorded.
+  and recorded. For replay `price_series.csv`, DB parity proves agreement on
+  timestamped `close` values; OHLCV structure and volume-unit sanity are separate
+  artifact/data-quality checks.
 - **R6.3** Trial count must be tracked; hidden trials inflate selection bias.
 
 ## R7. Promotion Gates

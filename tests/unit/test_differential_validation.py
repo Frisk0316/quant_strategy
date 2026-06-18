@@ -1377,6 +1377,57 @@ def test_db_parity_compares_artifact_to_canonical_candles(tmp_path, monkeypatch)
     assert db_check["symbols"][0]["value_mismatches"] == 0
 
 
+def test_db_parity_uses_close_only_for_close_flattened_artifacts(tmp_path, monkeypatch):
+    from backtesting import data_loader
+
+    run_dir = _base_run(tmp_path, "db_parity_close_only")
+    payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    payload["validation"]["exchange"] = "binance"
+    (run_dir / "result.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setenv("DIFF_VALIDATION_ENABLE_DB_PARITY", "1")
+    monkeypatch.setenv("DIFF_VALIDATION_DB_DSN", "postgresql://unit")
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_load_candles(
+        inst_id,
+        bar="1m",
+        data_dir="data/ticks",
+        start=None,
+        end=None,
+        backend="parquet",
+        dsn=None,
+        include_suspect=False,
+        exchange=None,
+    ):
+        prices = pd.read_csv(run_dir / "price_series.csv")
+        idx = pd.to_datetime(prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+        close = prices["close"].astype(float).to_numpy()
+        return pd.DataFrame(
+            {
+                "open": close - 1.0,
+                "high": close + 2.0,
+                "low": close - 3.0,
+                "close": close,
+                "vol": prices["vol"].astype(float).to_numpy() * 1000.0,
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(data_loader, "load_candles", fake_load_candles)
+
+    summary = dv.run_differential_validation(
+        run_dir,
+        engines=["nautilus"],
+        validation_id="db_parity_close_only_validation",
+    )
+
+    db_check = summary["source_data_validation"]["checks"]["db_parity"]
+    assert summary["ohlcv_source_validation"] == "db_parity_pass"
+    assert db_check["status"] == "PASS"
+    assert db_check["symbols"][0]["value_mismatches"] == 0
+
+
 def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkeypatch):
     from backtesting import data_loader
 
@@ -1400,7 +1451,6 @@ def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkey
         prices = pd.read_csv(run_dir / "price_series.csv")
         db_prices = prices.copy()
         db_prices.loc[2, "close"] = 202.0
-        db_prices.loc[2, "high"] = 202.0
         idx = pd.to_datetime(db_prices["datetime"], utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
         return pd.DataFrame(
             {
@@ -1423,8 +1473,10 @@ def test_reference_replay_uses_db_canonical_prices_when_enabled(tmp_path, monkey
 
     price_input = summary["engines"]["nautilus"]["metadata"]["price_input"]
     equity = pd.read_csv(run_dir / "validation" / "db_reference_prices_validation" / "reference_nautilus_equity_curve.csv")
+    db_check = summary["source_data_validation"]["checks"]["db_parity"]
     assert price_input["source"] == "db_canonical_candles"
-    assert summary["source_data_validation"]["checks"]["db_parity"]["status"] == "FAIL"
+    assert db_check["status"] == "FAIL"
+    assert db_check["symbols"][0]["value_mismatches"] == 1
     assert equity["equity"].iloc[-1] == pytest.approx(2000.0)
 
 

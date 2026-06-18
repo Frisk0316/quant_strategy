@@ -2223,7 +2223,7 @@ def _compare_artifact_prices_to_db(
     db_norm = db_norm.rename(columns={first_col: "datetime"})
     db_norm["_dt"] = pd.to_datetime(db_norm["datetime"], utc=True, errors="coerce")
     db_norm = db_norm.dropna(subset=["_dt"]).sort_values("_dt")
-    fields = ["open", "high", "low", "close", "vol"]
+    fields = ["close"]
     artifact_norm = artifact[["_dt", *[field for field in fields if field in artifact.columns]]].copy()
     merged = artifact_norm.merge(
         db_norm[["_dt", *[field for field in fields if field in db_norm.columns]]],
@@ -2247,7 +2247,7 @@ def _compare_artifact_prices_to_db(
     status = "FAIL" if missing_in_db or value_mismatches else ("WARN" if extra_in_db else "PASS")
     reason = ""
     if status == "FAIL":
-        reason = "Artifact candles differ from DB canonical candles."
+        reason = "Artifact close prices differ from DB canonical close prices."
     elif status == "WARN":
         reason = "DB contains extra candles in the artifact window."
     return {

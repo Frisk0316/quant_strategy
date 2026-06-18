@@ -1,0 +1,999 @@
+{
+  "validation_id": "codex_close_only_db_parity_pass_20260618",
+  "display_name": "2026/06/18_ma_crossover_btc_usdt_swap",
+  "run_id": "adr0007_binance_btc_1h_db_pass_20260618",
+  "created_at": "2026-06-18T03:36:32.771627+00:00",
+  "strategy": "ma_crossover",
+  "strategies": [
+    "ma_crossover"
+  ],
+  "symbols": [
+    "BTC-USDT-SWAP"
+  ],
+  "status": "PASS",
+  "admissibility": "advisory_only",
+  "promotion_gate_evidence": false,
+  "engine_quorum": {
+    "required_ok_engines": 2,
+    "ok_engines": [
+      "nautilus"
+    ],
+    "met": false
+  },
+  "signal_logic_gate": {
+    "required_passing_engines": 1,
+    "eligible_engines": [
+      "vectorbt",
+      "backtrader"
+    ],
+    "passing_engines": [],
+    "passed": false
+  },
+  "reference_validation_contract": {
+    "strategy_class": "technical_indicator",
+    "minimum_reference_engines": 1,
+    "portable_validation_required": true,
+    "engines": {
+      "vectorbt": {
+        "status": "implemented",
+        "role": "reference_signals_only",
+        "strict_scopes": [
+          "signal_logic"
+        ],
+        "required_artifacts": [
+          "result.json",
+          "price_series.csv",
+          "signals.csv"
+        ],
+        "limitation": "PnL, equity, and metrics remain advisory in v1."
+      },
+      "backtrader": {
+        "status": "implemented",
+        "role": "reference_signals_only",
+        "strict_scopes": [
+          "signal_logic"
+        ],
+        "required_artifacts": [
+          "result.json",
+          "price_series.csv",
+          "signals.csv"
+        ],
+        "limitation": "Backtrader order/PnL semantics are advisory in v1."
+      },
+      "nautilus": {
+        "status": "implemented",
+        "role": "advisory",
+        "required_artifacts": [
+          "result.json",
+          "price_series.csv",
+          "signals.csv"
+        ],
+        "limitation": "Exports Nautilus-compatible advisory replay evidence only; full Nautilus engine execution is not run."
+      }
+    },
+    "strategy": "ma_crossover",
+    "contract_status": "declared"
+  },
+  "portable_validation_gate": {
+    "required": true,
+    "passed": false,
+    "contract_status": "declared",
+    "minimum_reference_engines": 1,
+    "implemented_engines": [
+      "vectorbt",
+      "backtrader",
+      "nautilus"
+    ],
+    "adapter_required_engines": [],
+    "not_targeted_engines": [],
+    "selected_engines": [
+      "nautilus"
+    ],
+    "selected_target_engines": [
+      "nautilus"
+    ],
+    "ok_engines": [
+      "nautilus"
+    ],
+    "passing_engines": [
+      "nautilus"
+    ],
+    "independent_passing_engines": [],
+    "advisory_passing_engines": [
+      "nautilus"
+    ],
+    "blocked_reason": "only_advisory_reference_replay_completed"
+  },
+  "engine_execution_matrix": [
+    {
+      "engine": "nautilus",
+      "selected": true,
+      "contract_status": "implemented",
+      "contract_role": "advisory",
+      "status": "OK",
+      "reason": "Nautilus-compatible artifact export/replay completed; Nautilus advisory execution is signal_replay_run; full project strategy parity is not run in v1",
+      "reference_role": "advisory",
+      "gate_role": "advisory_only",
+      "execution_state": "advisory_run",
+      "trigger_status": "completed",
+      "trigger_conditions": [
+        "nautilus selected for validation",
+        "contract status is implemented",
+        "dependency nautilus_trader is available",
+        "required artifacts present",
+        "advisory comparison only; portable gate needs independent reference evidence"
+      ],
+      "dependency": "nautilus_trader",
+      "dependency_available": true,
+      "required_artifacts": [
+        "result.json",
+        "price_series.csv",
+        "signals.csv"
+      ],
+      "resolved_artifacts": {
+        "result.json": "result.json",
+        "price_series.csv": "price_series.csv",
+        "signals.csv": "signals.csv"
+      },
+      "missing_artifacts": [],
+      "required_artifacts_present": true,
+      "comparison_status": "PASS",
+      "signal_logic_status": "PASS",
+      "signal_logic_actionable_mismatch_count": 0,
+      "portable_gate_eligible": false,
+      "source_data_status": "PASS",
+      "reference_mode": "nautilus_artifact_replay_export",
+      "engine_execution": "signal_replay_run",
+      "signals_available": 1,
+      "signals_replayed": 1,
+      "signal_replay_coverage": {
+        "total_signal_rows": 1,
+        "buy_sell_signal_rows": 1,
+        "replayable_signal_rows": 1,
+        "skipped_non_primary_symbol": 0,
+        "skipped_unmapped_symbol": 0,
+        "skipped_unsupported_side": 0,
+        "skipped_invalid_timestamp": 0,
+        "primary_symbol": "BTC-USDT-SWAP",
+        "mapped_symbols": [
+          "BTC-USDT-SWAP"
+        ],
+        "replayed_symbols": [
+          "BTC-USDT-SWAP"
+        ],
+        "skipped_symbols": []
+      },
+      "scope_limit": "artifact signal replay/export only; no Nautilus catalog or matching engine execution",
+      "limitations": [
+        "Exports Nautilus-compatible advisory replay evidence only; full Nautilus engine execution is not run.",
+        "artifact signal replay/export only; no Nautilus catalog or matching engine execution",
+        "Nautilus signal replay uses an advisory Strategy generated from exported/reference signals, not the project strategy source code.",
+        "Signal-replay order/fill parity checks Nautilus market-order acceptance and fills; queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
+        "The output is suitable as advisory portability evidence only."
+      ]
+    }
+  ],
+  "signal_point_correctness": {
+    "status": "FAIL",
+    "passed": false,
+    "target_engines": [
+      "vectorbt",
+      "backtrader",
+      "nautilus"
+    ],
+    "selected_engines": [
+      "nautilus"
+    ],
+    "missing_target_engines": [
+      "vectorbt",
+      "backtrader"
+    ],
+    "missing_or_failed_target_engines": [
+      "vectorbt",
+      "backtrader"
+    ],
+    "strict_fields": [
+      "timestamp_or_bar",
+      "symbol",
+      "side",
+      "action_or_entry_exit"
+    ],
+    "advisory_scope": [
+      "pnl",
+      "fee",
+      "slippage",
+      "funding",
+      "metrics"
+    ],
+    "rows": [
+      {
+        "engine": "nautilus",
+        "point_correctness_status": "PASS",
+        "status": "PASS",
+        "reference_role": "advisory",
+        "portable_gate_eligible": false,
+        "strict_fields": [
+          "timestamp_or_bar",
+          "symbol",
+          "side",
+          "action_or_entry_exit"
+        ],
+        "mismatch_count": 0,
+        "actionable_mismatch_count": 0,
+        "downstream_mismatch_count": 0,
+        "comparison_status": "PASS",
+        "signal_logic_status": "PASS",
+        "mismatch_examples": [],
+        "advisory_differences": {
+          "advisory_scope": [
+            "pnl",
+            "fee",
+            "slippage",
+            "funding",
+            "metrics"
+          ],
+          "trades": {
+            "total": 1,
+            "actionable": 1,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "pnl": {
+            "total": 39,
+            "actionable": 39,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "metrics": {
+            "total": 3,
+            "actionable": 3,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "indicators": {
+            "total": 173,
+            "actionable": 173,
+            "downstream": 0,
+            "skipped": 0
+          }
+        }
+      }
+    ]
+  },
+  "nautilus_order_fill_parity": {
+    "engine": "nautilus",
+    "scope": "signal_replay_order_fill",
+    "status": "PASS",
+    "passed": true,
+    "signals_available": 1,
+    "buy_sell_signal_rows": 1,
+    "signals_replayed": 1,
+    "order_attempts": 1,
+    "orders_accepted": 1,
+    "fills": 1,
+    "failed_checks": [],
+    "checks": [
+      {
+        "name": "engine_signal_replay_run",
+        "status": "PASS",
+        "expected": "status=OK and engine_execution=signal_replay_run",
+        "actual": "status=OK engine_execution=signal_replay_run"
+      },
+      {
+        "name": "signal_rows_available",
+        "status": "PASS",
+        "expected": "at least one buy/sell signal row",
+        "actual": 1
+      },
+      {
+        "name": "signal_replay_coverage",
+        "status": "PASS",
+        "expected": {
+          "signals_replayed": 1,
+          "skipped_replay_rows": 0
+        },
+        "actual": {
+          "signals_replayed": 1,
+          "skipped_replay_rows": 0,
+          "skipped_symbols": []
+        }
+      },
+      {
+        "name": "order_attempt_coverage",
+        "status": "PASS",
+        "expected": 1,
+        "actual": 1
+      },
+      {
+        "name": "order_acceptance",
+        "status": "PASS",
+        "expected": ">= 1",
+        "actual": 1
+      },
+      {
+        "name": "fill_coverage",
+        "status": "PASS",
+        "expected": 1,
+        "actual": 1
+      }
+    ],
+    "signal_replay_coverage": {
+      "total_signal_rows": 1,
+      "buy_sell_signal_rows": 1,
+      "replayable_signal_rows": 1,
+      "skipped_non_primary_symbol": 0,
+      "skipped_unmapped_symbol": 0,
+      "skipped_unsupported_side": 0,
+      "skipped_invalid_timestamp": 0,
+      "primary_symbol": "BTC-USDT-SWAP",
+      "mapped_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "replayed_symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "skipped_symbols": []
+    },
+    "backtest_result": {
+      "instance_id": "15a0c571-57ea-481a-9029-55a2ecf10662",
+      "total_events": 2,
+      "total_orders": 1,
+      "total_positions": 1,
+      "strategy_order_attempts": 1,
+      "strategy_fills": 1
+    },
+    "promotion_gate_evidence": false,
+    "full_project_strategy_parity_passed": false,
+    "full_project_strategy_parity_gap": "Nautilus parity currently validates generated signal-replay orders and fills; project strategy source execution, L2/L3 queue priority, funding settlement, and production exchange adapter behavior are not covered."
+  },
+  "source_data_validation": {
+    "status": "PASS",
+    "exchange": "binance",
+    "ohlcv_source_validation": "db_parity_pass",
+    "checks": {
+      "required_artifacts": {
+        "status": "PASS",
+        "required": [
+          "price_series.csv",
+          "result.json",
+          "signals.csv"
+        ],
+        "resolved": {
+          "price_series.csv": "price_series.csv",
+          "result.json": "result.json",
+          "signals.csv": "signals.csv"
+        },
+        "missing": [],
+        "reason": ""
+      },
+      "price_series": {
+        "status": "PASS",
+        "rows": 192,
+        "symbols": [
+          "BTC-USDT-SWAP"
+        ],
+        "start": "2026-06-01T00:00:00Z",
+        "end": "2026-06-08T23:00:00Z",
+        "bar": "1H",
+        "failures": {
+          "invalid_timestamps": 0,
+          "duplicate_rows": 0,
+          "invalid_ohlc_rows": 0,
+          "high_too_low": 0,
+          "low_too_high": 0,
+          "negative_volume_rows": 0
+        },
+        "warnings": {
+          "monotonic_symbol_violations": 0,
+          "cadence_gap_count": 0
+        },
+        "reason": ""
+      },
+      "ct_val_provenance": {
+        "status": "PASS",
+        "exchange": "binance",
+        "symbols": [
+          "BTC-USDT-SWAP"
+        ],
+        "sources": {
+          "ETH-USDT-SWAP": {
+            "value": 1.0,
+            "source": "db",
+            "exchange": "binance"
+          },
+          "BTC-USDT-SWAP": {
+            "value": 1.0,
+            "source": "db",
+            "exchange": "binance"
+          },
+          "BTC-USDT": {
+            "value": 1.0,
+            "source": "spot_unit",
+            "exchange": "binance"
+          },
+          "ETH-USDT": {
+            "value": 1.0,
+            "source": "spot_unit",
+            "exchange": "binance"
+          }
+        },
+        "reason": ""
+      },
+      "funding": {
+        "status": "PASS",
+        "required": false,
+        "rows": 0
+      },
+      "funding_cashflow_formula": {
+        "status": "PASS",
+        "required": false,
+        "rows": 0
+      },
+      "external_observations": {
+        "status": "PASS",
+        "required": false,
+        "rows": 0
+      },
+      "book_snapshots": {
+        "status": "PASS",
+        "required": false,
+        "rows": 0
+      },
+      "trade_ticks": {
+        "status": "PASS",
+        "required": false,
+        "rows": 0
+      },
+      "db_parity": {
+        "status": "PASS",
+        "backend": "postgres",
+        "exchange": "binance",
+        "canonical_source_primary": "binance",
+        "symbols": [
+          {
+            "symbol": "BTC-USDT-SWAP",
+            "status": "PASS",
+            "artifact_rows": 192,
+            "db_rows": 192,
+            "missing_in_db": 0,
+            "extra_in_db": 0,
+            "value_mismatches": 0,
+            "reason": ""
+          }
+        ],
+        "reason": ""
+      },
+      "funding_db_parity": {
+        "status": "PASS",
+        "required": false
+      },
+      "external_observations_db_parity": {
+        "status": "PASS",
+        "required": false
+      },
+      "trade_ticks_db_parity": {
+        "status": "PASS",
+        "required": false
+      }
+    },
+    "limitations": []
+  },
+  "validation_conclusion": {
+    "status": "ADVISORY_ONLY",
+    "data_validation": "PASS",
+    "external_engines_completed": [
+      "nautilus"
+    ],
+    "advisory_engines": [
+      "nautilus"
+    ],
+    "portable_validation_passed": false,
+    "blocking_reasons": [
+      "only_advisory_reference_replay_completed"
+    ],
+    "ready_for_promotion_evidence": false,
+    "summary": "External replay completed for nautilus, but evidence is advisory only (only_advisory_reference_replay_completed); not promotion evidence."
+  },
+  "external_validation_conclusion": {
+    "status": "ADVISORY_ONLY",
+    "summary": "External replay completed for nautilus, but evidence is advisory only (only_advisory_reference_replay_completed); not promotion evidence.",
+    "data_correctness": {
+      "status": "PASS",
+      "ohlcv_source_validation": "db_parity_pass",
+      "checks": {
+        "required_artifacts": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "price_series": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "ct_val_provenance": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "funding": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "funding_cashflow_formula": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "external_observations": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "book_snapshots": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "trade_ticks": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "db_parity": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "funding_db_parity": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "external_observations_db_parity": {
+          "status": "PASS",
+          "reason": ""
+        },
+        "trade_ticks_db_parity": {
+          "status": "PASS",
+          "reason": ""
+        }
+      }
+    },
+    "external_engines": {
+      "selected": [
+        "nautilus"
+      ],
+      "completed": [
+        "nautilus"
+      ],
+      "independent_attempted": [],
+      "independent_reference": [],
+      "advisory_only": [
+        "nautilus"
+      ],
+      "skipped": [],
+      "failed": []
+    },
+    "comparison": {
+      "portable_gate_passed": false,
+      "blocked_reason": "only_advisory_reference_replay_completed",
+      "promotion_gate_evidence": false
+    },
+    "blocking_gaps": [
+      "no independent reference engine passed signal_logic",
+      "nautilus full project-strategy/matching-engine parity not implemented"
+    ],
+    "next_required_actions": [
+      "Run at least one independent vectorbt/backtrader reference path with signal_logic PASS and zero actionable signal mismatches.",
+      "Implement Nautilus catalog/strategy/order/fill mapping before treating Nautilus as reference_full evidence."
+    ]
+  },
+  "conclusion": "External replay completed for nautilus, but evidence is advisory only (only_advisory_reference_replay_completed); not promotion evidence.",
+  "materialized_from_sweep_summary": false,
+  "artifact_dir": "results\\adr0007_binance_btc_1h_db_pass_20260618",
+  "output_dir": "results\\adr0007_binance_btc_1h_db_pass_20260618\\validation\\codex_close_only_db_parity_pass_20260618",
+  "ohlcv_source_validation": "db_parity_pass",
+  "engines": {
+    "nautilus": {
+      "status": "OK",
+      "reason": "Nautilus-compatible artifact export/replay completed; Nautilus advisory execution is signal_replay_run; full project strategy parity is not run in v1",
+      "reference_role": "advisory",
+      "categories": [],
+      "metrics": {
+        "sharpe": 0.8470454010500309,
+        "max_drawdown": -0.024182226254715555,
+        "total_return": 0.00373907645289151
+      },
+      "metadata": {
+        "strategy": "ma_crossover",
+        "reference_mode": "nautilus_artifact_replay_export",
+        "engine_execution": "signal_replay_run",
+        "nautilus_engine_smoke": {
+          "status": "OK",
+          "engine_execution": "signal_replay_run",
+          "reason": "Nautilus BacktestEngine ran an advisory signal-replay Strategy and accepted generated orders",
+          "instrument": {
+            "source_symbols": [
+              "BTC-USDT-SWAP"
+            ],
+            "primary_symbol": "BTC-USDT-SWAP",
+            "smoke_instrument_id": "BTCUSDT-PERP.BINANCE",
+            "mapped_symbols": {
+              "BTC-USDT-SWAP": "BTCUSDT-PERP.BINANCE"
+            },
+            "unsupported_symbols": [],
+            "mapping": "Nautilus test-kit perpetual instruments are currently available for BTC and ETH symbols only."
+          },
+          "input_rows": {
+            "book_snapshots": 192,
+            "trade_ticks": 0,
+            "price_series": 0,
+            "quote_ticks": 192,
+            "trade_tick_ticks": 0,
+            "terminal_replay_quote_ticks": 0,
+            "mapped_symbols": [
+              "BTC-USDT-SWAP"
+            ],
+            "skipped_unmapped_book_snapshots": 0,
+            "skipped_unmapped_price_rows": 0,
+            "skipped_unmapped_trade_ticks": 0
+          },
+          "ticks_submitted": 192,
+          "max_ticks_requested": 500,
+          "max_ticks_effective": 500,
+          "data_types": [
+            "QuoteTick"
+          ],
+          "signals_available": 1,
+          "signals_replayed": 1,
+          "signal_replay_coverage": {
+            "total_signal_rows": 1,
+            "buy_sell_signal_rows": 1,
+            "replayable_signal_rows": 1,
+            "skipped_non_primary_symbol": 0,
+            "skipped_unmapped_symbol": 0,
+            "skipped_unsupported_side": 0,
+            "skipped_invalid_timestamp": 0,
+            "primary_symbol": "BTC-USDT-SWAP",
+            "mapped_symbols": [
+              "BTC-USDT-SWAP"
+            ],
+            "replayed_symbols": [
+              "BTC-USDT-SWAP"
+            ],
+            "skipped_symbols": []
+          },
+          "backtest_result": {
+            "instance_id": "15a0c571-57ea-481a-9029-55a2ecf10662",
+            "total_events": 2,
+            "total_orders": 1,
+            "total_positions": 1,
+            "strategy_order_attempts": 1,
+            "strategy_fills": 1
+          },
+          "scope_limit": "advisory signal replay with Nautilus order/fill parity; project strategy source logic, L2/L3 queue priority, funding settlement, and PnL are not validated"
+        },
+        "order_fill_parity_scope": "signal_replay_order_fill",
+        "dependency": "nautilus_trader",
+        "dependency_available": true,
+        "price_input": {
+          "source": "db_canonical_candles",
+          "symbol": "BTC-USDT-SWAP",
+          "rows": 192,
+          "start": "2026-06-01T00:00:00Z",
+          "end": "2026-06-08T23:00:00Z",
+          "reason": "Reference engine price input loaded from DB canonical_candles."
+        },
+        "signal_position_source": "reference_local_long_flat",
+        "scope_limit": "artifact signal replay/export only; no Nautilus catalog or matching engine execution",
+        "required_full_adapter_data": "Nautilus catalog with L2/L3 order book, order/fill events, funding cashflows where applicable",
+        "export_manifest": {
+          "engine": "nautilus",
+          "strategy": "ma_crossover",
+          "reference_mode": "nautilus_artifact_replay_export",
+          "engine_execution": "signal_replay_run",
+          "dependency": "nautilus_trader",
+          "dependency_available": true,
+          "nautilus_engine_smoke": {
+            "status": "OK",
+            "engine_execution": "signal_replay_run",
+            "reason": "Nautilus BacktestEngine ran an advisory signal-replay Strategy and accepted generated orders",
+            "instrument": {
+              "source_symbols": [
+                "BTC-USDT-SWAP"
+              ],
+              "primary_symbol": "BTC-USDT-SWAP",
+              "smoke_instrument_id": "BTCUSDT-PERP.BINANCE",
+              "mapped_symbols": {
+                "BTC-USDT-SWAP": "BTCUSDT-PERP.BINANCE"
+              },
+              "unsupported_symbols": [],
+              "mapping": "Nautilus test-kit perpetual instruments are currently available for BTC and ETH symbols only."
+            },
+            "input_rows": {
+              "book_snapshots": 192,
+              "trade_ticks": 0,
+              "price_series": 0,
+              "quote_ticks": 192,
+              "trade_tick_ticks": 0,
+              "terminal_replay_quote_ticks": 0,
+              "mapped_symbols": [
+                "BTC-USDT-SWAP"
+              ],
+              "skipped_unmapped_book_snapshots": 0,
+              "skipped_unmapped_price_rows": 0,
+              "skipped_unmapped_trade_ticks": 0
+            },
+            "ticks_submitted": 192,
+            "max_ticks_requested": 500,
+            "max_ticks_effective": 500,
+            "data_types": [
+              "QuoteTick"
+            ],
+            "signals_available": 1,
+            "signals_replayed": 1,
+            "signal_replay_coverage": {
+              "total_signal_rows": 1,
+              "buy_sell_signal_rows": 1,
+              "replayable_signal_rows": 1,
+              "skipped_non_primary_symbol": 0,
+              "skipped_unmapped_symbol": 0,
+              "skipped_unsupported_side": 0,
+              "skipped_invalid_timestamp": 0,
+              "primary_symbol": "BTC-USDT-SWAP",
+              "mapped_symbols": [
+                "BTC-USDT-SWAP"
+              ],
+              "replayed_symbols": [
+                "BTC-USDT-SWAP"
+              ],
+              "skipped_symbols": []
+            },
+            "backtest_result": {
+              "instance_id": "15a0c571-57ea-481a-9029-55a2ecf10662",
+              "total_events": 2,
+              "total_orders": 1,
+              "total_positions": 1,
+              "strategy_order_attempts": 1,
+              "strategy_fills": 1
+            },
+            "scope_limit": "advisory signal replay with Nautilus order/fill parity; project strategy source logic, L2/L3 queue priority, funding settlement, and PnL are not validated"
+          },
+          "inputs": {
+            "result": "result.json",
+            "prices": "price_series.csv",
+            "signals": "signals.csv",
+            "trades": "trades.csv",
+            "fills": "fills.csv",
+            "book_snapshots": "book_snapshots.csv",
+            "trade_ticks": "trade_ticks.csv"
+          },
+          "outputs": {
+            "signals": "reference_nautilus_signals.csv",
+            "trades": "reference_nautilus_trades.csv",
+            "equity_curve": "reference_nautilus_equity_curve.csv"
+          },
+          "limitations": [
+            "Nautilus signal replay uses an advisory Strategy generated from exported/reference signals, not the project strategy source code.",
+            "Signal-replay order/fill parity checks Nautilus market-order acceptance and fills; queue priority, L2/L3 fills, funding settlement, and exchange adapter behavior remain unvalidated.",
+            "The output is suitable as advisory portability evidence only."
+          ]
+        }
+      },
+      "rows": {
+        "indicator_series": 0,
+        "signals": 1,
+        "trades": 1,
+        "equity_curve": 192
+      },
+      "comparison": {
+        "status": "PASS",
+        "reference_role": "advisory",
+        "strict_scopes": [],
+        "advisory_scopes": [
+          "indicator_values",
+          "metrics",
+          "pnl_semantics",
+          "signal_logic",
+          "trade_execution"
+        ],
+        "scopes": {
+          "indicator_values": {
+            "status": "ADVISORY_MISMATCH",
+            "role": "advisory",
+            "total": 173,
+            "actionable": 173,
+            "downstream": 0,
+            "skipped": 0,
+            "actionable_mismatch_count": 173,
+            "downstream_mismatch_count": 0
+          },
+          "signal_logic": {
+            "status": "PASS",
+            "role": "advisory",
+            "total": 0,
+            "actionable": 0,
+            "downstream": 0,
+            "skipped": 0,
+            "actionable_mismatch_count": 0,
+            "downstream_mismatch_count": 0
+          },
+          "trade_execution": {
+            "status": "ADVISORY_MISMATCH",
+            "role": "advisory",
+            "total": 1,
+            "actionable": 1,
+            "downstream": 0,
+            "skipped": 0,
+            "actionable_mismatch_count": 1,
+            "downstream_mismatch_count": 0
+          },
+          "pnl_semantics": {
+            "status": "ADVISORY_MISMATCH",
+            "role": "advisory",
+            "total": 39,
+            "actionable": 39,
+            "downstream": 0,
+            "skipped": 0,
+            "actionable_mismatch_count": 39,
+            "downstream_mismatch_count": 0
+          },
+          "metrics": {
+            "status": "ADVISORY_MISMATCH",
+            "role": "advisory",
+            "total": 3,
+            "actionable": 3,
+            "downstream": 0,
+            "skipped": 0,
+            "actionable_mismatch_count": 3,
+            "downstream_mismatch_count": 0
+          }
+        },
+        "signal_logic": {
+          "status": "PASS",
+          "role": "advisory",
+          "total": 0,
+          "actionable": 0,
+          "downstream": 0,
+          "skipped": 0,
+          "actionable_mismatch_count": 0,
+          "downstream_mismatch_count": 0
+        },
+        "pnl_semantics": {
+          "status": "ADVISORY_MISMATCH",
+          "role": "advisory",
+          "total": 39,
+          "actionable": 39,
+          "downstream": 0,
+          "skipped": 0,
+          "actionable_mismatch_count": 39,
+          "downstream_mismatch_count": 0
+        },
+        "metrics": {
+          "status": "ADVISORY_MISMATCH",
+          "role": "advisory",
+          "total": 3,
+          "actionable": 3,
+          "downstream": 0,
+          "skipped": 0,
+          "actionable_mismatch_count": 3,
+          "downstream_mismatch_count": 0
+        },
+        "mismatch_counts": {
+          "indicators": {
+            "total": 173,
+            "actionable": 173,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "signals": {
+            "total": 0,
+            "actionable": 0,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "trades": {
+            "total": 1,
+            "actionable": 1,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "pnl": {
+            "total": 39,
+            "actionable": 39,
+            "downstream": 0,
+            "skipped": 0
+          },
+          "metrics": {
+            "total": 3,
+            "actionable": 3,
+            "downstream": 0,
+            "skipped": 0
+          }
+        },
+        "actionable_mismatch_counts": {
+          "indicators": 173,
+          "signals": 0,
+          "trades": 1,
+          "pnl": 39,
+          "metrics": 3
+        },
+        "downstream_mismatch_counts": {
+          "indicators": 0,
+          "signals": 0,
+          "trades": 0,
+          "pnl": 0,
+          "metrics": 0
+        },
+        "actionable_mismatch_count": 216,
+        "downstream_mismatch_count": 0,
+        "indicator_mismatches": 173,
+        "signal_mismatches": 0,
+        "trade_mismatches": 1,
+        "pnl_mismatches": 39,
+        "metric_mismatches": 3
+      }
+    }
+  },
+  "mismatch_counts": {
+    "indicators": {
+      "total": 173,
+      "actionable": 173,
+      "downstream": 0,
+      "skipped": 0
+    },
+    "signals": {
+      "total": 0,
+      "actionable": 0,
+      "downstream": 0,
+      "skipped": 0
+    },
+    "trades": {
+      "total": 1,
+      "actionable": 1,
+      "downstream": 0,
+      "skipped": 0
+    },
+    "pnl": {
+      "total": 39,
+      "actionable": 39,
+      "downstream": 0,
+      "skipped": 0
+    },
+    "metrics": {
+      "total": 3,
+      "actionable": 3,
+      "downstream": 0,
+      "skipped": 0
+    }
+  },
+  "actionable_mismatch_counts": {
+    "indicators": 173,
+    "signals": 0,
+    "trades": 1,
+    "pnl": 39,
+    "metrics": 3
+  },
+  "downstream_mismatch_counts": {
+    "indicators": 0,
+    "signals": 0,
+    "trades": 0,
+    "pnl": 0,
+    "metrics": 0
+  },
+  "actionable_mismatch_count": 216,
+  "downstream_mismatch_count": 0,
+  "categories": [
+    "execution_semantics_mismatch",
+    "indicator_mismatch",
+    "metric_formula_mismatch",
+    "pnl_accounting_mismatch"
+  ],
+  "tolerances": {
+    "timestamp_seconds": 0.0,
+    "indicator_abs": 1e-08,
+    "indicator_rel": 1e-10,
+    "price_abs": 1e-08,
+    "price_rel": 1e-10,
+    "qty_abs": 1e-10,
+    "qty_rel": 1e-10,
+    "pnl_abs": 5e-05,
+    "pnl_rel": 1e-08,
+    "equity_abs": 5e-05,
+    "equity_rel": 1e-08,
+    "metric_abs": 1e-06,
+    "metric_rel": 1e-06
+  }
+}
