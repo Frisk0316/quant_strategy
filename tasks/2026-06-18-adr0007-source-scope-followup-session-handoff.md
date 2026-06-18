@@ -1,7 +1,7 @@
 # Session Handoff: ADR-0007 Source Scope Follow-up - 2026-06-18
 
 ## Implementation summary
-Added a narrow regression and evidence field so DB parity proves it compared canonical candles scoped to the run exchange. Updated ADR-0007 Task 6 docs/manifest/runbook/current-state handoff notes so the Binance DB-backed PASS milestone requires `canonical_source_primary == "binance"` and remains blocked only on reachable DB/data.
+Added a narrow regression and evidence field so DB parity proves it compared canonical candles scoped to the run exchange. Updated ADR-0007 Task 6 docs/manifest/runbook/current-state handoff notes so the Binance DB-backed PASS milestone requires `canonical_source_primary == "binance"`; the latest real DB attempt now blocks on artifact/canonical OHLC mismatch, not source scoping.
 
 ## Diff scope
 - Files added: `tasks/2026-06-18-adr0007-source-scope-followup-context-handoff.md`, `tasks/2026-06-18-adr0007-source-scope-followup-session-handoff.md`.
@@ -33,8 +33,8 @@ Added a narrow regression and evidence field so DB parity proves it compared can
 - `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`, `docs/KNOWN_ISSUES.md`, `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, and the ADR-0007 Change Manifest.
 
 ## Known limitations / risks
-- The real DB-backed Binance PASS was not run in this follow-up because no reachable seeded DSN is available in the current environment.
-- `db_parity.canonical_source_primary` proves requested source scope, but real evidence still depends on correctly tagged `canonical_candles` rows.
+- The real DB-backed Binance PASS was run and failed: `db_parity.canonical_source_primary == "binance"` but `value_mismatches == 768`.
+- Replay `price_series.csv` collapses OHLC to close/mid while DB canonical candles preserve true OHLC.
 
 ## Rollback plan
 - Revert this follow-up commit. That removes the evidence field/test/docs additions without touching migrations, seed data, or strategy logic.
@@ -43,11 +43,10 @@ Added a narrow regression and evidence field so DB parity proves it compared can
 - See `tasks/2026-06-18-adr0007-source-scope-followup-context-handoff.md`.
 
 ## Questions for human review
-- Which DSN should Codex use for the first real Binance DB-backed PASS run?
-- Should CI require the source-provenance gate only when a seeded TimescaleDB service is available?
+- Should replay artifacts preserve true OHLC in `price_series.csv`, or should DB parity compare a separate canonical OHLC artifact/input?
 
 ## Next recommended task
-- Run the ADR-0007 Binance DB-backed PASS flow from `docs/RUNBOOK.md` once a reachable DSN is available.
+- Fix the artifact/canonical OHLC parity mismatch, then rerun the ADR-0007 Binance DB-backed PASS flow from `docs/RUNBOOK.md`.
 
 ## Human Learning Notes (required)
 The bug was not just "argument passed"; it was "does the argument constrain the data." Future provenance tests should assert both the call parameter and a result-set difference or emitted scope evidence.

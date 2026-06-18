@@ -198,6 +198,28 @@ Closeout notes:
   - When rerun with a reachable DSN, the PASS evidence must include
     `source_data_validation.checks.db_parity.canonical_source_primary ==
     "binance"`; exit 0 alone is insufficient.
+- DB-backed Binance source-provenance rerun, 2026-06-18: **FAIL, not PASS**.
+  No gate was loosened. Evidence:
+  - Repo DSN on port 5432 later became reachable; port 5433 still rejected the
+    repo `quant` credentials.
+  - `psql ... -f sql/migrations/0011_venue_instrument_specs.sql` returned
+    `CREATE TABLE`; `psql ... -f sql/seed_venue_instrument_specs.sql` returned
+    `INSERT 0 4`.
+  - Fresh run:
+    `python scripts/run_replay_backtest.py --strategy ma_crossover --symbol BTC-USDT-SWAP --bar 1H --exchange binance --start 2026-06-01 --end 2026-06-09 --save-artifacts --run-id adr0007_binance_btc_1h_db_pass_20260618`
+    with `BACKTEST_ARTIFACT_MODE=both` produced 192 bars and
+    `result.validation.exchange == "binance"`.
+  - Source-provenance gate:
+    `python scripts/run_source_provenance_validation.py --run-id adr0007_binance_btc_1h_db_pass_20260618 --engines vectorbt,backtrader --validation-id adr0007_binance_btc_1h_db_pass_20260618_source_provenance`
+    with `NUMBA_DISABLE_JIT=1` exited 1:
+    `source_data_validation=FAIL`, `ct_val_provenance=PASS`,
+    `db_parity=FAIL`, `ohlcv_source_validation=artifact_warn`.
+  - Positive source-scope evidence: `db_parity.exchange == "binance"` and
+    `db_parity.canonical_source_primary == "binance"`.
+  - Blocking mismatch: `BTC-USDT-SWAP` artifact rows = 192, DB rows = 192,
+    missing/extra rows = 0, value_mismatches = 768. First row example:
+    artifact OHLC = `73855.0/73855.0/73855.0/73855.0`; DB Binance 1m-derived
+    1H OHLC = `73653.2/74070.5/73620.0/73855.0`.
 
 ## Risks and rollback
 - Risks: provenance field shape drifting from the gate if P1 splits across

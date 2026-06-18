@@ -22,8 +22,8 @@ handoff between sessions; this is the one-screen "where are we" that
 
 - **Current goal:** ADR-0007 P1 multi-venue instrument specs are locally closed
   out on `codex/impl-multi-venue-instrument-specs`; the validation workstream's
-  Binance DB-backed PASS milestone is unblocked by code/docs and now waits on a
-  reachable seeded DB.
+  Binance DB-backed PASS milestone is unblocked by code/docs and now fails on
+  artifact-vs-canonical OHLC parity.
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
 - **Last known good state:** Commits through `d48361c`, plus this follow-up,
   implement Tasks 1-6, structural Binance/Bybit USDT-M `ct_val =
@@ -31,21 +31,21 @@ handoff between sessions; this is the one-screen "where are we" that
   coverage. No existing result artifacts were modified.
 - **Current working state:** Local unit/docs checks pass for the ADR-0007 P1
   closeout. `db_parity` now reports `canonical_source_primary`, and Binance
-  PASS evidence must show it is `binance`.
-- **Active risks:** DB-backed Binance source-provenance PASS is still blocked by
-  local dependency state: `DATABASE_URL` is unset in the shell, the configured
-  `.env` DSN on port 5432 refuses connections, local PostgreSQL on port 5433
-  rejects the repo `quant` credentials, and Docker Desktop could not be started.
+  PASS evidence must show it is `binance`. A 2026-06-18 DB-backed Binance run
+  showed that source scoping works (`canonical_source_primary == "binance"`),
+  but `db_parity` FAILs because replay `price_series.csv` collapses OHLC to the
+  close/mid while DB canonical candles preserve true OHLC.
+- **Active risks:** DB-backed Binance source-provenance PASS is blocked by that
+  artifact OHLC semantic mismatch. Port 5432 repo DSN is currently reachable;
+  local PostgreSQL on port 5433 still rejects the repo `quant` credentials.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, DB schema, API and
   frontend behavior, deployment gates, and existing result artifacts.
 
 ## Next steps
 
-- Provide or start a reachable dev DB DSN, apply
-  `sql/migrations/0011_venue_instrument_specs.sql` and
-  `sql/seed_venue_instrument_specs.sql`, then run the source-provenance gate
-  against a fresh Binance run following `docs/RUNBOOK.md`.
+- Fix replay artifact OHLC semantics or the DB parity input contract, then rerun
+  the Binance DB-backed source-provenance gate following `docs/RUNBOOK.md`.
 - Ask Claude to review ADR-0007 P1 docs/manifest, seed values, and the
   source-scoped DB parity evidence requirement before PR merge.
 

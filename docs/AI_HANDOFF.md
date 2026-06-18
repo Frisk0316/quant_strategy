@@ -32,10 +32,10 @@ canonical `1000...` multiplier contracts still require DB specs. Task 4 DB
 parity exchange scoping is repaired: postgres canonical candle reads now filter
 `source_primary` by the run exchange, and DB parity emits
 `canonical_source_primary` so a Binance PASS must prove it compared Binance
-candles. Remaining blocked item: DB-backed source-provenance PASS needs a
-reachable dev DB DSN; 2026-06-18 checks found
-port 5432 refusing the repo DSN, local PostgreSQL on port 5433 rejecting repo
-`quant` credentials, and Docker Desktop unavailable from this session.
+candles. 2026-06-18 DB-backed rerun proved source scoping works
+(`canonical_source_primary == "binance"`) but source-provenance still FAILs:
+replay `price_series.csv` collapses OHLC to the close/mid while DB canonical
+Binance candles preserve true OHLC.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -49,10 +49,10 @@ gate** (`backtesting/differential_validation.py`) is the contended surface.
    change until merge.** Venue tag + venue-aware resolution are in place.
 2. **Backtest-system validation** (source-provenance / differential / signal
    validation). P1 no longer blocks the first DB-backed PASS on the primary
-   (Binance) venue. That milestone now waits on a reachable seeded DB and must
-   show `checks.db_parity.canonical_source_primary == "binance"`. Non-gate
-   chores (branch protection, signal-validation CI, OKX/fixture work) are
-   unblocked.
+   (Binance) venue. That milestone now waits on fixing artifact OHLC semantics
+   or the DB parity input contract; it must still show
+   `checks.db_parity.canonical_source_primary == "binance"`. Non-gate chores
+   (branch protection, signal-validation CI, OKX/fixture work) are unblocked.
 3. **Universal price chart + progressive load** — separate branch, brief:
    `tasks/2026-06-17-price-chart-universal-task.md`. Independent of 1 and 2;
    **must not touch** `differential_validation.py`.
@@ -70,11 +70,9 @@ ADR-0007 P1 local state on `codex/impl-multi-venue-instrument-specs`: Tasks 1-6
 verified locally; normal Binance/Bybit USDT-M `ct_val` can pass structurally as
 `exchange_base_unit`; DB parity now filters canonical candles by run exchange
 via `source_primary` and exposes the chosen canonical source in validation
-output; DB-backed source-provenance PASS still requires a reachable
-TimescaleDB/Postgres DSN and seeded canonical/spec rows.
-Latest closeout attempt confirmed the code/docs checks pass locally, but the
-first DB-backed Binance PASS remains environment-blocked until a reachable DSN
-is supplied.
+output. Latest DB-backed Binance attempt reached the DB and seed, but FAILed
+`db_parity` with 768 OHLC value mismatches because artifact OHLC is close/mid
+repeated and DB canonical OHLC is true candle OHLC.
 
 ## System Overview
 
