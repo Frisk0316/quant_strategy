@@ -92,6 +92,174 @@ def test_instrument_sort_key_prioritizes_exact_base_match():
     assert sorted_rows[0]["inst_id"] == "BTC-USDT-SWAP"
 
 
+def test_binance_filter_value_reads_precision_filters():
+    item = {
+        "filters": [
+            {"filterType": "PRICE_FILTER", "tickSize": "0.0000010"},
+            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
+        ]
+    }
+
+    assert routes_data._binance_filter_value(item, "PRICE_FILTER", "tickSize") == 0.000001
+    assert routes_data._binance_filter_value(item, "LOT_SIZE", "stepSize") == 1.0
+    assert routes_data._binance_filter_value(item, "LOT_SIZE", "minQty") == 1.0
+
+
+def test_binance_venue_spec_payload_handles_multiplier_contract():
+    spec = routes_data._binance_venue_spec_from_meta({
+        "tick_size": 0.000001,
+        "lot_size": 1.0,
+        "min_size": 1.0,
+    })
+
+    assert spec == {
+        "ct_val": 1.0,
+        "lot_size": 1.0,
+        "tick_size": 0.000001,
+        "min_size": 1.0,
+        "source": "binance_exchange_info",
+    }
+
+
+@pytest.mark.asyncio
+async def test_upsert_venue_instrument_spec_writes_binance_1000_pair():
+    calls = []
+
+    class FakePool:
+        async def execute(self, sql, *params):
+            calls.append((sql, params))
+
+    await routes_data._upsert_venue_instrument_spec(
+        FakePool(),
+        exchange="binance",
+        symbol="1000SHIB-USDT-SWAP",
+        ct_val=1.0,
+        lot_size=1.0,
+        tick_size=0.000001,
+        min_size=1.0,
+        source="binance_exchange_info",
+    )
+
+    assert len(calls) == 1
+    sql, params = calls[0]
+    assert "venue_instrument_specs" in sql
+    assert params == (
+        "binance",
+        "1000SHIB-USDT-SWAP",
+        1.0,
+        1.0,
+        0.000001,
+        1.0,
+        "binance_exchange_info",
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_fetch_body_syncs_binance_venue_spec_before_skip(monkeypatch):
+    import asyncpg
+    import okx_quant.data.candle_store as candle_store
+    from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
+
+    calls = []
+
+    class FakePool:
+        async def execute(self, sql, *params):
+            calls.append((sql, params))
+
+        async def close(self):
+            return None
+
+    class FakeStore:
+        def __init__(self, pool):
+            assert isinstance(pool, FakePool)
+
+    async def fake_create_pool(*_args, **_kwargs):
+        return FakePool()
+
+    def fake_exchange_info(self):
+        return {
+            "symbols": [{
+                "symbol": "1000SHIBUSDT",
+                "baseAsset": "1000SHIB",
+                "quoteAsset": "USDT",
+                "marginAsset": "USDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "onboardDate": "1706745600000",
+                "filters": [
+                    {"filterType": "PRICE_FILTER", "tickSize": "0.0000010"},
+                    {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
+                ],
+            }]
+        }
+
+    monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+    monkeypatch.setattr(candle_store, "CandleStore", FakeStore)
+    monkeypatch.setattr(BinancePublicClient, "get_futures_exchange_info", fake_exchange_info)
+    monkeypatch.setattr(BinancePublicClient, "close", lambda self: None)
+    routes_data._jobs.clear()
+    routes_data._jobs["job_spec"] = {"job_id": "job_spec", "status": "queued"}
+    req = FetchRequest(
+        exchange="binance",
+        symbols=["1000SHIB-USDT-SWAP"],
+        bar="1m",
+        start="2024-01-01",
+        end="2024-01-02",
+    )
+
+    await routes_data._run_fetch_body("job_spec", req, "postgresql://unused")
+
+    assert len(calls) == 1
+    sql, params = calls[0]
+    assert "venue_instrument_specs" in sql
+    assert params[:2] == ("binance", "1000SHIB-USDT-SWAP")
+    assert routes_data._jobs["job_spec"]["results"][0]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_binance_instruments_preserves_precision_filters(monkeypatch):
+    from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
+
+    def fake_exchange_info(self):
+        return {
+            "symbols": [{
+                "symbol": "1000SHIBUSDT",
+                "baseAsset": "1000SHIB",
+                "quoteAsset": "USDT",
+                "marginAsset": "USDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "onboardDate": "1704067200000",
+                "filters": [
+                    {"filterType": "PRICE_FILTER", "tickSize": "0.0000010"},
+                    {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
+                ],
+            }]
+        }
+
+    monkeypatch.setattr(BinancePublicClient, "get_futures_exchange_info", fake_exchange_info)
+    monkeypatch.setattr(BinancePublicClient, "close", lambda self: None)
+
+    rows = await routes_data._binance_instruments(keyword="1000SHIB")
+
+    assert rows == [{
+        "exchange": "binance",
+        "inst_id": "1000SHIB-USDT-SWAP",
+        "native_symbol": "1000SHIBUSDT",
+        "normalized_symbol": "1000SHIB-USDT-SWAP",
+        "inst_type": "SWAP",
+        "base_ccy": "1000SHIB",
+        "quote_ccy": "USDT",
+        "settle_ccy": "USDT",
+        "state": "TRADING",
+        "list_time_ms": 1704067200000,
+        "list_date": "2024-01-01",
+        "tick_size": 0.000001,
+        "lot_size": 1.0,
+        "min_size": 1.0,
+    }]
+
+
 def test_next_existing_update_start_resumes_after_last_db_candle():
     requested_start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     last_ts = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)

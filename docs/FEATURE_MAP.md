@@ -101,7 +101,9 @@ implementation exists.
 - User-facing behavior: fetch or update market data, inspect coverage, export OHLCV,
   funding, or external data, delete stale OHLCV/funding pairs, and use DB-backed
   data for backtests. Fetch jobs are queued sequentially and shown as a job list
-  in the Market Data Coverage card.
+  in the Market Data Coverage card. Binance fetches also sync exchangeInfo-derived
+  venue specs into `venue_instrument_specs` so replay can resolve multiplier
+  contracts such as `1000SHIB-USDT-SWAP` from DB.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -109,12 +111,15 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `sql/migrations/0011_venue_instrument_specs.sql`,
+  `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
-  `tests/unit/test_routes_data_queue.py`, `tests/unit/test_routes_data_delete.py`.
+  `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
+  `tests/unit/test_routes_data_delete.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
   `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: ingestion changes can affect backtest reproducibility; do not

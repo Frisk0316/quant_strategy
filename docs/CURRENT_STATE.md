@@ -21,9 +21,10 @@ handoff between sessions; this is the one-screen "where are we" that
 ## Snapshot
 
 - **Current goal:** Market Data Coverage fetch queue + delete-pair implementation
-  from `docs/superpowers/plans/2026-06-18-market-data-queue-and-delete.md` is in
-  progress on `codex/impl-multi-venue-instrument-specs`. The branch also carries
-  the ADR-0007 P1 multi-venue closeout context.
+  from `docs/superpowers/plans/2026-06-18-market-data-queue-and-delete.md` plus
+  a Binance venue-spec sync fix is in progress on
+  `codex/impl-multi-venue-instrument-specs`. The branch also carries the
+  ADR-0007 P1 multi-venue closeout context.
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
 - **Last known good state:** The branch contains P1 merge commits `d649701`
   (Claude design/changelog) and `10d631f` (price chart) on top of the ADR-0007
@@ -39,7 +40,9 @@ handoff between sessions; this is the one-screen "where are we" that
   Price chart panels now render progressively per selected symbol, with
   technical overlays still gated to MA/EMA/MACD. Market Data Coverage now queues
   fetch jobs sequentially in the API, renders the fetch job list in the frontend,
-  and exposes a guarded whole-pair delete path for OHLCV/funding pairs.
+  exposes a guarded whole-pair delete path for OHLCV/funding pairs, and syncs
+  Binance exchangeInfo-derived specs into `venue_instrument_specs` so fetched
+  multiplier contracts such as `1000SHIB-USDT-SWAP` can resolve DB `ct_val`.
 - **Active risks:** The older checked-in validation artifact
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` still records the
   pre-fix FAIL and now carries `SUPERSEDED.md`; cite the new
@@ -55,6 +58,9 @@ handoff between sessions; this is the one-screen "where are we" that
 
 - Manually smoke the Market Data Coverage queue/delete flow against a DB-backed
   server before relying on it operationally.
+- For Binance symbols downloaded before the spec-sync fix, rerun a fetch or seed
+  `venue_instrument_specs` before replaying multiplier contracts such as
+  `1000SHIB-USDT-SWAP`.
 - Open/review one consolidated PR from `codex/impl-multi-venue-instrument-specs`
   to `main` after the active implementation branch is ready.
 - Keep Binance promotion work (signal quorum + WF/CPCV) and branch-protection

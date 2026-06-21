@@ -29,12 +29,16 @@ must rely on parquet fallback or skip DB-dependent validation.
 ## Market Data Fetch Queue Flow
 
 ```text
-frontend Market Data Coverage form -> POST /api/data/fetch -> in-memory queued job -> routes_data._fetch_lock -> exchange REST + CandleStore writes -> DB + parquet mirror -> /api/data/fetch/jobs -> frontend job list and coverage refresh
+frontend Market Data Coverage form -> POST /api/data/fetch -> in-memory queued job -> routes_data._fetch_lock -> exchange REST + venue spec sync + CandleStore writes -> DB + parquet mirror -> /api/data/fetch/jobs -> frontend job list and coverage refresh
 ```
 
 Current: fetch jobs are accepted as `queued` and run sequentially behind one
-process-local lock. Queued or running jobs can be cancelled; a queued job checks
-for cancellation before it acquires the lock, so it never starts after a cancel.
+process-local lock. Binance fetches parse `exchangeInfo` precision filters and
+upsert `venue_instrument_specs(exchange, symbol)` before candle writes, so
+downloaded Binance multiplier contracts such as `1000SHIB-USDT-SWAP` have DB
+`ct_val = 1.0` provenance for replay. Queued or running jobs can be cancelled; a
+queued job checks for cancellation before it acquires the lock, so it never
+starts after a cancel.
 
 ## Market Data Pair Delete Flow
 
@@ -55,13 +59,16 @@ transaction.
 venue instrument source -> venue_instrument_specs(exchange, symbol) seed/table -> ReplayBacktestEngine._load_db_instrument_specs(exchange) -> per-symbol ct_val/lot/tick/min specs -> sizing, fills, funding, terminal liquidation, and result.validation.ct_val_sources
 ```
 
-Current: P1 seeds OKX and Binance BTC/ETH SWAP specs manually. The bundled
+Current: P1 seeds OKX and Binance BTC/ETH SWAP specs manually, and the Market
+Data Fetch Queue now syncs Binance rows from `exchangeInfo` into
+`venue_instrument_specs` as `source = binance_exchange_info`. The bundled
 `config/instrument_specs.yaml` registry remains an OKX-only fallback for local
 replay when DB specs are unavailable; promotion evidence must use DB-backed or
 explicit `instrument_specs` provenance tagged with the run `exchange`. Normal
 Binance/Bybit USDT-M perps can use the authoritative `exchange_base_unit`
 structural identity (`ct_val = 1.0`) without a DB row; canonical `1000...`
-multiplier contracts still require explicit `venue_instrument_specs` rows.
+multiplier contracts still require explicit `venue_instrument_specs` rows, now
+created automatically for Binance symbols that pass through the fetch flow.
 
 ## Funding Ingestion Flow
 

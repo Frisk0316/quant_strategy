@@ -112,7 +112,9 @@ Main app views in `frontend/app.js`:
 - `frontend/view-config.js` owns the Market Data Coverage card.
 - Fetch submissions are no longer blocked by another active fetch. The card
   renders the `/api/data/fetch/jobs` list with queued/running/done/error/cancelled
-  statuses and per-job cancel controls.
+  statuses and per-job cancel controls. For Binance, `POST /api/data/fetch`
+  also syncs exchangeInfo-derived venue specs into `venue_instrument_specs`
+  before candle writes.
 - Coverage rows for OHLCV and funding pairs include a Delete button. The button
   uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
   coverage when the API succeeds. External dataset rows are not pair-delete

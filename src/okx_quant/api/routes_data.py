@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import math
 import re
 import shutil
 import uuid
@@ -463,6 +464,73 @@ def _instrument_sort_key(row: dict[str, Any], keyword: str = "") -> tuple[int, s
     return (3, inst_id)
 
 
+def _positive_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) and out > 0 else None
+
+
+def _binance_filter_value(item: dict[str, Any], filter_type: str, key: str) -> float | None:
+    wanted = str(filter_type or "").upper()
+    for filt in item.get("filters") or []:
+        if str(filt.get("filterType") or "").upper() == wanted:
+            return _positive_float(filt.get(key))
+    return None
+
+
+def _binance_venue_spec_from_meta(meta: dict[str, Any]) -> dict[str, float | str] | None:
+    tick_size = _positive_float(meta.get("tick_size"))
+    lot_size = _positive_float(meta.get("lot_size"))
+    min_size = _positive_float(meta.get("min_size"))
+    if tick_size is None or lot_size is None or min_size is None:
+        return None
+    return {
+        "ct_val": 1.0,
+        "lot_size": lot_size,
+        "tick_size": tick_size,
+        "min_size": min_size,
+        "source": "binance_exchange_info",
+    }
+
+
+async def _upsert_venue_instrument_spec(
+    pool: Any,
+    *,
+    exchange: str,
+    symbol: str,
+    ct_val: float,
+    lot_size: float,
+    tick_size: float,
+    min_size: float,
+    source: str,
+) -> None:
+    await pool.execute(
+        """
+        INSERT INTO venue_instrument_specs
+            (exchange, symbol, ct_val, lot_size, tick_size, min_size, source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (exchange, symbol) DO UPDATE SET
+            ct_val = EXCLUDED.ct_val,
+            lot_size = EXCLUDED.lot_size,
+            tick_size = EXCLUDED.tick_size,
+            min_size = EXCLUDED.min_size,
+            source = EXCLUDED.source,
+            updated_at = NOW()
+        """,
+        exchange,
+        symbol,
+        float(ct_val),
+        float(lot_size),
+        float(tick_size),
+        float(min_size),
+        source,
+    )
+
+
 async def _binance_instruments(quote_ccy: str = "USDT", keyword: str = "") -> list[dict[str, Any]]:
     from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
 
@@ -496,6 +564,9 @@ async def _binance_instruments(quote_ccy: str = "USDT", keyword: str = "") -> li
             "state": item.get("status"),
             "list_time_ms": list_time_ms,
             "list_date": _ms_to_date(list_time_ms),
+            "tick_size": _binance_filter_value(item, "PRICE_FILTER", "tickSize"),
+            "lot_size": _binance_filter_value(item, "LOT_SIZE", "stepSize"),
+            "min_size": _binance_filter_value(item, "LOT_SIZE", "minQty"),
         }
         if keyword and not _instrument_matches(row, keyword):
             continue
@@ -1435,6 +1506,20 @@ async def _run_fetch_body(job_id: str, req: FetchRequest, db_dsn: str) -> None:
                     "current_symbol": symbol,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
+                if exchange == "binance":
+                    venue_spec = _binance_venue_spec_from_meta(meta)
+                    if venue_spec is not None:
+                        await _upsert_venue_instrument_spec(
+                            pool,
+                            exchange=exchange,
+                            symbol=symbol,
+                            ct_val=float(venue_spec["ct_val"]),
+                            lot_size=float(venue_spec["lot_size"]),
+                            tick_size=float(venue_spec["tick_size"]),
+                            min_size=float(venue_spec["min_size"]),
+                            source=str(venue_spec["source"]),
+                        )
+                    _raise_if_fetch_cancelled(job_id)
                 if not fetch_ranges:
                     skip_start_dt = max(requested_start_dt, list_dt)
                     fetched.append({
