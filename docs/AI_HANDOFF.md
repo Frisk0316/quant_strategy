@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-18
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -22,8 +22,10 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
-Current session goal: close out ADR-0007 P1 multi-venue instrument specs on
-`codex/impl-multi-venue-instrument-specs`. Tasks 1-6 are locally implemented:
+Current session goal: implement Market Data Coverage fetch queue + delete-pair
+behavior from `docs/superpowers/plans/2026-06-18-market-data-queue-and-delete.md`
+on `codex/impl-multi-venue-instrument-specs`. Branch baseline before this task:
+ADR-0007 P1 multi-venue instrument specs are locally implemented:
 venue specs migration/seed, exchange-aware `ct_val` resolution, exchange-tagged
 provenance/source gates, Run Backtest exchange selection, convergence golden
 case, and docs/manifest updates. Follow-up implemented: normal Binance/Bybit
@@ -110,6 +112,7 @@ with `db_parity.status == "PASS"`,
 
 | Commit / PR | Change | Risk |
 |---|---|---|
+| Market Data Coverage queue + delete pair `(in progress; Codex 2026-06-22)` | `src/okx_quant/api/routes_data.py` now seeds fetch jobs as `queued`, serializes execution behind one process-local `asyncio.Lock`, and exposes `DELETE /api/data/pairs/{inst_id}` to transactionally remove a pair from market/legacy candle and funding tables plus the local parquet mirror. `frontend/view-config.js` renders `/fetch/jobs` as a job list, allows stacking fetch submissions, supports per-job cancel, and adds a native-confirm Delete button for OHLCV/funding coverage rows. | Data/API/frontend scope only. No strategy logic, risk/portfolio/execution behavior, DB schema, config, result artifacts, deployment gates, or differential-validation files changed. Delete is irreversible and guarded by UI confirm plus a backend 409 when a non-terminal fetch references the pair. Manual DB-backed browser smoke is still pending in this sandbox. |
 | Universal price chart + progressive load `(complete; Codex 2026-06-17)` | `frontend/view-backtest.js` now renders one Price + Trade Markers panel per selected symbol, so loaded symbols draw while other symbols are still loading/empty/failed. The base price chart stays strategy-agnostic; MA/EMA/MACD indicator overlay cards remain gated by `isTechnicalRun`. Backend price-series fallback was checked and already reconstructs missing `price_series.csv` rows from `result.json` visual symbols and the candle loader. | UI-only chart behavior. No strategy logic, risk/portfolio/execution behavior, DB schema, result artifacts, deployment gates, or differential-validation gate files changed. Browser-level interaction coverage remains a known gap in `docs/KNOWN_ISSUES.md`. |
 | Source provenance validation slice `(in progress; Codex 2026-06-17)` | `scripts/run_source_provenance_validation.py` and `make source-provenance-validation` gate existing or freshly generated `validation_result.json` evidence. The gate requires `source_data_validation.status == PASS`, `ct_val_provenance.status == PASS`, `db_parity.status == PASS`, and `ohlcv_source_validation == db_parity_pass`; DB parity `SKIP` fails by design. | This is DB-backed evidence gating only. It does not alter strategy logic, reference-adapter tolerances, PnL/fill semantics, risk, portfolio, execution, DB schema, deployment gates, existing result artifacts, or Nautilus full execution parity. It still needs a reachable TimescaleDB/Postgres DSN and canonical candles to produce passing real-data evidence. |
 | Strategy signal-validation CI gate `(complete; Codex 2026-06-17)` | `.github/workflows/ci.yml` adds a `strategy-signal-validation` job that installs `.[dev,validation]` and runs `make strategy-signal-validation`. `Makefile` now accepts `VALIDATION_RESULTS_DIR`, so CI writes generated validation artifacts to runner temp storage instead of repo `results/`. User agreed this job should be configured as a required branch protection check once pushed. | This is CI/harness wiring only. It does not alter strategy logic, reference-adapter tolerances, PnL/fill semantics, risk, portfolio, execution, DB schema, deployment gates, or existing result artifacts. The job remains fixture signal-point evidence, not real-data parity, execution parity, or live-readiness evidence. |

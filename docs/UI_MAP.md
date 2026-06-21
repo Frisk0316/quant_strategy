@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -101,7 +101,22 @@ Main app views in `frontend/app.js`:
 - `fetchDataCoverage`: `GET /api/data/coverage`.
 - `fetchDataInstruments`: `GET /api/data/instruments`.
 - `triggerDataFetch`: `POST /api/data/fetch`.
+- `fetchDataFetchJobs`: `GET /api/data/fetch/jobs`.
+- `fetchDataFetchStatus`: `GET /api/data/fetch/status/{job_id}`.
+- `cancelDataFetch`: `POST /api/data/fetch/cancel/{job_id}`.
+- `deleteDataPair`: `DELETE /api/data/pairs/{inst_id}`.
 - `dataExportUrl`: `GET /api/data/export`.
+
+## Market Data Coverage
+
+- `frontend/view-config.js` owns the Market Data Coverage card.
+- Fetch submissions are no longer blocked by another active fetch. The card
+  renders the `/api/data/fetch/jobs` list with queued/running/done/error/cancelled
+  statuses and per-job cancel controls.
+- Coverage rows for OHLCV and funding pairs include a Delete button. The button
+  uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
+  coverage when the API succeeds. External dataset rows are not pair-delete
+  targets.
 
 Validation-lab calls exist in `frontend/view-validation.js`, but validation engine
 implementation is out of scope for AI-context/harness work when another session owns

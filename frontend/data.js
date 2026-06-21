@@ -383,6 +383,12 @@ window.API = (function () {
     fetchDataFetchStatus:     (jobId)   => _get("/api/data/fetch/status/" + jobId),
     cancelDataFetch:          (jobId)   => _post("/api/data/fetch/cancel/" + jobId, {}),
     fetchDataFetchJobs:       ()        => _get("/api/data/fetch/jobs"),
+    deleteDataPair: async (instId) => {
+      const r = await fetch("/api/data/pairs/" + encodeURIComponent(instId), { method: "DELETE" });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload.detail || ("HTTP " + r.status));
+      return payload;
+    },
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),

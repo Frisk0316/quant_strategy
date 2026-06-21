@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -25,6 +25,29 @@ exchange REST candles -> scripts/market_data/ingest.py or legacy download script
 Current: DB-backed ingestion is available when `DATABASE_URL` or
 `config/settings.yaml` DSN is reachable. Known gap: local environments without DB
 must rely on parquet fallback or skip DB-dependent validation.
+
+## Market Data Fetch Queue Flow
+
+```text
+frontend Market Data Coverage form -> POST /api/data/fetch -> in-memory queued job -> routes_data._fetch_lock -> exchange REST + CandleStore writes -> DB + parquet mirror -> /api/data/fetch/jobs -> frontend job list and coverage refresh
+```
+
+Current: fetch jobs are accepted as `queued` and run sequentially behind one
+process-local lock. Queued or running jobs can be cancelled; a queued job checks
+for cancellation before it acquires the lock, so it never starts after a cancel.
+
+## Market Data Pair Delete Flow
+
+```text
+frontend coverage row Delete -> DELETE /api/data/pairs/{inst_id} -> transactional DB purge -> data/ticks/<inst_id with dashes replaced>/ directory removal -> coverage/exchange lists refresh
+```
+
+Current: the delete route removes the pair from `market_klines`,
+`market_funding_rates`, `market_instruments`, `canonical_candles`,
+`raw_candles`, `funding_rates`, `instrument_bars`, `instruments`, and the local
+parquet mirror directory. The API returns 409 if a non-terminal fetch job lists
+the same pair; parquet deletion errors are surfaced but do not roll back the DB
+transaction.
 
 ## Venue Instrument Spec Flow
 

@@ -11,8 +11,10 @@ import asyncio
 import csv
 import io
 import re
+import shutil
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
@@ -20,6 +22,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 _jobs: dict[str, dict] = {}
+
+# ponytail: global single fetch lock -- one fetch runs at a time across all
+# sessions. Split into per-exchange locks only if OKX+Binance parallelism is
+# ever needed.
+_fetch_lock = asyncio.Lock()
+_TERMINAL_FETCH_STATUSES = {"done", "error", "cancelled"}
 
 _FETCH_BAR_MS: dict[str, int] = {
     "1m": 60_000,
@@ -289,12 +297,12 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
             "job_id": job_id,
             "exchange": exchange,
             "existing_only": bool(req.existing_only),
-            "status": "running",
+            "status": "queued",
             "progress": 0,
             "message": (
-                f"Starting {exchange.upper()} {len(symbols)} existing DB symbol update..."
+                f"Queued: {exchange.upper()} {len(symbols)} existing DB symbol update..."
                 if req.existing_only
-                else f"Starting {exchange.upper()} {len(symbols)} symbol fetch..."
+                else f"Queued: {exchange.upper()} {len(symbols)} symbol fetch..."
             ),
             "symbols": symbols,
             "symbol_count": len(symbols),
@@ -332,6 +340,38 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
             key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
             reverse=True,
         )
+
+    @router.delete("/pairs/{inst_id}")
+    async def delete_pair(inst_id: str):
+        if not db_dsn:
+            raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+        inst_id = str(inst_id or "").strip().upper()
+        if not inst_id:
+            raise HTTPException(status_code=400, detail="inst_id is required")
+        if _active_job_for_symbol(inst_id):
+            raise HTTPException(status_code=409, detail="Pair has an active fetch job; cancel it first")
+        import asyncpg
+
+        deleted: dict[str, int] = {}
+        conn = await asyncpg.connect(db_dsn)
+        try:
+            async with conn.transaction():
+                for sql, params in _pair_delete_statements(inst_id):
+                    table = sql.split("FROM")[1].split()[0]
+                    status = await conn.execute(sql, *params)
+                    deleted[table] = int(status.rsplit(" ", 1)[-1]) if status.startswith("DELETE") else 0
+        finally:
+            await conn.close()
+        parquet_removed, parquet_error = _remove_pair_parquet(
+            inst_id,
+            _project_root_path() / "data" / "ticks",
+        )
+        return {
+            "inst_id": inst_id,
+            "deleted": deleted,
+            "parquet_removed": parquet_removed,
+            "parquet_error": parquet_error,
+        }
 
     return router
 
@@ -1052,6 +1092,45 @@ def _project_root_path():
     return _Path(__file__).resolve().parents[3]
 
 
+def _pair_delete_statements(inst_id: str) -> list[tuple[str, list]]:
+    subquery = (
+        "instrument_id IN (SELECT instrument_id FROM market_instruments "
+        "WHERE canonical_inst_id=$1 OR normalized_symbol=$1)"
+    )
+    return [
+        (f"DELETE FROM market_klines WHERE {subquery}", [inst_id]),
+        (f"DELETE FROM market_funding_rates WHERE {subquery}", [inst_id]),
+        ("DELETE FROM market_instruments WHERE canonical_inst_id=$1 OR normalized_symbol=$1", [inst_id]),
+        ("DELETE FROM canonical_candles WHERE inst_id=$1", [inst_id]),
+        ("DELETE FROM raw_candles WHERE inst_id=$1", [inst_id]),
+        ("DELETE FROM funding_rates WHERE inst_id=$1", [inst_id]),
+        ("DELETE FROM instrument_bars WHERE inst_id=$1", [inst_id]),
+        ("DELETE FROM instruments WHERE inst_id=$1", [inst_id]),
+    ]
+
+
+def _active_job_for_symbol(inst_id: str) -> bool:
+    target = str(inst_id or "").upper()
+    for job in _jobs.values():
+        if job.get("status") in _TERMINAL_FETCH_STATUSES:
+            continue
+        symbols = [str(symbol or "").upper() for symbol in (job.get("symbols") or [])]
+        if target in symbols:
+            return True
+    return False
+
+
+def _remove_pair_parquet(inst_id: str, ticks_dir: str | Path) -> tuple[bool, str | None]:
+    inst_dir = Path(ticks_dir) / str(inst_id).replace("-", "_")
+    if not inst_dir.exists():
+        return False, None
+    try:
+        shutil.rmtree(inst_dir)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 async def _write_fetched_to_parquet(
     db_dsn: str,
     inst_id: str,
@@ -1261,6 +1340,29 @@ def _instrument_map(raw: list[dict]) -> dict[str, dict]:
 
 
 async def _run_fetch(job_id: str, req: FetchRequest, db_dsn: str) -> None:
+    if _job_cancel_requested(job_id):
+        _mark_fetch_cancelled(job_id)
+        return
+    job = _jobs.get(job_id)
+    if job is not None:
+        job.update({
+            "status": "queued",
+            "message": "Queued - waiting for running fetch...",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    async with _fetch_lock:
+        if _job_cancel_requested(job_id):
+            _mark_fetch_cancelled(job_id)
+            return
+        if job is not None:
+            job.update({
+                "status": "running",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+        await _run_fetch_body(job_id, req, db_dsn)
+
+
+async def _run_fetch_body(job_id: str, req: FetchRequest, db_dsn: str) -> None:
     try:
         import asyncpg
 

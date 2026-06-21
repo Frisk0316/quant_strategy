@@ -860,7 +860,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         </div>
       </div>
 
-      <${MarketDataCard} />
+      <${MarketDataCard} onCoverageChange=${setDataCoverage} />
     </div>
   `;
 }
@@ -1134,10 +1134,10 @@ function ParameterSweepPanel({
   `;
 }
 
-function MarketDataCard() {
+function MarketDataCard({ onCoverageChange } = {}) {
   const [coverage, setCoverage] = useConfigState(null);
   const [instruments, setInstruments] = useConfigState([]);
-  const [fetchJob, setFetchJob] = useConfigState(null);
+  const [fetchJobs, setFetchJobs] = useConfigState([]);
   const [exportJob, setExportJob] = useConfigState(null);
   const [showFetchPanel, setShowFetchPanel] = useConfigState(false);
   const [showExportPanel, setShowExportPanel] = useConfigState(false);
@@ -1145,7 +1145,7 @@ function MarketDataCard() {
   const [instrumentQuery, setInstrumentQuery] = useConfigState("");
   const [instrumentSearch, setInstrumentSearch] = useConfigState({ status: "idle", exchange: "okx", query: "", message: "" });
   const [fetchStartPending, setFetchStartPending] = useConfigState(false);
-  const [fetchCancelPending, setFetchCancelPending] = useConfigState(false);
+  const [deletePending, setDeletePending] = useConfigState("");
   const [exportForm, setExportForm] = useConfigState({ kind: "ohlcv", symbols: [], datasets: ["cme_btc_yfinance"], bar: "1H", start: "2024-01-01", end: yesterday, format: "xlsx" });
   const listingMap = Object.fromEntries(instruments.map((i) => [i.inst_id, i.list_date]));
   const latestSelectedListing = (fetchForm.symbols || [])
@@ -1191,11 +1191,39 @@ function MarketDataCard() {
   const searchResultSymbols = instruments.map((inst) => inst.inst_id).filter(Boolean);
   const allSearchResultsSelected = searchResultSymbols.length > 0
     && searchResultSymbols.every((symbol) => (fetchForm.symbols || []).includes(symbol));
-  const fetchBusy = fetchJob && !FETCH_TERMINAL_STATUSES.has(fetchJob.status);
-  const fetchCanCancel = !!fetchJob?.job_id && ["running", "cancelling"].includes(fetchJob.status);
+  const anyFetchActive = (fetchJobs || []).some((job) => !FETCH_TERMINAL_STATUSES.has(job.status));
 
   function refreshCoverage() {
-    window.API.fetchDataCoverage().then(setCoverage).catch(() => setCoverage([]));
+    window.API.fetchDataCoverage()
+      .then((rows) => {
+        const next = rows || [];
+        setCoverage(next);
+        onCoverageChange?.(next);
+      })
+      .catch(() => {
+        setCoverage([]);
+        onCoverageChange?.([]);
+      });
+  }
+
+  function refreshFetchJobs() {
+    if (!window.API.fetchDataFetchJobs) return Promise.resolve([]);
+    return window.API.fetchDataFetchJobs()
+      .then((jobs) => {
+        setFetchJobs(jobs || []);
+        return jobs || [];
+      })
+      .catch(() => []);
+  }
+
+  function deletePair(instId) {
+    if (!instId || !window.API.deleteDataPair) return;
+    if (!window.confirm(`Delete ALL data for ${instId} across all bars? This cannot be undone.`)) return;
+    setDeletePending(instId);
+    window.API.deleteDataPair(instId)
+      .then(() => refreshCoverage())
+      .catch((err) => window.alert(`Delete failed: ${err?.message || "request failed"}`))
+      .finally(() => setDeletePending(""));
   }
 
   function currentFetchForm(overrides = {}) {
@@ -1253,6 +1281,7 @@ function MarketDataCard() {
 
   useConfigEffect(() => {
     refreshCoverage();
+    refreshFetchJobs();
     setInstruments([]);
   }, []);
 
@@ -1262,42 +1291,16 @@ function MarketDataCard() {
   }, [fetchForm.exchange]);
 
   useConfigEffect(() => {
-    const savedJobId = localStorage.getItem("activeDataFetchJobId");
-    if (!savedJobId || !window.API.fetchDataFetchStatus) {
-      window.API.fetchDataFetchJobs?.()
-        .then((jobs) => {
-          const running = (jobs || []).find((j) => ["running", "cancelling"].includes(j.status));
-          if (running?.job_id) {
-            localStorage.setItem("activeDataFetchJobId", running.job_id);
-            setFetchJob(running);
-          }
-        })
-        .catch(() => {});
-      return;
-    }
-    let stopped = false;
-    let intervalId = null;
-    const poll = () => {
-      window.API.fetchDataFetchStatus(savedJobId).then((state) => {
-        if (stopped) return;
-        setFetchJob(state);
-        if (FETCH_TERMINAL_STATUSES.has(state.status)) {
-          localStorage.removeItem("activeDataFetchJobId");
+    if (!anyFetchActive) return;
+    const intervalId = setInterval(() => {
+      refreshFetchJobs().then((jobs) => {
+        if (!(jobs || []).some((job) => !FETCH_TERMINAL_STATUSES.has(job.status))) {
           refreshCoverage();
-          if (intervalId) clearInterval(intervalId);
         }
-      }).catch(() => {
-        localStorage.removeItem("activeDataFetchJobId");
-        if (intervalId) clearInterval(intervalId);
       });
-    };
-    poll();
-    intervalId = setInterval(poll, 2000);
-    return () => {
-      stopped = true;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, []);
+    }, 2000);
+    return () => clearInterval(intervalId);
+  }, [anyFetchActive]);
 
   function triggerFetch() {
     startFetch(currentFetchForm({ existing_only: false }));
@@ -1308,65 +1311,34 @@ function MarketDataCard() {
   }
 
   function startFetch(body) {
-    const exchange = String(body.exchange || "okx").toLowerCase();
     setFetchStartPending(true);
-    setFetchJob({
-      status: "running",
-      progress: 1,
-      exchange,
-      existing_only: !!body.existing_only,
-      symbols: body.symbols || [],
-      symbol_count: body.existing_only ? existingDbFetchSymbols.length : (body.symbols || []).length,
-      message: `Queueing ${exchange.toUpperCase()} ${body.existing_only ? "DB pair update" : "fetch"}...`,
-    });
-    window.API.triggerDataFetch(body).then((job) => {
-      setFetchStartPending(false);
-      setFetchJob(job);
-      localStorage.setItem("activeDataFetchJobId", job.job_id);
-      const iv = setInterval(() => {
-        window.API.fetchDataFetchStatus(job.job_id).then((s) => {
-          setFetchJob(s);
-          if (FETCH_TERMINAL_STATUSES.has(s.status)) {
-            clearInterval(iv);
-            localStorage.removeItem("activeDataFetchJobId");
-            refreshCoverage();
-          }
-        }).catch(() => {
-          clearInterval(iv);
-          localStorage.removeItem("activeDataFetchJobId");
-        });
-      }, 2000);
-    }).catch((err) => {
-      setFetchStartPending(false);
-      setFetchJob({
-        status: "error",
-        progress: 0,
-        exchange,
-        message: err?.message || "Fetch request failed",
-      });
-    });
+    window.API.triggerDataFetch(body)
+      .then((job) => {
+        setFetchJobs((jobs) => [job, ...(jobs || []).filter((row) => row.job_id !== job.job_id)]);
+        return refreshFetchJobs();
+      })
+      .catch((err) => {
+        setFetchJobs((jobs) => [
+          {
+            job_id: `err-${Date.now()}`,
+            status: "error",
+            progress: 0,
+            message: err?.message || "Fetch request failed",
+          },
+          ...(jobs || []),
+        ]);
+      })
+      .finally(() => setFetchStartPending(false));
   }
 
-  function cancelFetchJob() {
-    if (!fetchJob?.job_id || fetchCancelPending || !window.API.cancelDataFetch) return;
-    setFetchCancelPending(true);
-    window.API.cancelDataFetch(fetchJob.job_id).then((job) => {
-      setFetchJob(job);
-      if (FETCH_TERMINAL_STATUSES.has(job.status)) {
-        localStorage.removeItem("activeDataFetchJobId");
-        refreshCoverage();
-      }
-    }).catch((err) => {
-      setFetchJob((job) => job ? {
-        ...job,
-        status: job.status || "running",
-        message: `Cancel failed: ${err?.message || "request failed"}`,
-      } : {
-        status: "error",
-        progress: 0,
-        message: `Cancel failed: ${err?.message || "request failed"}`,
-      });
-    }).finally(() => setFetchCancelPending(false));
+  function cancelFetchJob(jobId) {
+    if (!jobId || !window.API.cancelDataFetch) return;
+    setFetchJobs((jobs) => (jobs || []).map((job) => (
+      job.job_id === jobId ? { ...job, status: "cancelling", message: "Cancel requested..." } : job
+    )));
+    window.API.cancelDataFetch(jobId)
+      .then(() => refreshFetchJobs())
+      .catch(() => refreshFetchJobs());
   }
 
   function toggleFetchSymbol(symbol) {
@@ -1639,36 +1611,41 @@ function MarketDataCard() {
                 onChange=${(e) => setFetchForm((f) => ({ ...f, end: e.target.value > yesterday ? yesterday : e.target.value }))} />
             </div>
           </div>
-          ${fetchJob && html`
-            <div class="row" style=${{ gap: 12, marginTop: 12, alignItems: "center" }}>
-              <span class=${`chip ${fetchJob.status === "done" ? "profit" : fetchJob.status === "error" ? "loss" : "warn"}`}>
-                ${fetchJob.status}
-              </span>
-              <${ProgressStage} job=${fetchJob} />
-            </div>
-          `}
           <div class="row" style=${{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <button class="btn primary sm"
-              disabled=${fetchStartPending || fetchBusy || !(fetchForm.symbols || []).length || fetchForm.start >= fetchForm.end}
+              disabled=${fetchStartPending || !(fetchForm.symbols || []).length || fetchForm.start >= fetchForm.end}
               onClick=${triggerFetch}>
               Confirm and Fetch to DB
             </button>
             <button class="btn sm"
-              disabled=${fetchStartPending || fetchBusy || !existingDbFetchSymbols.length || fetchForm.start >= fetchForm.end}
+              disabled=${fetchStartPending || !existingDbFetchSymbols.length || fetchForm.start >= fetchForm.end}
               onClick=${triggerExistingOnlyFetch}>
               Update DB Pairs Only (${existingDbFetchSymbols.length})
             </button>
-            ${fetchCanCancel && html`
-              <button class="btn ghost sm"
-                disabled=${fetchCancelPending || fetchJob.status === "cancelling"}
-                onClick=${cancelFetchJob}>
-                ${fetchCancelPending || fetchJob.status === "cancelling" ? "Cancelling..." : "Cancel"}
-              </button>
-            `}
           </div>
-          ${fetchJob?.results?.length > 0 && html`
-            <div class="field-hint" style=${{ marginTop: 8 }}>
-              ${fetchJob.results.map((r) => `${(r.exchange || fetchForm.exchange || "").toUpperCase()} ${r.symbol}${r.native_symbol && r.native_symbol !== r.symbol ? ` (${r.native_symbol})` : ""}: ${r.rows?.toLocaleString?.() ?? r.rows} rows from ${r.effective_start || r.list_date || "-"}`).join(" - ")}
+          ${(fetchJobs || []).length > 0 && html`
+            <div class="field" style=${{ marginTop: 12 }}>
+              <div class="field-label">Fetch jobs</div>
+              ${fetchJobs.map((job) => html`
+                <div key=${job.job_id} class="row" style=${{ gap: 12, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                  <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>
+                    ${job.status}
+                  </span>
+                  <${ProgressStage} job=${job} />
+                  ${["running", "queued", "cancelling"].includes(job.status) && html`
+                    <button class="btn ghost sm"
+                      disabled=${job.status === "cancelling"}
+                      onClick=${() => cancelFetchJob(job.job_id)}>
+                      ${job.status === "cancelling" ? "Cancelling..." : "Cancel"}
+                    </button>
+                  `}
+                  ${job.results?.length > 0 && html`
+                    <span class="field-hint">
+                      ${job.results.map((r) => `${(r.exchange || fetchForm.exchange || "").toUpperCase()} ${r.symbol}${r.native_symbol && r.native_symbol !== r.symbol ? ` (${r.native_symbol})` : ""}: ${r.rows?.toLocaleString?.() ?? r.rows} rows from ${r.effective_start || r.list_date || "-"}`).join(" - ")}
+                    </span>
+                  `}
+                </div>
+              `)}
             </div>
           `}
         </div>
@@ -1680,7 +1657,7 @@ function MarketDataCard() {
             <tr>
               <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
-              <th class="num">Gaps</th>
+              <th class="num">Gaps</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -1696,10 +1673,20 @@ function MarketDataCard() {
                 <td class="num" style=${{ color: row.gap_count > 0 ? "var(--warn)" : "var(--profit)" }}>
                   ${row.gap_count ?? "-"}
                 </td>
+                <td class="num">
+                  ${["ohlcv", "funding"].includes(row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")) && html`
+                    <button class="btn ghost sm"
+                      title="Delete all data for this pair"
+                      disabled=${deletePending === row.inst_id}
+                      onClick=${() => deletePair(row.inst_id)}>
+                      ${deletePending === row.inst_id ? "Deleting..." : "Delete"}
+                    </button>
+                  `}
+                </td>
               </tr>
             `)}
             ${(!coverage || !coverage.length) && html`
-              <tr><td colSpan=${8} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
+              <tr><td colSpan=${9} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
             `}
           </tbody>
         </table>
