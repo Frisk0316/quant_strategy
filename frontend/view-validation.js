@@ -76,12 +76,25 @@ function CountCell({ value }) {
   const total = countPart(value, "total");
   const actionable = countPart(value, "actionable");
   const downstream = countPart(value, "downstream");
+  // A passing scope reports 0 mismatches; render it as a clear "✓ 0" so it does
+  // not read as "empty / nothing compared".
+  if (total === 0) {
+    return html`<div class="mono" style=${{ color: "var(--profit)" }} title="0 mismatches">✓ 0</div>`;
+  }
   return html`
     <div class="mono">${total.toLocaleString()}</div>
     ${actionable || downstream ? html`
       <div class="field-hint">${actionable.toLocaleString()} actionable / ${downstream.toLocaleString()} downstream</div>
     ` : null}
   `;
+}
+
+// True if any reference engine actually executed trades. When false, the
+// PnL/Trades/Metrics advisory counts are structural noise (the signals-only v1
+// reference keeps equity flat), not defects.
+function referenceExecutesTrades(detail) {
+  const engines = detail?.engines || {};
+  return Object.values(engines).some((e) => Number(e?.rows?.trades || 0) > 0);
 }
 
 function roleLabel(role) {
@@ -437,10 +450,11 @@ function EngineSummary({ detail, contract }) {
               </div>
             `}
             ${metadata.scope_limit && html`<div class="field-hint" style=${{ marginTop: 8 }}>Limit: ${metadata.scope_limit}</div>`}
-            <div class="metric-grid" style=${{ marginTop: 12 }}>
-              <div><div class="metric-label">Indicators</div><div class="metric-value">${fmtCount(engine.rows?.indicator_series)}</div></div>
-              <div><div class="metric-label">Signals</div><div class="metric-value">${fmtCount(engine.rows?.signals)}</div></div>
-              <div><div class="metric-label">Trades</div><div class="metric-value">${fmtCount(engine.rows?.trades)}</div></div>
+            <div class="field-hint" style=${{ marginTop: 12 }}>Reference output (row counts, not mismatches)</div>
+            <div class="metric-grid" style=${{ marginTop: 6 }}>
+              <div><div class="metric-label">Indicator rows</div><div class="metric-value">${fmtCount(engine.rows?.indicator_series)}</div></div>
+              <div><div class="metric-label">Signal rows</div><div class="metric-value">${fmtCount(engine.rows?.signals)}</div></div>
+              <div><div class="metric-label">Trade rows</div><div class="metric-value">${fmtCount(engine.rows?.trades)}</div></div>
               <div><div class="metric-label">Comparison</div><div class="metric-value"><${StatusChip} status=${comparison.status || engine.status} /></div></div>
             </div>
             ${Object.keys(scopes).length > 0 && html`
@@ -906,6 +920,11 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
             <div title=${ADVISORY_SCOPE_TOOLTIP}><div class="metric-label">PnL <${ScopeTag} role="advisory" /> <${InfoTooltip} text=${ADVISORY_SCOPE_TOOLTIP} /></div><div class="metric-value"><${CountCell} value=${activeDetail.mismatch_counts?.pnl} /></div></div>
             <div title=${ADVISORY_SCOPE_TOOLTIP}><div class="metric-label">Metrics <${ScopeTag} role="advisory" /> <${InfoTooltip} text=${ADVISORY_SCOPE_TOOLTIP} /></div><div class="metric-value"><${CountCell} value=${activeDetail.mismatch_counts?.metrics} /></div></div>
           </div>
+          ${!referenceExecutesTrades(activeDetail) && html`
+            <div class="field-hint" style=${{ marginTop: 6 }}>
+              PnL / Trades / Metrics advisory counts compare against a signals-only reference that does not execute trades (v1), so its equity stays flat — nonzero counts here are expected and are not defects. Read signal logic + engine quorum instead.
+            </div>
+          `}
           <${ReviewerGuardrail} />
           <${SourceDataValidationPanel} validation=${activeDetail.source_data_validation} conclusion=${activeDetail.validation_conclusion} />
           <${ExternalValidationConclusionPanel} conclusion=${activeDetail.external_validation_conclusion} />
