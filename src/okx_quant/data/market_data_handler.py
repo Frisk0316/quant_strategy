@@ -60,12 +60,13 @@ class MarketDataHandler:
         """Subscribe to public channels: books, trades, funding-rate."""
         url = self._ws_public_url
         if self._demo:
-            # Demo WS: replace host, add brokerId
-            url = url.replace("ws.okx.com:8443", "wspap.okx.com") + "?brokerId=9999"
+            # Demo WS: replace host (keep :8443 port), add brokerId
+            url = url.replace("ws.okx.com:8443", "wspap.okx.com:8443") + "?brokerId=9999"
 
         async for ws in websockets.connect(url, ping_interval=None, max_size=2**23):
             logger.info("WS public connected", url=url)
             self._record_reconnect()
+            heartbeat_task = None
             try:
                 await self._subscribe_books(ws)
                 await self._subscribe_trades(ws)
@@ -74,22 +75,24 @@ class MarketDataHandler:
                 async for raw in ws:
                     if raw == "pong":
                         continue
-                    await self._handle_public_message(json.loads(raw))
+                    await self._handle_public_message(ws, json.loads(raw))
             except Exception as e:
                 logger.warning("WS public error, reconnecting", exc=str(e))
             finally:
-                heartbeat_task.cancel()
+                if heartbeat_task is not None:
+                    heartbeat_task.cancel()
                 await asyncio.sleep(1)
 
     async def run_private(self) -> None:
         """Subscribe to private channels: order fills, position updates."""
         url = self._ws_private_url
         if self._demo:
-            url = url.replace("ws.okx.com:8443", "wspap.okx.com") + "?brokerId=9999"
+            url = url.replace("ws.okx.com:8443", "wspap.okx.com:8443") + "?brokerId=9999"
 
         async for ws in websockets.connect(url, ping_interval=None, max_size=2**23):
             logger.info("WS private connected")
             self._record_reconnect()
+            heartbeat_task = None
             try:
                 await self._ws_login(ws)
                 await self._subscribe_private(ws)
@@ -101,7 +104,8 @@ class MarketDataHandler:
             except Exception as e:
                 logger.warning("WS private error, reconnecting", exc=str(e))
             finally:
-                heartbeat_task.cancel()
+                if heartbeat_task is not None:
+                    heartbeat_task.cancel()
                 await asyncio.sleep(1)
 
     # ------------------------------------------------------------------
@@ -112,6 +116,15 @@ class MarketDataHandler:
         args = [{"channel": "books", "instId": s} for s in self._symbols]
         await ws.send(json.dumps({"op": "subscribe", "args": args}))
         logger.info("Subscribed to books", symbols=self._symbols)
+
+    async def _resubscribe_book(self, ws, inst_id: str) -> None:
+        """Re-sync one book channel after a seq gap / checksum error,
+        without dropping trades/funding or reconnecting the socket."""
+        self.books[inst_id] = OkxBook(inst_id)  # discard stale state
+        arg = {"channel": "books", "instId": inst_id}
+        await ws.send(json.dumps({"op": "unsubscribe", "args": [arg]}))
+        await ws.send(json.dumps({"op": "subscribe", "args": [arg]}))
+        logger.info("Resubscribed book after desync", inst_id=inst_id)
 
     async def _subscribe_trades(self, ws) -> None:
         args = [{"channel": "trades", "instId": s} for s in self._symbols]
@@ -135,7 +148,7 @@ class MarketDataHandler:
     # Message handlers
     # ------------------------------------------------------------------
 
-    async def _handle_public_message(self, msg: dict) -> None:
+    async def _handle_public_message(self, ws, msg: dict) -> None:
         if "event" in msg:
             logger.debug("WS event", event=msg.get("event"), msg=msg)
             return
@@ -144,22 +157,25 @@ class MarketDataHandler:
         inst_id = msg.get("arg", {}).get("instId", "")
 
         if channel == "books":
-            await self._handle_book_update(msg, inst_id)
+            await self._handle_book_update(ws, msg, inst_id)
         elif channel == "trades":
             await self._handle_trade(msg, inst_id)
         elif channel == "funding-rate":
             await self._handle_funding(msg, inst_id)
 
-    async def _handle_book_update(self, msg: dict, inst_id: str) -> None:
+    async def _handle_book_update(self, ws, msg: dict, inst_id: str) -> None:
         book = self.books.get(inst_id)
         if book is None:
             return
         try:
             book.handle(msg)
         except RuntimeError as e:
-            logger.warning("Book error", inst_id=inst_id, exc=str(e))
-            # Signal to re-subscribe (caller's reconnect loop handles it)
-            raise
+            # Seq gap / checksum desync: re-sync just this book channel
+            # instead of tearing down the whole public connection (which
+            # also drops trades/funding and triggers reconnect churn).
+            logger.warning(f"Book desync ({e}), resubscribing channel", inst_id=inst_id)
+            await self._resubscribe_book(ws, inst_id)
+            return
 
         if not book.is_valid():
             return

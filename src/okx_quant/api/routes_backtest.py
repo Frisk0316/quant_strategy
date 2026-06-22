@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,7 @@ from backtesting.parameter_sweep import (
     expand_parameter_grid,
     run_parameter_sweep,
 )
+from backtesting.artifact_rows import read_artifact_rows, validation_artifact_type
 from backtesting.research_controls import ResearchControlError, sanitize_risk_overrides
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
@@ -77,6 +79,60 @@ def _attach_idealized_fill_warning(payload: dict[str, Any], source: Any | None =
     if isinstance(validation, dict):
         validation["idealized_fill"] = True
     return payload
+
+
+_SUMMARY_KEYS = {
+    "run_id",
+    "display_name",
+    "created_at",
+    "mode",
+    "strategies",
+    "strategy",
+    "symbols",
+    "symbol",
+    "bar",
+    "start",
+    "end",
+    "backend",
+    "data_source",
+    "metrics",
+    "parameters",
+    "artifacts",
+    "validation",
+    "warnings",
+    "validation_warnings",
+}
+
+_VALIDATION_INPUT_ARTIFACT_FILES = {
+    "result": "result.json",
+    "config": "config.json",
+    "price_series": "price_series.csv",
+    "indicator_series": "indicator_series.csv",
+    "signals": "signals.csv",
+    "trades": "trades.csv",
+    "fills": "fills.csv",
+    "equity": "equity_curve.csv",
+    "target_weights": "target_weights.csv",
+    "funding_rates": "funding_rates.csv",
+    "external_observations": "external_observations.csv",
+}
+
+_VALIDATION_JSON_ARTIFACTS = {"result", "config"}
+
+
+def _summary_payload(result: dict[str, Any]) -> dict[str, Any]:
+    summary = {key: result[key] for key in _SUMMARY_KEYS if key in result}
+    artifacts = summary.get("artifacts")
+    if isinstance(artifacts, dict):
+        summary["artifact_availability"] = {key: bool(value) for key, value in artifacts.items()}
+    validation = summary.get("validation")
+    if isinstance(validation, dict):
+        summary["validation_flags"] = {
+            key: value
+            for key, value in validation.items()
+            if isinstance(value, (bool, int, float, str)) or value is None
+        }
+    return summary
 
 
 def _display_slug(value: Any, fallback: str = "unknown") -> str:
@@ -1817,6 +1873,8 @@ def _run_differential_validation_job(
     run_dir: Path,
     engines: list[str],
     validation_id: str | None,
+    output_dir: Path | None = None,
+    cleanup_dir: Path | None = None,
 ) -> None:
     try:
         from backtesting.differential_validation import run_differential_validation
@@ -1830,6 +1888,7 @@ def _run_differential_validation_job(
         summary = run_differential_validation(
             run_dir=run_dir,
             engines=engines,
+            output_dir=output_dir,
             validation_id=validation_id,
         )
         _validation_jobs[job_id].update({
@@ -1849,6 +1908,9 @@ def _run_differential_validation_job(
             "updated_at": _utc_now_iso(),
             "finished_at": _utc_now_iso(),
         })
+    finally:
+        if cleanup_dir is not None:
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
 
 
 def _run_strategy_differential_validation_job(
@@ -2012,6 +2074,76 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         except Exception:
             return None
 
+    async def _read_db_artifacts(run_id: str) -> dict[str, Any]:
+        try:
+            import asyncpg
+
+            dsn = os.environ.get("DATABASE_URL")
+            if not dsn:
+                return {}
+            conn = await asyncpg.connect(dsn)
+            try:
+                rows = await conn.fetch(
+                    """
+                    SELECT artifact_type, payload
+                    FROM backtest_artifacts
+                    WHERE run_id = $1
+                    """,
+                    Path(run_id).name,
+                )
+            finally:
+                await conn.close()
+            artifacts: dict[str, Any] = {}
+            for row in rows:
+                payload = row["payload"]
+                artifacts[row["artifact_type"]] = json.loads(payload) if isinstance(payload, str) else payload
+            return artifacts
+        except Exception:
+            return {}
+
+    def _write_materialized_artifact(path: Path, artifact_type: str, payload: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if artifact_type in _VALIDATION_JSON_ARTIFACTS:
+            path.write_text(json.dumps(_json_sanitize(payload), indent=2, ensure_ascii=False), encoding="utf-8")
+            return
+        pd.DataFrame(_as_record_list(payload)).to_csv(path, index=False)
+
+    async def _materialize_db_validation_input(run_id: str) -> Path | None:
+        artifacts = await _read_db_artifacts(run_id)
+        if "result" not in artifacts:
+            return None
+        clean = Path(run_id).name
+        materialized = Path(tempfile.mkdtemp(prefix=f"diffval_{clean}_"))
+        try:
+            for artifact_type, filename in _VALIDATION_INPUT_ARTIFACT_FILES.items():
+                if artifact_type in artifacts:
+                    _write_materialized_artifact(materialized / filename, artifact_type, artifacts[artifact_type])
+        except Exception:
+            shutil.rmtree(materialized, ignore_errors=True)
+            raise
+        return materialized
+
+    async def _read_row_artifact(
+        run_id: str,
+        artifact_type: str,
+        symbol: str | None = None,
+        limit: int = 0,
+        offset: int = 0,
+        n: int = 0,
+    ) -> list[dict[str, Any]]:
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn:
+            return []
+        return await read_artifact_rows(
+            dsn=dsn,
+            run_id=Path(run_id).name,
+            artifact_type=artifact_type,
+            symbol=symbol,
+            limit=limit,
+            offset=offset,
+            n=n,
+        )
+
     async def _read_result_payload(run_id: str) -> dict[str, Any]:
         payload = await _read_db_artifact(run_id, "result")
         if payload is not None:
@@ -2031,11 +2163,31 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         artifact_type: str,
         filename: str,
         symbol: str | None = None,
+        limit: int = 0,
+        offset: int = 0,
+        n: int = 0,
+        downsample: bool = False,
     ) -> list[dict[str, Any]]:
+        row_records = await _read_row_artifact(
+            run_id,
+            artifact_type,
+            symbol=symbol,
+            limit=limit,
+            offset=offset,
+            n=n if downsample else 0,
+        )
+        if row_records:
+            return row_records
+
         payload = await _read_db_artifact(run_id, artifact_type)
         records = _as_record_list(payload)
         if records:
-            return _filter_records_by_symbol(records, symbol)
+            records = _filter_records_by_symbol(records, symbol)
+            if offset:
+                records = records[offset:]
+            if limit:
+                records = records[:limit]
+            return _downsample_records(records, n) if downsample else records
         d = results_dir / Path(run_id).name
         if not d.is_dir():
             return []
@@ -2049,8 +2201,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                 for row in reader:
                     if _record_symbol(row) == symbol:
                         rows.append(row)
-            return rows
-        return _as_record_list(_read_csv(path))
+            records = rows
+        else:
+            records = _as_record_list(_read_csv(path))
+        if offset:
+            records = records[offset:]
+        if limit:
+            records = records[:limit]
+        return _downsample_records(records, n) if downsample else records
 
     # ------------------------------------------------------------------
     # List all runs
@@ -2388,7 +2546,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     ):
         from backtesting.differential_validation import ENGINE_NAMES
 
-        d = _run_dir(run_id)
+        clean_run_id = Path(run_id).name
+        d = results_dir / clean_run_id
+        output_dir: Path | None = None
+        cleanup_dir: Path | None = None
+        validation_id = req.validation_id
+        if not d.is_dir():
+            materialized = await _materialize_db_validation_input(clean_run_id)
+            if materialized is None:
+                raise HTTPException(status_code=404, detail="Run not found")
+            d = materialized
+            cleanup_dir = materialized
+            validation_id = validation_id or f"db_{uuid.uuid4().hex[:10]}"
+            output_dir = results_dir / clean_run_id / "validation" / validation_id
         engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
         if not engines:
             engines = ["vectorbt", "backtrader", "nautilus"]
@@ -2398,8 +2568,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         job_id = f"diffval_{uuid.uuid4().hex[:10]}"
         _validation_jobs[job_id] = {
             "job_id": job_id,
-            "run_id": run_id,
-            "validation_id": req.validation_id,
+            "run_id": clean_run_id,
+            "validation_id": validation_id,
             "engines": engines,
             "status": "queued",
             "progress": 0,
@@ -2407,7 +2577,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "created_at": _utc_now_iso(),
             "updated_at": _utc_now_iso(),
         }
-        bg.add_task(_run_differential_validation_job, job_id, run_id, d, engines, req.validation_id)
+        bg.add_task(
+            _run_differential_validation_job,
+            job_id,
+            clean_run_id,
+            d,
+            engines,
+            validation_id,
+            output_dir,
+            cleanup_dir,
+        )
         return _validation_jobs[job_id]
 
     @router.get("/differential-validation/jobs")
@@ -2444,6 +2623,13 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         from backtesting.differential_validation import read_validation_artifact
 
         try:
+            if Path(artifact_name).name.lower().endswith(".csv"):
+                rows = await _read_row_artifact(
+                    run_id,
+                    validation_artifact_type(validation_id, artifact_name),
+                )
+                if rows:
+                    return rows
             return read_validation_artifact(_run_dir(run_id), validation_id, artifact_name)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Differential validation artifact not found")
@@ -2456,6 +2642,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def get_run(run_id: str):
         """Return the full result.json for a run."""
         return await _read_result_payload(run_id)
+
+    @router.get("/{run_id}/summary")
+    async def get_run_summary(run_id: str):
+        """Return lightweight run metadata for immediate UI selection."""
+        return _summary_payload(await _read_result_payload(run_id))
 
     # ------------------------------------------------------------------
     # Metrics
@@ -2495,6 +2686,15 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/equity")
     async def get_equity(run_id: str, n: int = Query(default=0, ge=0)):
+        records = await _read_records_artifact(
+            run_id,
+            "equity",
+            "equity_curve.csv",
+            n=n,
+            downsample=True,
+        )
+        if records:
+            return records
         payload = await _read_db_artifact(run_id, "equity")
         if payload is not None:
             records = payload
@@ -2513,6 +2713,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/orders")
     async def get_orders(run_id: str):
+        records = await _read_records_artifact(run_id, "orders", "orders.csv")
+        if records:
+            return records
         payload = await _read_db_artifact(run_id, "orders")
         if payload is not None:
             return payload
@@ -2524,6 +2727,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         limit: int = Query(default=0, ge=0),
         offset: int = Query(default=0, ge=0),
     ):
+        row_records = await _read_row_artifact(run_id, "fills", limit=limit, offset=offset)
+        if row_records:
+            return row_records
         payload = await _read_db_artifact(run_id, "fills")
         records = payload if payload is not None else _read_csv(_run_dir(run_id) / "fills.csv")
         if offset:
@@ -2538,6 +2744,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         limit: int = Query(default=0, ge=0),
         offset: int = Query(default=0, ge=0),
     ):
+        row_records = await _read_row_artifact(run_id, "trades", limit=limit, offset=offset)
+        if row_records:
+            return row_records
         payload = await _read_db_artifact(run_id, "trades")
         if payload is not None:
             records = payload
@@ -2564,6 +2773,15 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/returns")
     async def get_returns(run_id: str, n: int = Query(default=0, ge=0)):
+        records = await _read_records_artifact(
+            run_id,
+            "returns",
+            "returns.csv",
+            n=n,
+            downsample=True,
+        )
+        if records:
+            return records
         payload = await _read_db_artifact(run_id, "returns")
         if payload is not None:
             records = payload
@@ -2575,6 +2793,15 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.get("/{run_id}/drawdown")
     async def get_drawdown(run_id: str, n: int = Query(default=0, ge=0)):
+        records = await _read_records_artifact(
+            run_id,
+            "drawdown",
+            "drawdown.csv",
+            n=n,
+            downsample=True,
+        )
+        if records:
+            return records
         payload = await _read_db_artifact(run_id, "drawdown")
         if payload is not None:
             records = payload
@@ -2650,9 +2877,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     ):
         if symbol and not _SAFE_SYMBOL_RE.match(symbol):
             raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
-        records = await _read_records_artifact(run_id, "execution_markers", "execution_markers.csv", symbol=symbol)
+        records = await _read_records_artifact(
+            run_id,
+            "execution_markers",
+            "execution_markers.csv",
+            symbol=symbol,
+            n=limit,
+            downsample=bool(limit),
+        )
         if records:
-            return _limit_records(records, limit)
+            return records
         result = await _read_result_payload(run_id)
         fills = await _read_records_artifact(run_id, "fills", "fills.csv", symbol=symbol)
         trades = await _read_records_artifact(run_id, "trades", "trades.csv", symbol=symbol)
@@ -2676,7 +2910,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
         clean_run_id = Path(run_id).name
-        records = await _read_records_artifact(run_id, "price_series", "price_series.csv", symbol=symbol)
+        records = await _read_records_artifact(
+            run_id,
+            "price_series",
+            "price_series.csv",
+            symbol=symbol,
+            n=n if symbol else 0,
+            downsample=bool(n and symbol),
+        )
         result: dict[str, Any] | None = None
         fills: list[dict[str, Any]] = []
         trades: list[dict[str, Any]] = []
@@ -2708,7 +2949,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         trades=trades_ctx,
                     )
                     _set_price_series_cache(cache_key, records)
-            return _downsample_records(records, n)
+            return records
 
         if records:
             result_ctx, fills_ctx, trades_ctx = await _load_visual_context()
@@ -2746,8 +2987,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
-        records = await _read_records_artifact(run_id, "indicator_series", "indicator_series.csv", symbol=symbol)
-        return _downsample_records(records, n)
+        return await _read_records_artifact(
+            run_id,
+            "indicator_series",
+            "indicator_series.csv",
+            symbol=symbol,
+            n=n,
+            downsample=bool(n),
+        )
 
     # ------------------------------------------------------------------
     # Data coverage

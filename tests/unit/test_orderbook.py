@@ -126,6 +126,33 @@ def test_checksum_mismatch_raises():
         book.handle(msg)
 
 
+def test_demo_zero_checksum_is_not_a_mismatch():
+    """OKX demo/paper (wspap) sends checksum=0 ('not computed'). Treating it
+    as a real checksum desyncs the book on every snapshot (resubscribe loop)."""
+    book = OkxBook("TEST")
+    msg = _make_snapshot([(100.0, 10.0)], [(100.1, 8.0)])
+    msg["data"][0]["checksum"] = 0
+    book.handle(msg)  # must not raise
+    assert book.is_valid()
+
+
+def test_update_before_snapshot_is_skipped():
+    """A fresh book must skip incremental updates until a snapshot baseline
+    arrives — otherwise it fails checksum on an incomplete book and loops."""
+    book = OkxBook("TEST")
+    update = {
+        "action": "update",
+        "data": [{
+            "bids": [["100.0", "10.0", "0", "1"]],
+            "asks": [],
+            "seqId": 9, "prevSeqId": 8, "checksum": 0, "ts": "1",
+        }],
+    }
+    book.handle(update)  # must not raise, must not apply
+    assert book.seq is None
+    assert not book.is_valid()
+
+
 def test_to_array_shape():
     book = OkxBook("TEST")
     bids = [(100.0 - i * 0.1, float(10 + i)) for i in range(10)]

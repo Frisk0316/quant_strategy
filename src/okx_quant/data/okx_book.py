@@ -77,6 +77,12 @@ class OkxBook:
         if msg.get("action") == "snapshot":
             self.bids.clear()
             self.asks.clear()
+        elif self.seq is None:
+            # No snapshot baseline yet (fresh book / just resubscribed).
+            # Incremental updates can't be validated and would fail the
+            # checksum against an incomplete book — skip until the snapshot
+            # arrives, otherwise resubscribe loops forever.
+            return
 
         d = msg["data"][0]
         self._apply("bids", d.get("bids", []))
@@ -88,8 +94,11 @@ class OkxBook:
             raise RuntimeError(f"seq gap: expected {self.seq}, got prevSeqId={prev_seq} -> resubscribe")
         self.seq = d["seqId"]
 
-        # Checksum validation
-        if "checksum" in d and int(self._checksum()) != int(d["checksum"]):
+        # Checksum validation. OKX demo/paper (wspap) sends checksum=0 to mean
+        # "not computed"; live sends a real signed crc32. Skip when absent or 0,
+        # otherwise the demo book desyncs on every snapshot.
+        checksum = d.get("checksum")
+        if checksum not in (None, 0) and int(self._checksum()) != int(checksum):
             raise RuntimeError("checksum mismatch -> resubscribe")
 
     # ------------------------------------------------------------------

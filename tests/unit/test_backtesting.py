@@ -965,6 +965,34 @@ def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
     assert terminal_trade["metadata"]["ct_val"] == pytest.approx(0.01)
 
 
+def test_default_instrument_specs_uses_db_lot_and_min_size(minimal_cfg, monkeypatch):
+    # Regression: replay used to hardcode minSz/lotSz=0.01 for every swap, which
+    # is too coarse for finer venues (Binance perp lot_size=0.001) and silently
+    # rounded small vol-target orders down to 0. The DB spec must win.
+    cfg = _use_okx_registry(minimal_cfg)
+    monkeypatch.setattr(
+        ReplayBacktestEngine,
+        "_load_db_instrument_specs",
+        lambda self, exchange="okx": {
+            "BTC-USDT-SWAP": {
+                "ct_val": 0.01,
+                "lot_size": 0.001,
+                "min_size": 0.001,
+                "tick_size": 0.5,
+            },
+        },
+    )
+    engine = ReplayBacktestEngine(cfg, strategy_names=["funding_carry"])
+    spec = engine._instrument_specs["BTC-USDT-SWAP"]
+    assert spec["lotSz"] == 0.001
+    assert spec["minSz"] == 0.001
+    assert spec["tickSz"] == 0.5
+    # Symbols absent from the DB keep the hardcoded fallback granularity.
+    eth = engine._instrument_specs.get("ETH-USDT-SWAP")
+    if eth is not None:
+        assert eth["lotSz"] == 0.01
+
+
 def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
     engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)

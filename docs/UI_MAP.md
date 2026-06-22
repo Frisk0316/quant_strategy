@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -34,12 +34,19 @@ Main app views in `frontend/app.js`:
 
 - `frontend/view-backtest.js` owns run selection, result loading, metrics cards,
   market charts, indicator cards, execution markers, fills/trades summaries, and
-  visual state such as chart ranges and Y zoom.
-- It calls `window.API.fetchBacktest`, `fetchBacktestEquity`,
-  `fetchBacktestFills`, `fetchBacktestTrades`, `fetchBacktestPriceSeries`,
-  `fetchBacktestExecutionMarkers`, `fetchBacktestIndicators`,
+  visual state such as chart ranges and Y zoom. The run detail header separates
+  long display names from metadata chips so DB/display-name-heavy runs can wrap;
+  the Risk events tab summarizes top blocked reasons, symbols, strategies, and
+  the signal-to-fill gap for the selected chart symbols.
+- It calls `window.API.fetchBacktestSummary` for initial selection,
+  falls back to `window.API.fetchBacktest`, then calls `fetchBacktestEquity`,
+  `fetchBacktestFills`, `fetchBacktestTrades`, `fetchBacktestSignals`,
+  `fetchBacktestPriceSeries`, `fetchBacktestExecutionMarkers`,
+  `fetchBacktestIndicators`,
   `fetchBacktestRiskEvents`, `fetchWalkForward`, and `fetchCPCV`.
 - Backend endpoints are implemented in `src/okx_quant/api/routes_backtest.py`.
+- Chart/table endpoints are row-index backed when `backtest_artifact_rows`
+  contains derived records; the UI response shape is unchanged.
 
 ## Chart Components
 
@@ -48,11 +55,13 @@ Main app views in `frontend/app.js`:
 - `TradePriceChart` is used for market price series plus execution markers.
 - The Backtest "Price + Trade Markers" card is strategy-agnostic: every selected
   chart symbol gets its own price panel, loading state, and empty/error state.
-  Technical indicator overlays remain gated to `ma_crossover`, `ema_crossover`,
-  and `macd_crossover`.
+  Price panels expose inline Y reset/Y+/Y-/slider controls; technical indicator
+  overlays remain gated to `ma_crossover`, `ema_crossover`, and
+  `macd_crossover`.
 - `IndicatorChart` is used for technical strategies and supports price, fast/slow
   series, MACD/signal/histogram, warmup source display, visible-series controls,
-  shared market X range, and independent Y zoom.
+  shared market X range, and independent Y zoom, including visible Y scale
+  controls on indicator and MACD sub-panels.
 - `frontend/view-backtest.js` owns chart state maps: market/equity/drawdown ranges,
   per-chart Y zooms, selected chart symbols, loaded price rows, indicator rows, and
   symbol load status.
@@ -89,23 +98,49 @@ Main app views in `frontend/app.js`:
 - `fetchBacktestRunStatus`: `GET /api/backtest/run/status/{job_id}`.
 - `triggerBacktestSweep`: `POST /api/backtest/sweep`.
 - `fetchBacktest`: `GET /api/backtest/{run_id}`.
+- `fetchBacktestSummary`: `GET /api/backtest/{run_id}/summary`.
 - `fetchBacktestMetrics`: `GET /api/backtest/{run_id}/metrics`.
 - `fetchBacktestEquity`: `GET /api/backtest/{run_id}/equity`.
 - `fetchBacktestReturns`: `GET /api/backtest/{run_id}/returns`.
 - `fetchBacktestDrawdown`: `GET /api/backtest/{run_id}/drawdown`.
 - `fetchBacktestFills`: `GET /api/backtest/{run_id}/fills`.
 - `fetchBacktestTrades`: `GET /api/backtest/{run_id}/trades`.
+- `fetchBacktestSignals`: `GET /api/backtest/{run_id}/signals`.
+- `fetchBacktestRiskEvents`: `GET /api/backtest/{run_id}/risk-events`.
 - `fetchBacktestExecutionMarkers`: `GET /api/backtest/{run_id}/execution-markers`.
 - `fetchBacktestPriceSeries`: `GET /api/backtest/{run_id}/price-series`.
 - `fetchBacktestIndicators`: `GET /api/backtest/{run_id}/indicators`.
 - `fetchDataCoverage`: `GET /api/data/coverage`.
 - `fetchDataInstruments`: `GET /api/data/instruments`.
 - `triggerDataFetch`: `POST /api/data/fetch`.
+- `fetchDataFetchJobs`: `GET /api/data/fetch/jobs`.
+- `fetchDataFetchStatus`: `GET /api/data/fetch/status/{job_id}`.
+- `cancelDataFetch`: `POST /api/data/fetch/cancel/{job_id}`.
+
+`fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
+cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh
+manual reload behavior.
+- `deleteDataPair`: `DELETE /api/data/pairs/{inst_id}`.
 - `dataExportUrl`: `GET /api/data/export`.
 
-Validation-lab calls exist in `frontend/view-validation.js`, but validation engine
-implementation is out of scope for AI-context/harness work when another session owns
-that area.
+## Market Data Coverage
+
+- `frontend/view-config.js` owns the Market Data Coverage card.
+- Fetch submissions are no longer blocked by another active fetch. The card
+  renders the `/api/data/fetch/jobs` list with queued/running/done/error/cancelled
+  statuses and per-job cancel controls. For Binance, `POST /api/data/fetch`
+  also syncs exchangeInfo-derived venue specs into `venue_instrument_specs`
+  before candle writes.
+- Coverage rows for OHLCV and funding pairs include a Delete button. The button
+  uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
+  coverage when the API succeeds. External dataset rows are not pair-delete
+  targets.
+
+Validation-lab calls live in `frontend/view-validation.js`. The selector merges
+saved Backtest Runs from `GET /api/backtest/runs` with strategy fixture candidates:
+saved runs trigger run-scoped `POST /api/backtest/{run_id}/differential-validation/run`,
+while remaining strategy fixtures use `POST /api/backtest/strategy-validation/run`.
+Run-scoped mismatch previews use the run validation artifact endpoint.
 
 ## Common UI Bug Locate Flow
 

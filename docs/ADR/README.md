@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -65,6 +65,7 @@ delete numbers. To replace an ADR, add a new one and mark the old one
 | [0005](0005-replay-validation-gates.md) | Replay validation gates | Accepted |
 | [0006](0006-reduce-only-risk-semantics.md) | Reduce-only risk semantics | Accepted |
 | [0007](0007-multi-venue-instrument-specs.md) | Multi-venue instrument specifications | Accepted |
+| [0008](0008-fast-backtest-artifact-rows.md) | Fast backtest artifact rows | Accepted |
 
 Keep this index in sync when adding an ADR. Related: [[DOMAIN_RULES]] ·
 [[DOC_IMPACT_MATRIX]] · `docs/DOC_LIFECYCLE.md`.

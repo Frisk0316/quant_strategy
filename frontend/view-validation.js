@@ -76,12 +76,25 @@ function CountCell({ value }) {
   const total = countPart(value, "total");
   const actionable = countPart(value, "actionable");
   const downstream = countPart(value, "downstream");
+  // A passing scope reports 0 mismatches; render it as a clear "✓ 0" so it does
+  // not read as "empty / nothing compared".
+  if (total === 0) {
+    return html`<div class="mono" style=${{ color: "var(--profit)" }} title="0 mismatches">✓ 0</div>`;
+  }
   return html`
     <div class="mono">${total.toLocaleString()}</div>
     ${actionable || downstream ? html`
       <div class="field-hint">${actionable.toLocaleString()} actionable / ${downstream.toLocaleString()} downstream</div>
     ` : null}
   `;
+}
+
+// True if any reference engine actually executed trades. When false, the
+// PnL/Trades/Metrics advisory counts are structural noise (the signals-only v1
+// reference keeps equity flat), not defects.
+function referenceExecutesTrades(detail) {
+  const engines = detail?.engines || {};
+  return Object.values(engines).some((e) => Number(e?.rows?.trades || 0) > 0);
 }
 
 function roleLabel(role) {
@@ -127,12 +140,35 @@ function validationLabel(row) {
   return row?.display_name || row?.validation_id || "";
 }
 
+function validationScope(row) {
+  return row?.validation_scope === "run" ? "run" : "strategy";
+}
+
+function validationKey(row) {
+  const id = row?.validation_id || "";
+  return id ? `${validationScope(row)}:${id}` : "";
+}
+
 function fixtureLabel(row) {
   return row?.fixture_display_name || row?.fixture_run_id || row?.run_id || "";
 }
 
+function isRunScopedFixture(row) {
+  return row?.validation_scope === "run" || row?.fixture_role === "saved_backtest_run";
+}
+
+function savedRunFixture(row) {
+  return {
+    ...(row || {}),
+    fixture_role: "saved_backtest_run",
+    validation_scope: "run",
+    validation_ready: true,
+  };
+}
+
 function fixtureStatusText(run) {
   if (!run) return "";
+  if (isRunScopedFixture(run)) return "saved backtest run; validates this run directly";
   if (run.validation_ready !== false) return "ready";
   if (run.materialize_ready) {
     const missing = (run.missing_artifacts || []).join(", ");
@@ -143,13 +179,31 @@ function fixtureStatusText(run) {
 
 function fetchFixtureOptions(strategy) {
   const api = window.API || {};
-  if (typeof api.fetchStrategyValidationFixtures === "function") {
-    return api.fetchStrategyValidationFixtures(strategy);
-  }
+  const requests = [];
   if (typeof api.fetchRuns === "function") {
-    return api.fetchRuns().then((rows) => (rows || []).filter((run) => runStrategy(run) === strategy));
+    requests.push(api.fetchRuns().then((rows) => (rows || [])
+      .filter((run) => runStrategy(run) === strategy)
+      .map(savedRunFixture)
+    ));
   }
-  return Promise.resolve([]);
+  if (typeof api.fetchStrategyValidationFixtures === "function") {
+    requests.push(api.fetchStrategyValidationFixtures(strategy));
+  }
+  if (!requests.length) return Promise.resolve([]);
+  return Promise.allSettled(requests).then((results) => {
+    const merged = [];
+    const seen = new Set();
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      for (const row of result.value || []) {
+        const id = row?.run_id;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        merged.push(row);
+      }
+    }
+    return merged;
+  });
 }
 
 function engineCapability(contract, engine) {
@@ -370,12 +424,13 @@ function ValidationTable({ rows, onSelect, selectedId }) {
         <tbody>
           ${rows.map((row) => html`
             <tr
-              key=${row.validation_id}
-              onClick=${() => onSelect(row.validation_id)}
-              style=${{ cursor: "pointer", background: selectedId === row.validation_id ? "var(--surface-2)" : undefined }}
+              key=${validationKey(row)}
+              onClick=${() => onSelect(row)}
+              style=${{ cursor: "pointer", background: selectedId === validationKey(row) ? "var(--surface-2)" : undefined }}
             >
               <td>
                 <div class="mono">${validationLabel(row)}</div>
+                ${validationScope(row) === "run" && html`<div class="field-hint">run-scoped</div>`}
                 ${row.display_name && row.validation_id !== row.display_name && html`<div class="field-hint mono">${row.validation_id}</div>`}
               </td>
               <td>
@@ -437,10 +492,11 @@ function EngineSummary({ detail, contract }) {
               </div>
             `}
             ${metadata.scope_limit && html`<div class="field-hint" style=${{ marginTop: 8 }}>Limit: ${metadata.scope_limit}</div>`}
-            <div class="metric-grid" style=${{ marginTop: 12 }}>
-              <div><div class="metric-label">Indicators</div><div class="metric-value">${fmtCount(engine.rows?.indicator_series)}</div></div>
-              <div><div class="metric-label">Signals</div><div class="metric-value">${fmtCount(engine.rows?.signals)}</div></div>
-              <div><div class="metric-label">Trades</div><div class="metric-value">${fmtCount(engine.rows?.trades)}</div></div>
+            <div class="field-hint" style=${{ marginTop: 12 }}>Reference output (row counts, not mismatches)</div>
+            <div class="metric-grid" style=${{ marginTop: 6 }}>
+              <div><div class="metric-label">Indicator rows</div><div class="metric-value">${fmtCount(engine.rows?.indicator_series)}</div></div>
+              <div><div class="metric-label">Signal rows</div><div class="metric-value">${fmtCount(engine.rows?.signals)}</div></div>
+              <div><div class="metric-label">Trade rows</div><div class="metric-value">${fmtCount(engine.rows?.trades)}</div></div>
               <div><div class="metric-label">Comparison</div><div class="metric-value"><${StatusChip} status=${comparison.status || engine.status} /></div></div>
             </div>
             ${Object.keys(scopes).length > 0 && html`
@@ -581,20 +637,23 @@ function SignalPointCorrectnessMatrix({ matrix }) {
   `;
 }
 
-function MismatchPreview({ strategy, validationId }) {
+function MismatchPreview({ strategy, runId, scope = "strategy", validationId }) {
   const [active, setActive] = useState("metrics");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const file = MISMATCH_FILES.find(([name]) => name === active)?.[1] || "mismatches_metrics.csv";
 
   useEffect(() => {
-    if (!strategy || !validationId) return;
+    if (!validationId || (scope === "run" ? !runId : !strategy)) return;
     setLoading(true);
-    window.API.fetchStrategyValidationArtifact(strategy, validationId, file)
+    const request = scope === "run"
+      ? window.API.fetchDifferentialValidationArtifact(runId, validationId, file)
+      : window.API.fetchStrategyValidationArtifact(strategy, validationId, file);
+    request
       .then((data) => setRows((data || []).slice(0, 100)))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [strategy, validationId, file]);
+  }, [strategy, runId, scope, validationId, file]);
 
   return html`
     <div class="card" title=${ADVISORY_SCOPE_TOOLTIP}>
@@ -669,11 +728,13 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
 
   const strategyOptions = useMemo(() => window.MOCK?.STRATEGIES || [], []);
   const fixtureOptions = useMemo(() => fixtures || [], [fixtures]);
-  const activeValidations = validationsStrategy === strategy ? validations : [];
   const selectedFixtureRunId = fixtureRunId || fixtureOptions[0]?.run_id || "";
+  const validationContext = `${strategy}:${selectedFixtureRunId || ""}`;
+  const activeValidations = validationsStrategy === validationContext ? validations : [];
+  const selectedValidationRow = activeValidations.find((row) => validationKey(row) === selectedValidation) || null;
   const selectedFixture = fixtureOptions.find((run) => run.run_id === selectedFixtureRunId) || null;
   const selectedFixtureCanRun = fixtureCanRun(selectedFixture);
-  const activeDetail = detail?.__strategy === strategy && detail?.validation_id === selectedValidation ? detail : null;
+  const activeDetail = detail?.__key === selectedValidation ? detail : null;
   const activeContract = activeDetail?.reference_validation_contract || contract;
   const selectedFixtureWasRebuilt = materializedFromSweep(selectedFixture);
   const activeDetailWasRebuilt = materializedFromSweep(activeDetail) || (
@@ -682,24 +743,41 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
     selectedFixtureWasRebuilt
   );
 
-  function refreshValidations(name = strategy) {
+  function refreshValidations(name = strategy, runId = selectedFixtureRunId) {
     if (!name) return;
     const requestId = ++validationRequestSeq.current;
+    const context = `${name}:${runId || ""}`;
     setLoading(true);
-    window.API.fetchStrategyValidations(name)
-      .then((rows) => {
+    const strategyRequest = typeof window.API.fetchStrategyValidations === "function"
+      ? window.API.fetchStrategyValidations(name).catch(() => [])
+      : Promise.resolve([]);
+    const runRequest = runId && typeof window.API.fetchDifferentialValidations === "function"
+      ? window.API.fetchDifferentialValidations(runId).catch(() => [])
+      : Promise.resolve([]);
+    Promise.all([strategyRequest, runRequest])
+      .then(([strategyRows, runRows]) => {
         if (requestId !== validationRequestSeq.current) return;
-        const list = rows || [];
-        setValidationsStrategy(name);
+        const runList = (runRows || []).map((row) => ({
+          ...row,
+          validation_scope: "run",
+          fixture_run_id: row.fixture_run_id || row.run_id || runId,
+          fixture_display_name: row.fixture_display_name || selectedFixture?.display_name || runId,
+        }));
+        const strategyList = (strategyRows || []).map((row) => ({
+          ...row,
+          validation_scope: row.validation_scope || "strategy",
+        }));
+        const list = [...runList, ...strategyList];
+        setValidationsStrategy(context);
         setValidations(list);
         setSelectedValidation((current) => {
-          if (current && list.some((row) => row.validation_id === current)) return current;
-          return list[0]?.validation_id || null;
+          if (current && list.some((row) => validationKey(row) === current)) return current;
+          return validationKey(list[0]) || null;
         });
       })
       .catch(() => {
         if (requestId !== validationRequestSeq.current) return;
-        setValidationsStrategy(name);
+        setValidationsStrategy(context);
         setValidations([]);
         setSelectedValidation(null);
       })
@@ -746,7 +824,7 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
     setFixtureRunId("");
     setFixtures([]);
     setValidations([]);
-    setValidationsStrategy(strategy);
+    setValidationsStrategy("");
     fetchFixtureOptions(strategy)
       .then((rows) => {
         if (cancelled) return;
@@ -760,11 +838,11 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
           setFixtureRunId(preferred.run_id);
           if (selectedRunId !== preferred.run_id) setSelectedRunId?.(preferred.run_id);
         }
+        refreshValidations(strategy, preferred?.run_id || "");
       })
       .catch(() => {
         if (!cancelled) setFixtures([]);
       });
-    refreshValidations(strategy);
     return () => { cancelled = true; };
   }, [strategy]);
 
@@ -774,21 +852,32 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
   }, [selectedRunId, fixtureOptions]);
 
   useEffect(() => {
-    if (!strategy || !selectedValidation || validationsStrategy !== strategy) {
+    if (!strategy || !selectedValidation || validationsStrategy !== validationContext || !selectedValidationRow) {
       setDetail(null);
       return;
     }
     let cancelled = false;
+    const scope = validationScope(selectedValidationRow);
+    const validationId = selectedValidationRow.validation_id;
+    const runId = selectedValidationRow.run_id || selectedValidationRow.fixture_run_id || selectedFixtureRunId;
     setDetail(null);
-    window.API.fetchStrategyValidation(strategy, selectedValidation)
+    const request = scope === "run"
+      ? window.API.fetchDifferentialValidation(runId, validationId)
+      : window.API.fetchStrategyValidation(strategy, validationId);
+    request
       .then((data) => {
-        if (!cancelled) setDetail({ ...(data || {}), __strategy: strategy });
+        if (!cancelled) setDetail({ ...(data || {}), __key: selectedValidation, __scope: scope, __run_id: runId });
       })
       .catch(() => {
         if (!cancelled) setDetail(null);
       });
     return () => { cancelled = true; };
-  }, [strategy, selectedValidation, validationsStrategy]);
+  }, [strategy, selectedValidation, validationsStrategy, validationContext, selectedFixtureRunId, selectedValidationRow]);
+
+  useEffect(() => {
+    if (!strategy || validationsStrategy === validationContext) return;
+    refreshValidations(strategy, selectedFixtureRunId);
+  }, [selectedFixtureRunId]);
 
   useEffect(() => {
     if (!job || job.status === "done" || job.status === "error") return;
@@ -797,8 +886,9 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
         .then((state) => {
           setJob(state);
           if (state.status === "done") {
-            refreshValidations(state.strategy || strategy);
-            if (state.validation_id) setSelectedValidation(state.validation_id);
+            const doneRunId = state.run_id || selectedFixtureRunId;
+            refreshValidations(state.strategy || strategy, doneRunId);
+            if (state.validation_id) setSelectedValidation(`${state.strategy ? "strategy" : "run"}:${state.validation_id}`);
           }
         })
         .catch(() => {});
@@ -809,7 +899,10 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
   function trigger() {
     if (!strategy || !selectedFixtureRunId || !selectedFixtureCanRun || !engines.length) return;
     setJob({ status: "queued", progress: 0, message: "Queued" });
-    window.API.triggerStrategyValidation({ strategy, fixture_run_id: selectedFixtureRunId || null, engines })
+    const request = isRunScopedFixture(selectedFixture)
+      ? window.API.triggerDifferentialValidation(selectedFixtureRunId, { engines })
+      : window.API.triggerStrategyValidation({ strategy, fixture_run_id: selectedFixtureRunId || null, engines });
+    request
       .then(setJob)
       .catch((err) => setJob({ status: "error", message: err.message }));
   }
@@ -874,7 +967,7 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
           ${loading && html`<span class="field-hint">Loading...</span>`}
         </div>
         <${ReviewerGuardrail} compact=${true} />
-        <${ValidationTable} rows=${activeValidations} onSelect=${setSelectedValidation} selectedId=${selectedValidation} />
+        <${ValidationTable} rows=${activeValidations} onSelect=${(row) => setSelectedValidation(validationKey(row))} selectedId=${selectedValidation} />
       </div>
 
       ${activeDetail && html`
@@ -906,6 +999,11 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
             <div title=${ADVISORY_SCOPE_TOOLTIP}><div class="metric-label">PnL <${ScopeTag} role="advisory" /> <${InfoTooltip} text=${ADVISORY_SCOPE_TOOLTIP} /></div><div class="metric-value"><${CountCell} value=${activeDetail.mismatch_counts?.pnl} /></div></div>
             <div title=${ADVISORY_SCOPE_TOOLTIP}><div class="metric-label">Metrics <${ScopeTag} role="advisory" /> <${InfoTooltip} text=${ADVISORY_SCOPE_TOOLTIP} /></div><div class="metric-value"><${CountCell} value=${activeDetail.mismatch_counts?.metrics} /></div></div>
           </div>
+          ${!referenceExecutesTrades(activeDetail) && html`
+            <div class="field-hint" style=${{ marginTop: 6 }}>
+              PnL / Trades / Metrics advisory counts compare against a signals-only reference that does not execute trades (v1), so its equity stays flat — nonzero counts here are expected and are not defects. Read signal logic + engine quorum instead.
+            </div>
+          `}
           <${ReviewerGuardrail} />
           <${SourceDataValidationPanel} validation=${activeDetail.source_data_validation} conclusion=${activeDetail.validation_conclusion} />
           <${ExternalValidationConclusionPanel} conclusion=${activeDetail.external_validation_conclusion} />
@@ -914,7 +1012,12 @@ function ValidationLabView({ selectedRunId, setSelectedRunId }) {
         <${EngineSummary} detail=${activeDetail} contract=${activeContract} />
         <${EngineExecutionMatrix} matrix=${activeDetail.engine_execution_matrix} />
         <${SignalPointCorrectnessMatrix} matrix=${activeDetail.signal_point_correctness} />
-        <${MismatchPreview} strategy=${strategy} validationId=${activeDetail.validation_id} />
+        <${MismatchPreview}
+          strategy=${strategy}
+          runId=${activeDetail.__run_id || activeDetail.run_id || activeDetail.fixture_run_id}
+          scope=${activeDetail.__scope || "strategy"}
+          validationId=${activeDetail.validation_id}
+        />
       `}
     </div>
   `;

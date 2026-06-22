@@ -22,8 +22,11 @@ from backtesting.data_loader import load_feature_events as load_external_feature
 from backtesting.data_loader import load_funding as load_funding_rates
 from backtesting.data_loader import load_trade_ticks as load_raw_trade_ticks
 from backtesting.research_controls import (
+    FILL_ALL_HARD_DRAWDOWN_PCT,
+    FILL_ALL_MAX_DAILY_LOSS_PCT,
     FILL_ALL_MAX_ORDER_NOTIONAL_USD,
     FILL_ALL_MAX_POS_PCT_EQUITY,
+    FILL_ALL_SOFT_DRAWDOWN_PCT,
     FILL_ALL_STALE_QUOTE_PCT,
 )
 from okx_quant.analytics.dsr import psr
@@ -941,11 +944,15 @@ class ReplayBacktestEngine:
             if "SWAP" not in symbol:
                 continue
             ct_val, source = self._resolve_swap_ct_val(symbol, exchange, db_specs)
+            db_spec = db_specs.get(symbol, {})
+            # Use the venue's real lot/min granularity when the DB has it; the
+            # 0.01 hardcode is too coarse for finer venues (e.g. Binance perp
+            # lot_size=0.001) and silently rounds small vol-target orders to 0.
             specs[symbol] = {
                 "ctVal": ct_val,
-                "minSz": 0.01,
-                "lotSz": 0.01,
-                "tickSz": 0.1,
+                "minSz": float(db_spec.get("min_size", 0.01)),
+                "lotSz": float(db_spec.get("lot_size", 0.01)),
+                "tickSz": float(db_spec.get("tick_size", 0.1)),
                 "tdMode": "cross",
             }
             self._ct_val_sources[symbol] = {"value": ct_val, "source": source, "exchange": exchange}
@@ -960,10 +967,11 @@ class ReplayBacktestEngine:
     def _load_db_instrument_specs(self, exchange: str = "okx") -> dict:
         """Query venue instrument specs for the run exchange, when DB is reachable.
 
-        Returned shape: {symbol: {"ct_val": float}}. Empty dict when DSN is
-        missing, unreachable, or query fails — caller falls through to the
-        bundled YAML registry for OKX only. Errors are warnings, not exceptions,
-        because the DB-primary architecture must degrade gracefully to parquet.
+        Returned shape: {symbol: {"ct_val", "lot_size", "min_size", "tick_size"}}.
+        Empty dict when DSN is missing, unreachable, or query fails — caller falls
+        through to the bundled YAML registry for OKX only. Errors are warnings, not
+        exceptions, because the DB-primary architecture must degrade gracefully to
+        parquet.
         """
         dsn = getattr(self._cfg.storage, "timescale_dsn", None)
         if not dsn:
@@ -984,7 +992,7 @@ class ReplayBacktestEngine:
                 try:
                     return await conn.fetch(
                         """
-                        SELECT symbol, ct_val
+                        SELECT symbol, ct_val, lot_size, min_size, tick_size
                         FROM venue_instrument_specs
                         WHERE exchange = $1
                           AND ct_val IS NOT NULL
@@ -1000,14 +1008,23 @@ class ReplayBacktestEngine:
             return {}
         out: dict = {}
         for row in rows:
-            ct_val = row.get("ct_val") if isinstance(row, dict) else row["ct_val"]
-            symbol = row.get("symbol") if isinstance(row, dict) else row["symbol"]
+            get = row.get if isinstance(row, dict) else row.__getitem__
+            ct_val = get("ct_val")
+            symbol = get("symbol")
             if ct_val is None:
                 continue
             try:
-                out[symbol] = {"ct_val": float(ct_val)}
+                spec = {"ct_val": float(ct_val)}
+                # Sizing-relevant specs are NOT NULL in the table, but stay
+                # defensive: only carry through values that parse cleanly so
+                # _default_instrument_specs falls back to its hardcoded defaults.
+                for col in ("lot_size", "min_size", "tick_size"):
+                    val = get(col)
+                    if val is not None:
+                        spec[col] = float(val)
             except (TypeError, ValueError):
                 continue
+            out[symbol] = spec
         return out
 
     @staticmethod
@@ -1147,29 +1164,35 @@ class ReplayBacktestEngine:
         bus = EventBus()
         strategies = self._build_strategies()
         positions = PositionLedger(initial_equity=self._cfg.system.equity_usd)
-        dd_tracker = DrawdownTracker(
-            soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
-            hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
-            max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
-        )
-        dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
         fill_all_signals = bool(getattr(self._cfg.backtest, "fill_all_signals", False))
         max_order_notional_usd = self._cfg.risk.max_order_notional_usd
         max_pos_pct_equity = self._cfg.risk.max_pos_pct_equity
         stale_quote_pct = self._cfg.risk.stale_quote_pct
+        max_daily_loss_pct = self._cfg.risk.max_daily_loss_pct
+        soft_drawdown_pct = self._cfg.risk.soft_drawdown_pct
+        hard_drawdown_pct = self._cfg.risk.hard_drawdown_pct
         if fill_all_signals:
             max_order_notional_usd = max(max_order_notional_usd, FILL_ALL_MAX_ORDER_NOTIONAL_USD)
             max_pos_pct_equity = max(max_pos_pct_equity, FILL_ALL_MAX_POS_PCT_EQUITY)
             stale_quote_pct = max(stale_quote_pct, FILL_ALL_STALE_QUOTE_PCT)
+            max_daily_loss_pct = max(max_daily_loss_pct, FILL_ALL_MAX_DAILY_LOSS_PCT)
+            soft_drawdown_pct = max(soft_drawdown_pct, FILL_ALL_SOFT_DRAWDOWN_PCT)
+            hard_drawdown_pct = max(hard_drawdown_pct, FILL_ALL_HARD_DRAWDOWN_PCT)
+        dd_tracker = DrawdownTracker(
+            soft_drawdown_pct=soft_drawdown_pct,
+            hard_drawdown_pct=hard_drawdown_pct,
+            max_daily_loss_pct=max_daily_loss_pct,
+        )
+        dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
         risk_guard = RiskGuard(
             equity_fn=positions.get_equity,
             drawdown_tracker=dd_tracker,
             max_order_notional_usd=max_order_notional_usd,
             max_pos_pct_equity=max_pos_pct_equity,
             max_leverage=self._cfg.risk.max_leverage,
-            max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
-            soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
-            hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
+            max_daily_loss_pct=max_daily_loss_pct,
+            soft_drawdown_pct=soft_drawdown_pct,
+            hard_drawdown_pct=hard_drawdown_pct,
             stale_quote_pct=stale_quote_pct,
         )
         for strategy in strategies:
@@ -1388,6 +1411,9 @@ class ReplayBacktestEngine:
                 "max_order_notional_usd": max_order_notional_usd,
                 "max_pos_pct_equity": max_pos_pct_equity,
                 "stale_quote_pct": stale_quote_pct,
+                "max_daily_loss_pct": max_daily_loss_pct,
+                "soft_drawdown_pct": soft_drawdown_pct,
+                "hard_drawdown_pct": hard_drawdown_pct,
                 "execution_model": "fill_all_on_submit",
             }
         feature_validation = self._collect_feature_validation(strategies)

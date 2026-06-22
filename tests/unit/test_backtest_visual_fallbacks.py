@@ -9,6 +9,53 @@ from fastapi.testclient import TestClient
 from okx_quant.api import routes_backtest as routes
 
 
+def test_backtest_market_symbol_loads_are_guarded_by_run_id_not_selection_cleanup():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+    fetch_pos = text.index("window.API.fetchBacktestPriceSeries")
+    effect_start = text.rfind("useEffect(() => {", 0, fetch_pos)
+    effect_end = text.index('}, [runId, result, selectedChartSymbols.join("|")]);', fetch_pos)
+
+    assert effect_start >= 0, "market-symbol loading effect not found"
+    body = text[effect_start:effect_end]
+    assert "useRef" in text
+    assert "runIdRef.current !== runId" in body
+    assert "return () => { cancelled = true; }" not in body
+
+
+def test_equity_and_drawdown_charts_use_fluid_width_wrapper():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+
+    assert text.count('<div class="chart-wrap fluid"><${LineChart}') >= 2
+
+
+def test_backtest_run_list_uses_large_timeout_for_db_backed_results():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
+
+    assert 'fetchBacktestRuns:        ()        => _memoGetLarge("backtest-runs", "/api/backtest/runs")' in text
+    assert 'fetchRuns:                ()        => _memoGetLarge("backtest-runs", "/api/backtest/runs")' in text
+
+
+def test_frontend_exposes_summary_first_backtest_loading():
+    repo_root = Path(__file__).resolve().parents[2]
+    data_text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+
+    assert 'fetchBacktestSummary:     (id)      => _get("/api/backtest/" + id + "/summary")' in data_text
+    assert "window.API.fetchBacktestSummary" in view_text
+    assert "window.API.fetchBacktestSummary(runId)" in view_text
+    assert "window.API.fetchBacktest(runId)" in view_text
+
+
+def test_data_coverage_uses_short_inflight_cache():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
+
+    assert 'fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage")' in text
+
+
 def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")
@@ -25,6 +72,41 @@ def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers
     assert "Replay coverage" in text
     assert "Missing artifacts" in text
     assert "contract=${activeContract}" in text
+
+
+def test_validation_lab_can_run_saved_backtest_records_directly():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")
+
+    assert 'fixture_role: "saved_backtest_run"' in text
+    assert 'validation_scope: "run"' in text
+    assert "window.API.triggerDifferentialValidation(selectedFixtureRunId, { engines })" in text
+    assert "window.API.fetchDifferentialValidation(runId, validationId)" in text
+    assert "window.API.fetchDifferentialValidationArtifact(runId, validationId, file)" in text
+
+
+def test_price_and_indicator_panels_expose_vertical_zoom_sliders():
+    repo_root = Path(__file__).resolve().parents[2]
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+    style_text = (repo_root / "frontend" / "styles.css").read_text(encoding="utf-8")
+
+    assert "onYZoomChange" in view_text
+    assert 'aria-label="Vertical Y-axis scale"' in view_text
+    assert 'aria-label="Vertical MACD Y-axis scale"' in view_text
+    assert "inline=${true}" in view_text
+    assert ".chart-y-slider" in style_text
+    assert ".chart-y-scale-controls" in style_text
+
+
+def test_risk_tab_loads_signals_for_signal_to_fill_gap():
+    repo_root = Path(__file__).resolve().parents[2]
+    data_text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+
+    assert 'fetchBacktestSignals:     (id)      => _getLarge("/api/backtest/" + id + "/signals")' in data_text
+    assert "window.API.fetchBacktestSignals" in view_text
+    assert "Signals / fills" in view_text
+    assert "Unfilled signal gap" in view_text
 
 
 def test_downsample_price_records_preserves_each_symbol():
@@ -298,6 +380,143 @@ def test_price_series_route_backfills_symbols_missing_from_existing_artifact(tmp
 
     assert response.status_code == 200
     assert {row["inst_id"] for row in response.json()} == {"BTC-USDT-SWAP", "ETH-USDT-SWAP"}
+
+
+def test_price_series_route_uses_artifact_rows_before_whole_payload(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_read_artifact_rows(*, dsn, run_id, artifact_type, symbol=None, limit=0, offset=0, n=0):
+        calls.append(
+            {
+                "dsn": dsn,
+                "run_id": run_id,
+                "artifact_type": artifact_type,
+                "symbol": symbol,
+                "limit": limit,
+                "offset": offset,
+                "n": n,
+            }
+        )
+        return [
+            {
+                "ts": 1704067200000,
+                "datetime": "2024-01-01T00:00:00+00:00",
+                "inst_id": "BTC-USDT-SWAP",
+                "close": 42000.0,
+            }
+        ]
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unit/db")
+    monkeypatch.setattr(routes, "read_artifact_rows", fake_read_artifact_rows, raising=False)
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/run_db/price-series?symbol=BTC-USDT-SWAP&n=1200")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "ts": 1704067200000,
+            "datetime": "2024-01-01T00:00:00+00:00",
+            "inst_id": "BTC-USDT-SWAP",
+            "close": 42000.0,
+        }
+    ]
+    assert calls == [
+        {
+            "dsn": "postgresql://unit/db",
+            "run_id": "run_db",
+            "artifact_type": "price_series",
+            "symbol": "BTC-USDT-SWAP",
+            "limit": 0,
+            "offset": 0,
+            "n": 1200,
+        }
+    ]
+
+
+def test_fills_route_uses_artifact_rows_with_limit_and_offset(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_read_artifact_rows(*, dsn, run_id, artifact_type, symbol=None, limit=0, offset=0, n=0):
+        calls.append((artifact_type, symbol, limit, offset, n))
+        return [{"id": "fill-6"}, {"id": "fill-7"}]
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unit/db")
+    monkeypatch.setattr(routes, "read_artifact_rows", fake_read_artifact_rows, raising=False)
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/run_db/fills?limit=2&offset=5")
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": "fill-6"}, {"id": "fill-7"}]
+    assert calls == [("fills", None, 2, 5, 0)]
+
+
+def test_differential_validation_csv_artifact_uses_artifact_rows(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_read_artifact_rows(*, dsn, run_id, artifact_type, symbol=None, limit=0, offset=0, n=0):
+        calls.append((run_id, artifact_type, symbol, limit, offset, n))
+        return [{"row": 1}]
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unit/db")
+    monkeypatch.setattr(routes, "read_artifact_rows", fake_read_artifact_rows, raising=False)
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/run_db/differential-validation/val1/artifact/mismatches_signals.csv")
+
+    assert response.status_code == 200
+    assert response.json() == [{"row": 1}]
+    assert calls == [("run_db", "validation/val1/mismatches_signals.csv", None, 0, 0, 0)]
+
+
+def test_summary_endpoint_returns_lightweight_run_payload(tmp_path):
+    run_dir = tmp_path / "summary_run"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        """
+        {
+          "run_id": "summary_run",
+          "display_name": "Summary Run",
+          "created_at": "2026-06-22T00:00:00+00:00",
+          "strategies": ["ema_crossover"],
+          "symbols": ["BTC-USDT-SWAP"],
+          "bar": "1H",
+          "start": "2024-01-01",
+          "end": "2024-02-01",
+          "metrics": {"total_return": 0.01},
+          "parameters": {"strategies": {"ema_crossover": {"fast_span": 8}}},
+          "artifacts": {"price_series": "price_series.csv"},
+          "validation": {"ct_val_all_authoritative": true},
+          "price_series": [{"close": 42000.0}],
+          "trades": [{"pnl": 1.0}]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/summary_run/summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"] == "summary_run"
+    assert payload["metrics"] == {"total_return": 0.01}
+    assert payload["artifacts"] == {"price_series": "price_series.csv"}
+    assert "price_series" not in payload
+    assert "trades" not in payload
 
 
 def test_execution_markers_endpoint_filters_by_symbol(tmp_path):

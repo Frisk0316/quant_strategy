@@ -13,7 +13,13 @@ from backtesting.parameter_sweep import (
     expand_parameter_grid,
     rank_sweep_rows,
 )
-from backtesting.research_controls import apply_fill_all_signal_controls, apply_research_risk_overrides
+from backtesting.research_controls import (
+    FILL_ALL_HARD_DRAWDOWN_PCT,
+    FILL_ALL_MAX_DAILY_LOSS_PCT,
+    FILL_ALL_SOFT_DRAWDOWN_PCT,
+    apply_fill_all_signal_controls,
+    apply_research_risk_overrides,
+)
 from backtesting.walk_forward import WalkForward
 from okx_quant.api import routes_backtest as routes
 from okx_quant.core.config import load_config
@@ -178,6 +184,9 @@ def test_fill_all_signal_controls_copy_config_without_mutating_base():
     assert updated.backtest.queue_fill_fraction == 1.0
     assert updated.risk.max_order_notional_usd > cfg.risk.max_order_notional_usd
     assert updated.risk.max_pos_pct_equity > cfg.risk.max_pos_pct_equity
+    assert updated.risk.max_daily_loss_pct == FILL_ALL_MAX_DAILY_LOSS_PCT
+    assert updated.risk.soft_drawdown_pct == FILL_ALL_SOFT_DRAWDOWN_PCT
+    assert updated.risk.hard_drawdown_pct == FILL_ALL_HARD_DRAWDOWN_PCT
     assert cfg.backtest.fill_all_signals is False
 
 

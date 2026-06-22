@@ -1,3 +1,13 @@
+---
+status: current
+type: architecture
+owner: human
+created: 2026-05-11
+last_reviewed: 2026-06-22
+expires: none
+superseded_by: null
+---
+
 # Architecture
 
 System architecture reference for `quant_strategy`. Updated from source read on 2026-05-11.
@@ -320,6 +330,10 @@ cancel_log: list[dict]
 | `db` | yes | DB only |
 | `db` | no | falls back to files (with warning) |
 | `both` | yes | files + DB |
+
+DB-backed runs also maintain `backtest_artifact_rows`, a derived read index for
+large list artifacts. It is rebuilt from existing artifacts and is not a trading
+source of truth.
 
 ### Walk-Forward (`walk_forward.py`)
 

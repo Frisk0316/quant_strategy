@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -49,11 +49,14 @@ implementation exists.
   `frontend/charts.js`, `frontend/view-trades.js`, `frontend/view-glossary.js`,
   `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
-- Backtesting files: `backtesting/artifacts.py`, `backtesting/replay.py`.
+- Backtesting files: `backtesting/artifacts.py`, `backtesting/artifact_rows.py`,
+  `backtesting/replay.py`.
 - Data / DB / artifact files: runtime `price_series`, `indicator_series`, `fills`,
-  `trades`, `equity`, `returns`, `drawdown`, and `metrics` artifacts.
+  `trades`, `equity`, `returns`, `drawdown`, and `metrics` artifacts;
+  `backtest_artifact_rows` is a derived read index, not trading truth.
 - Config files: `config/settings.yaml`, `config/strategies.yaml`.
-- Tests: `tests/unit/test_backtest_visual_fallbacks.py`,
+- Tests: `tests/unit/test_artifact_rows.py`,
+  `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/unit/test_frontend_static_mime.py`, `tests/unit/test_backtest_artifact_schema.py`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: chart fixes should not alter artifact schema, replay logic, or
@@ -70,9 +73,11 @@ implementation exists.
 - Backtesting files: `scripts/run_replay_backtest.py`, `backtesting/artifacts.py`,
   `backtesting/replay.py`, `backtesting/walk_forward.py`, `backtesting/cpcv.py`.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
-  `backtesting/artifacts.py`, runtime result directories.
+  `sql/migrations/0012_backtest_artifact_rows.sql`, `backtesting/artifacts.py`,
+  `backtesting/artifact_rows.py`, runtime result directories.
 - Config files: `config/settings.yaml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
+  `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/integration/test_api_endpoints.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`, `docs/DATA_FLOW.md`,
   `docs/RUNBOOK.md`.
@@ -99,7 +104,11 @@ implementation exists.
 ## Market Data Ingestion
 
 - User-facing behavior: fetch or update market data, inspect coverage, export OHLCV,
-  funding, or external data, and use DB-backed data for backtests.
+  funding, or external data, delete stale OHLCV/funding pairs, and use DB-backed
+  data for backtests. Fetch jobs are queued sequentially and shown as a job list
+  in the Market Data Coverage card. Binance fetches also sync exchangeInfo-derived
+  venue specs into `venue_instrument_specs` so replay can resolve multiplier
+  contracts such as `1000SHIB-USDT-SWAP` from DB.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -107,11 +116,16 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `sql/migrations/0011_venue_instrument_specs.sql`,
+  `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
-  `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`.
+  `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
+  local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
-- Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`.
-- Docs to update: `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
+- Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
+  `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
+  `tests/unit/test_routes_data_delete.py`.
+- Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
   `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: ingestion changes can affect backtest reproducibility; do not
   alter DB schema without an explicit schema task.
