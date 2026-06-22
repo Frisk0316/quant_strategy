@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -107,6 +108,16 @@ def test_risk_tab_loads_signals_for_signal_to_fill_gap():
     assert "window.API.fetchBacktestSignals" in view_text
     assert "Signals / fills" in view_text
     assert "Unfilled signal gap" in view_text
+
+
+def test_run_detail_displays_execution_profile_and_comparison_link():
+    repo_root = Path(__file__).resolve().parents[2]
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+
+    assert "function executionProfileInfo" in view_text
+    assert "Execution Profile" in view_text
+    assert "comparisonPath" in view_text
+    assert "Open comparison JSON" in view_text
 
 
 def test_downsample_price_records_preserves_each_symbol():
@@ -517,6 +528,42 @@ def test_summary_endpoint_returns_lightweight_run_payload(tmp_path):
     assert payload["artifacts"] == {"price_series": "price_series.csv"}
     assert "price_series" not in payload
     assert "trades" not in payload
+
+
+def test_execution_comparison_endpoint_infers_dual_output_file(tmp_path):
+    run_dir = tmp_path / "dual_run_strategy_fill"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        """
+        {
+          "run_id": "dual_run_strategy_fill",
+          "strategies": ["macd_crossover"],
+          "symbols": ["BTC-USDT-SWAP"],
+          "bar": "1H",
+          "metrics": {},
+          "validation": {"execution_profile": "strategy_fill"}
+        }
+        """,
+        encoding="utf-8",
+    )
+    comparison = {
+        "execution_profile": "dual_output",
+        "strategy_fill_run_id": "dual_run_strategy_fill",
+        "realistic_execution_run_id": "dual_run_realistic_execution",
+    }
+    (tmp_path / "dual_run_execution_comparison.json").write_text(
+        json.dumps(comparison),
+        encoding="utf-8",
+    )
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.get("/api/backtest/dual_run_strategy_fill/execution-comparison")
+
+    assert response.status_code == 200
+    assert response.json() == comparison
 
 
 def test_execution_markers_endpoint_filters_by_symbol(tmp_path):

@@ -61,6 +61,18 @@ const RISK_OVERRIDE_SPECS = [
     help: "Research leverage ceiling, expressed as gross notional divided by equity. Kept with the copied risk config and dashboard parity; order blocking is mainly driven by max order USD and max pos pct.",
   },
 ];
+const EXECUTION_PROFILE_OPTIONS = [
+  {
+    value: "strategy_fill",
+    label: "Strategy Fill",
+    hint: "Evaluate the strategy after signals become fills.",
+  },
+  {
+    value: "dual_output",
+    label: "Dual Output",
+    hint: "Run Strategy Fill and realistic execution side by side.",
+  },
+];
 const SWEEP_PARAM_SPECS = {
   ma_crossover: [
     ["fast_window", "fast"],
@@ -297,7 +309,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
   const [sweepParams, setSweepParams] = useConfigState(SWEEP_PARAM_DEFAULTS);
   const [riskOverrides, setRiskOverrides] = useConfigState(RISK_OVERRIDE_DEFAULTS);
-  const [fillAllSignals, setFillAllSignals] = useConfigState(false);
+  const [executionProfile, setExecutionProfile] = useConfigState("strategy_fill");
+  const fillAllSignals = executionProfile === "strategy_fill";
   const [sweepFinalistValidation, setSweepFinalistValidation] = useConfigState("none");
   const [sweepTopPct, setSweepTopPct] = useConfigState(10);
   const [sweepMaxFinalists, setSweepMaxFinalists] = useConfigState(20);
@@ -331,7 +344,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
-  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
+  const executionProfileMultiplier = executionProfile === "dual_output" ? 2 : 1;
+  const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
 
   useConfigEffect(() => {
     window.API.fetchDataCoverage()
@@ -460,6 +474,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       initial_equity: +equity || 5000,
       strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
       risk_overrides: cleanRiskOverrides(riskOverrides),
+      execution_profile: executionProfile,
       fill_all_signals: fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
@@ -790,20 +805,20 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                   </div>
                 `)}
               </div>
-              <label class="row" style=${{ gap: 8, marginTop: 10, alignItems: "flex-start" }}>
-                <input type="checkbox" checked=${fillAllSignals}
-                  onChange=${(e) => setFillAllSignals(e.target.checked)}
-                  style=${{ marginTop: 2 }} />
-                <span>
-                  <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-                  <span class="field-hint">Research-only idealized execution: bypasses capacity/drawdown stops and fills every submitted strategy signal order.</span>
-                </span>
-              </label>
-              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. If signals continue but fills stop after a drawdown stop, lower Max order USD / Max pos pct for realistic sensitivity, or enable Fill all signals for research-only full signal replay. Live risk config is unchanged.</div>
+              <div class="field" style=${{ marginTop: 10 }}>
+                <div class="field-label">Execution profile</div>
+                <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
+                  ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
+                </select>
+                <div class="field-hint">
+                  ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+                </div>
+              </div>
+              <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
-            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
             <div class="col" style=${{ gap: 8, marginTop: 16 }}>
@@ -832,7 +847,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} fillAllSignals=${fillAllSignals} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} executionProfile=${executionProfile} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
           ${isTechnical && html`
             <div class="sep" style=${{ margin: "12px 0" }}></div>
             <${ParameterSweepPanel}
@@ -851,8 +866,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               setFinalistTopPct=${setSweepTopPct}
               maxFinalists=${sweepMaxFinalists}
               setMaxFinalists=${setSweepMaxFinalists}
-              fillAllSignals=${fillAllSignals}
-              setFillAllSignals=${setFillAllSignals}
+              executionProfile=${executionProfile}
               setView=${setView}
               setSelectedRunId=${setSelectedRunId}
             />
@@ -865,7 +879,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fillAllSignals = false, setParams = () => {} }) {
+function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, executionProfile = "strategy_fill", setParams = () => {} }) {
   const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
@@ -925,12 +939,12 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fil
   const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
   const riskMaxPos = Number(riskOverrides.max_pos_pct_equity);
   const riskMaxLeverage = Number(riskOverrides.max_leverage);
-  const hasRiskOverride = fillAllSignals || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
+  const hasRiskOverride = executionProfile === "strategy_fill" || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
   const riskSummary = [
     `max_order_notional: ${Number.isFinite(riskMaxOrder) && riskMaxOrder > 0 ? fmtUSD(riskMaxOrder, 0) : "$500"}`,
     `max_pos_pct: ${Number.isFinite(riskMaxPos) && riskMaxPos > 0 ? fmtPct(riskMaxPos, 0) : "30%"}`,
     `max_leverage: ${Number.isFinite(riskMaxLeverage) && riskMaxLeverage > 0 ? `${fmtNum(riskMaxLeverage, 1)}x` : "3.0x"}`,
-    `fill_all_signals: ${fillAllSignals ? "on" : "off"}`,
+    `execution_profile: ${executionProfile}`,
   ].join(" - ");
   function parseParam(value) {
     const num = Number(value);
@@ -971,8 +985,7 @@ function ParameterSweepPanel({
   setFinalistTopPct = () => {},
   maxFinalists = 20,
   setMaxFinalists = () => {},
-  fillAllSignals = false,
-  setFillAllSignals = () => {},
+  executionProfile = "strategy_fill",
   setView,
   setSelectedRunId,
 }) {
@@ -1058,15 +1071,9 @@ function ParameterSweepPanel({
           <option value="both">Both (WF + CPCV)</option>
         </select>
       </div>
-      <label class="row" style=${{ gap: 8, alignItems: "flex-start" }}>
-        <input type="checkbox" checked=${fillAllSignals}
-          onChange=${(e) => setFillAllSignals(e.target.checked)}
-          style=${{ marginTop: 2 }} />
-        <span>
-          <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-          <span class="field-hint">Bypass capacity/drawdown stops for this sweep and fill submitted strategy signal orders; research-only idealized execution.</span>
-        </span>
-      </label>
+      <div class="field-hint">
+        Sweep finalist reruns use ${executionProfile === "strategy_fill" ? "Strategy Fill" : "realistic execution"}.
+      </div>
       <div class="field-hint">
         ${parseError
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -10,6 +10,18 @@ RISK_OVERRIDE_KEYS = {
     "max_order_notional_usd",
     "max_pos_pct_equity",
     "max_leverage",
+}
+
+EXECUTION_PROFILE_STRATEGY_FILL = "strategy_fill"
+EXECUTION_PROFILE_REALISTIC = "realistic_execution"
+EXECUTION_PROFILE_DUAL_OUTPUT = "dual_output"
+
+ExecutionProfile = Literal["strategy_fill", "realistic_execution", "dual_output"]
+PUBLIC_EXECUTION_PROFILES = {EXECUTION_PROFILE_STRATEGY_FILL, EXECUTION_PROFILE_DUAL_OUTPUT}
+INTERNAL_EXECUTION_PROFILES = {
+    EXECUTION_PROFILE_STRATEGY_FILL,
+    EXECUTION_PROFILE_REALISTIC,
+    EXECUTION_PROFILE_DUAL_OUTPUT,
 }
 
 FILL_ALL_MAX_ORDER_NOTIONAL_USD = 1_000_000_000_000.0
@@ -118,6 +130,46 @@ def apply_fill_all_signal_controls(cfg: Any, enabled: bool) -> tuple[Any, dict[s
         "enabled": True,
         "risk": risk_updates,
         "backtest": backtest_updates,
+    }
+
+
+def normalize_execution_profile(
+    value: Any,
+    *,
+    allow_internal: bool = False,
+    default: str = EXECUTION_PROFILE_STRATEGY_FILL,
+) -> ExecutionProfile:
+    """Normalize public backtest execution profile names."""
+    profile = str(value or default).strip().lower()
+    if profile == "fill_all_signals":
+        profile = EXECUTION_PROFILE_STRATEGY_FILL
+    allowed = INTERNAL_EXECUTION_PROFILES if allow_internal else PUBLIC_EXECUTION_PROFILES
+    if profile not in allowed:
+        public = ", ".join(sorted(allowed))
+        raise ResearchControlError(f"unsupported execution profile: {profile}; expected one of {public}")
+    return profile  # type: ignore[return-value]
+
+
+def apply_execution_profile_controls(
+    cfg: Any,
+    profile: Any,
+    *,
+    allow_internal: bool = False,
+) -> tuple[Any, dict[str, Any]]:
+    """Apply copied config controls for one replay execution profile."""
+    normalized = normalize_execution_profile(profile, allow_internal=allow_internal)
+    if normalized == EXECUTION_PROFILE_DUAL_OUTPUT:
+        raise ResearchControlError("dual_output must be orchestrated by the runner")
+    if normalized == EXECUTION_PROFILE_STRATEGY_FILL:
+        updated, controls = apply_fill_all_signal_controls(cfg, True)
+        return updated, {
+            "execution_profile": EXECUTION_PROFILE_STRATEGY_FILL,
+            "idealized_fill": True,
+            "research_fill_all_signals": controls,
+        }
+    return cfg, {
+        "execution_profile": EXECUTION_PROFILE_REALISTIC,
+        "idealized_fill": False,
     }
 
 

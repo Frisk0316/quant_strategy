@@ -303,6 +303,11 @@ class ReplayRecorder:
             validation=dict(validation or {}),
         )
 
+    @staticmethod
+    def _is_terminal_liquidation_fill(row: dict[str, Any]) -> bool:
+        metadata = row.get("metadata")
+        return isinstance(metadata, dict) and metadata.get("action") == "terminal_liquidation"
+
     def _execution_metrics(self, returns: pd.Series) -> dict:
         """
         Compute replay-level execution and significance metrics.
@@ -321,8 +326,23 @@ class ReplayRecorder:
         pending_fills = [row for row in self.fill_log if row.get("state") == "pending"]
         partial_fills = [row for row in real_fills if row.get("state") == "partially_filled"]
         real_fill_count = len(real_fills)
-        filled_order_ids = {row.get("cl_ord_id") for row in real_fills if row.get("cl_ord_id")}
-        orders_filled_count = len(filled_order_ids)
+        submitted_order_ids = {
+            row.get("cl_ord_id")
+            for row in self.order_log
+            if row.get("cl_ord_id")
+        }
+        terminal_liquidation_fills = [
+            row for row in real_fills
+            if self._is_terminal_liquidation_fill(row)
+        ]
+        submitted_fill_ids = {
+            row.get("cl_ord_id")
+            for row in real_fills
+            if row.get("cl_ord_id") in submitted_order_ids
+            and not self._is_terminal_liquidation_fill(row)
+        }
+        orders_filled_count = len(submitted_fill_ids)
+        terminal_liquidation_fill_count = len(terminal_liquidation_fills)
         total_fees = float(sum(row["fee"] for row in real_fills))
         fill_notional = float(sum(row.get("notional_usd", 0.0) for row in real_fills))
         funding_cashflow = float(sum(row["cashflow"] for row in self.funding_log))
@@ -338,6 +358,8 @@ class ReplayRecorder:
             "submitted_order_count": submitted_order_count,
             "order_count": submitted_order_count,
             "orders_filled_count": orders_filled_count,
+            "submitted_order_fill_count": orders_filled_count,
+            "terminal_liquidation_fill_count": terminal_liquidation_fill_count,
             "real_fill_count": real_fill_count,
             "fill_count": real_fill_count,
             "pending_fill_event_count": len(pending_fills),

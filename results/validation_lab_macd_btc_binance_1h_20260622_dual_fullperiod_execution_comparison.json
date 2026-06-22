@@ -1,0 +1,32 @@
+{
+  "base_run_id": "validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod",
+  "execution_profile": "dual_output",
+  "strategy_fill_run_id": "validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod_strategy_fill",
+  "realistic_execution_run_id": "validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod_realistic_execution",
+  "metrics": {
+    "strategy_fill": {
+      "signal_count": 1558,
+      "submitted_order_count": 1558,
+      "real_fill_count": 1558,
+      "submitted_order_fill_count": 1558,
+      "terminal_liquidation_fill_count": 0,
+      "fill_rate": 1.0,
+      "total_return": 0.003944061625863471,
+      "max_drawdown": -0.06987191229324023
+    },
+    "realistic_execution": {
+      "signal_count": 779,
+      "submitted_order_count": 779,
+      "real_fill_count": 13,
+      "submitted_order_fill_count": 3,
+      "terminal_liquidation_fill_count": 1,
+      "fill_rate": 0.0038510911424903724,
+      "total_return": 0.006647604922380479,
+      "max_drawdown": -0.02517682308021744
+    }
+  },
+  "deltas": {
+    "strategy_minus_realistic_return": -0.002703543296517008,
+    "strategy_minus_realistic_fill_rate": 0.9961489088575096
+  }
+}

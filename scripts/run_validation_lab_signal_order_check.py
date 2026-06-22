@@ -15,7 +15,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from backtesting.artifacts import save_backtest_artifacts
 from backtesting.replay import run_replay_backtest
-from backtesting.research_controls import summarize_risk_events
+from backtesting.research_controls import (
+    EXECUTION_PROFILE_REALISTIC,
+    EXECUTION_PROFILE_STRATEGY_FILL,
+    apply_execution_profile_controls,
+    summarize_risk_events,
+)
 from loguru import logger
 from okx_quant.core.config import load_config
 
@@ -32,6 +37,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-order-notional-usd", type=float, default=None)
     parser.add_argument("--max-pos-pct-equity", type=float, default=None)
     parser.add_argument("--run-suffix", default=None)
+    parser.add_argument(
+        "--execution-profile",
+        choices=[EXECUTION_PROFILE_STRATEGY_FILL, EXECUTION_PROFILE_REALISTIC],
+        default=EXECUTION_PROFILE_STRATEGY_FILL,
+    )
     return parser.parse_args()
 
 
@@ -131,6 +141,11 @@ def main() -> None:
     summaries = []
     for strategy, params in CASES.items():
         case_cfg = _case_config(cfg, strategy, params)
+        case_cfg, profile_controls = apply_execution_profile_controls(
+            case_cfg,
+            args.execution_profile,
+            allow_internal=True,
+        )
         run_id = f"validation_lab_{strategy}_btc_binance_1h_20260622"
         if suffix:
             run_id = f"{run_id}_{suffix}"
@@ -143,6 +158,10 @@ def main() -> None:
             bar=bar,
             periods=8760,
         )
+        result.validation["execution_profile"] = args.execution_profile
+        if profile_controls.get("idealized_fill"):
+            result.validation["idealized_fill"] = True
+            result.validation["research_fill_all_signals"] = profile_controls.get("research_fill_all_signals", {})
         result.validation["risk_summary"] = summarize_risk_events(result.risk_event_log)
         artifact_args = SimpleNamespace(
             strategy=[strategy],
@@ -151,6 +170,7 @@ def main() -> None:
             bar=bar,
             strategy_params=params,
             risk_overrides=risk_updates,
+            execution_profile=args.execution_profile,
         )
         run_dir = save_backtest_artifacts(
             result=result,
@@ -171,6 +191,7 @@ def main() -> None:
         "bar": bar,
         "start": start,
         "end": end,
+        "execution_profile": args.execution_profile,
         "risk_defaults": {
             "max_order_notional_usd": cfg.risk.max_order_notional_usd,
             "max_pos_pct_equity": cfg.risk.max_pos_pct_equity,
