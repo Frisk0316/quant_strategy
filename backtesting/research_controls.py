@@ -15,6 +15,9 @@ RISK_OVERRIDE_KEYS = {
 FILL_ALL_MAX_ORDER_NOTIONAL_USD = 1_000_000_000_000.0
 FILL_ALL_MAX_POS_PCT_EQUITY = 1_000_000.0
 FILL_ALL_STALE_QUOTE_PCT = 1_000_000.0
+FILL_ALL_MAX_DAILY_LOSS_PCT = 1_000_000.0
+FILL_ALL_SOFT_DRAWDOWN_PCT = 1_000_000.0
+FILL_ALL_HARD_DRAWDOWN_PCT = 1_000_001.0
 
 
 class ResearchControlError(ValueError):
@@ -62,8 +65,9 @@ def apply_fill_all_signal_controls(cfg: Any, enabled: bool) -> tuple[Any, dict[s
 
     This is intentionally a research/backtest-only convenience: it raises the
     caps that commonly block signal-to-order conversion and switches the replay
-    execution lifecycle to an immediate full-fill model. Live/demo/shadow config
-    files remain unchanged unless the caller explicitly writes them.
+    execution lifecycle to an immediate full-fill model. It also prevents replay
+    drawdown/daily-loss stops from killing later research signals. Live/demo/shadow
+    config files remain unchanged unless the caller explicitly writes them.
     """
     if not enabled:
         return cfg, {}
@@ -88,6 +92,18 @@ def apply_fill_all_signal_controls(cfg: Any, enabled: bool) -> tuple[Any, dict[s
         "stale_quote_pct": max(
             float(getattr(risk, "stale_quote_pct", 0.0) or 0.0),
             FILL_ALL_STALE_QUOTE_PCT,
+        ),
+        "max_daily_loss_pct": max(
+            float(getattr(risk, "max_daily_loss_pct", 0.0) or 0.0),
+            FILL_ALL_MAX_DAILY_LOSS_PCT,
+        ),
+        "soft_drawdown_pct": max(
+            float(getattr(risk, "soft_drawdown_pct", 0.0) or 0.0),
+            FILL_ALL_SOFT_DRAWDOWN_PCT,
+        ),
+        "hard_drawdown_pct": max(
+            float(getattr(risk, "hard_drawdown_pct", 0.0) or 0.0),
+            FILL_ALL_HARD_DRAWDOWN_PCT,
         ),
     }
     backtest_updates = {

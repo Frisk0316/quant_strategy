@@ -22,8 +22,11 @@ from backtesting.data_loader import load_feature_events as load_external_feature
 from backtesting.data_loader import load_funding as load_funding_rates
 from backtesting.data_loader import load_trade_ticks as load_raw_trade_ticks
 from backtesting.research_controls import (
+    FILL_ALL_HARD_DRAWDOWN_PCT,
+    FILL_ALL_MAX_DAILY_LOSS_PCT,
     FILL_ALL_MAX_ORDER_NOTIONAL_USD,
     FILL_ALL_MAX_POS_PCT_EQUITY,
+    FILL_ALL_SOFT_DRAWDOWN_PCT,
     FILL_ALL_STALE_QUOTE_PCT,
 )
 from okx_quant.analytics.dsr import psr
@@ -1147,29 +1150,35 @@ class ReplayBacktestEngine:
         bus = EventBus()
         strategies = self._build_strategies()
         positions = PositionLedger(initial_equity=self._cfg.system.equity_usd)
-        dd_tracker = DrawdownTracker(
-            soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
-            hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
-            max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
-        )
-        dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
         fill_all_signals = bool(getattr(self._cfg.backtest, "fill_all_signals", False))
         max_order_notional_usd = self._cfg.risk.max_order_notional_usd
         max_pos_pct_equity = self._cfg.risk.max_pos_pct_equity
         stale_quote_pct = self._cfg.risk.stale_quote_pct
+        max_daily_loss_pct = self._cfg.risk.max_daily_loss_pct
+        soft_drawdown_pct = self._cfg.risk.soft_drawdown_pct
+        hard_drawdown_pct = self._cfg.risk.hard_drawdown_pct
         if fill_all_signals:
             max_order_notional_usd = max(max_order_notional_usd, FILL_ALL_MAX_ORDER_NOTIONAL_USD)
             max_pos_pct_equity = max(max_pos_pct_equity, FILL_ALL_MAX_POS_PCT_EQUITY)
             stale_quote_pct = max(stale_quote_pct, FILL_ALL_STALE_QUOTE_PCT)
+            max_daily_loss_pct = max(max_daily_loss_pct, FILL_ALL_MAX_DAILY_LOSS_PCT)
+            soft_drawdown_pct = max(soft_drawdown_pct, FILL_ALL_SOFT_DRAWDOWN_PCT)
+            hard_drawdown_pct = max(hard_drawdown_pct, FILL_ALL_HARD_DRAWDOWN_PCT)
+        dd_tracker = DrawdownTracker(
+            soft_drawdown_pct=soft_drawdown_pct,
+            hard_drawdown_pct=hard_drawdown_pct,
+            max_daily_loss_pct=max_daily_loss_pct,
+        )
+        dd_tracker.set_initial_equity(self._cfg.system.equity_usd)
         risk_guard = RiskGuard(
             equity_fn=positions.get_equity,
             drawdown_tracker=dd_tracker,
             max_order_notional_usd=max_order_notional_usd,
             max_pos_pct_equity=max_pos_pct_equity,
             max_leverage=self._cfg.risk.max_leverage,
-            max_daily_loss_pct=self._cfg.risk.max_daily_loss_pct,
-            soft_drawdown_pct=self._cfg.risk.soft_drawdown_pct,
-            hard_drawdown_pct=self._cfg.risk.hard_drawdown_pct,
+            max_daily_loss_pct=max_daily_loss_pct,
+            soft_drawdown_pct=soft_drawdown_pct,
+            hard_drawdown_pct=hard_drawdown_pct,
             stale_quote_pct=stale_quote_pct,
         )
         for strategy in strategies:
@@ -1388,6 +1397,9 @@ class ReplayBacktestEngine:
                 "max_order_notional_usd": max_order_notional_usd,
                 "max_pos_pct_equity": max_pos_pct_equity,
                 "stale_quote_pct": stale_quote_pct,
+                "max_daily_loss_pct": max_daily_loss_pct,
+                "soft_drawdown_pct": soft_drawdown_pct,
+                "hard_drawdown_pct": hard_drawdown_pct,
                 "execution_model": "fill_all_on_submit",
             }
         feature_validation = self._collect_feature_validation(strategies)

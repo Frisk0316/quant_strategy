@@ -1,6 +1,8 @@
 import json
 import math
 import re
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
@@ -2159,6 +2161,66 @@ def test_backtest_api_triggers_and_reads_differential_validation(tmp_path, monke
     detail = client.get("/api/backtest/api_run/differential-validation/api_validation")
     assert detail.status_code == 200
     assert detail.json()["ohlcv_source_validation"] == "artifact_pass_db_skipped"
+
+
+def test_backtest_api_triggers_db_only_differential_validation(tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source_run = _base_run(source_root, "db_only_api_run")
+    artifacts = {
+        "result": json.loads((source_run / "result.json").read_text(encoding="utf-8")),
+        "config": json.loads((source_run / "config.json").read_text(encoding="utf-8")),
+    }
+    for artifact_type, filename in {
+        "price_series": "price_series.csv",
+        "indicator_series": "indicator_series.csv",
+        "signals": "signals.csv",
+        "trades": "trades.csv",
+        "fills": "fills.csv",
+        "equity": "equity_curve.csv",
+    }.items():
+        try:
+            artifacts[artifact_type] = pd.read_csv(source_run / filename).to_dict("records")
+        except pd.errors.EmptyDataError:
+            artifacts[artifact_type] = []
+
+    class FakeConn:
+        async def fetch(self, query, run_id):
+            assert run_id == "db_only_api_run"
+            return [
+                {"artifact_type": artifact_type, "payload": payload}
+                for artifact_type, payload in artifacts.items()
+            ]
+
+        async def close(self):
+            return None
+
+    async def fake_connect(dsn):
+        assert dsn == "postgresql://unit/db"
+        return FakeConn()
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unit/db")
+    monkeypatch.setitem(sys.modules, "asyncpg", types.SimpleNamespace(connect=fake_connect))
+    monkeypatch.setattr(dv.importlib.util, "find_spec", lambda name: None)
+
+    app = FastAPI()
+    app.include_router(make_backtest_router(tmp_path / "results"), prefix="/api/backtest")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/backtest/db_only_api_run/differential-validation/run",
+        json={"engines": ["vectorbt"], "validation_id": "db_only_validation"},
+    )
+
+    assert response.status_code == 200
+    status = client.get(f"/api/backtest/differential-validation/status/{response.json()['job_id']}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "done"
+
+    detail = client.get("/api/backtest/db_only_api_run/differential-validation/db_only_validation")
+    assert detail.status_code == 200
+    assert detail.json()["run_id"] == "db_only_api_run"
+    assert not (tmp_path / "results" / "db_only_api_run" / "result.json").exists()
 
 
 def test_backtest_api_exposes_reference_validation_contracts(tmp_path):

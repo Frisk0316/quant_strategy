@@ -461,12 +461,15 @@ function ChartZoomControls({
   yZoom = 1,
   onYZoomIn = null,
   onYZoomOut = null,
+  onYZoomChange = null,
   onYReset = null,
   yResetLabel = "Reset Y",
+  inline = false,
 }) {
   const hasRange = Array.isArray(range);
-  const hasYControls = typeof onYZoomIn === "function" || typeof onYZoomOut === "function";
-  const isYZoomed = Number.isFinite(+yZoom) && +yZoom > 1.0001;
+  const hasYControls = typeof onYZoomIn === "function" || typeof onYZoomOut === "function" || typeof onYZoomChange === "function";
+  const cleanYZoom = Number.isFinite(+yZoom) ? Math.max(1, Math.min(MAX_Y_ZOOM, +yZoom)) : 1;
+  const isYZoomed = cleanYZoom > 1.0001;
   if (!hasRange && !hasYControls) return null;
   const [startMs, endMs] = hasRange ? range : [null, null];
   const fmtZoom = (ms) => {
@@ -474,11 +477,25 @@ function ChartZoomControls({
     return isNaN(d.getTime()) ? "--" : d.toISOString().slice(0, 16).replace("T", " ");
   };
   return html`
-    <div class="chart-zoom-reset" role="status">
+    <div class=${inline ? "chart-axis-controls chart-y-scale-controls" : "chart-zoom-reset"} role="status">
       <div class="chart-zoom-caption">
-        ${hasRange ? `Zoom ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC` : `Y ${(+yZoom || 1).toFixed(1)}x`}
+        ${hasRange ? `Zoom ${fmtZoom(startMs)} - ${fmtZoom(endMs)} UTC` : `Y ${cleanYZoom.toFixed(1)}x`}
       </div>
       ${hasYControls && html`
+        ${typeof onYZoomChange === "function" && html`
+          <label class="chart-y-slider" title="Vertical Y-axis scale">
+            <span>Y scale</span>
+            <input
+              type="range"
+              min="1"
+              max=${MAX_Y_ZOOM}
+              step="0.1"
+              value=${cleanYZoom}
+              aria-label="Vertical Y-axis scale"
+              onInput=${(e) => onYZoomChange(e.currentTarget.value)}
+            />
+          </label>
+        `}
         <button class="btn ghost sm" type="button" title="Zoom Y axis in" aria-label="Zoom Y axis in" onClick=${onYZoomIn}>Y+</button>
         <button class="btn ghost sm" type="button" title="Zoom Y axis out" aria-label="Zoom Y axis out" disabled=${!isYZoomed} onClick=${onYZoomOut}>Y-</button>
       `}
@@ -532,6 +549,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [walkForward, setWalkForward] = useState([]);
   const [cpcv, setCpcv] = useState(null);
   const [riskEvents, setRiskEvents] = useState([]);
+  const [signals, setSignals] = useState([]);
   const [priceSeries, setPriceSeries] = useState([]);
   const [executionMarkers, setExecutionMarkers] = useState([]);
   const [, setPhase2Loading] = useState(true);
@@ -559,6 +577,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setPhase1Loading(true);
     setPhase1Error(null);
     setResult(null);
+    setSignals([]);
     setPriceSeries([]);
     setExecutionMarkers([]);
     setIndicators([]);
@@ -599,6 +618,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setWalkForward([]);
     setCpcv(null);
     setRiskEvents([]);
+    setSignals([]);
     setRiskLoadedRun(null);
     setPriceSeries([]);
     setExecutionMarkers([]);
@@ -622,10 +642,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
       Promise.all([
         window.API.fetchBacktestFills(runId).catch(() => []),
         window.API.fetchBacktestTrades(runId).catch(() => []),
-      ]).then(([fl, tr]) => {
+        (window.API.fetchBacktestSignals?.(runId) ?? Promise.resolve([])).catch(() => []),
+      ]).then(([fl, tr, sig]) => {
         if (cancelled) return;
         setFills(fl || []);
         setTrades(tr || []);
+        setSignals(sig || []);
       }).finally(() => setPartDone("ledger"))
     );
 
@@ -770,6 +792,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const filteredTrades = trades.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
   const filteredFills = fills.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
   const filteredRiskEvents = riskEvents.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
+  const filteredSignals = signals.filter((r) => selectedSymbolSet.has(r.inst_id || r.symbol));
 
   const realFills = filteredFills.filter(f => f.fill_sz && +f.fill_sz > 0 && (f.state === "filled" || f.state === "partially_filled"));
 
@@ -800,6 +823,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
       yZoom,
       onYZoomIn: () => setYZoom(yZoom * 1.4),
       onYZoomOut: () => setYZoom(yZoom / 1.4),
+      onYZoomChange: setYZoom,
       onYReset: () => setYZoom(1),
     };
   }
@@ -885,17 +909,21 @@ function RunDetailView({ runId, onBack, onDelete }) {
         />
       `}
 
-      <div class="row" style=${{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <button class="btn ghost sm" onClick=${onBack}>← Runs</button>
-        <div style=${{ flex: 1, minWidth: 240 }}>
-          <div class="mono" style=${{ fontSize: 13 }}>${displayName}</div>
-          ${displayName !== runId && html`<div class="field-hint mono">${runId}</div>`}
+      <div class="run-detail-header">
+        <div class="run-detail-main">
+          <button class="btn ghost sm" onClick=${onBack}>← Runs</button>
+          <div class="run-title-block">
+            <div class="mono run-title">${displayName}</div>
+            ${displayName !== runId && html`<div class="field-hint mono run-id">${runId}</div>`}
+          </div>
         </div>
-        <span class="chip">${strats}</span>
-        <span class="chip">${symbols}</span>
-        <span class="chip">${bar}</span>
-        <span class="chip">${start} → ${end}</span>
-        <${StatusBadge} ok=${!m.bankrupt}>${m.bankrupt ? "BANKRUPT" : "OK"}<//>
+        <div class="run-meta-strip">
+          <span class="chip">${strats}</span>
+          <span class="chip">${symbols}</span>
+          <span class="chip">${bar}</span>
+          <span class="chip">${start} → ${end}</span>
+          <${StatusBadge} ok=${!m.bankrupt}>${m.bankrupt ? "BANKRUPT" : "OK"}<//>
+        </div>
         <button
           class="btn ghost sm"
           style=${{ color: "var(--loss)", borderColor: "var(--loss)" }}
@@ -984,7 +1012,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
                           yZoom=${y.yZoom}
                           onYZoomIn=${y.onYZoomIn}
                           onYZoomOut=${y.onYZoomOut}
+                          onYZoomChange=${y.onYZoomChange}
                           onYReset=${y.onYReset}
+                          inline=${true}
                         />
                         <div class="chart-wrap">
                           <${TradePriceChart}
@@ -1079,7 +1109,9 @@ function RunDetailView({ runId, onBack, onDelete }) {
               yZoom=${y.yZoom}
               onYZoomIn=${y.onYZoomIn}
               onYZoomOut=${y.onYZoomOut}
+              onYZoomChange=${y.onYZoomChange}
               onYReset=${y.onYReset}
+              inline=${true}
             />
             <div class=${`indicator-warmup-banner ${warmupSource === "db" ? "warn" : "accent"}`}>
               ${warmupLabel}
@@ -1093,6 +1125,18 @@ function RunDetailView({ runId, onBack, onDelete }) {
             ${hasMacd && html`
               <div class="chart-axis-controls">
                 <span>MACD Y ${macdY.yZoom.toFixed(1)}x</span>
+                <label class="chart-y-slider" title="Vertical MACD Y-axis scale">
+                  <span>MACD Y scale</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max=${MAX_Y_ZOOM}
+                    step="0.1"
+                    value=${macdY.yZoom}
+                    aria-label="Vertical MACD Y-axis scale"
+                    onInput=${(e) => macdY.onYZoomChange(e.currentTarget.value)}
+                  />
+                </label>
                 <button class="btn ghost sm" type="button" title="Zoom MACD Y axis in" aria-label="Zoom MACD Y axis in" onClick=${macdY.onYZoomIn}>MACD Y+</button>
                 <button class="btn ghost sm" type="button" title="Zoom MACD Y axis out" aria-label="Zoom MACD Y axis out" disabled=${macdY.yZoom <= 1.0001} onClick=${macdY.onYZoomOut}>MACD Y-</button>
                 ${macdY.yZoom > 1.0001 && html`
@@ -1245,7 +1289,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
         ${activeTab === "risk" && (
           riskLoading
             ? html`<div class="field-hint" style=${{ padding: 24, textAlign: "center" }}>Loading risk events…</div>`
-            : html`<${RiskEventsTable} rows=${filteredRiskEvents} />`
+            : html`<${RiskEventSummary} rows=${filteredRiskEvents} signals=${filteredSignals} fills=${filteredFills} validation=${result.validation || {}} /><${RiskEventsTable} rows=${filteredRiskEvents} />`
         )}
       </div>
     </div>
@@ -1557,6 +1601,58 @@ function FillsTable({ rows, tradesMap }) {
         </table>
         ${rows.length > 500 && html`<div class="field-hint" style=${{ padding: "8px 0" }}>showing 500 of ${rows.length.toLocaleString()} fills</div>`}
       </div>
+    </div>
+  `;
+}
+
+function countTop(rows, keyFn, limit = 3) {
+  const counts = new Map();
+  for (const row of rows || []) {
+    const key = keyFn(row) || "unknown";
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, limit);
+}
+
+function countText(items) {
+  return items.length ? items.map(([key, count]) => `${key} (${count})`).join(", ") : "-";
+}
+
+function RiskEventSummary({ rows, signals = [], fills = [], validation = {} }) {
+  const signalCount = signals.length;
+  const fillCount = fills.filter((row) =>
+    +(row.fill_sz ?? row.qty ?? row.sz ?? 0) > 0
+    && ["filled", "partially_filled", ""].includes(String(row.state || "filled").toLowerCase())
+  ).length;
+  const conversionGap = Math.max(0, signalCount - fillCount);
+  if (!rows.length && !signalCount) return null;
+  const reasons = countTop(rows, (r) => r.reason);
+  const symbols = countTop(rows, (r) => r.inst_id || r.symbol);
+  const strategies = countTop(rows, (r) => r.strategy);
+  const drawdownStop = rows.some((r) => String(r.reason || "").includes("drawdown threshold breached"));
+  const fillAll = Boolean(validation.fill_all_signals || validation.idealized_fill || validation.research_fill_all_signals);
+  const gapNote = conversionGap > 0
+    ? drawdownStop
+      ? "Signals continued after the hard-drawdown stop, but later entries were not converted to fills. Use lower sizing for realistic sensitivity, or Fill all signals for research-only signal replay."
+      : "Signals exceed fills; compare risk events, min order size, and execution settings to decide whether this is risk-bound or execution-bound."
+    : fillAll
+      ? "Fill all signals is active: this is research-only idealized evidence and is not live/promotion evidence."
+      : "Submitted signals and fills are aligned for the loaded symbols.";
+  return html`
+    <div class="metric-grid" style=${{ marginBottom: 12 }}>
+      <div><div class="metric-label">Signals / fills</div><div class="metric-value">${signalCount.toLocaleString()} / ${fillCount.toLocaleString()}</div></div>
+      <div><div class="metric-label">Unfilled signal gap</div><div class="metric-value">${conversionGap.toLocaleString()}</div></div>
+      <div><div class="metric-label">Risk events</div><div class="metric-value">${rows.length.toLocaleString()}</div></div>
+      <div><div class="metric-label">Top reasons</div><div class="metric-value" style=${{ fontSize: 13 }}>${countText(reasons)}</div></div>
+    </div>
+    <div class="metric-grid" style=${{ marginBottom: 12 }}>
+      <div><div class="metric-label">Affected symbols</div><div class="metric-value" style=${{ fontSize: 13 }}>${countText(symbols)}</div></div>
+      <div><div class="metric-label">Strategies</div><div class="metric-value" style=${{ fontSize: 13 }}>${countText(strategies)}</div></div>
+    </div>
+    <div class="scope-note" style=${{ marginBottom: 12 }}>
+      ${gapNote}
     </div>
   `;
 }

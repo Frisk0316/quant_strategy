@@ -352,6 +352,7 @@ window.API = (function () {
     },
     /** Risk events CSV as JSON records. */
     fetchBacktestRiskEvents:  (id)      => _getLarge("/api/backtest/" + id + "/risk-events"),
+    fetchBacktestSignals:     (id)      => _getLarge("/api/backtest/" + id + "/signals"),
     fetchBacktestExecutionMarkers: (id, symbol = null, limit = 1000) => {
       const q = new URLSearchParams();
       if (symbol) q.set("symbol", symbol);

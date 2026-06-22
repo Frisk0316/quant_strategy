@@ -115,6 +115,14 @@ frontend Run Backtest form -> POST /api/backtest/run -> routes_backtest.py backg
 Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. Known gap:
 lightweight Makefile smoke does not yet run a tiny frozen replay fixture.
 
+Research-only `fill_all_signals` replay raises capacity and stop thresholds
+inside the copied run config before replay starts: order notional, position
+percent of equity, stale quote tolerance, daily loss, soft drawdown, and hard
+drawdown limits are all lifted, latency is zeroed, and replay execution uses
+`fill_all_on_submit`. The output records these values in
+`result.validation.fill_all_signals_controls`. These runs remain idealized-fill
+artifacts and are not live, promotion, or edge evidence.
+
 ## Backtest Artifact Generation Flow
 
 ```text
@@ -156,6 +164,10 @@ Current fast-load behavior: backtest selection calls
 and artifact availability can paint before chart/table fetches finish. Full
 `GET /api/backtest/{run_id}` remains available for compatibility.
 
+The Backtest Risk tab loads `signals`, `fills`, and `risk-events` together. It
+uses the selected chart symbols to show whether sparse trading came from few
+strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
+
 ## Validation Artifact Flow
 
 ```text
@@ -165,6 +177,11 @@ saved run artifacts -> validation runner and reference adapters -> validation re
 Current: validation views, APIs, and a batch portable signal-validation harness
 exist. `make strategy-signal-validation` generates deterministic active-strategy
 fixtures and writes validation artifacts under `results/strategy_validation/`.
+Validation Lab can also select saved Backtest Runs directly. File-backed runs use
+their run directory; DB-only runs read `backtest_artifacts` payloads into a
+temporary validation input bundle and write only the new validation evidence under
+`results/<run_id>/validation/<validation_id>/`. This is not a backtest artifact
+backfill and does not mutate existing result payloads.
 Known gap status must come from `docs/AI_HANDOFF.md`,
 `docs/ai_collaboration.md`, and fresh validation artifacts; missing optional
 reference-engine dependencies produce SKIP rows and do not satisfy

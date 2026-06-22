@@ -47,7 +47,17 @@ handoff between sessions; this is the one-screen "where are we" that
   `/api/backtest/runs` while WS reconnects are noisy. The run
   `ui_ema_crossover_a986588f` is present in local Postgres `backtest_runs` and
   `backtest_artifacts`; it has no local `results/<run_id>/result.json` because
-  the configured DSN makes artifact mode default to DB. Market Data Coverage now
+  the configured DSN makes artifact mode default to DB. Validation Lab now merges
+  saved Backtest Runs into its candidate selector and runs saved records through
+  run-scoped differential validation; DB-only runs are materialized to a temporary
+  input bundle for validation output under `results/<run_id>/validation/` without
+  backfilling `result.json`. Research-only `fill_all_signals` replay now also
+  lifts daily-loss and drawdown stops, records the effective thresholds in
+  `result.validation.fill_all_signals_controls`, and keeps later generated
+  strategy signals flowing through submitted orders/fills for signal-side
+  sensitivity checks. Backtest Price and technical indicator panels expose
+  visible vertical Y scale controls, and the Risk tab loads signal rows to show
+  signal-to-fill gaps for sparse-trading diagnosis. Market Data Coverage now
   queues fetch jobs sequentially in the API, renders the fetch job list in the
   frontend, exposes a guarded whole-pair delete path for OHLCV/funding pairs,
   and syncs Binance exchangeInfo-derived specs into `venue_instrument_specs` so
@@ -63,7 +73,8 @@ handoff between sessions; this is the one-screen "where are we" that
   pre-fix FAIL and now carries `SUPERSEDED.md`; cite the new
   `codex_close_only_db_parity_pass_20260618` artifact for PASS evidence. Port
   5432 repo DSN is currently reachable; local PostgreSQL on port 5433 still
-  rejects the repo `quant` credentials.
+  rejects the repo `quant` credentials. Any `fill_all_signals` run remains
+  idealized research-only evidence and must not be cited for live readiness.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, deployment gates,
   existing result artifacts, and API/frontend behavior outside the approved

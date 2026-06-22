@@ -44,14 +44,14 @@ const RISK_OVERRIDE_SPECS = [
     label: "Max order USD",
     placeholder: "e.g. 5000",
     step: "50",
-    help: "Per-order notional cap in USD. Orders above this amount are blocked as fat_finger; raising it can allow high-price exits and rebalances.",
+    help: "Per-order notional cap in USD. Orders above this amount are blocked as fat_finger; lowering it reduces drawdown-stop risk, raising it can allow high-price exits and rebalances.",
   },
   {
     key: "max_pos_pct_equity",
     label: "Max pos pct",
     placeholder: "e.g. 0.75",
     step: "0.05",
-    help: "Max position notional as a fraction of equity. 0.30 means current position plus the new order cannot exceed 30% of equity, except reduce-only exits.",
+    help: "Max position notional as a fraction of equity. 0.30 means current position plus the new order cannot exceed 30% of equity, except reduce-only exits; lowering it can keep realistic runs below hard drawdown stops.",
   },
   {
     key: "max_leverage",
@@ -796,10 +796,10 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                   style=${{ marginTop: 2 }} />
                 <span>
                   <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-                  <span class="field-hint">Research-only idealized execution: bypasses capacity caps and fills every submitted signal order.</span>
+                  <span class="field-hint">Research-only idealized execution: bypasses capacity/drawdown stops and fills every submitted strategy signal order.</span>
                 </span>
               </label>
-              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. Research-only; live risk config is unchanged.</div>
+              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. If signals continue but fills stop after a drawdown stop, lower Max order USD / Max pos pct for realistic sensitivity, or enable Fill all signals for research-only full signal replay. Live risk config is unchanged.</div>
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
@@ -1064,7 +1064,7 @@ function ParameterSweepPanel({
           style=${{ marginTop: 2 }} />
         <span>
           <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-          <span class="field-hint">Ignore market/risk caps for this sweep; research-only idealized execution.</span>
+          <span class="field-hint">Bypass capacity/drawdown stops for this sweep and fill submitted strategy signal orders; research-only idealized execution.</span>
         </span>
       </label>
       <div class="field-hint">

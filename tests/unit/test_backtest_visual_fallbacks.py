@@ -74,6 +74,41 @@ def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers
     assert "contract=${activeContract}" in text
 
 
+def test_validation_lab_can_run_saved_backtest_records_directly():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")
+
+    assert 'fixture_role: "saved_backtest_run"' in text
+    assert 'validation_scope: "run"' in text
+    assert "window.API.triggerDifferentialValidation(selectedFixtureRunId, { engines })" in text
+    assert "window.API.fetchDifferentialValidation(runId, validationId)" in text
+    assert "window.API.fetchDifferentialValidationArtifact(runId, validationId, file)" in text
+
+
+def test_price_and_indicator_panels_expose_vertical_zoom_sliders():
+    repo_root = Path(__file__).resolve().parents[2]
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+    style_text = (repo_root / "frontend" / "styles.css").read_text(encoding="utf-8")
+
+    assert "onYZoomChange" in view_text
+    assert 'aria-label="Vertical Y-axis scale"' in view_text
+    assert 'aria-label="Vertical MACD Y-axis scale"' in view_text
+    assert "inline=${true}" in view_text
+    assert ".chart-y-slider" in style_text
+    assert ".chart-y-scale-controls" in style_text
+
+
+def test_risk_tab_loads_signals_for_signal_to_fill_gap():
+    repo_root = Path(__file__).resolve().parents[2]
+    data_text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
+    view_text = (repo_root / "frontend" / "view-backtest.js").read_text(encoding="utf-8")
+
+    assert 'fetchBacktestSignals:     (id)      => _getLarge("/api/backtest/" + id + "/signals")' in data_text
+    assert "window.API.fetchBacktestSignals" in view_text
+    assert "Signals / fills" in view_text
+    assert "Unfilled signal gap" in view_text
+
+
 def test_downsample_price_records_preserves_each_symbol():
     records = [
         {"ts": i, "datetime": f"2024-01-{i + 1:02d}", "inst_id": symbol, "close": float(i)}

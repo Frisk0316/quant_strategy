@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,6 +102,22 @@ _SUMMARY_KEYS = {
     "warnings",
     "validation_warnings",
 }
+
+_VALIDATION_INPUT_ARTIFACT_FILES = {
+    "result": "result.json",
+    "config": "config.json",
+    "price_series": "price_series.csv",
+    "indicator_series": "indicator_series.csv",
+    "signals": "signals.csv",
+    "trades": "trades.csv",
+    "fills": "fills.csv",
+    "equity": "equity_curve.csv",
+    "target_weights": "target_weights.csv",
+    "funding_rates": "funding_rates.csv",
+    "external_observations": "external_observations.csv",
+}
+
+_VALIDATION_JSON_ARTIFACTS = {"result", "config"}
 
 
 def _summary_payload(result: dict[str, Any]) -> dict[str, Any]:
@@ -1856,6 +1873,8 @@ def _run_differential_validation_job(
     run_dir: Path,
     engines: list[str],
     validation_id: str | None,
+    output_dir: Path | None = None,
+    cleanup_dir: Path | None = None,
 ) -> None:
     try:
         from backtesting.differential_validation import run_differential_validation
@@ -1869,6 +1888,7 @@ def _run_differential_validation_job(
         summary = run_differential_validation(
             run_dir=run_dir,
             engines=engines,
+            output_dir=output_dir,
             validation_id=validation_id,
         )
         _validation_jobs[job_id].update({
@@ -1888,6 +1908,9 @@ def _run_differential_validation_job(
             "updated_at": _utc_now_iso(),
             "finished_at": _utc_now_iso(),
         })
+    finally:
+        if cleanup_dir is not None:
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
 
 
 def _run_strategy_differential_validation_job(
@@ -2050,6 +2073,55 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             return json.loads(payload) if isinstance(payload, str) else payload
         except Exception:
             return None
+
+    async def _read_db_artifacts(run_id: str) -> dict[str, Any]:
+        try:
+            import asyncpg
+
+            dsn = os.environ.get("DATABASE_URL")
+            if not dsn:
+                return {}
+            conn = await asyncpg.connect(dsn)
+            try:
+                rows = await conn.fetch(
+                    """
+                    SELECT artifact_type, payload
+                    FROM backtest_artifacts
+                    WHERE run_id = $1
+                    """,
+                    Path(run_id).name,
+                )
+            finally:
+                await conn.close()
+            artifacts: dict[str, Any] = {}
+            for row in rows:
+                payload = row["payload"]
+                artifacts[row["artifact_type"]] = json.loads(payload) if isinstance(payload, str) else payload
+            return artifacts
+        except Exception:
+            return {}
+
+    def _write_materialized_artifact(path: Path, artifact_type: str, payload: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if artifact_type in _VALIDATION_JSON_ARTIFACTS:
+            path.write_text(json.dumps(_json_sanitize(payload), indent=2, ensure_ascii=False), encoding="utf-8")
+            return
+        pd.DataFrame(_as_record_list(payload)).to_csv(path, index=False)
+
+    async def _materialize_db_validation_input(run_id: str) -> Path | None:
+        artifacts = await _read_db_artifacts(run_id)
+        if "result" not in artifacts:
+            return None
+        clean = Path(run_id).name
+        materialized = Path(tempfile.mkdtemp(prefix=f"diffval_{clean}_"))
+        try:
+            for artifact_type, filename in _VALIDATION_INPUT_ARTIFACT_FILES.items():
+                if artifact_type in artifacts:
+                    _write_materialized_artifact(materialized / filename, artifact_type, artifacts[artifact_type])
+        except Exception:
+            shutil.rmtree(materialized, ignore_errors=True)
+            raise
+        return materialized
 
     async def _read_row_artifact(
         run_id: str,
@@ -2474,7 +2546,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     ):
         from backtesting.differential_validation import ENGINE_NAMES
 
-        d = _run_dir(run_id)
+        clean_run_id = Path(run_id).name
+        d = results_dir / clean_run_id
+        output_dir: Path | None = None
+        cleanup_dir: Path | None = None
+        validation_id = req.validation_id
+        if not d.is_dir():
+            materialized = await _materialize_db_validation_input(clean_run_id)
+            if materialized is None:
+                raise HTTPException(status_code=404, detail="Run not found")
+            d = materialized
+            cleanup_dir = materialized
+            validation_id = validation_id or f"db_{uuid.uuid4().hex[:10]}"
+            output_dir = results_dir / clean_run_id / "validation" / validation_id
         engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
         if not engines:
             engines = ["vectorbt", "backtrader", "nautilus"]
@@ -2484,8 +2568,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         job_id = f"diffval_{uuid.uuid4().hex[:10]}"
         _validation_jobs[job_id] = {
             "job_id": job_id,
-            "run_id": run_id,
-            "validation_id": req.validation_id,
+            "run_id": clean_run_id,
+            "validation_id": validation_id,
             "engines": engines,
             "status": "queued",
             "progress": 0,
@@ -2493,7 +2577,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "created_at": _utc_now_iso(),
             "updated_at": _utc_now_iso(),
         }
-        bg.add_task(_run_differential_validation_job, job_id, run_id, d, engines, req.validation_id)
+        bg.add_task(
+            _run_differential_validation_job,
+            job_id,
+            clean_run_id,
+            d,
+            engines,
+            validation_id,
+            output_dir,
+            cleanup_dir,
+        )
         return _validation_jobs[job_id]
 
     @router.get("/differential-validation/jobs")

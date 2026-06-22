@@ -34,11 +34,15 @@ Main app views in `frontend/app.js`:
 
 - `frontend/view-backtest.js` owns run selection, result loading, metrics cards,
   market charts, indicator cards, execution markers, fills/trades summaries, and
-  visual state such as chart ranges and Y zoom.
+  visual state such as chart ranges and Y zoom. The run detail header separates
+  long display names from metadata chips so DB/display-name-heavy runs can wrap;
+  the Risk events tab summarizes top blocked reasons, symbols, strategies, and
+  the signal-to-fill gap for the selected chart symbols.
 - It calls `window.API.fetchBacktestSummary` for initial selection,
   falls back to `window.API.fetchBacktest`, then calls `fetchBacktestEquity`,
-  `fetchBacktestFills`, `fetchBacktestTrades`, `fetchBacktestPriceSeries`,
-  `fetchBacktestExecutionMarkers`, `fetchBacktestIndicators`,
+  `fetchBacktestFills`, `fetchBacktestTrades`, `fetchBacktestSignals`,
+  `fetchBacktestPriceSeries`, `fetchBacktestExecutionMarkers`,
+  `fetchBacktestIndicators`,
   `fetchBacktestRiskEvents`, `fetchWalkForward`, and `fetchCPCV`.
 - Backend endpoints are implemented in `src/okx_quant/api/routes_backtest.py`.
 - Chart/table endpoints are row-index backed when `backtest_artifact_rows`
@@ -51,11 +55,13 @@ Main app views in `frontend/app.js`:
 - `TradePriceChart` is used for market price series plus execution markers.
 - The Backtest "Price + Trade Markers" card is strategy-agnostic: every selected
   chart symbol gets its own price panel, loading state, and empty/error state.
-  Technical indicator overlays remain gated to `ma_crossover`, `ema_crossover`,
-  and `macd_crossover`.
+  Price panels expose inline Y reset/Y+/Y-/slider controls; technical indicator
+  overlays remain gated to `ma_crossover`, `ema_crossover`, and
+  `macd_crossover`.
 - `IndicatorChart` is used for technical strategies and supports price, fast/slow
   series, MACD/signal/histogram, warmup source display, visible-series controls,
-  shared market X range, and independent Y zoom.
+  shared market X range, and independent Y zoom, including visible Y scale
+  controls on indicator and MACD sub-panels.
 - `frontend/view-backtest.js` owns chart state maps: market/equity/drawdown ranges,
   per-chart Y zooms, selected chart symbols, loaded price rows, indicator rows, and
   symbol load status.
@@ -99,6 +105,8 @@ Main app views in `frontend/app.js`:
 - `fetchBacktestDrawdown`: `GET /api/backtest/{run_id}/drawdown`.
 - `fetchBacktestFills`: `GET /api/backtest/{run_id}/fills`.
 - `fetchBacktestTrades`: `GET /api/backtest/{run_id}/trades`.
+- `fetchBacktestSignals`: `GET /api/backtest/{run_id}/signals`.
+- `fetchBacktestRiskEvents`: `GET /api/backtest/{run_id}/risk-events`.
 - `fetchBacktestExecutionMarkers`: `GET /api/backtest/{run_id}/execution-markers`.
 - `fetchBacktestPriceSeries`: `GET /api/backtest/{run_id}/price-series`.
 - `fetchBacktestIndicators`: `GET /api/backtest/{run_id}/indicators`.
@@ -128,9 +136,11 @@ manual reload behavior.
   coverage when the API succeeds. External dataset rows are not pair-delete
   targets.
 
-Validation-lab calls exist in `frontend/view-validation.js`, but validation engine
-implementation is out of scope for AI-context/harness work when another session owns
-that area.
+Validation-lab calls live in `frontend/view-validation.js`. The selector merges
+saved Backtest Runs from `GET /api/backtest/runs` with strategy fixture candidates:
+saved runs trigger run-scoped `POST /api/backtest/{run_id}/differential-validation/run`,
+while remaining strategy fixtures use `POST /api/backtest/strategy-validation/run`.
+Run-scoped mismatch previews use the run validation artifact endpoint.
 
 ## Common UI Bug Locate Flow
 
