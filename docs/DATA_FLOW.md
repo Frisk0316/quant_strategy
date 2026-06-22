@@ -105,6 +105,9 @@ structure remains a separate artifact-level check because replay price series ma
 carry close-flattened O/H/L and quote-volume units. The validation output must
 surface the venue scope as `checks.db_parity.canonical_source_primary`; a Binance
 DB-backed PASS must show `binance` there.
+`scripts/resample_binance_1h_canonical.py` can derive Binance 1H canonical rows
+from already-ingested Binance 1m canonical rows without changing schema or gate
+logic.
 
 ## Backtest Run Flow
 
@@ -122,6 +125,19 @@ drawdown limits are all lifted, latency is zeroed, and replay execution uses
 `fill_all_on_submit`. The output records these values in
 `result.validation.fill_all_signals_controls`. These runs remain idealized-fill
 artifacts and are not live, promotion, or edge evidence.
+
+Execution-profile flow:
+
+```text
+UI/API execution_profile -> scripts/run_replay_backtest.py -> apply_execution_profile_controls -> ReplayBacktestEngine -> save_backtest_artifacts
+```
+
+For `dual_output`, the script writes `<base>_strategy_fill/`,
+`<base>_realistic_execution/`, and `<base>_execution_comparison.json`.
+Run detail reads the child run summary, shows `result.validation.execution_profile`,
+and links comparison JSON through
+`GET /api/backtest/{run_id}/execution-comparison`, which reads only the matching
+`*_execution_comparison.json` artifact.
 
 ## Backtest Artifact Generation Flow
 
@@ -182,6 +198,10 @@ their run directory; DB-only runs read `backtest_artifacts` payloads into a
 temporary validation input bundle and write only the new validation evidence under
 `results/<run_id>/validation/<validation_id>/`. This is not a backtest artifact
 backfill and does not mutate existing result payloads.
+`make engine-consistency-smoke` validates the frozen
+`tests/fixtures/engine_consistency/` Binance BTC-USDT-SWAP 1H technical-strategy
+fixtures against vectorbt and backtrader in no-DB/offline mode. That smoke proves
+signal-logic engine consistency only; it is not promotion evidence.
 Known gap status must come from `docs/AI_HANDOFF.md`,
 `docs/ai_collaboration.md`, and fresh validation artifacts; missing optional
 reference-engine dependencies produce SKIP rows and do not satisfy

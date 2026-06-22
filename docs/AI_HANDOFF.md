@@ -22,6 +22,19 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-23 Claude session note (audience-facing report rewrite, docs-only): the
+Validation Lab deck was rebuilt for an internal-team/reviewer audience. Per user
+feedback the old deck was too jargon-heavy, mixed Chinese/English mid-sentence,
+lacked a purpose/workflow narrative, and over-emphasized "not live-ready".
+`scripts/generate_backtest_external_validation_report.py` now produces a 16-slide
+deck (10 plain-Chinese main slides: purpose -> workflow -> validation factors
+[signal/indicator/trade/pnl/source] -> per-tool function-vs-limit comparison ->
+results -> next-step gaps -> conclusion; + 6 technical appendix slides). A new
+full methodology document was added: `scripts/generate_validation_methodology_doc.py`
+-> `docs/validation_methodology_zh.docx` (requires `python-docx`). No strategy,
+risk, config, deployment-gate, or result-artifact changes; all claims stay
+anchored to `docs/validation_lab_report_zh.md` and remain advisory-only.
+
 2026-06-22 Codex session note: a user-facing Validation Lab report package was
 prepared for a presentation. The package includes
 `docs/validation_lab_report_zh.md`,
@@ -84,6 +97,46 @@ pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as PASS.
 (`4006733`) and `codex/fix-price-chart-universal` (`76dcecc`) into this P1
 branch. Preferred integration path is one consolidated P1 PR; Binance promotion
 validation and GitHub branch-protection required-check setup stay separate.
+
+2026-06-23 Claude review note: verified Codex's execution-profile + lot/min-size
+work (tests pass; scope clean; default profile is idealized `strategy_fill`).
+"Signals trade when they appear" holds only under `strategy_fill`; realistic
+replay still fills ~0.4% (deferred by user — backtest-first phase). Confirmed the
+differential-validation harness is fully implemented and the long-window
+vectorbt+backtrader runs that "did not complete locally" on 2026-06-22 now
+complete and PASS (ma/ema/macd_crossover, `portable_validation_gate.passed`,
+zero actionable mismatch) on the real Binance 1H 20400-bar `strategy_fill` runs —
+signal-logic engine-consistency only, `advisory_only`, not promotion evidence.
+Wrote Codex task `tasks/2026-06-23-engine-consistency-smoke-task.md` for a fast
+offline frozen-fixture smoke (`make engine-consistency-smoke`). Open validation
+work: nautilus advisory run, DB-parity with DSN, and (later phase) WF/CPCV for
+strategy edge.
+
+2026-06-23 Codex follow-up: offline engine-consistency smoke is implemented as
+`make engine-consistency-smoke`, with `scripts/run_engine_consistency_smoke.py`
+and frozen fixtures under `tests/fixtures/engine_consistency/`. Local run passed
+vectorbt+backtrader signal logic for MA/EMA/MACD in 27.581s. Fixture coverage:
+MA 2024-01-01T00:00Z to 2024-02-09T23:00Z, 960 bars, 5 signals; EMA
+2024-01-01T00:00Z to 2024-02-09T23:00Z, 960 bars, 5 signals; MACD
+2024-01-01T00:00Z to 2024-01-05T23:00Z, 120 bars, 5 signals. This remains
+signal-logic-only, idealized `strategy_fill` evidence, not promotion/live
+evidence. Codex also added `scripts/resample_binance_1h_canonical.py` and seeded
+20,400 Binance-sourced BTC-USDT-SWAP 1H canonical rows from existing Binance 1m
+canonical rows. The pre-repair MA source-provenance validation with DB parity
+enabled failed at
+`results/validation_lab_ma_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill/validation/codex_binance_1h_db_parity_20260623/validation_result.json`:
+`canonical_source_primary == "binance"`, `artifact_rows=20400`,
+`db_rows=20376`, `missing_in_db=24`, `value_mismatches=0`, and
+`ohlcv_source_validation == "artifact_warn"`.
+Later on 2026-06-23, Codex ran
+`scripts/download_binance_data.py --inst BTC-USDT-SWAP --bar 1H --start 2024-04-29 --end 2024-04-30`
+against the repo DSN and default `data/ticks` path. The 2024-04-29 Binance 1H
+gap is now filled in both local parquet and `canonical_candles`: 24 Binance 1H
+rows, local-vs-DB close mismatch count 0. Existing validation-lab artifacts were
+generated before this repair; rerunning source provenance on the old MA artifact
+now has `db_rows=20400`, `missing_in_db=0`, but `value_mismatches=24`. Regenerate
+or rerun the validation-lab backtest artifacts from the repaired data before
+claiming a DB-parity PASS.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -148,6 +201,7 @@ with `db_parity.status == "PASS"`,
 
 | Commit / PR | Change | Risk |
 |---|---|---|
+| Backtest execution profiles `(implemented; Codex 2026-06-22)` | `strategy_fill` is the named research-only wrapper around existing fill-all controls, and `dual_output` runs paired `strategy_fill` plus internal `realistic_execution` artifacts with a small comparison JSON. Submitted strategy-order fill metrics now exclude terminal liquidation fills. BTC-USDT-SWAP Binance 1H checks with `max_order_notional_usd=250` and `max_pos_pct_equity=1` passed under Strategy Fill: MA 228/228/228, EMA 252/252/252, MACD 1558/1558/1558 for signal/submitted-order/real-fill counts. Full-period MACD Dual Output wrote `results/validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod_execution_comparison.json`: strategy-fill 1558 submitted fills vs realistic 3 submitted fills plus 1 terminal liquidation fill. Run Detail now shows the execution profile and exposes `GET /api/backtest/{run_id}/execution-comparison` for dual-output comparison JSON. | Research/backtest/API/UI/docs scope only. No strategy logic, live/shadow/demo gates, deployment gates, DB schema, config files, existing result artifacts, or differential-validation tolerances changed. `strategy_fill` and `dual_output` remain idealized/diagnostic and are not promotion or live-readiness evidence. |
 | Public WS reconnect-churn fix `(implemented; Claude 2026-06-22)` | `src/okx_quant/data/market_data_handler.py`: a `books` seq-gap/checksum desync no longer re-raises and tears down the whole public connection (which also dropped trades/funding and caused reconnect churn until a clean snapshot landed). `_handle_book_update` now catches the `RuntimeError` and `_resubscribe_book` re-syncs only that instId's `books` channel (discard stale book, `unsubscribe`+`subscribe`) without dropping the socket. Two secondary fixes: demo WS URL keeps `:8443` (`wspap.okx.com:8443`, was stripped to 443) for public+private; `heartbeat_task = None` guard in both `run_public`/`run_private` `finally` blocks prevents an `UnboundLocalError` masking the real error when a subscribe fails before the heartbeat starts. Follow-up (same session): the resubscribe exposed a tight desync/resubscribe loop — a freshly-reset book applied incremental `update`s before its snapshot arrived, failing checksum on an incomplete book every ~100ms. `okx_book.py::handle` now skips updates while `seq is None` (no snapshot baseline yet); the desync log now includes the reason string (seq gap vs checksum). **Confirmed root cause (`scripts/diag_book_checksum.py`):** OKX demo/paper (`wspap`) sends `checksum: 0` on every books snapshot ("not computed"), while live sends a real signed crc32 (diagnostic showed live `server == ours`, demo `server == 0`). The code treated `0` as a real checksum, so the demo book desynced on every snapshot → the whole churn/loop. Final fix: `okx_book.py::handle` skips checksum validation when the field is `0`/absent. The seq-gap/resubscribe/skip-pre-snapshot logic above stays correct for live. New `tests/unit/test_market_data_handler.py` + `test_orderbook.py::{test_update_before_snapshot_is_skipped,test_demo_zero_checksum_is_not_a_mismatch}` cover it; demo run no longer loops. | Live data-path/infra only; backtest does not use WS. `make docs-impact` passes with no violations — `src/okx_quant/data/` is not a business-rule/manifest area, so no Change Manifest required. No strategy/risk/portfolio/execution/PnL/fees/funding/sizing/fills/gates/DB-schema/config/result-artifact changes. `okx_book.py` change is additive (skip pre-snapshot updates); existing `raise`-on-desync for a synced book is unchanged and still unit-tested. An occasional single resubscribe is normal transient-gap recovery; a continuous loop is not — if it persists after this fix the log now shows `checksum mismatch` vs `seq gap` to localize the next step. Reconnect backoff intentionally not added — the `websockets` iterator already backs off on connect failures; revisit only if logs show flapping after this. Not verified against a live OKX socket in this sandbox. |
 | Validation Lab DB-only run bridge + run detail review aids `(implemented; Codex 2026-06-22)` | Validation Lab now merges saved Backtest Runs with strategy fixture candidates. Saved runs, including DB-only artifact runs, trigger run-scoped differential validation instead of the strategy fixture endpoint. `routes_backtest.py` materializes DB `backtest_artifacts` payloads into a temporary validation input bundle only for the job, writes validation output under `results/<run_id>/validation/<validation_id>/`, and does not backfill `result.json` into the run directory. Run detail header layout is split so long display names wrap without being covered by chips; Risk events now show top reason/symbol/strategy counts above the table. | API/frontend/test/docs scope only. No strategy logic, risk/portfolio/execution behavior, DB schema, config, existing result artifacts, reference-adapter tolerances, validation gates, or deployment gates changed. DB-only validation still needs the required artifact payloads (`result`, `price_series`, and strategy-required artifacts) and optional reference-engine dependencies; `fill_all_signals` remains research-only evidence. |
 | Fill-all signal replay + chart Y zoom + sparse-trading diagnosis `(implemented; Codex 2026-06-22)` | `fill_all_signals` now also lifts max daily loss, soft drawdown, and hard drawdown thresholds in both copied research configs and replay-engine effective limits, then records those effective limits in `result.validation.fill_all_signals_controls`. This fixes the research-only path where later generated signals were still suppressed after a drawdown kill. Local DB diagnosis of `ui_ma_crossover_c9acab8e` (`2026/06/22_ma_crossover_btc_usdt_swap_1000shib_usdt_swap`) found 809 signal rows through 2026-06-11, 90 orders/fills only through 2024-03-11, and a 2024-03-11 `allowed_reduce_only_bypass:drawdown threshold breached` event; the later quiet period is therefore risk-stop/sizing suppression, not missing indicator signals. Price and indicator panels now expose inline vertical Y scale controls, and the Risk tab loads `signals` so it can show signal/fill gaps, top reasons, affected symbols, and research-only fill-all warnings. | Research/backtest/UI/test/docs scope only. No strategy signal logic, live/shadow/demo gates, deployment gates, DB schema, config files, existing result artifacts, differential-validation tolerances, PnL/fee/funding math, or live risk defaults changed. `fill_all_signals` remains idealized research-only evidence and is inadmissible for promotion/live readiness. For realistic runs with late-entry suppression, first lower sizing/risk pressure (`max_order_notional_usd`, `max_pos_pct_equity`, leverage) rather than citing fill-all output. |
@@ -250,7 +304,7 @@ Note: focused indicator artifact tests used explicit pytest node ids because pyt
 ## Next Steps (in order)
 
 0. **[P0 - fixture signal validation passed and is now CI-wired; broader correctness still blocked by real-data/execution evidence]** SWAP ct_val provenance gate is stricter in `backtesting/differential_validation.py`: missing provenance is `FAIL`, and validation artifacts emit `source_data_validation`, `validation_conclusion`, and `portable_validation_gate`. `scripts/run_all_strategy_signal_validation.py` generated deterministic active-strategy fixtures with explicit `config_override` ct_val provenance. Batch `codex_20260616_signal_validation` passed for all active strategies: `source_data_validation == PASS`, `portable_validation_gate.passed == true`, `signal_point_correctness.passed == true`, and `nautilus_order_fill_parity.status == "PASS"`. CI runs the fixture batch via `make strategy-signal-validation`; DB parity remains out of scope and opt-in `SKIP` until a DSN/data fixture is ready. This batch is not live-readiness evidence.
-0c. **[P0 - source-provenance slice implemented; durable Binance DB-backed PASS evidence exists]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. Durable evidence now exists at `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json`: `source_data_validation == PASS`, `ct_val_provenance == PASS`, `db_parity == PASS`, and `ohlcv_source_validation == db_parity_pass`. Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
+0c. **[P0 - source-provenance slice implemented; current Binance DB-backed PASS needs regenerated artifacts]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. The older `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json` PASS should not be treated as a standing current-DB PASS until reproduced. A 2026-06-23 Codex reseed plus a targeted Binance download filled the 2024-04-29 one-day gap in local parquet and DB canonical 1H data. Old validation-lab artifacts still fail DB parity with 24 value mismatches because they were generated before the repair. Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
 0a. **[P0 — research checklist synced by explicit user request; pending Claude review]** `research/strategy_synthesis.md` Promotion Checklist no longer frames Differential validation as MA/EMA/MACD-only. It points reviewers to `REFERENCE_VALIDATION_CONTRACTS` for all active/declared strategies, requires `portable_validation_gate.passed == true` for promotion evidence, explains `reference_signals_only` versus advisory replay/export, and preserves advisory mismatch review authority.
 0b. **[P1 - unit-tested; pending real dependency-backed artifact review]** Differential-validation output includes `signal_point_correctness`, a three-engine (`vectorbt` / `backtrader` / `nautilus`) point-correctness matrix with PASS/FAIL, mismatch counts, examples, and advisory differences. Frontend `view-validation.js` renders this matrix; PnL/fill/metric differences remain advisory and Nautilus remains advisory for full execution/PnL parity.
 1. **[P0]** Claude re-review MA/MACD long-flat position fix follow-up, especially live/replay reduce-only bypass audit logging and ADR-0006.

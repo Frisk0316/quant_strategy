@@ -26,6 +26,9 @@ implementation exists.
 - Backtesting files: `scripts/run_replay_backtest.py`, `scripts/backtest_ohlcv_rotation.py`,
   `backtesting/replay.py`, `backtesting/parameter_sweep.py`,
   `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`.
+  Execution-profile controls live in `backtesting/research_controls.py` and are
+  exposed by `scripts/run_replay_backtest.py`, `src/okx_quant/api/routes_backtest.py`,
+  and `frontend/view-config.js`.
 - Data / DB / artifact files: `src/okx_quant/data/candle_store.py`,
   `backtesting/artifacts.py`, `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`, runtime artifacts under results run
@@ -143,7 +146,8 @@ implementation exists.
   `src/okx_quant/data/migrations/001_ohlcv_pipeline_v2.sql`,
   `src/okx_quant/data/migrations/002_market_canonical_bridge.sql`,
   `scripts/_db_writer.py`, `scripts/market_data/canonicalize.py`,
-  `scripts/market_data/import_parquet_ohlcv.py`, `sql/canonicalize_binance_to_legacy.sql`.
+  `scripts/market_data/import_parquet_ohlcv.py`,
+  `scripts/resample_binance_1h_canonical.py`, `sql/canonicalize_binance_to_legacy.sql`.
 - Config files: `config/settings.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_db_writer.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
@@ -217,13 +221,16 @@ implementation exists.
   `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
 - Backtesting files: `backtesting/differential_validation.py`,
-  `scripts/run_differential_validation.py`, `backtesting/walk_forward.py`,
+  `scripts/run_differential_validation.py`,
+  `scripts/run_engine_consistency_smoke.py`, `backtesting/walk_forward.py`,
   `backtesting/cpcv.py`.
 - Data / DB / artifact files: runtime validation result directories and validation
-  artifacts.
+  artifacts; frozen offline engine-consistency fixtures live under
+  `tests/fixtures/engine_consistency/`.
 - Config files: `config/strategies.yaml`, `config/risk.yaml`,
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_differential_validation.py`,
+  `tests/unit/test_engine_consistency_smoke.py`,
   `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`.
 - Docs to update: `docs/ai_collaboration.md`, `docs/backtest_live_parity_plan.md`,
   `docs/results_validation_manifest.md`, `docs/AI_HANDOFF.md`.

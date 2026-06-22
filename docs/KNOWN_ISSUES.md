@@ -63,12 +63,18 @@ over time.
 - For `price_series.csv`, DB parity is close-only provenance: it compares
   timestamped artifact closes to canonical candle closes after source scoping.
   O/H/L flattening and volume-unit differences are not like-for-like DB parity
-  fields; they remain covered by artifact-level structure/data-quality checks.
-  Durable DB-backed source-provenance PASS evidence now exists under
-  `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/`.
-  The older `adr0007_binance_btc_1h_db_pass_20260618_source_provenance`
-  artifact still records the pre-fix FAIL, carries `SUPERSEDED.md`, and should
-  not be cited as PASS.
+  fields; they remain covered by artifact-level structure/data-quality checks. A
+  2026-06-23 Codex reseed created 20,400 Binance-sourced 1H canonical rows for
+  `BTC-USDT-SWAP` from Binance 1m canonical data, then a targeted
+  `download_binance_data.py --bar 1H --start 2024-04-29 --end 2024-04-30`
+  repaired the remaining one-day gap. Local parquet and DB canonical Binance 1H
+  closes now match for 2024-04-29 (24 rows, 0 mismatches). Existing
+  validation-lab artifacts from before the repair still fail DB parity with 24
+  close mismatches; rerun/regenerate those artifacts before citing a current
+  DB-backed Binance 1H PASS. The older
+  `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact still
+  records the pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as
+  PASS.
 
 ## Operations
 

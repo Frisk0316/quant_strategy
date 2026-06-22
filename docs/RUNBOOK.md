@@ -58,6 +58,12 @@ python scripts/market_data/import_parquet_ohlcv.py --bar 1H
 python scripts/market_data/import_parquet_funding.py
 ```
 
+For a targeted Binance OHLCV repair, use an exclusive `--end` window:
+
+```bash
+python scripts/download_binance_data.py --inst BTC-USDT-SWAP --bar 1H --start 2024-04-29 --end 2024-04-30 --dsn postgresql://user:pass@localhost:5432/quant
+```
+
 Use DB mode for integration tests, data validation, source-data checks, and any
 promotion-grade evidence.
 
@@ -144,6 +150,18 @@ make backtest-smoke
 Current behavior: verifies entrypoints and reports that a tiny no-DB replay fixture
 is still a known gap. It is not full execution coverage.
 
+Strategy Fill replay:
+
+```powershell
+python scripts/run_replay_backtest.py --strategy macd_crossover --symbol BTC-USDT-SWAP --exchange binance --bar 1H --strategy-params "{\"fast_span\":12,\"slow_span\":26,\"signal_span\":9}" --execution-profile strategy_fill --save-artifacts --run-id manual_macd_strategy_fill
+```
+
+Dual Output replay:
+
+```powershell
+python scripts/run_replay_backtest.py --strategy macd_crossover --symbol BTC-USDT-SWAP --exchange binance --bar 1H --strategy-params "{\"fast_span\":12,\"slow_span\":26,\"signal_span\":9}" --execution-profile dual_output --save-artifacts --run-id manual_macd_dual
+```
+
 ## Config Validation
 
 ```bash
@@ -191,6 +209,27 @@ the relevant deployment gates. If `vectorbt` or `backtrader` is missing, those
 engines skip and `portable_validation_gate.passed` remains false. The batch runner
 sets `NUMBA_DISABLE_JIT=1` by default when `vectorbt` is selected because the
 fixture workloads are tiny and this avoids vectorbt import/JIT stalls on Windows.
+
+## Engine Consistency Smoke
+
+Fast offline signal-logic smoke for real Binance BTC-USDT-SWAP 1H fixtures:
+
+```bash
+make engine-consistency-smoke
+```
+
+Equivalent direct command:
+
+```bash
+python scripts/run_engine_consistency_smoke.py
+```
+
+This validates frozen `tests/fixtures/engine_consistency/` runs for
+`ma_crossover`, `ema_crossover`, and `macd_crossover` against vectorbt and
+backtrader. It forces no-DB/offline mode and requires each strategy fixture to
+have at least three signal rows. Passing output is signal-logic engine
+consistency only; the fixtures are `strategy_fill`/idealized-fill and are not
+edge, promotion, or live-readiness evidence.
 
 ## Source Provenance Validation
 
@@ -261,6 +300,22 @@ If `db_parity` has no rows or compares another source, fix the
 
 This gate does not prove Nautilus full execution parity, PnL parity, or live
 readiness.
+
+To reseed Binance BTC-USDT-SWAP 1H canonical candles from already-ingested
+Binance 1m canonical rows:
+
+```powershell
+python scripts/resample_binance_1h_canonical.py --dsn postgresql://user:pass@localhost:5432/quant --start 2024-01-01 --end 2026-05-01
+```
+
+Then rerun source provenance validation:
+
+```powershell
+$env:NUMBA_DISABLE_JIT = "1"
+$env:DIFF_VALIDATION_ENABLE_DB_PARITY = "1"
+$env:DIFF_VALIDATION_DB_DSN = "postgresql://user:pass@localhost:5432/quant"
+python scripts/run_source_provenance_validation.py --run-id <run_id> --engines vectorbt --validation-id <validation_id>
+```
 
 ## Full Verification
 

@@ -86,6 +86,11 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   phantom positions.
 - **R5.3** Replay fill model must not look ahead: a fill at bar *t* may only use
   information available at or before *t*.
+- **R5.4** Backtest execution profiles are explicit: `strategy_fill` is
+  research-only immediate full fill for submitted signal orders, while
+  `realistic_execution` keeps maker queue, cancel latency, lot/min rounding,
+  post-only behavior, and terminal liquidation. `dual_output` runs both against
+  the same data/params and writes a comparison artifact.
 
 ## R6. Data Provenance and Leakage
 
@@ -99,7 +104,8 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 ## R7. Promotion Gates
 
 - **R7.1** `naive_backtest`, `in_sample`, idealized-fill, and advisory
-  validation output are **not** promotion evidence.
+  validation output are **not** promotion evidence. This includes
+  `strategy_fill` artifacts and `dual_output` comparison summaries.
 - **R7.2** No live / shadow / demo readiness claim is valid unless every gate in
   `docs/ai_collaboration.md` passes and the human explicitly approves.
 - **R7.3** Promotion candidates require reproducible artifacts and

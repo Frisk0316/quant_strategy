@@ -20,10 +20,25 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Validation Lab report package is prepared for the
-  2026-06-22 presentation while Option C fast backtest artifact-read work remains
-  the broader active branch context.
+- **Current goal:** Validation Lab report package and Backtest execution
+  profiles are prepared for the 2026-06-22 presentation while Option C fast
+  backtest artifact-read work remains the broader active branch context. A
+  2026-06-23 Claude docs-only pass rebuilt the deck for an internal-team
+  audience (plain Chinese; purpose -> workflow -> validation factors -> per-tool
+  function-vs-limit comparison; 10 main + 6 appendix slides) and added a full
+  methodology document `docs/validation_methodology_zh.docx` via
+  `scripts/generate_validation_methodology_doc.py` (needs `python-docx`).
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
+- **Backtest execution profiles:** Implementation is complete from
+  `docs/superpowers/specs/2026-06-22-backtest-execution-profiles-design.md`.
+  User-facing choices are `Strategy Fill` and `Dual Output`; live/demo/shadow
+  gates remain unchanged and Strategy Fill is idealized research evidence only.
+  BTC-USDT-SWAP Binance 1H checks with `max_order_notional_usd=250` and
+  `max_pos_pct_equity=1` pass signal-to-order under Strategy Fill; full-period
+  MACD Dual Output shows the realistic maker path still has only 3 submitted
+  strategy-order fills and 1 terminal liquidation fill. Run Detail now shows
+  the execution profile and links dual-output comparison JSON through the
+  backtest API.
 - **Last known good state:** The branch contains P1 merge commits `d649701`
   (Claude design/changelog) and `10d631f` (price chart) on top of the ADR-0007
   implementation. No existing result artifacts were modified.
@@ -89,7 +104,15 @@ handoff between sessions; this is the one-screen "where are we" that
   pre-fix FAIL and now carries `SUPERSEDED.md`; cite the new
   `codex_close_only_db_parity_pass_20260618` artifact for PASS evidence. Port
   5432 repo DSN is currently reachable; local PostgreSQL on port 5433 still
-  rejects the repo `quant` credentials. Any `fill_all_signals` run remains
+  rejects the repo `quant` credentials. **2026-06-23 DB parity state:** Claude's
+  probe found no binance-sourced BTC-USDT-SWAP 1H canonical rows; Codex then
+  resampled Binance 1m canonical rows into 20,400 Binance 1H rows and filled the
+  remaining 2024-04-29 one-day gap with direct Binance 1H data through
+  `download_binance_data.py`. Local parquet and DB canonical Binance 1H rows now
+  match for 2024-04-29 (24 rows, 0 close mismatches). Existing validation-lab
+  artifacts were generated before that repair and still fail DB parity with 24
+  value mismatches, so regenerate/revalidate them before citing a current
+  DB-backed Binance 1H PASS. Any `fill_all_signals` run remains
   idealized research-only evidence and must not be cited for live readiness. The
   2026-06-22 long-window BTC/Binance differential-validation attempts for the
   generated MA/EMA/MACD runs did not complete locally; cite the result only as
@@ -99,6 +122,39 @@ handoff between sessions; this is the one-screen "where are we" that
   replay can be execution-model artifacts, especially when queue allocation
   rounds below venue lot/min size; check distinct filled order ids, cancellation
   logs, and `queue_fill_fraction` before interpreting strategy signal quality.
+
+- **Engine-consistency evidence (2026-06-23, Claude):** the long-window
+  vectorbt+backtrader differential validation that "did not complete locally" on
+  2026-06-22 now completes and PASSES. On the real Binance BTC-USDT-SWAP 1H
+  (20400-bar) `strategy_fill` runs, ma/ema/macd_crossover each report
+  `portable_validation_gate.passed == true` with vectorbt AND backtrader
+  `signal_logic == PASS`, `actionable_mismatch_count == 0`. Artifacts:
+  `results/validation_lab_{ma,ema,macd}_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill/validation/claude_engine_consistency_20260623/validation_result.json`.
+  This is signal-logic engine-consistency only: `admissibility == advisory_only`,
+  `promotion_gate_evidence == false`, `ohlcv_source_validation == artifact_pass_db_skipped`
+  (no DSN → DB parity skipped), and the runs are idealized `strategy_fill`. Not
+  promotion/live evidence. Measured runtime: vectorbt ~125s/run; backtrader is the
+  bottleneck, so the long-window batch is impractical as an inline check — see the
+  `tasks/2026-06-23-engine-consistency-smoke-task.md` Codex task for a fast offline
+  frozen-fixture smoke (`make engine-consistency-smoke`).
+- **Engine-consistency smoke (2026-06-23, Codex):** an offline frozen-fixture
+  smoke now exists at `make engine-consistency-smoke`, backed by
+  `tests/fixtures/engine_consistency/` and
+  `scripts/run_engine_consistency_smoke.py`. Local run passed vectorbt+backtrader
+  signal logic in 27.581s. Fixture coverage: MA and EMA each use
+  2024-01-01T00:00Z through 2024-02-09T23:00Z (960 hourly bars, 5 signals);
+  MACD uses 2024-01-01T00:00Z through 2024-01-05T23:00Z (120 hourly bars,
+  5 signals). This is signal-logic-only, idealized `strategy_fill` evidence,
+  not promotion/live-readiness evidence.
+- **Binance 1H DB parity (2026-06-23, Codex):** `scripts/resample_binance_1h_canonical.py`
+  seeded 20,400 Binance-sourced BTC-USDT-SWAP 1H canonical rows from Binance 1m
+  canonical data for 2024-01-01 through 2026-04-30T23:00. A follow-up
+  `download_binance_data.py --bar 1H --start 2024-04-29 --end 2024-04-30`
+  run replaced the remaining OKX-backed 2024-04-29 day with Binance 1H data in
+  both `data/ticks/BTC_USDT_SWAP/candles_1H.parquet` and `canonical_candles`.
+  Local-vs-DB check: 24 rows, 0 close mismatches. Existing validation-lab
+  artifacts still need regeneration because old MA source provenance now has
+  `db_rows=20400`, `missing_in_db=0`, but `value_mismatches=24`.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, deployment gates,
   existing result artifacts, and API/frontend behavior outside the approved
@@ -119,9 +175,12 @@ handoff between sessions; this is the one-screen "where are we" that
   to `main` after the active implementation branch is ready.
 - Keep Binance promotion work (signal quorum + WF/CPCV) and branch-protection
   required-check configuration as separate tasks.
-- For the Validation Lab report follow-up, create a short BTC/Binance fixture or
-  profile `scripts/run_differential_validation.py` before claiming long-window
-  three-engine validation for MA/EMA 10/200 or MACD 12/26/9.
+- For the Validation Lab report follow-up: long-window vectorbt+backtrader
+  signal-logic consistency for MA/EMA 10/200 and MACD 12/26/9 now PASSES, and a
+  repeatable offline smoke exists at `make engine-consistency-smoke`. Remaining:
+  (a) nautilus is advisory and was not run in the 2026-06-23 batch; (b) DB parity
+  needs regenerated validation-lab artifacts after the 2024-04-29 Binance data
+  repair.
 - Decide whether realistic replay needs an explicit small-order fill policy
   before using MACD realistic-fill counts as strategy evidence.
 

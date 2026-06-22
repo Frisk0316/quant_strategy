@@ -76,6 +76,13 @@ Main app views in `frontend/app.js`:
 - `frontend/view-config.js` owns the run-level Exchange selector. It sends
   `exchange` on both run-backtest and parameter-sweep payloads; the API stores it
   as `cfg.storage.primary_exchange`.
+- `frontend/view-config.js` owns the execution-profile selector. It shows only
+  `Strategy Fill` (`execution_profile=strategy_fill`) and `Dual Output`
+  (`execution_profile=dual_output`); dual jobs open the strategy-fill child run
+  by default and carry comparison metadata in job status.
+- `frontend/view-backtest.js` shows the selected run's execution profile in the
+  Run Detail header. Dual-output child runs expose an "Open comparison JSON"
+  link backed by `GET /api/backtest/{run_id}/execution-comparison`.
 - Technical strategies are `ma_crossover`, `ema_crossover`, and `macd_crossover`.
 - External-feature research baselines are `fear_greed_sentiment` and `cme_gap_fill`.
 - `daily_winner` is tagged as validation-only and is not deployment evidence.

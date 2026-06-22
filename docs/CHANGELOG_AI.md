@@ -13,6 +13,44 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-06-23 - Engine Consistency Smoke And Binance 1H DB Parity Follow-Up
+
+- Added `scripts/run_engine_consistency_smoke.py`, `make engine-consistency-smoke`,
+  and frozen real Binance BTC-USDT-SWAP 1H fixtures under
+  `tests/fixtures/engine_consistency/`.
+- Verified the smoke locally: MA/EMA/MACD all passed vectorbt+backtrader
+  signal-logic comparison in 27.581s. MA and EMA fixtures each cover 960 hourly
+  bars with 5 signals; MACD covers 120 hourly bars with 5 signals. This is
+  signal-logic-only `strategy_fill` evidence, not promotion/live evidence.
+- Added `scripts/resample_binance_1h_canonical.py` and used it to seed 20,400
+  Binance-sourced BTC-USDT-SWAP 1H canonical rows from existing Binance 1m
+  canonical rows in local Postgres.
+- Pre-repair MA source-provenance validation failed DB parity with
+  `canonical_source_primary=binance`, `artifact_rows=20400`, `db_rows=20376`,
+  `missing_in_db=24`, and `value_mismatches=0`.
+- Follow-up filled the remaining 2024-04-29 Binance 1H gap with
+  `download_binance_data.py --start 2024-04-29 --end 2024-04-30`. Local parquet
+  and DB canonical rows now match for that day (24 rows, 0 close mismatches);
+  pre-repair validation artifacts need regeneration before a DB-parity PASS can
+  be cited.
+
+## 2026-06-22 - Backtest Execution Profiles
+
+- Added first-class `strategy_fill` and `dual_output` execution profile
+  implementation path for replay backtests.
+- Kept `strategy_fill` as the existing research-only fill-all mechanism, with
+  explicit idealized-fill marking.
+- Added submitted-fill metrics that exclude terminal liquidation from strategy
+  order fill counts.
+- Verified BTC-USDT-SWAP Binance 1H with `max_order_notional_usd=250` and
+  `max_pos_pct_equity=1`: Strategy Fill produced MA 228/228/228, EMA
+  252/252/252, and MACD 1558/1558/1558 signal/order/fill counts with zero
+  rejections. Full-period MACD Dual Output confirmed the realistic path still
+  has sparse submitted fills: 779 submitted orders, 3 submitted-order fills, and
+  1 terminal liquidation fill.
+- Added Run Detail execution-profile visibility plus a comparison JSON link for
+  dual-output child runs.
+
 ## 2026-06-22 - Validation Lab Report Package
 
 - Added `docs/validation_lab_report_zh.md`, a Chinese report explaining the
