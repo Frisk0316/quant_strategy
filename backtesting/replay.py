@@ -944,11 +944,15 @@ class ReplayBacktestEngine:
             if "SWAP" not in symbol:
                 continue
             ct_val, source = self._resolve_swap_ct_val(symbol, exchange, db_specs)
+            db_spec = db_specs.get(symbol, {})
+            # Use the venue's real lot/min granularity when the DB has it; the
+            # 0.01 hardcode is too coarse for finer venues (e.g. Binance perp
+            # lot_size=0.001) and silently rounds small vol-target orders to 0.
             specs[symbol] = {
                 "ctVal": ct_val,
-                "minSz": 0.01,
-                "lotSz": 0.01,
-                "tickSz": 0.1,
+                "minSz": float(db_spec.get("min_size", 0.01)),
+                "lotSz": float(db_spec.get("lot_size", 0.01)),
+                "tickSz": float(db_spec.get("tick_size", 0.1)),
                 "tdMode": "cross",
             }
             self._ct_val_sources[symbol] = {"value": ct_val, "source": source, "exchange": exchange}
@@ -963,10 +967,11 @@ class ReplayBacktestEngine:
     def _load_db_instrument_specs(self, exchange: str = "okx") -> dict:
         """Query venue instrument specs for the run exchange, when DB is reachable.
 
-        Returned shape: {symbol: {"ct_val": float}}. Empty dict when DSN is
-        missing, unreachable, or query fails — caller falls through to the
-        bundled YAML registry for OKX only. Errors are warnings, not exceptions,
-        because the DB-primary architecture must degrade gracefully to parquet.
+        Returned shape: {symbol: {"ct_val", "lot_size", "min_size", "tick_size"}}.
+        Empty dict when DSN is missing, unreachable, or query fails — caller falls
+        through to the bundled YAML registry for OKX only. Errors are warnings, not
+        exceptions, because the DB-primary architecture must degrade gracefully to
+        parquet.
         """
         dsn = getattr(self._cfg.storage, "timescale_dsn", None)
         if not dsn:
@@ -987,7 +992,7 @@ class ReplayBacktestEngine:
                 try:
                     return await conn.fetch(
                         """
-                        SELECT symbol, ct_val
+                        SELECT symbol, ct_val, lot_size, min_size, tick_size
                         FROM venue_instrument_specs
                         WHERE exchange = $1
                           AND ct_val IS NOT NULL
@@ -1003,14 +1008,23 @@ class ReplayBacktestEngine:
             return {}
         out: dict = {}
         for row in rows:
-            ct_val = row.get("ct_val") if isinstance(row, dict) else row["ct_val"]
-            symbol = row.get("symbol") if isinstance(row, dict) else row["symbol"]
+            get = row.get if isinstance(row, dict) else row.__getitem__
+            ct_val = get("ct_val")
+            symbol = get("symbol")
             if ct_val is None:
                 continue
             try:
-                out[symbol] = {"ct_val": float(ct_val)}
+                spec = {"ct_val": float(ct_val)}
+                # Sizing-relevant specs are NOT NULL in the table, but stay
+                # defensive: only carry through values that parse cleanly so
+                # _default_instrument_specs falls back to its hardcoded defaults.
+                for col in ("lot_size", "min_size", "tick_size"):
+                    val = get(col)
+                    if val is not None:
+                        spec[col] = float(val)
             except (TypeError, ValueError):
                 continue
+            out[symbol] = spec
         return out
 
     @staticmethod
