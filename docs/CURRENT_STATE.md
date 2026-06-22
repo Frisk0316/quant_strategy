@@ -20,12 +20,9 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Option C fast backtest artifact reads are implemented locally
-  on `codex/impl-multi-venue-instrument-specs`, with DB verification pending:
-  add a derived
-  `backtest_artifact_rows` index, row-first API reads, summary-first frontend
-  loading, bulk backfill, and benchmark evidence without changing trading logic
-  or existing result payloads.
+- **Current goal:** Validation Lab report package is prepared for the
+  2026-06-22 presentation while Option C fast backtest artifact-read work remains
+  the broader active branch context.
 - **Current branch:** `codex/impl-multi-venue-instrument-specs`.
 - **Last known good state:** The branch contains P1 merge commits `d649701`
   (Claude design/changelog) and `10d631f` (price chart) on top of the ADR-0007
@@ -67,14 +64,41 @@ handoff between sessions; this is the one-screen "where are we" that
   `/api/backtest/{run_id}/summary` endpoint, summary-first frontend selection,
   and backfill/benchmark scripts. The row table is disposable derived data; old
   runs need `scripts/backfill_backtest_artifact_rows.py --all --verify` after
-  migration before their first-click artifact reads use the fast path.
+  migration before their first-click artifact reads use the fast path. A
+  2026-06-22 Validation Lab report package now exists at
+  `docs/validation_lab_report_zh.md` and
+  `docs/backtest_external_validation_report_zh.pptx`; it includes a
+  BTC-USDT-SWAP Binance 1H signal-to-order check summary at
+  `results/validation_lab_signal_order_check_20260622.json`. A follow-up
+  sensitivity rerun with `max_order_notional_usd=250` and
+  `max_pos_pct_equity=1.0` is saved at
+  `results/validation_lab_signal_order_check_20260622_maxord250_pospct1.json`.
+  Reduce-only close orders may now bypass the single-order fat-finger cap only
+  up to current position notional; exposure-increasing orders remain capped. A
+  second verification rerun with the same 250/1.0 risk overrides is saved at
+  `results/validation_lab_signal_order_check_20260622_maxord250_pospct1_verify2.json`.
+  MACD still has sparse real fills because realistic replay uses
+  `queue_fill_fraction=0.20` plus Binance `lotSz/minSz=0.001`; after MACD leaves
+  a 0.002 BTC-USDT-SWAP residual long, each reduce-only sell can allocate only
+  0.0004 per touch and rounds to zero, so orders can be submitted/cancelled
+  without fill rows until terminal liquidation. The MACD 13 fill rows include
+  one terminal-liquidation row; excluding terminal liquidation, only 3 submitted
+  order ids generated real replay fill rows.
 - **Active risks:** The older checked-in validation artifact
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` still records the
   pre-fix FAIL and now carries `SUPERSEDED.md`; cite the new
   `codex_close_only_db_parity_pass_20260618` artifact for PASS evidence. Port
   5432 repo DSN is currently reachable; local PostgreSQL on port 5433 still
   rejects the repo `quant` credentials. Any `fill_all_signals` run remains
-  idealized research-only evidence and must not be cited for live readiness.
+  idealized research-only evidence and must not be cited for live readiness. The
+  2026-06-22 long-window BTC/Binance differential-validation attempts for the
+  generated MA/EMA/MACD runs did not complete locally; cite the result only as
+  signal-to-order evidence, not as fresh three-engine portable validation.
+  The reduce-only fat-finger bypass depends on callers passing correct current
+  position notional into `RiskGuard.check()`. Low fill counts in realistic
+  replay can be execution-model artifacts, especially when queue allocation
+  rounds below venue lot/min size; check distinct filled order ids, cancellation
+  logs, and `queue_fill_fraction` before interpreting strategy signal quality.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, deployment gates,
   existing result artifacts, and API/frontend behavior outside the approved
@@ -95,6 +119,11 @@ handoff between sessions; this is the one-screen "where are we" that
   to `main` after the active implementation branch is ready.
 - Keep Binance promotion work (signal quorum + WF/CPCV) and branch-protection
   required-check configuration as separate tasks.
+- For the Validation Lab report follow-up, create a short BTC/Binance fixture or
+  profile `scripts/run_differential_validation.py` before claiming long-window
+  three-engine validation for MA/EMA 10/200 or MACD 12/26/9.
+- Decide whether realistic replay needs an explicit small-order fill policy
+  before using MACD realistic-fill counts as strategy evidence.
 
 ## How to update
 

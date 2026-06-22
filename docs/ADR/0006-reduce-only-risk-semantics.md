@@ -24,8 +24,9 @@ For this patch:
 
 1. `reduce_only=True` is assigned only by the long/flat technical exit close
    branch in `PortfolioManager`.
-2. Reduce-only orders still pass through the fat-finger max-order-notional gate.
-   A close order with unexpectedly large notional is blocked.
+2. Reduce-only orders may bypass the fat-finger max-order-notional gate only up
+   to the current position notional. A close order larger than the current
+   position is blocked.
 3. Reduce-only orders may bypass position-limit increase checks because their
    intent is to lower exposure, not add it.
 4. Reduce-only orders may pass while the kill switch, hard drawdown stop, or
@@ -48,7 +49,9 @@ For this patch:
 
 - A correct long/flat exit can close when a stale position is already over a
   position-limit threshold or when a stop state has been triggered.
-- A malformed close order with excessive notional is still blocked by
+- A valid close order can flatten an existing position even when price movement
+  makes the close notional exceed the single-order entry cap.
+- A malformed close order above current position notional is still blocked by
   fat-finger protection.
 - Replay artifacts gain an audit trail for allowed reduce-only bypasses in
   `risk_events.csv`.

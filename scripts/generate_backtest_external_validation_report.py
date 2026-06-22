@@ -345,7 +345,7 @@ def build_slides() -> list[Slide]:
         inch(2.18),
         inch(7.1),
         inch(0.35),
-        "Quant Strategy Repo｜2026-06-11｜報告用簡報",
+        "Quant Strategy Repo｜2026-06-22｜Validation Lab 報告用簡報",
         size=11,
         color=COLORS["muted"],
     )
@@ -878,6 +878,186 @@ def build_slides() -> list[Slide]:
         radius=True,
     )
     add_source(s, "Source: docs/backtest_live_parity_plan.md, docs/ai_collaboration.md")
+    slides.append(s)
+
+    s = Slide("Validation Lab：本次報告口徑", "低成本外部 reference，不是 live-ready 證明")
+    add_card(
+        s,
+        inch(0.65),
+        inch(1.35),
+        inch(3.75),
+        inch(2.15),
+        "正確說法",
+        [
+            "用本專案 artifact 串 vectorbt / backtrader / Nautilus",
+            "主要驗證同資料、同參數、同規則下的 signal point",
+            "報告重點是可審計、可重跑、低成本的交叉驗證",
+        ],
+        "blue",
+    )
+    add_card(
+        s,
+        inch(4.65),
+        inch(1.35),
+        inch(3.75),
+        inch(2.15),
+        "需要修正的誤解",
+        [
+            "不是 TradingView 的一對一替代",
+            "不是外部 PnL 完全一致才叫通過",
+            "Nautilus v1 仍是 advisory，不是 full matching engine parity",
+        ],
+        "orange",
+    )
+    add_card(
+        s,
+        inch(8.65),
+        inch(1.35),
+        inch(3.75),
+        inch(2.15),
+        "通過代表什麼",
+        [
+            "signal timing / side / action 有跨引擎一致性",
+            "source/provenance checks 在該 scope 沒有 hard fail",
+            "仍不代表可部署、可實盤、或績效可靠",
+        ],
+        "teal",
+    )
+    s.shape(inch(0.75), inch(4.2), inch(11.55), inch(0.9), fill="FEE2E2", line="FCA5A5", radius=True)
+    s.textbox(
+        inch(1.0),
+        inch(4.35),
+        inch(11.05),
+        inch(0.45),
+        "報告防呆句：Validation Lab PASS 是 signal-logic portability evidence；不驗證 raw exchange truth、queue/partial fills、fees/slippage/funding、WF/CPCV、shadow/demo 或 live readiness。",
+        size=10.2,
+        bold=True,
+        color=COLORS["text"],
+    )
+    add_source(s, "Source: docs/validation_lab_report_zh.md, docs/ai_collaboration.md")
+    slides.append(s)
+
+    s = Slide("資料正確性：已做與未做", "目前先做 artifact-to-project-source provenance；跨交易所相對驗證仍待補")
+    add_table(
+        s,
+        inch(0.55),
+        inch(1.35),
+        [inch(2.35), inch(3.0), inch(3.0), inch(3.4)],
+        inch(0.78),
+        [
+            ["層級", "目前已實作", "尚未完整實作", "報告判讀"],
+            ["Artifact shape", "price_series / required files / funding / external observations", "完整 tick/order-book shape 對照", "可證明回測輸入可讀"],
+            ["Source provenance", "ct_val provenance / DB parity opt-in", "跨交易所 raw API truth", "DB parity 只證明 artifact 與 canonical DB 一致"],
+            ["Market relativity", "局部 Binance DB-backed PASS evidence", "Binance vs OKX/Bybit close/funding 相對性", "使用者說法方向正確，但目前仍是計畫"],
+            ["Execution data", "orders/fills/rejections/risk events", "L2/L3 queue、partial fill、exchange adapter parity", "不得把 signal gate 解讀為 execution gate"],
+        ],
+    )
+    s.shape(inch(0.8), inch(5.55), inch(11.45), inch(0.55), fill="FEF3C7", line="F59E0B", radius=True)
+    s.textbox(
+        inch(1.05),
+        inch(5.66),
+        inch(11.0),
+        inch(0.28),
+        "已存在 source-provenance PASS evidence：results/adr0007_binance_btc_1h_db_pass_20260618/.../codex_close_only_db_parity_pass_20260618/validation_result.json",
+        size=8.7,
+        bold=True,
+        color=COLORS["text"],
+    )
+    add_source(s, "Source: _source_data_validation(), docs/CURRENT_STATE.md")
+    slides.append(s)
+
+    s = Slide("BTC/Binance 1H 實測結果", "MA/EMA/MACD 都能 signal-to-order；修改前 MA/EMA exit 受 500 USD cap 影響")
+    add_table(
+        s,
+        inch(0.55),
+        inch(1.25),
+        [inch(1.6), inch(1.65), inch(2.2), inch(1.2), inch(1.45), inch(1.2), inch(1.25), inch(1.4)],
+        inch(0.64),
+        [
+            ["策略", "參數", "verdict", "signals", "orders", "fills", "reject", "原因"],
+            ["MA", "10/200", "PASS_SIGNAL_TO_ORDER", "117", "5", "31", "112", "fat_finger"],
+            ["EMA", "10/200", "PASS_SIGNAL_TO_ORDER", "127", "4", "22", "123", "fat_finger"],
+            ["MACD", "12/26/9", "PASS_SIGNAL_TO_ORDER", "779", "779", "15", "0", "none"],
+        ],
+    )
+    add_card(
+        s,
+        inch(0.75),
+        inch(4.15),
+        inch(3.65),
+        inch(1.35),
+        "測試條件",
+        ["BTC-USDT-SWAP / Binance / 1H", "2024-01-01 到 2026-04-30", "20,400 / 20,400 bars，coverage 1.0"],
+        "blue",
+    )
+    add_card(
+        s,
+        inch(4.7),
+        inch(4.15),
+        inch(3.65),
+        inch(1.35),
+        "風控修正後",
+        ["250 USD cap 重跑：MA orders 5→117", "MA rejections 112→0", "1 次 bounded reduce-only bypass"],
+        "orange",
+    )
+    add_card(
+        s,
+        inch(8.65),
+        inch(4.15),
+        inch(3.65),
+        inch(1.35),
+        "限制",
+        ["長區間三引擎 differential 本次未完成", "vectorbt 單引擎也未在 60 秒內落地", "需短 fixture 或 CLI profiling"],
+        "red",
+    )
+    add_source(s, "Source: results/validation_lab_signal_order_check_20260622.json")
+    slides.append(s)
+
+    s = Slide("新手策略 Builder 路線圖", "不透過 GenAI：先做 no-code template，不開放任意 Python")
+    steps = [
+        ("1\n模板", "MA / EMA / MACD\nbreakout", "blue"),
+        ("2\n市場", "exchange / symbol\nbar / date range", "teal"),
+        ("3\n參數", "fast / slow\nthreshold / exits", "orange"),
+        ("4\n預覽", "indicator overlay\nsignal markers", "purple"),
+        ("5\n驗證", "Backtest\nValidation Lab\n保存版本", "green"),
+    ]
+    for i, (num, body, color) in enumerate(steps):
+        x = inch(0.7 + i * 2.45)
+        s.shape(x, inch(1.45), inch(0.55), inch(0.55), num, fill=COLORS[color], line=None, color="FFFFFF", size=11, bold=True, radius=True)
+        s.shape(x + inch(0.05), inch(2.12), inch(1.95), inch(0.98), body, fill="FFFFFF", line=COLORS[color], color=COLORS["text"], size=8.7, bold=True, radius=True)
+        if i < len(steps) - 1:
+            s.arrow(x + inch(2.02), inch(2.48), inch(0.28), inch(0.2), "right", COLORS["slate"])
+    add_card(
+        s,
+        inch(0.75),
+        inch(4.05),
+        inch(3.65),
+        inch(1.35),
+        "第一版要做",
+        ["strategy spec schema", "參數範圍與 lookahead guard", "spec 轉既有 backtest request"],
+        "blue",
+    )
+    add_card(
+        s,
+        inch(4.7),
+        inch(4.05),
+        inch(3.65),
+        inch(1.35),
+        "第一版不做",
+        ["任意 Python upload", "一鍵 demo/live", "沒有 reference contract 的 promotion path"],
+        "red",
+    )
+    add_card(
+        s,
+        inch(8.65),
+        inch(4.05),
+        inch(3.65),
+        inch(1.35),
+        "成功標準",
+        ["新手能生成可版本化 config", "能看 signal-to-fill gap", "能跑 Validation Lab gate"],
+        "teal",
+    )
+    add_source(s, "Source: docs/validation_lab_report_zh.md, docs/FEATURE_MAP.md, docs/UI_MAP.md")
     slides.append(s)
 
     return slides

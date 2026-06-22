@@ -13,6 +13,26 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-06-22 - Validation Lab Report Package
+
+- Added `docs/validation_lab_report_zh.md`, a Chinese report explaining the
+  Validation Lab architecture, vectorbt/backtrader/Nautilus roles, source-data
+  validation boundaries, parameter interpretation, max-order-notional
+  differences, limitations, and a beginner no-code strategy-builder plan.
+- Updated `scripts/generate_backtest_external_validation_report.py` and
+  regenerated `docs/backtest_external_validation_report_zh.pptx` with
+  Validation Lab report slides.
+- Added `scripts/run_validation_lab_signal_order_check.py` and generated
+  `results/validation_lab_signal_order_check_20260622.json` for
+  BTC-USDT-SWAP Binance 1H MA/EMA 10/200 and MACD 12/26/9 signal-to-order
+  evidence. The long-window differential-validation attempts for those
+  generated runs did not complete locally and remain follow-up work.
+- Updated reduce-only risk semantics after user approval: bounded reduce-only
+  close orders may bypass the single-order fat-finger cap up to current position
+  notional. Added Change Manifest
+  `docs/change_manifests/2026-06-22-reduce-only-fat-finger-bypass.md` and reran
+  the 250 USD / 100% equity sensitivity check.
+
 ## 2026-06-22 - Fast Backtest Artifact Rows (ADR-0008)
 
 - Added ADR-0008 and a Change Manifest for Option C: a derived

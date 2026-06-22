@@ -25,8 +25,8 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I3 | Maker-only strategy is never charged taker fees | R2.1 | execution/fee tests |
 | I4 | Funding sign: long pays positive funding, receives negative | R3.1 | funding cashflow tests |
 | I5 | Funding settlement count > 0 over a full settlement window | R3.2 | ADR-0005 Gate 4 |
-| I6 | No order exceeds configured per-instrument / per-portfolio caps | R4.3 | risk tests |
-| I7 | Reduce-only orders cannot increase absolute exposure | R4.2 | ADR-0006, risk tests |
+| I6 | No exposure-increasing order exceeds configured per-instrument / per-portfolio caps | R4.3 | risk tests |
+| I7 | Reduce-only orders cannot increase absolute exposure; fat-finger bypass is allowed only up to current position notional | R4.2 | ADR-0006, `tests/unit/test_risk_guard.py` |
 | I8 | A fill at bar *t* uses only data available at or before *t* | R5.3 | replay oracle/integration tests |
 | I9 | No orphan or phantom positions after partial fills or pairs exits | R5.2 | `tests/unit/test_backtesting.py`, integration |
 | I10 | Terminal positions are liquidated (or run flagged bankrupt) | R5.2 | ADR-0005 Gate 1 |

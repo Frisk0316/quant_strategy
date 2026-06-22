@@ -22,6 +22,40 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-22 Codex session note: a user-facing Validation Lab report package was
+prepared for a presentation. The package includes
+`docs/validation_lab_report_zh.md`,
+`docs/backtest_external_validation_report_zh.pptx`,
+`scripts/run_validation_lab_signal_order_check.py`, and
+`results/validation_lab_signal_order_check_20260622.json`. The BTC-USDT-SWAP
+Binance 1H check used MA/EMA 10/200 and MACD 12/26/9 and confirmed
+signal-to-order/fill paths for all three strategies. MA/EMA were mostly blocked
+after initial fills by the current 500 USD fat-finger max-order-notional cap.
+Long-window run-scoped differential-validation attempts for those generated
+artifacts did not complete locally, so this evidence must not be cited as fresh
+three-engine portable validation or live-readiness evidence.
+Follow-up sensitivity rerun requested by the user used
+`max_order_notional_usd=250` and `max_pos_pct_equity=1.0`, saved at
+`results/validation_lab_signal_order_check_20260622_maxord250_pospct1.json`.
+It is still signal-to-order evidence only; no permanent `config/risk.yaml`
+change was made. After user approval, RiskGuard reduce-only close orders may now
+bypass the single-order fat-finger cap only up to current position notional;
+exposure-increasing orders remain capped. The same 250/1.0 rerun now shows MA
+orders 5->117 and rejections 112->0, with one
+`allowed_reduce_only_bypass:fat_finger_reduce_only` event.
+Follow-up verification output is saved at
+`results/validation_lab_signal_order_check_20260622_maxord250_pospct1_verify2.json`.
+MACD still reports 779 submitted orders but only 13 real fill rows because only
+4 distinct order ids ever fill. The fill-model root cause is small residual
+close sizing under realistic queue rounding: Binance BTC-USDT-SWAP has
+`lotSz/minSz=0.001`, `queue_fill_fraction=0.20`, and after MACD leaves a 0.002
+residual long, a touched reduce-only sell can allocate only 0.0004 per bar,
+which `_round_fill_size()` rounds to 0. Most later sell orders are replacement
+orders cancelled by `cancel_existing`; this is execution-model evidence, not
+signal-quality evidence. The 13 fill rows include one terminal-liquidation row;
+excluding terminal liquidation, only 3 submitted order ids generated replay L1
+fill rows.
+
 Current session goal: finish the user-requested backtest follow-up: make
 research-only `fill_all_signals` carry later generated signals through replay
 after drawdown stops, expose visible vertical Y scale controls in Price and

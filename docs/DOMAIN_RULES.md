@@ -70,8 +70,11 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 - **R4.1** Position sizing is driven by `config/risk.yaml` and the portfolio
   layer, never by chat memory or ad-hoc constants.
 - **R4.2** Reduce-only and risk-limit semantics must not be weakened without an
-  ADR and explicit human approval.
-- **R4.3** No order may exceed configured per-instrument or per-portfolio caps.
+  ADR and explicit human approval. Reduce-only close orders may bypass the
+  single-order fat-finger cap only up to the current position notional; they
+  must not increase absolute exposure.
+- **R4.3** No exposure-increasing order may exceed configured per-instrument or
+  per-portfolio caps.
 
 Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 
