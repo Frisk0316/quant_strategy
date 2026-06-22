@@ -56,3 +56,16 @@ Prepare a Chinese report and PowerPoint for the Validation Lab presentation and 
 
 ## Human Learning Notes
 Validation Lab evidence has layers. Fixture three-engine signal validation already proves the harness can pass MA/EMA/MACD signal-point checks, but the new BTC/Binance long-window signal-to-order run only proves the project can turn those signals into orders/fills/rejections under its own risk/execution path. MA/EMA rejections are a useful teaching example: external signal parity and project risk realization are different questions. MACD's 779 orders versus 13 fill rows teaches a second layer: realistic maker replay can be dominated by queue allocation and exchange lot/min rounding, so order count is not fill reachability.
+
+Backtest execution profiles make that split explicit: `Strategy Fill` asks whether signals perform after becoming positions, `realistic_execution` asks how much survives current maker replay assumptions, and `dual_output` compares the two. Passing Strategy Fill or Dual Output is diagnostic, not live-readiness approval.
+
+## 2026-06-22 Addendum: Backtest execution profiles implemented
+- Implemented `strategy_fill`, internal `realistic_execution`, and public `dual_output` execution profiles across replay CLI, Validation Lab signal-order script, API request/job status, and frontend config UI.
+- Added submitted-order fill metrics that exclude terminal liquidation rows: `submitted_order_fill_count` and `terminal_liquidation_fill_count`.
+- New Change Manifest: `docs/change_manifests/2026-06-22-backtest-execution-profiles.md`.
+- New BTC-USDT-SWAP Binance 1H Strategy Fill evidence with `max_order_notional_usd=250`, `max_pos_pct_equity=1`: `results/validation_lab_signal_order_check_20260622_maxord250_pospct1_strategyfill.json`.
+- Strategy Fill counts: MA 10/200 = 228 signals / 228 submitted / 228 fills; EMA 10/200 = 252 / 252 / 252; MACD 12/26/9 = 1558 / 1558 / 1558; all had 0 rejections.
+- Full-period MACD Dual Output comparison: `results/validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod_execution_comparison.json`.
+- Full-period MACD Dual Output result: `strategy_fill` had 1558 submitted-order fills; `realistic_execution` had 779 submitted orders, 3 submitted-order fills, 13 real fill rows, and 1 terminal liquidation fill.
+- Run Detail now shows execution profile metadata and links dual-output comparison JSON through `GET /api/backtest/{run_id}/execution-comparison`.
+- Verification added: 78 targeted unit/integration tests passed, `node --check frontend/view-config.js` passed, doc metadata/link/impact checks passed with existing advisory warnings.
