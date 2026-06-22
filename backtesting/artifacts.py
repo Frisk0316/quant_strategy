@@ -486,6 +486,22 @@ def _upsert_artifacts_to_db(run_id: str, artifacts: dict[str, Any], dsn: Optiona
         logger.warning("Could not upsert artifacts for run {} to DB: {}", run_id, exc)
 
 
+def _upsert_artifact_rows_to_db(run_id: str, artifacts: dict[str, Any], dsn: Optional[str] = None, mode: str = "files") -> None:
+    """Best-effort: store derived row-index records for fast artifact reads."""
+    try:
+        import asyncio
+
+        from backtesting.artifact_rows import upsert_artifact_rows
+
+        dsn = dsn or os.environ.get("DATABASE_URL")
+        if not dsn or mode not in {"db", "both"}:
+            return
+
+        asyncio.run(upsert_artifact_rows(dsn=dsn, run_id=run_id, artifacts=artifacts))
+    except Exception as exc:
+        logger.warning("Could not upsert artifact rows for run {} to DB: {}", run_id, exc)
+
+
 def _normalize_orders(order_log: pd.DataFrame) -> pd.DataFrame:
     if order_log.empty:
         return order_log
@@ -1513,7 +1529,7 @@ def save_backtest_artifacts(
     if write_files:
         _write_json(run_dir / "result.json", result_json)
     _upsert_run_to_db(run_id_final, result_json, run_dir, dsn=dsn)
-    _upsert_artifacts_to_db(run_id_final, {
+    db_artifacts = {
         "result": result_json,
         "config": config_data,
         "metrics": metrics,
@@ -1537,6 +1553,8 @@ def save_backtest_artifacts(
         "price_series": _df_records(ensure_columns(price_df.copy(), PRICE_SERIES_COLUMNS)),
         "indicator_series": _df_records(ensure_columns(indicator_df.copy(), INDICATOR_SERIES_COLUMNS)),
         "data_coverage": coverage,
-    }, dsn=dsn, mode=artifact_mode)
+    }
+    _upsert_artifacts_to_db(run_id_final, db_artifacts, dsn=dsn, mode=artifact_mode)
+    _upsert_artifact_rows_to_db(run_id_final, db_artifacts, dsn=dsn, mode=artifact_mode)
 
     return run_dir

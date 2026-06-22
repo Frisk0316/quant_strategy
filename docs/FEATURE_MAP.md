@@ -49,11 +49,14 @@ implementation exists.
   `frontend/charts.js`, `frontend/view-trades.js`, `frontend/view-glossary.js`,
   `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
-- Backtesting files: `backtesting/artifacts.py`, `backtesting/replay.py`.
+- Backtesting files: `backtesting/artifacts.py`, `backtesting/artifact_rows.py`,
+  `backtesting/replay.py`.
 - Data / DB / artifact files: runtime `price_series`, `indicator_series`, `fills`,
-  `trades`, `equity`, `returns`, `drawdown`, and `metrics` artifacts.
+  `trades`, `equity`, `returns`, `drawdown`, and `metrics` artifacts;
+  `backtest_artifact_rows` is a derived read index, not trading truth.
 - Config files: `config/settings.yaml`, `config/strategies.yaml`.
-- Tests: `tests/unit/test_backtest_visual_fallbacks.py`,
+- Tests: `tests/unit/test_artifact_rows.py`,
+  `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/unit/test_frontend_static_mime.py`, `tests/unit/test_backtest_artifact_schema.py`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: chart fixes should not alter artifact schema, replay logic, or
@@ -70,9 +73,11 @@ implementation exists.
 - Backtesting files: `scripts/run_replay_backtest.py`, `backtesting/artifacts.py`,
   `backtesting/replay.py`, `backtesting/walk_forward.py`, `backtesting/cpcv.py`.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
-  `backtesting/artifacts.py`, runtime result directories.
+  `sql/migrations/0012_backtest_artifact_rows.sql`, `backtesting/artifacts.py`,
+  `backtesting/artifact_rows.py`, runtime result directories.
 - Config files: `config/settings.yaml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
+  `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/integration/test_api_endpoints.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`, `docs/DATA_FLOW.md`,
   `docs/RUNBOOK.md`.

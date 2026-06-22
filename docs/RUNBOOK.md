@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -60,6 +60,41 @@ python scripts/market_data/import_parquet_funding.py
 
 Use DB mode for integration tests, data validation, source-data checks, and any
 promotion-grade evidence.
+
+## Backtest Artifact Fast Reads
+
+Apply migrations through the normal DB initialization path, including
+`sql/migrations/0012_backtest_artifact_rows.sql`, before relying on row-backed
+artifact reads.
+
+Backfill existing saved runs after the migration:
+
+```bash
+python scripts/backfill_backtest_artifact_rows.py --all --verify
+```
+
+For a dry run or a small smoke:
+
+```bash
+python scripts/backfill_backtest_artifact_rows.py --all --limit-runs 1 --dry-run
+python scripts/backfill_backtest_artifact_rows.py --run-id <run_id> --verify
+```
+
+Include run-scoped differential validation CSV artifacts when needed:
+
+```bash
+python scripts/backfill_backtest_artifact_rows.py --run-id <run_id> --include-validation --verify
+```
+
+Benchmark the running API before and after backfill:
+
+```bash
+python scripts/benchmark_artifact_reads.py --run-id <run_id> --symbol BTC-USDT-SWAP --output reports/artifact_read_benchmark_after.json
+```
+
+The row table is a derived read index. If rows are missing, API endpoints fall
+back to existing JSONB/file readers; do not use row-count presence as trading or
+promotion evidence.
 
 ## Unit Tests
 

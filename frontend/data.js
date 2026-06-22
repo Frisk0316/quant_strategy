@@ -287,6 +287,21 @@ window.API = (function () {
     return r.json();
   }
   async function _getLarge(path) { return _get(path, 60000); }
+  const _memoCache = new Map();
+  const _memoTtlMs = 5000;
+  async function _memo(key, loader) {
+    const now = Date.now();
+    const cached = _memoCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.promise;
+    const promise = loader().catch((err) => {
+      _memoCache.delete(key);
+      throw err;
+    });
+    _memoCache.set(key, { promise, expiresAt: now + _memoTtlMs });
+    return promise;
+  }
+  async function _memoGet(key, path) { return _memo(key, () => _get(path)); }
+  async function _memoGetLarge(key, path) { return _memo(key, () => _getLarge(path)); }
 
   async function _post(path, body) {
     const r = await fetch(path, {
@@ -309,10 +324,11 @@ window.API = (function () {
     /** Recent fills matching window.MOCK.trades schema. */
     fetchLiveTrades:          (n = 200) => _get("/api/live/trades?limit=" + n),
     /** List of saved backtest runs (summary only). */
-    fetchBacktestRuns:        ()        => _get("/api/backtest/runs", 10000),
-    fetchRuns:                ()        => _get("/api/backtest/runs", 10000),
+    fetchBacktestRuns:        ()        => _memoGetLarge("backtest-runs", "/api/backtest/runs"),
+    fetchRuns:                ()        => _memoGetLarge("backtest-runs", "/api/backtest/runs"),
     /** Full result.json for a run. */
     fetchBacktest:            (id)      => _get("/api/backtest/" + id),
+    fetchBacktestSummary:     (id)      => _get("/api/backtest/" + id + "/summary"),
     fetchBacktestMetrics:     (id)      => _get("/api/backtest/" + id + "/metrics"),
     /** Equity curve — downsampled to n points for fast chart rendering. Use n=0 for all rows. */
     fetchBacktestEquity:      (id, n = 600) => _getLarge("/api/backtest/" + id + "/equity" + (n ? "?n=" + n : "")),
@@ -371,7 +387,7 @@ window.API = (function () {
     fetchStrategyValidation: (strategy, validationId) => _get("/api/backtest/strategy-validation/" + strategy + "/" + validationId),
     fetchStrategyValidationArtifact: (strategy, validationId, artifactName) => _getLarge("/api/backtest/strategy-validation/" + strategy + "/" + validationId + "/artifact/" + artifactName),
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
-    fetchDataCoverage:        ()        => _get("/api/data/coverage"),
+    fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage"),
     fetchDataInstruments:     (exchange = "okx", q = "") => {
       const params = new URLSearchParams({ inst_type: "SWAP", quote_ccy: "USDT", exchange });
       if (q) params.set("q", q);

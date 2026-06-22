@@ -1,6 +1,7 @@
 """Regression tests for the frozen backtest artifact schema."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -141,6 +142,18 @@ def test_backtest_artifact_column_constants_include_adr_required_fields():
     assert REQUIRED_EXTERNAL_OBSERVATION_COLUMNS <= set(EXTERNAL_OBSERVATION_COLUMNS)
     assert REQUIRED_BOOK_SNAPSHOT_COLUMNS <= set(BOOK_SNAPSHOT_COLUMNS)
     assert REQUIRED_TRADE_TICK_COLUMNS <= set(TRADE_TICK_COLUMNS)
+
+
+def test_backtest_artifact_rows_migration_declares_fast_read_index_contract():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "sql" / "migrations" / "0012_backtest_artifact_rows.sql").read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS backtest_artifact_rows" in text
+    assert "PRIMARY KEY (run_id, artifact_type, ordinal)" in text
+    assert "REFERENCES backtest_runs(run_id) ON DELETE CASCADE" in text
+    assert "(run_id, artifact_type, inst_id, ordinal)" in text
+    assert "(run_id, artifact_type, inst_id, ts_ms)" in text
+    assert "(run_id, artifact_type)" in text
 
 
 def test_minimal_backtest_artifact_export_preserves_required_schema(tmp_path, monkeypatch):

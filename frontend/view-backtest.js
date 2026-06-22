@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 // Backtest Runs browser + Run Detail view — reads from /api/backtest/* endpoints.
@@ -548,6 +548,11 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const [riskLoadedRun, setRiskLoadedRun] = useState(null);
   const [marketSymbolStatus, setMarketSymbolStatus] = useState({});
   const [indicatorSymbolStatus, setIndicatorSymbolStatus] = useState({});
+  const runIdRef = useRef(runId);
+
+  useEffect(() => {
+    runIdRef.current = runId;
+  }, [runId]);
 
   // Phase 1: load result.json (fast — small payload)
   useEffect(() => {
@@ -560,7 +565,10 @@ function RunDetailView({ runId, onBack, onDelete }) {
     setSelectedChartSymbols([]);
     setMarketSymbolStatus({});
     setIndicatorSymbolStatus({});
-    window.API.fetchBacktest(runId)
+    const summaryRequest = typeof window.API.fetchBacktestSummary === "function"
+      ? window.API.fetchBacktestSummary(runId)
+      : window.API.fetchBacktest(runId);
+    summaryRequest
       .then((r) => setResult(r))
       .catch((e) => setPhase1Error(e.message))
       .finally(() => setPhase1Loading(false));
@@ -648,7 +656,6 @@ function RunDetailView({ runId, onBack, onDelete }) {
 
   useEffect(() => {
     if (!result) return;
-    let cancelled = false;
     const activeStrategiesForMarket = result.strategies || (result.strategy ? [result.strategy] : []);
     const shouldLoadIndicators = activeStrategiesForMarket.some((s) => TECHNICAL_STRATEGIES_SET.has(s));
     const symbolsToLoad = (selectedChartSymbols.length ? selectedChartSymbols : runVisualSymbols(result).slice(0, 1))
@@ -661,12 +668,12 @@ function RunDetailView({ runId, onBack, onDelete }) {
           window.API.fetchBacktestPriceSeries(runId, symbol, MARKET_PRICE_POINTS),
           window.API.fetchBacktestExecutionMarkers(runId, symbol, MARKET_MARKER_LIMIT).catch(() => []),
         ]).then(([ps, em]) => {
-          if (cancelled) return;
+          if (runIdRef.current !== runId) return;
           setPriceSeries((prev) => replaceRowsForSymbol(prev, symbol, ps || []));
           setExecutionMarkers((prev) => replaceRowsForSymbol(prev, symbol, em || []));
           setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "loaded" }));
         }).catch(() => {
-          if (!cancelled) setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
+          if (runIdRef.current === runId) setMarketSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
         });
       }
 
@@ -674,17 +681,15 @@ function RunDetailView({ runId, onBack, onDelete }) {
         setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "loading" }));
         (window.API.fetchBacktestIndicators?.(runId, symbol, INDICATOR_POINTS) ?? Promise.resolve([]))
           .then((ind) => {
-            if (cancelled) return;
+            if (runIdRef.current !== runId) return;
             setIndicators((prev) => replaceRowsForSymbol(prev, symbol, ind || []));
             setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "loaded" }));
           })
           .catch(() => {
-            if (!cancelled) setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
+            if (runIdRef.current === runId) setIndicatorSymbolStatus((prev) => ({ ...prev, [symbol]: "error" }));
           });
       }
     }
-
-    return () => { cancelled = true; };
   }, [runId, result, selectedChartSymbols.join("|")]);
 
   useEffect(() => {
@@ -1145,7 +1150,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                   onYZoomOut=${equityY.onYZoomOut}
                   onYReset=${equityY.onYReset}
                 />
-                <div class="chart-wrap"><${LineChart}
+                <div class="chart-wrap fluid"><${LineChart}
                   series=${[{ values: eqValues, color: m.bankrupt ? "var(--loss)" : "var(--accent)", label: "Equity" }]}
                   height=${220}
                   mode="area"
@@ -1181,7 +1186,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
                 onYZoomOut=${drawdownY.onYZoomOut}
                 onYReset=${drawdownY.onYReset}
               />
-              <div class="chart-wrap"><${LineChart}
+              <div class="chart-wrap fluid"><${LineChart}
                 series=${[{ values: ddValues, color: "var(--loss)", label: "Drawdown" }]}
                 height=${140}
                 mode="area"

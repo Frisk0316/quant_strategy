@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-22
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,16 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-06-22 - Fast Backtest Artifact Rows (ADR-0008)
+
+- Added ADR-0008 and a Change Manifest for Option C: a derived
+  `backtest_artifact_rows` table that accelerates saved-result reads without
+  changing existing artifact payloads or trading semantics.
+- Added row-first API reads for common chart/table endpoints plus a lightweight
+  `/api/backtest/{run_id}/summary` endpoint for immediate UI selection.
+- Added backfill and benchmark scripts so old runs can be indexed, verified by
+  count/hash parity, and measured through the running API.
 
 ## 2026-06-12 - AI Context And Harness
 

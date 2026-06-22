@@ -124,6 +124,15 @@ ReplayBacktestResult -> backtesting.artifacts.save_backtest_artifacts -> files, 
 Current: artifact mode is controlled by environment and DSN availability. Do not
 edit existing historical artifacts as part of code or docs cleanup.
 
+Fast-read path: `save_backtest_artifacts` keeps writing the compatibility
+`backtest_artifacts.payload` rows/files, then best-effort writes derived
+`backtest_artifact_rows` records for large list artifacts. The row table is a
+read index only. API chart/table endpoints try row records first for symbol
+filters, `LIMIT/OFFSET`, and downsample reads, then fall back to the old
+JSONB/file readers. Existing runs require
+`scripts/backfill_backtest_artifact_rows.py --all --verify` after migration
+0012 before their first-click artifact reads can use the fast path.
+
 ## Indicator Series Flow
 
 ```text
@@ -142,6 +151,11 @@ run list selection -> window.API helpers in frontend/data.js -> routes_backtest.
 Current: frontend result display is a review surface, not a deployment gate by
 itself. If API fields are missing, inspect artifacts before changing UI defaults.
 
+Current fast-load behavior: backtest selection calls
+`GET /api/backtest/{run_id}/summary` first so metrics, symbols, validation flags,
+and artifact availability can paint before chart/table fetches finish. Full
+`GET /api/backtest/{run_id}` remains available for compatibility.
+
 ## Validation Artifact Flow
 
 ```text
@@ -155,3 +169,8 @@ Known gap status must come from `docs/AI_HANDOFF.md`,
 `docs/ai_collaboration.md`, and fresh validation artifacts; missing optional
 reference-engine dependencies produce SKIP rows and do not satisfy
 `portable_validation_gate`.
+
+Run-scoped differential validation CSV artifacts may be indexed in
+`backtest_artifact_rows` as `validation/{validation_id}/{artifact_name}` for
+faster artifact detail reads. Strategy-validation artifacts stay file-backed
+because they are not keyed by `backtest_runs.run_id`.

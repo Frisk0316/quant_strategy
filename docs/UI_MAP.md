@@ -35,11 +35,14 @@ Main app views in `frontend/app.js`:
 - `frontend/view-backtest.js` owns run selection, result loading, metrics cards,
   market charts, indicator cards, execution markers, fills/trades summaries, and
   visual state such as chart ranges and Y zoom.
-- It calls `window.API.fetchBacktest`, `fetchBacktestEquity`,
+- It calls `window.API.fetchBacktestSummary` for initial selection,
+  falls back to `window.API.fetchBacktest`, then calls `fetchBacktestEquity`,
   `fetchBacktestFills`, `fetchBacktestTrades`, `fetchBacktestPriceSeries`,
   `fetchBacktestExecutionMarkers`, `fetchBacktestIndicators`,
   `fetchBacktestRiskEvents`, `fetchWalkForward`, and `fetchCPCV`.
 - Backend endpoints are implemented in `src/okx_quant/api/routes_backtest.py`.
+- Chart/table endpoints are row-index backed when `backtest_artifact_rows`
+  contains derived records; the UI response shape is unchanged.
 
 ## Chart Components
 
@@ -89,6 +92,7 @@ Main app views in `frontend/app.js`:
 - `fetchBacktestRunStatus`: `GET /api/backtest/run/status/{job_id}`.
 - `triggerBacktestSweep`: `POST /api/backtest/sweep`.
 - `fetchBacktest`: `GET /api/backtest/{run_id}`.
+- `fetchBacktestSummary`: `GET /api/backtest/{run_id}/summary`.
 - `fetchBacktestMetrics`: `GET /api/backtest/{run_id}/metrics`.
 - `fetchBacktestEquity`: `GET /api/backtest/{run_id}/equity`.
 - `fetchBacktestReturns`: `GET /api/backtest/{run_id}/returns`.
@@ -104,6 +108,10 @@ Main app views in `frontend/app.js`:
 - `fetchDataFetchJobs`: `GET /api/data/fetch/jobs`.
 - `fetchDataFetchStatus`: `GET /api/data/fetch/status/{job_id}`.
 - `cancelDataFetch`: `POST /api/data/fetch/cancel/{job_id}`.
+
+`fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
+cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh
+manual reload behavior.
 - `deleteDataPair`: `DELETE /api/data/pairs/{inst_id}`.
 - `dataExportUrl`: `GET /api/data/export`.
 
