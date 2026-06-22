@@ -170,6 +170,10 @@ def main() -> None:
         "--start", default=None,
         help="Start date in YYYY-MM-DD format (UTC); overrides --days",
     )
+    parser.add_argument(
+        "--end", default=None,
+        help="Exclusive end date in YYYY-MM-DD format (UTC); defaults to now",
+    )
     parser.add_argument("--out", default="data/ticks", help="Output root directory")
     parser.add_argument(
         "--write-db", dest="write_db", action="store_true", default=True,
@@ -189,20 +193,26 @@ def main() -> None:
     folder = args.inst.replace("-", "_")
     out_path = out_dir / folder / f"candles_{args.bar}.parquet"
 
-    now_ms = int(time.time() * 1000)
+    if args.end:
+        end_dt = datetime.strptime(args.end, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        now_ms = int(end_dt.timestamp() * 1000)
+    else:
+        now_ms = int(time.time() * 1000)
 
-    # Incremental mode: if file exists, resume from last candle + 1 bar
+    # Incremental mode: if file exists, resume from last candle + 1 bar.
+    # Explicit --start is a repair/backfill window and takes precedence.
     existing_df: pd.DataFrame | None = None
     if out_path.exists():
         existing_df = pq.read_table(out_path).to_pandas()
+    if args.start:
+        start_dt = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        start_ms = int(start_dt.timestamp() * 1000)
+    elif existing_df is not None:
         last_ts = existing_df["ts"].max()
         bar_dur = BAR_MS.get(BAR_MAP.get(args.bar, args.bar), 60_000)
         start_ms = int(last_ts.timestamp() * 1000) + bar_dur
         print(f"Existing file found: {len(existing_df):,} rows, last={last_ts.isoformat()}")
         print(f"Resuming from {datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).isoformat()}")
-    elif args.start:
-        start_dt = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        start_ms = int(start_dt.timestamp() * 1000)
     else:
         start_ms = now_ms - args.days * 86_400_000
 
@@ -226,15 +236,21 @@ def main() -> None:
         return
 
     new_df = pd.DataFrame(rows)
-    new_df["ts"] = pd.to_datetime(new_df["ts"], unit="ms", utc=True)
+    new_df["ts"] = pd.to_datetime(new_df["ts"], unit="ms", utc=True).dt.tz_localize(None)
+    if args.end:
+        end_ts = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+        new_df = new_df[new_df["ts"] < end_ts]
+        if new_df.empty:
+            print("No new data returned before exclusive --end.")
+            return
 
     if existing_df is not None:
         df = pd.concat([existing_df, new_df], ignore_index=True)
     else:
         df = new_df
 
+    df.drop_duplicates("ts", keep="last", inplace=True)
     df.sort_values("ts", inplace=True)
-    df.drop_duplicates("ts", inplace=True)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pandas(df), out_path, compression="snappy")

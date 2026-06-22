@@ -1,0 +1,158 @@
+{
+  "run_id": "engine_consistency_ema_crossover_btc_binance_1h",
+  "display_name": "Engine consistency fixture: ema_crossover BTC-USDT-SWAP Binance 1H",
+  "created_at": "2026-06-22T14:39:56+00:00",
+  "mode": "replay_backtest",
+  "strategies": [
+    "ema_crossover"
+  ],
+  "symbols": [
+    "BTC-USDT-SWAP"
+  ],
+  "bar": "1H",
+  "start": "2024-01-01T00:00:00Z",
+  "end": "2024-02-09T23:00:00Z",
+  "backend": "frozen_fixture",
+  "data_source": {
+    "ohlcv_layer": "canonical_candles",
+    "funding_layer": "funding_rates",
+    "external_feature_layer": "external_observations",
+    "trade_tick_layer": "trade_ticks",
+    "primary_exchange": "binance"
+  },
+  "metrics": {
+    "sharpe": 0.0,
+    "max_drawdown": 0.0,
+    "total_return": 0.0
+  },
+  "parameters": {
+    "strategies": {
+      "ema_crossover": {
+        "enabled": true,
+        "symbols": [
+          "BTC-USDT-SWAP"
+        ],
+        "fast_span": 10,
+        "slow_span": 200,
+        "indicator_db_warmup": false,
+        "td_mode": "cross"
+      }
+    },
+    "risk": {
+      "max_order_notional_usd": 1000000000000.0,
+      "max_pos_pct_equity": 1000000.0,
+      "max_leverage": 3.0
+    },
+    "backtest": {
+      "order_latency_ms": 0,
+      "cancel_latency_ms": 0,
+      "queue_fill_fraction": 1.0,
+      "liquidate_on_end": true,
+      "fill_all_signals": true
+    },
+    "overrides": {
+      "strategy_params": {
+        "fast_span": 10,
+        "slow_span": 200
+      },
+      "risk_overrides": {
+        "max_order_notional_usd": 250.0,
+        "max_pos_pct_equity": 1.0
+      }
+    }
+  },
+  "artifacts": {
+    "config": "config.json",
+    "signals": "signals.csv",
+    "price_series": "price_series.csv"
+  },
+  "validation": {
+    "liquidate_on_end": true,
+    "terminal_positions_before": {},
+    "terminal_positions_after": {},
+    "terminal_liquidation_fill_count": 0,
+    "terminal_liquidation_notional_usd": 0.0,
+    "terminal_liquidation_missing_prices": [],
+    "terminal_liquidation_price_fallbacks": [],
+    "terminal_positions_closed": true,
+    "fill_all_signals": true,
+    "fill_all_signals_controls": {
+      "max_order_notional_usd": 1000000000000.0,
+      "max_pos_pct_equity": 1000000.0,
+      "stale_quote_pct": 1000000.0,
+      "max_daily_loss_pct": 1000000.0,
+      "soft_drawdown_pct": 1000000.0,
+      "hard_drawdown_pct": 1000001.0,
+      "execution_model": "fill_all_on_submit"
+    },
+    "ct_val_sources": {
+      "BTC-USDT-SWAP": {
+        "value": 1.0,
+        "source": "exchange_base_unit",
+        "exchange": "binance"
+      }
+    },
+    "ct_val_all_authoritative": true,
+    "ct_val_non_authoritative_symbols": [],
+    "ct_val_gate_passed": true,
+    "exchange": "binance",
+    "gate2_fill_rate_warning": false,
+    "gate2_fill_rate": 1.0,
+    "gate3_data_coverage": {
+      "coverage_pct": 1.0,
+      "bar": "1H",
+      "start": "2024-01-01",
+      "end": "2026-04-30",
+      "symbols": [
+        {
+          "inst_id": "BTC-USDT-SWAP",
+          "actual_bars": 20400,
+          "expected_bars": 20400,
+          "coverage_pct": 1.0
+        }
+      ],
+      "features": []
+    },
+    "gate4_funding_coverage_warning": false,
+    "execution_profile": "strategy_fill",
+    "idealized_fill": true,
+    "research_fill_all_signals": {
+      "enabled": true,
+      "risk": {
+        "max_order_notional_usd": 1000000000000.0,
+        "max_pos_pct_equity": 1000000.0,
+        "stale_quote_pct": 1000000.0,
+        "max_daily_loss_pct": 1000000.0,
+        "soft_drawdown_pct": 1000000.0,
+        "hard_drawdown_pct": 1000001.0
+      },
+      "backtest": {
+        "fill_all_signals": true,
+        "order_latency_ms": 0,
+        "cancel_latency_ms": 0,
+        "queue_fill_fraction": 1.0
+      }
+    },
+    "risk_summary": {
+      "total": 0,
+      "by_reason": {},
+      "by_symbol": {},
+      "by_reason_symbol": {}
+    },
+    "indicator_warmup_sources": {
+      "ema_crossover": {
+        "BTC-USDT-SWAP": "cold"
+      }
+    },
+    "validation_status": "portable_signal_fixture",
+    "artifact_scope": "signal_logic_engine_consistency_only",
+    "promotion_gate_evidence": false,
+    "fixture_source_run_id": "validation_lab_ema_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill",
+    "fixture_window": {
+      "start": "2024-01-01T00:00:00Z",
+      "end_exclusive": "2024-02-10T00:00:00Z",
+      "price_rows": 960,
+      "signal_rows": 5
+    }
+  }
+}

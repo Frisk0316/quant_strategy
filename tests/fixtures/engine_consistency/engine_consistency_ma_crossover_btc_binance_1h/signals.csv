@@ -1,0 +1,6 @@
+ts,datetime,strategy,inst_id,side,strength,fair_value,target_bid,target_ask,metadata
+1706284800000,2024-01-26T16:00:00Z,ma_crossover,BTC-USDT-SWAP,buy,1.0,41944.3,,,"{""fast_window"": 10, ""slow_window"": 200, ""fast_ma"": 40913.99, ""slow_ma"": 40751.501000000004, ""action"": ""entry"", ""cancel_existing"": true, ""mode"": ""long_flat""}"
+1707087600000,2024-02-04T23:00:00Z,ma_crossover,BTC-USDT-SWAP,sell,1.0,42570.3,,,"{""fast_window"": 10, ""slow_window"": 200, ""fast_ma"": 42772.71, ""slow_ma"": 42772.8205, ""action"": ""exit"", ""cancel_existing"": true, ""mode"": ""long_flat""}"
+1707127200000,2024-02-05T10:00:00Z,ma_crossover,BTC-USDT-SWAP,buy,1.0,43129.899999999994,,,"{""fast_window"": 10, ""slow_window"": 200, ""fast_ma"": 42821.4, ""slow_ma"": 42816.595, ""action"": ""entry"", ""cancel_existing"": true, ""mode"": ""long_flat""}"
+1707166800000,2024-02-05T21:00:00Z,ma_crossover,BTC-USDT-SWAP,sell,1.0,42368.5,,,"{""fast_window"": 10, ""slow_window"": 200, ""fast_ma"": 42820.13, ""slow_ma"": 42838.094000000005, ""action"": ""exit"", ""cancel_existing"": true, ""mode"": ""long_flat""}"
+1707231600000,2024-02-06T15:00:00Z,ma_crossover,BTC-USDT-SWAP,buy,1.0,43232.0,,,"{""fast_window"": 10, ""slow_window"": 200, ""fast_ma"": 42906.65, ""slow_ma"": 42903.837999999996, ""action"": ""entry"", ""cancel_existing"": true, ""mode"": ""long_flat""}"
