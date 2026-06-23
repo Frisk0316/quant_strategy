@@ -589,6 +589,7 @@ def load_l1_books(
     fallback_inst_id: Optional[str] = None,
     backend: str = "parquet",
     dsn: Optional[str] = None,
+    exchange: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load top-of-book snapshots.
@@ -599,6 +600,9 @@ def load_l1_books(
     3. Synthetic L1 books derived from candle closes
     """
     inst_dir = Path(data_dir) / inst_id.replace("-", "_")
+    venue = str(exchange).strip().lower() if exchange else None
+    if venue and backend == "parquet":
+        backend = "postgres"
     if backend == "postgres":
         try:
             candles = load_ohlcv_candles(
@@ -609,6 +613,7 @@ def load_l1_books(
                 end=end,
                 backend="postgres",
                 dsn=dsn,
+                exchange=venue,
             )
         except FileNotFoundError:
             candles = pd.DataFrame()
@@ -622,6 +627,7 @@ def load_l1_books(
                     end=end,
                     backend="postgres",
                     dsn=dsn,
+                    exchange=venue,
                 )
             except FileNotFoundError:
                 candles = pd.DataFrame()
@@ -630,6 +636,11 @@ def load_l1_books(
                 inst_id=inst_id,
                 candles=candles,
                 synthetic_spread_bps=synthetic_spread_bps,
+            )
+        if venue:
+            raise ValueError(
+                f"Venue-scoped candle load for exchange='{venue}' returned no candles for {inst_id}; "
+                "no parquet or cross-venue fallback is allowed."
             )
 
     if inst_dir.exists():
@@ -1676,6 +1687,12 @@ def build_feed_for_strategies(
     trade_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
+    candle_exchange = (
+        getattr(cfg.storage, "primary_exchange", None)
+        if getattr(cfg.storage, "candle_backend", "parquet") == "postgres"
+        and getattr(cfg.storage, "timescale_dsn", None)
+        else None
+    )
     if "pairs_trading" in strategy_set:
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_y,
@@ -1685,6 +1702,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_x,
@@ -1694,6 +1712,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
 
     if "funding_carry" in strategy_set:
@@ -1707,6 +1726,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         market_frames.append(
             load_l1_books(
@@ -1718,6 +1738,7 @@ def build_feed_for_strategies(
                 fallback_inst_id=perp,
                 backend=cfg.storage.candle_backend,
                 dsn=cfg.storage.timescale_dsn,
+                exchange=candle_exchange,
             )
         )
         funding_frames.append(load_funding_events(
@@ -1745,6 +1766,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
 
     if "fear_greed_sentiment" in strategy_set:
@@ -1757,6 +1779,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         feature_frames.append(load_external_feature_events(
             params.dataset_id,
@@ -1777,6 +1800,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         feature_frames.append(load_external_feature_events(
             params.dataset_id,

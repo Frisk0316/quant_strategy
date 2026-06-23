@@ -32,7 +32,7 @@ superseded_by: null
 | Dual Output MACD full-period | `results/validation_lab_macd_btc_binance_1h_20260622_dual_fullperiod_execution_comparison.json` | `strategy_fill` 與 realistic execution 的 fill conversion 差距極大 |
 | Claude 2026-06-23 long-window engine consistency | `results/validation_lab_{ma,ema,macd}_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill/validation/claude_engine_consistency_20260623/validation_result.json` | vectorbt 與 backtrader 對 signal_logic PASS，actionable mismatch 為 0，portable validation gate 通過；仍是 advisory-only |
 | Offline engine consistency fixture | `results/engine_consistency_fixture/fixture_manifest.json` | 已有短窗 frozen fixture，可作後續 `make engine-consistency-smoke` 的重複性檢查基礎 |
-| DB parity data gap | `tasks/2026-06-23-binance-1h-db-parity-task.md` | 目前 DB 缺 Binance 1H canonical rows，因此 validation-lab runs 的 DB parity 仍是 SKIP |
+| Venue-scoped Binance DB parity PASS | `results/validation_lab_ma_crossover_btc_binance_1h_20260622_venue_scoped_pg_20260623/validation/codex_venue_scoped_pg_db_parity_20260623_pass/validation_result.json` | Codex 2026-06-23 structural fix forced venue-tagged candle reads through Binance-scoped canonical Postgres; MA DB parity PASS over 20,400 rows with `canonical_source_primary=binance` and 0 mismatches. |
 
 ## 2. Validation Lab 的目的
 
@@ -84,8 +84,8 @@ flowchart LR
 
 目前尚未完整實作或尚未通過的資料驗證：
 
-- Validation-lab Binance 1H runs 目前 `ohlcv_source_validation == artifact_pass_db_skipped`，因為 DB parity 未執行。
-- Claude 2026-06-23 DB probe 顯示目前 reachable DB 有 Binance 1m canonical rows 與 OKX 1H rows，但沒有 Binance-sourced 1H canonical rows；因此 Binance 1H validation-lab runs 即使設定 DSN，也需要先 re-seed 或 resample Binance 1H canonical rows。
+- 舊的 validation-lab Binance 1H runs 仍是 stale：它們是在 venue-scoped candle sourcing 修正前產生，不可當作 Binance DB parity PASS。
+- Codex 2026-06-23 已補上結構修正並重生 MA/EMA/MACD `strategy_fill` runs；新的 MA run DB parity PASS：`canonical_source_primary=binance`、20,400 artifact rows、20,400 DB rows、0 mismatch。
 - 2026-06-18 的 `codex_close_only_db_parity_pass_20260618` 曾記錄 192 bars 的 Binance DB parity PASS，但在目前 DB 狀態下不可直接視為 standing PASS，必須 re-seed/reverify 或標示 stale。
 - 尚未做 Binance vs OKX vs Bybit 等跨交易所永續合約 K 線的相對性驗證。
 - 尚未對高低價、成交量、funding、trade ticks、order book 做完整跨來源一致性驗證。
@@ -244,7 +244,7 @@ Fixture 範圍：
 
 | 缺口 | 目前狀態 | 下一步 |
 | --- | --- | --- |
-| Binance 1H DB parity | Current DB 沒有 Binance 1H canonical rows，validation-lab runs DB parity 為 SKIP | 依 `tasks/2026-06-23-binance-1h-db-parity-task.md` re-seed/resample Binance 1H，再用 DSN + `DIFF_VALIDATION_ENABLE_DB_PARITY=1` 重跑 |
+| Binance 1H DB parity | MA regenerated run now PASS after venue-scoped candle sourcing fix; old 2026-06-22 and `_20260623_binance_rebuilt` runs are superseded | Keep citing `codex_venue_scoped_pg_db_parity_20260623_pass`; rerun EMA/MACD source-provenance only if a report needs per-strategy DB parity evidence beyond MA |
 | Nautilus full parity | 目前 v1 未跑完整 matching engine | 若要重啟 order-book/L2-L3 計畫，另開 ADR/任務 |
 | Realistic low-fill policy | MACD realistic replay 受 queue fraction、lot/min rounding、cancel/replacement 影響，fill rows 很少 | 決定小單/殘倉 fill policy 或用 shadow/demo 校準 fill model |
 | WF/CPCV | 本輪 evidence 沒有 OOS/WF/CPCV | 策略 promotion 前必須補 |
@@ -290,5 +290,5 @@ flowchart LR
 1. 2026-06-22 的 signal-to-order check 證明三個 technical strategies 的 signal 能進入本專案 replay order/fill 路徑；MA/EMA 初始大量 rejection 是 reduce-only close 與 500 USD fat-finger cap 的互動。
 2. 250/1.0 風控重跑和 bounded reduce-only bypass 後，MA/EMA rejections 清零，剩下的低 fill count 主要來自 realistic replay fill model。
 3. 2026-06-23 Claude 補跑長區間 vectorbt/backtrader validation，三個策略的 strict signal logic 都 PASS，`portable_validation_gate.passed == true`。
-4. 這些 PASS 僅代表 signal logic portability；PnL、trade、metrics 仍為 advisory，DB parity 因 Binance 1H canonical data gap 仍是 SKIP，Nautilus full parity 未完成。
+4. 這些 PASS 僅代表 signal logic portability；PnL、trade、metrics 仍為 advisory。MA 的新 venue-scoped run 已取得 Binance DB parity PASS，但 Nautilus full parity 未完成。
 5. 下一步若要把「backtest trustworthy」補完整，先做 Binance 1H DB parity，再保留 offline engine-consistency smoke，最後才談 WF/CPCV、realistic execution policy 與 shadow/demo。

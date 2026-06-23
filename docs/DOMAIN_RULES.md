@@ -100,6 +100,10 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   timestamped `close` values; OHLCV structure and volume-unit sanity are separate
   artifact/data-quality checks.
 - **R6.3** Trial count must be tracked; hidden trials inflate selection bias.
+- **R6.4** A run that declares an execution venue must source candles only from
+  provenance-tagged data for that venue. Missing venue bars are explicit
+  gaps/errors; they must not be silently substituted from another venue or from
+  source-less parquet.
 
 ## R7. Promotion Gates
 

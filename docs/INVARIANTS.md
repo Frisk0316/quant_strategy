@@ -38,6 +38,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I16 | A SWAP run's authoritative `ct_val` source matches the run execution venue | R1.4, R7.2 | `tests/unit/test_replay_ct_val_resolution.py`, `tests/unit/test_replay_ct_val_provenance_tag.py`, `tests/unit/test_differential_validation.py`, `tests/unit/test_multi_venue_convergence.py` |
 | I17 | `strategy_fill` artifacts are marked `idealized_fill` and never used as promotion evidence | R5.4, R7.1 | `tests/unit/test_backtesting.py`, API warning tests |
 | I18 | Submitted strategy-order fill counts exclude `terminal_liquidation` fills | R5.4 | `tests/unit/test_backtesting.py` |
+| I19 | A venue-tagged run loads candles only from that venue's provenance-tagged canonical series; source-less parquet or another venue cannot substitute missing bars | R6.4 | `tests/unit/test_data_loader.py` |
 
 ## Usage
 

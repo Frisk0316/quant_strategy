@@ -66,7 +66,9 @@ def _first_rows(rows: Any, limit: int = 3) -> list[dict[str, Any]]:
 
 def _case_config(base_cfg: Any, strategy: str, params: dict[str, Any]) -> Any:
     cfg = base_cfg.model_copy(deep=True)
-    cfg.storage = cfg.storage.model_copy(update={"primary_exchange": "binance"})
+    cfg.storage = cfg.storage.model_copy(
+        update={"primary_exchange": "binance", "candle_backend": "postgres"}
+    )
     current = getattr(cfg.strategies, strategy)
     update = dict(params)
     update["symbols"] = ["BTC-USDT-SWAP"]

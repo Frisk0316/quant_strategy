@@ -65,17 +65,26 @@ def load_candles(
                   Used as canonical `source_primary` for backend='postgres'
                   and exchange filter for backend='market'.
     """
+    venue = str(exchange).strip().lower() if exchange else None
+    if venue and backend == "parquet":
+        backend = "postgres"
     if backend == "postgres":
         # Fallback applies to both "no DSN string" and "DSN string but DB not
         # reachable" — the docs treat connection refusal as the trigger to
-        # drop to parquet so backtests don't crash mid-run.
+        # drop to parquet so backtests don't crash mid-run. Venue-scoped reads
+        # are stricter because parquet has no source provenance.
         if not dsn or not _dsn_reachable(dsn):
+            if venue:
+                raise ValueError(
+                    f"Venue-scoped candle load for exchange='{venue}' requires "
+                    "a reachable postgres DSN; parquet candles have no source provenance."
+                )
             return _load_candles_parquet(inst_id, bar, data_dir, start, end)
-        return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect, exchange)
+        return _load_candles_pg(inst_id, bar, dsn, start, end, include_suspect, venue)
     if backend == "market":
         if not dsn:
             raise ValueError("dsn is required when backend='market'")
-        return _load_candles_market(inst_id, bar, dsn, start, end, exchange)
+        return _load_candles_market(inst_id, bar, dsn, start, end, venue)
     return _load_candles_parquet(inst_id, bar, data_dir, start, end)
 
 
@@ -250,6 +259,28 @@ def _has_low_bar_coverage(
     return (actual / expected) < threshold
 
 
+def _raise_on_venue_gap(
+    df: pd.DataFrame,
+    *,
+    inst_id: str,
+    bar: str,
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    exchange: Optional[str],
+) -> None:
+    if not exchange:
+        return
+    expected = _expected_bar_count(start_dt, end_dt, bar)
+    if expected is None:
+        return
+    actual = int(pd.Index(df.index).nunique())
+    if actual < expected:
+        raise ValueError(
+            f"Venue-scoped candle gap for {inst_id} {bar} exchange='{exchange}': "
+            f"expected {expected} bars, found {actual}. No cross-venue fallback is allowed."
+        )
+
+
 def _aggregate_1m_to_bar(df: pd.DataFrame, bar: str) -> pd.DataFrame:
     rule = _BAR_RESAMPLE_RULES.get(bar)
     if rule is None or df.empty:
@@ -326,7 +357,16 @@ def _load_candles_pg(
         df, is_1m_fallback = asyncio.run(_fetch())
 
     if df.empty:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+        empty = pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+        _raise_on_venue_gap(
+            empty,
+            inst_id=inst_id,
+            bar=bar,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            exchange=exchange,
+        )
+        return empty
 
     # Strip timezone to match Parquet contract
     if df.index.tz is not None:
@@ -345,7 +385,16 @@ def _load_candles_pg(
     if is_1m_fallback:
         df = _aggregate_1m_to_bar(df[["open", "high", "low", "close", "vol"]], bar)
 
-    return df[["open", "high", "low", "close", "vol"]]
+    out = df[["open", "high", "low", "close", "vol"]]
+    _raise_on_venue_gap(
+        out,
+        inst_id=inst_id,
+        bar=bar,
+        start_dt=start_dt,
+        end_dt=end_dt,
+        exchange=exchange,
+    )
+    return out
 
 
 def _load_candles_market(

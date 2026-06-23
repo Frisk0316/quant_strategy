@@ -25,6 +25,10 @@ exchange REST candles -> scripts/market_data/ingest.py or legacy download script
 Current: DB-backed ingestion is available when `DATABASE_URL` or
 `config/settings.yaml` DSN is reachable. Known gap: local environments without DB
 must rely on parquet fallback or skip DB-dependent validation.
+Venue-tagged replay runs are stricter: when a run declares `exchange`, candles
+must come from the canonical Postgres path filtered by `source_primary=<exchange>`.
+If that venue's bar is missing, the run reports a gap/error instead of falling
+back to source-less parquet or another venue.
 
 ## Market Data Fetch Queue Flow
 
@@ -88,6 +92,8 @@ local parquet candles/funding -> backtesting.data_loader -> scripts/run_replay_b
 Current: parquet fallback supports no-DB development and historical compatibility.
 Known gap: fallback artifacts are not a substitute for DB parity or authoritative
 `ct_val` provenance when promotion gates require them.
+Parquet fallback is disabled for venue-tagged candle reads because local parquet
+mirrors do not carry a per-row source venue.
 
 ## TimescaleDB / Canonical Candle Flow
 
@@ -105,6 +111,8 @@ structure remains a separate artifact-level check because replay price series ma
 carry close-flattened O/H/L and quote-volume units. The validation output must
 surface the venue scope as `checks.db_parity.canonical_source_primary`; a Binance
 DB-backed PASS must show `binance` there.
+Replay candle loading now uses the same venue scope before artifact generation,
+not only during post-run validation.
 `scripts/resample_binance_1h_canonical.py` can derive Binance 1H canonical rows
 from already-ingested Binance 1m canonical rows without changing schema or gate
 logic.

@@ -134,9 +134,17 @@ against the repo DSN and default `data/ticks` path. The 2024-04-29 Binance 1H
 gap is now filled in both local parquet and `canonical_candles`: 24 Binance 1H
 rows, local-vs-DB close mismatch count 0. Existing validation-lab artifacts were
 generated before this repair; rerunning source provenance on the old MA artifact
-now has `db_rows=20400`, `missing_in_db=0`, but `value_mismatches=24`. Regenerate
-or rerun the validation-lab backtest artifacts from the repaired data before
-claiming a DB-parity PASS.
+now has `db_rows=20400`, `missing_in_db=0`, but `value_mismatches=24`.
+Regeneration alone was not enough: Codex 2026-06-23 fixed the structural
+source-selection bug so venue-tagged replay loads pass `exchange` into canonical
+Postgres candle reads, refuse source-less parquet fallback, and raise explicit
+venue gaps. New regenerated MA/EMA/MACD `strategy_fill` runs use suffix
+`_venue_scoped_pg_20260623`; their 2024-04-29 00:00 `price_series.close` is the
+Binance value `63229.2`. The new MA source-provenance validation passed at
+`results/validation_lab_ma_crossover_btc_binance_1h_20260622_venue_scoped_pg_20260623/validation/codex_venue_scoped_pg_db_parity_20260623_pass/validation_result.json`:
+`db_parity.status == "PASS"`, `canonical_source_primary == "binance"`,
+`artifact_rows=20400`, `db_rows=20400`, `missing_in_db=0`,
+`value_mismatches=0`, and `ohlcv_source_validation == "db_parity_pass"`.
 
 ## Workstream Sequencing (2026-06-17) — read before parallel sessions
 
@@ -304,7 +312,7 @@ Note: focused indicator artifact tests used explicit pytest node ids because pyt
 ## Next Steps (in order)
 
 0. **[P0 - fixture signal validation passed and is now CI-wired; broader correctness still blocked by real-data/execution evidence]** SWAP ct_val provenance gate is stricter in `backtesting/differential_validation.py`: missing provenance is `FAIL`, and validation artifacts emit `source_data_validation`, `validation_conclusion`, and `portable_validation_gate`. `scripts/run_all_strategy_signal_validation.py` generated deterministic active-strategy fixtures with explicit `config_override` ct_val provenance. Batch `codex_20260616_signal_validation` passed for all active strategies: `source_data_validation == PASS`, `portable_validation_gate.passed == true`, `signal_point_correctness.passed == true`, and `nautilus_order_fill_parity.status == "PASS"`. CI runs the fixture batch via `make strategy-signal-validation`; DB parity remains out of scope and opt-in `SKIP` until a DSN/data fixture is ready. This batch is not live-readiness evidence.
-0c. **[P0 - source-provenance slice implemented; current Binance DB-backed PASS needs regenerated artifacts]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. The older `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json` PASS should not be treated as a standing current-DB PASS until reproduced. A 2026-06-23 Codex reseed plus a targeted Binance download filled the 2024-04-29 one-day gap in local parquet and DB canonical 1H data. Old validation-lab artifacts still fail DB parity with 24 value mismatches because they were generated before the repair. Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
+0c. **[P0 - source-provenance slice implemented; current Binance DB-backed MA PASS reproduced after venue-scoped source fix]** `scripts/run_source_provenance_validation.py` gates existing or freshly generated differential-validation results for real-data/source provenance. It fails fixture evidence with DB parity `SKIP` and requires `db_parity_pass`. The older `results/adr0007_binance_btc_1h_db_pass_20260618/validation/codex_close_only_db_parity_pass_20260618/validation_result.json` PASS should not be treated as a standing current-DB PASS until reproduced. A 2026-06-23 Codex reseed plus a targeted Binance download filled the 2024-04-29 one-day gap in local parquet and DB canonical 1H data, but regeneration alone was insufficient because replay had not been passing the run exchange into canonical candle reads. Codex fixed that structural source-selection bug and regenerated MA/EMA/MACD with suffix `_venue_scoped_pg_20260623`; the MA source-provenance artifact `codex_venue_scoped_pg_db_parity_20260623_pass` now has `db_parity.status == PASS`, `canonical_source_primary == binance`, and 0 mismatches over 20,400 rows. Nautilus matching-engine/PnL/funding parity stays later unless the user explicitly reprioritizes it.
 0a. **[P0 — research checklist synced by explicit user request; pending Claude review]** `research/strategy_synthesis.md` Promotion Checklist no longer frames Differential validation as MA/EMA/MACD-only. It points reviewers to `REFERENCE_VALIDATION_CONTRACTS` for all active/declared strategies, requires `portable_validation_gate.passed == true` for promotion evidence, explains `reference_signals_only` versus advisory replay/export, and preserves advisory mismatch review authority.
 0b. **[P1 - unit-tested; pending real dependency-backed artifact review]** Differential-validation output includes `signal_point_correctness`, a three-engine (`vectorbt` / `backtrader` / `nautilus`) point-correctness matrix with PASS/FAIL, mismatch counts, examples, and advisory differences. Frontend `view-validation.js` renders this matrix; PnL/fill/metric differences remain advisory and Nautilus remains advisory for full execution/PnL parity.
 1. **[P0]** Claude re-review MA/MACD long-flat position fix follow-up, especially live/replay reduce-only bypass audit logging and ADR-0006.

@@ -24,6 +24,7 @@ A golden case is not a substitute for the unit/integration tests that enforce it
 |---|---|---|---|---|---|
 | G-000 | _example: single BTC-SWAP long, open then close at +Δ_ | _ct_val, entry/exit px, fee, qty_ | _realized PnL = qty·ct_val·Δ − fees_ | I1, I2 | _tests/unit/..._ |
 | G-001 | Same BTC-SWAP MA crossover replay on OKX vs Binance venue specs | Same strategy/params on a synthetic BTC-USDT-SWAP 1H parquet fixture; OKX `ctVal=0.01`; Binance `ctVal=1.0`; both via `instrument_specs` override | Metrics match within `1e-6` because `ct_val` cancels under notional sizing; any real venue divergence should be lot-rounding/fee/funding, and run validation carries the selected `exchange` | I1, I16 | `tests/unit/test_multi_venue_convergence.py` |
+| G-002 | Binance-tagged candle load with an OKX-only/source-less fallback candidate | `load_candles(..., backend="parquet", dsn=<reachable>, exchange="binance")` with parquet close `63258.8` and canonical Binance close `63229.2`; a dated range with a missing Binance bar | Loader returns the Binance canonical close, never the parquet/OKX close; a missing Binance bar raises an explicit venue gap | I19 | `tests/unit/test_data_loader.py` |
 
 ## What makes a good golden case
 

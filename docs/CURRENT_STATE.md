@@ -111,8 +111,12 @@ handoff between sessions; this is the one-screen "where are we" that
   `download_binance_data.py`. Local parquet and DB canonical Binance 1H rows now
   match for 2024-04-29 (24 rows, 0 close mismatches). Existing validation-lab
   artifacts were generated before that repair and still fail DB parity with 24
-  value mismatches, so regenerate/revalidate them before citing a current
-  DB-backed Binance 1H PASS. Any `fill_all_signals` run remains
+  value mismatches. Codex then fixed the structural source-selection bug so
+  venue-tagged replay reads Binance-scoped canonical Postgres candles instead of
+  source-less parquet; regenerated MA/EMA/MACD runs with suffix
+  `_venue_scoped_pg_20260623` now have the Binance 2024-04-29 close `63229.2`,
+  and the MA source-provenance validation passes DB parity over 20,400 rows with
+  0 mismatches. Any `fill_all_signals` run remains
   idealized research-only evidence and must not be cited for live readiness. The
   2026-06-22 long-window BTC/Binance differential-validation attempts for the
   generated MA/EMA/MACD runs did not complete locally; cite the result only as
@@ -152,9 +156,15 @@ handoff between sessions; this is the one-screen "where are we" that
   `download_binance_data.py --bar 1H --start 2024-04-29 --end 2024-04-30`
   run replaced the remaining OKX-backed 2024-04-29 day with Binance 1H data in
   both `data/ticks/BTC_USDT_SWAP/candles_1H.parquet` and `canonical_candles`.
-  Local-vs-DB check: 24 rows, 0 close mismatches. Existing validation-lab
-  artifacts still need regeneration because old MA source provenance now has
-  `db_rows=20400`, `missing_in_db=0`, but `value_mismatches=24`.
+  Local-vs-DB check: 24 rows, 0 close mismatches. Regeneration alone was not
+  enough because replay had been reading source-unscoped candles; the
+  venue-scoped source fix now forces canonical Postgres with
+  `source_primary=binance`, refuses parquet fallback for venue-tagged candle
+  loads, and raises explicit venue gaps. New MA DB parity evidence:
+  `results/validation_lab_ma_crossover_btc_binance_1h_20260622_venue_scoped_pg_20260623/validation/codex_venue_scoped_pg_db_parity_20260623_pass/validation_result.json`
+  has `canonical_source_primary == "binance"`, `artifact_rows=20400`,
+  `db_rows=20400`, `value_mismatches=0`, and
+  `ohlcv_source_validation == "db_parity_pass"`.
 - **Do-not-touch:** trading-core (`strategies/`, `signals/`, `risk/`,
   `portfolio/`, `execution/`), PnL/fee/funding behavior, deployment gates,
   existing result artifacts, and API/frontend behavior outside the approved
@@ -178,9 +188,9 @@ handoff between sessions; this is the one-screen "where are we" that
 - For the Validation Lab report follow-up: long-window vectorbt+backtrader
   signal-logic consistency for MA/EMA 10/200 and MACD 12/26/9 now PASSES, and a
   repeatable offline smoke exists at `make engine-consistency-smoke`. Remaining:
-  (a) nautilus is advisory and was not run in the 2026-06-23 batch; (b) DB parity
-  needs regenerated validation-lab artifacts after the 2024-04-29 Binance data
-  repair.
+  (a) nautilus is advisory and was not run in the 2026-06-23 batch; (b) broader
+  promotion evidence still needs WF/CPCV and realistic-execution review. The MA
+  source-data DB parity leg is now reproduced on the venue-scoped regenerated run.
 - Decide whether realistic replay needs an explicit small-order fill policy
   before using MACD realistic-fill counts as strategy evidence.
 

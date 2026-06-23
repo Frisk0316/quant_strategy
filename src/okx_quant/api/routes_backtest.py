@@ -200,13 +200,13 @@ def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def _resolve_candle_backend() -> tuple[str, str | None]:
+def _resolve_candle_backend(exchange: str | None = None) -> tuple[str, str | None]:
     """Resolve the candle backend the backtest subprocesses should use.
 
     Returns (backend, dsn). Prefers `cfg.storage.candle_backend` from
     config/settings.yaml. Falls back to parquet when the DSN is missing OR
-    unreachable so backtests don't crash on ConnectionRefusedError when the
-    DB process is not running.
+    unreachable unless an exchange was declared; venue-scoped candles require
+    canonical source provenance.
     """
     backend = "parquet"
     dsn: str | None = None
@@ -222,6 +222,11 @@ def _resolve_candle_backend() -> tuple[str, str | None]:
         dsn = os.environ.get("DATABASE_URL")
     if backend == "postgres":
         if not dsn or not _dsn_reachable(dsn):
+            if exchange:
+                raise ValueError(
+                    f"Venue-scoped candle backend for exchange='{exchange}' requires "
+                    "a reachable postgres DSN; parquet candles have no source provenance."
+                )
             backend = "parquet"
             dsn = None
     return backend, dsn
@@ -341,8 +346,8 @@ def _run_ohlcv_rotation_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
 
-        backend, dsn = _resolve_candle_backend()
         exchange = _normalize_exchange(req.exchange)
+        backend, dsn = _resolve_candle_backend(exchange)
         benchmark = req.benchmark or "BTC-USDT-SWAP"
 
         if backend == "parquet":

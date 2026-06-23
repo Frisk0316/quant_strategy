@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+from backtesting import replay
 from backtesting import data_loader
 from okx_quant.data.candle_store import CandleStore
 
@@ -21,6 +22,104 @@ def test_postgres_candle_loader_receives_exchange(monkeypatch):
         dsn="postgresql://unit",
         exchange="binance",
     )
+
+
+def test_venue_tagged_candle_load_uses_postgres_not_parquet(monkeypatch):
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: True)
+
+    def fake_parquet_loader(*_args, **_kwargs):
+        return pd.DataFrame(
+            {"open": [1.0], "high": [1.0], "low": [1.0], "close": [63258.8], "vol": [1.0]},
+            index=pd.DatetimeIndex(["2024-04-29T00:00:00"]),
+        )
+
+    def fake_pg_loader(_inst_id, _bar, _dsn, _start, _end, _include_suspect, exchange):
+        assert exchange == "binance"
+        return pd.DataFrame(
+            {"open": [1.0], "high": [1.0], "low": [1.0], "close": [63229.2], "vol": [1.0]},
+            index=pd.DatetimeIndex(["2024-04-29T00:00:00"]),
+        )
+
+    monkeypatch.setattr(data_loader, "_load_candles_parquet", fake_parquet_loader)
+    monkeypatch.setattr(data_loader, "_load_candles_pg", fake_pg_loader)
+
+    loaded = data_loader.load_candles(
+        "BTC-USDT-SWAP",
+        bar="1H",
+        backend="parquet",
+        dsn="postgresql://unit",
+        exchange="binance",
+    )
+
+    assert loaded.iloc[0]["close"] == 63229.2
+
+
+def test_venue_tagged_candle_load_requires_reachable_postgres(monkeypatch):
+    monkeypatch.setattr(data_loader, "_dsn_reachable", lambda dsn: False)
+
+    def fail_if_parquet_is_used(*_args, **_kwargs):
+        raise AssertionError("venue-scoped loads must not fall back to parquet")
+
+    monkeypatch.setattr(data_loader, "_load_candles_parquet", fail_if_parquet_is_used)
+
+    with pytest.raises(ValueError, match="Venue-scoped candle load"):
+        data_loader.load_candles(
+            "BTC-USDT-SWAP",
+            bar="1H",
+            backend="postgres",
+            dsn="postgresql://unit",
+            exchange="binance",
+        )
+
+
+def test_venue_scoped_gap_raises_explicit_error():
+    one_binance_bar = pd.DataFrame(
+        {"open": [1.0], "high": [1.0], "low": [1.0], "close": [63229.2], "vol": [1.0]},
+        index=pd.DatetimeIndex(["2024-04-29T00:00:00"]),
+    )
+
+    with pytest.raises(ValueError, match="expected 2 bars, found 1"):
+        data_loader._raise_on_venue_gap(
+            one_binance_bar,
+            inst_id="BTC-USDT-SWAP",
+            bar="1H",
+            start_dt=pd.Timestamp("2024-04-29T00:00:00Z").to_pydatetime(),
+            end_dt=pd.Timestamp("2024-04-29T02:00:00Z").to_pydatetime(),
+            exchange="binance",
+        )
+
+
+def test_replay_l1_loader_passes_exchange_to_candle_loader(monkeypatch):
+    calls = []
+
+    def fake_load_candles(
+        inst_id,
+        *,
+        bar,
+        data_dir,
+        start,
+        end,
+        backend,
+        dsn,
+        exchange,
+    ):
+        calls.append((inst_id, backend, dsn, exchange))
+        return pd.DataFrame(
+            {"open": [1.0], "high": [1.0], "low": [1.0], "close": [10_000.0], "vol": [1.0]},
+            index=pd.DatetimeIndex(["2024-01-01T00:00:00"]),
+        )
+
+    monkeypatch.setattr(replay, "load_ohlcv_candles", fake_load_candles)
+
+    loaded = replay.load_l1_books(
+        "BTC-USDT-SWAP",
+        backend="postgres",
+        dsn="postgresql://unit",
+        exchange="binance",
+    )
+
+    assert not loaded.empty
+    assert calls == [("BTC-USDT-SWAP", "postgres", "postgresql://unit", "binance")]
 
 
 @pytest.mark.asyncio

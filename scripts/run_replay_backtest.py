@@ -241,9 +241,22 @@ def main() -> None:
     risk_overrides = json.loads(args.risk_overrides) if args.risk_overrides else {}
     cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
     if args.exchange:
-        cfg.storage = cfg.storage.model_copy(update={"primary_exchange": args.exchange})
+        cfg.storage = cfg.storage.model_copy(
+            update={"primary_exchange": args.exchange, "candle_backend": "postgres"}
+        )
     if cfg.storage.candle_backend == "postgres" and not cfg.storage.timescale_dsn:
-        cfg.storage.candle_backend = "parquet"
+        sys.exit(
+            "Error: venue-scoped replay requires cfg.storage.timescale_dsn; "
+            "parquet candles have no source provenance."
+        )
+    if args.exchange and cfg.storage.candle_backend == "postgres":
+        from backtesting.data_loader import _dsn_reachable as _dsn_probe
+
+        if not _dsn_probe(cfg.storage.timescale_dsn):
+            sys.exit(
+                "Error: venue-scoped replay requires a reachable postgres DSN; "
+                "parquet candles have no source provenance."
+            )
     strategy_params = json.loads(args.strategy_params) if args.strategy_params else {}
     if strategy_params and not isinstance(strategy_params, dict):
         sys.exit("Error: --strategy-params must be a JSON object")
