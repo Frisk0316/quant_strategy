@@ -83,6 +83,21 @@ OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
 
+## Point-In-Time Universe Membership Flow
+
+```text
+1m candle parquet by symbol -> scripts/build_universe_membership.py -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+```
+
+Current: `config/universe.yaml` defines the Binance USDT-perp research universe
+rules, including top-N, rolling ADV threshold, warmup, rebalance cadence, and
+deny-list patterns. `scripts/build_universe_membership.py` derives daily dollar
+volume from candle history and uses only prior history for ADV and warmup
+eligibility. It does not forward-fill symbols across missing or ended candle
+history. Known gap: this local parquet artifact is research-tier until the A2
+coverage task verifies at least 25 symbols with 12 months of both parquet and
+venue-scoped canonical DB coverage.
+
 ## Parquet Fallback Flow
 
 ```text

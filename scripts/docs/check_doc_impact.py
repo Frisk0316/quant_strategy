@@ -52,6 +52,7 @@ RULES: tuple[Rule, ...] = (
             "docs/DOMAIN_RULES.md",
             "docs/FEATURE_MAP.md",
             "docs/INVARIANTS.md",
+            "docs/FAILURE_MODES.md",
         ),
         manifest=True,
         note="strategy/signal logic",
@@ -72,10 +73,11 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "A4",
-        ("config/strategies.yaml", "config/settings.yaml"),
+        ("config/strategies.yaml", "config/settings.yaml", "config/universe.yaml"),
         (
             "docs/DOMAIN_RULES.md",
             "docs/FEATURE_MAP.md",
+            "docs/DATA_FLOW.md",
             "research/strategy_synthesis.md",
         ),
         manifest=True,

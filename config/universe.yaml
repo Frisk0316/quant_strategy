@@ -1,0 +1,21 @@
+venue: binance
+quote: USDT
+instrument_type: SWAP
+top_n: 30
+min_adv_usd: 10000000.0
+adv_window_days: 30
+warmup_bars: 43200
+warmup_days: 30
+rebalance: weekly
+deny_list:
+  - USDC
+  - DAI
+  - FDUSD
+  - TUSD
+  - BTCDOM
+  - "*UP"
+  - "*DOWN"
+  - "*3L"
+  - "*3S"
+  - "*BULL"
+  - "*BEAR"

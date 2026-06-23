@@ -54,6 +54,7 @@ from okx_quant.strategies.technical_indicators import (
     MACDCrossoverStrategy,
     MACrossoverStrategy,
 )
+from okx_quant.strategies.xs_momentum import XSMomentumStrategy
 
 
 TERMINAL_TAKER_FEE_RATE = 0.0005
@@ -1160,6 +1161,7 @@ class ReplayBacktestEngine:
             ("macd_crossover", MACDCrossoverStrategy(strat_cfg.macd_crossover.model_dump())),
             ("fear_greed_sentiment", FearGreedSentimentStrategy(strat_cfg.fear_greed_sentiment.model_dump())),
             ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
+            ("xs_momentum", XSMomentumStrategy(strat_cfg.xs_momentum.model_dump())),
         ]
         enabled = {
             "funding_carry": strat_cfg.funding_carry.enabled,
@@ -1169,6 +1171,7 @@ class ReplayBacktestEngine:
             "macd_crossover": strat_cfg.macd_crossover.enabled,
             "fear_greed_sentiment": strat_cfg.fear_greed_sentiment.enabled,
             "cme_gap_fill": strat_cfg.cme_gap_fill.enabled,
+            "xs_momentum": strat_cfg.xs_momentum.enabled,
         }
 
         for name, strategy in candidates:

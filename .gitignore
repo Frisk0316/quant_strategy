@@ -8,6 +8,7 @@ build/
 venv/
 *.log
 data/ticks/
+data/universe/
 data/parquet/
 *.db
 *.sqlite

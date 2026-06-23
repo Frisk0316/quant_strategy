@@ -14,6 +14,35 @@ import pandas as pd
 from loguru import logger
 
 
+def dollar_neutral_long_short_weights(
+    scores: pd.Series,
+    q: float,
+    inverse_vol: Optional[pd.Series] = None,
+    gross: float = 1.0,
+) -> pd.Series:
+    valid = scores.dropna().sort_values(ascending=False)
+    weights = pd.Series(0.0, index=scores.index, dtype=float)
+    if len(valid) < 2 or q <= 0 or gross <= 0:
+        return weights
+
+    leg_n = max(1, min(int(np.floor(len(valid) * q)), len(valid) // 2))
+    longs = valid.head(leg_n).index
+    shorts = valid.tail(leg_n).index
+
+    def _leg(names: pd.Index) -> pd.Series:
+        if inverse_vol is None:
+            return pd.Series(1.0 / len(names), index=names, dtype=float)
+        raw = pd.to_numeric(inverse_vol.reindex(names), errors="coerce").clip(lower=0).fillna(0.0)
+        total = float(raw.sum())
+        if total <= 0:
+            return pd.Series(1.0 / len(names), index=names, dtype=float)
+        return raw / total
+
+    weights.loc[longs] = _leg(longs) * (gross / 2.0)
+    weights.loc[shorts] = -_leg(shorts) * (gross / 2.0)
+    return weights
+
+
 class StrategyAllocator:
     def __init__(
         self,

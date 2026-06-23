@@ -175,6 +175,50 @@ implementation exists.
 - Do-not-touch notes: funding cashflow sign and `ct_val` scaling are high-risk
   accounting paths.
 
+## Point-In-Time Universe Membership
+
+- User-facing behavior: build a deterministic liquid USDT-perp universe artifact
+  for cross-sectional research without pre-listing or delisting survivorship
+  leakage.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/data_loader.py` is the downstream candle
+  aggregation authority; no dedicated backtest runner is wired yet.
+- Data / DB / artifact files: `scripts/build_universe_membership.py`,
+  local candles under `data/ticks/<inst_id>/candles_1m.parquet`, generated
+  artifact `data/universe/universe_membership.parquet`.
+- Config files: `config/universe.yaml`, `config/settings.yaml`.
+- Tests: `tests/unit/test_universe_membership.py`.
+- Docs to update: `docs/DATA_FLOW.md`, `docs/INVARIANTS.md`,
+  `docs/FAILURE_MODES.md`, `docs/AI_HANDOFF.md`.
+- Do-not-touch notes: do not use a hand-picked final symbol list as historical
+  membership; promotion-grade runs still need venue-scoped DB coverage evidence.
+
+## XS Momentum Research Strategy
+
+- User-facing behavior: disabled-by-default research strategy scaffold for
+  dollar-neutral cross-sectional momentum target weights over a point-in-time
+  universe.
+- Frontend files: none yet.
+- Backend/API files: none yet.
+- Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
+  stub when explicitly requested, but no vectorized XS momentum backtest runner
+  is wired yet; future work should add a dedicated XS momentum backtest module
+  without changing existing OHLCV rotation behavior.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
+  and venue-scoped OHLCV/funding data when a runner is added.
+- Config files: `config/strategies.yaml`, `config/universe.yaml`.
+- Strategy / portfolio files: `src/okx_quant/strategies/xs_momentum.py`,
+  `src/okx_quant/portfolio/allocation.py`.
+- Tests: `tests/unit/test_xs_momentum.py`,
+  `tests/unit/test_universe_membership.py`.
+- Docs to update: `docs/ADR/0009-xs-momentum-research-strategy.md`,
+  `docs/change_manifests/2026-06-23-xs-momentum-universe.md`,
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`.
+- Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
+  do not claim live, demo, shadow, or promotion readiness until WF/CPCV,
+  DSR/PSR, source parity, funding accounting, and human approval are complete.
+
 ## Strategy Registry / Strategy Selection
 
 - User-facing behavior: expose active strategies to the Run Backtest UI and API

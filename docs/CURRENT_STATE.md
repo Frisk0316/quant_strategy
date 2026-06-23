@@ -20,7 +20,24 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Current goal:** Validation Lab report package and Backtest execution
+- **Current goal:** A 2026-06-23 Codex pass implemented the local A1/A3/B1-B5
+  scaffold for XS momentum and point-in-time universe membership from
+  `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. The work is
+  research-tier only: `xs_momentum` is disabled by default, `on_market()` is
+  a no-op, the generated `data/universe/universe_membership.parquet` artifact
+  is local/ignored, and no live/demo/shadow or promotion readiness claim exists.
+  A2 bulk 1m/funding plus canonical DB coverage remains unfinished. C1-C3 remain
+  unfinished; C1 needs review because the plan's short-leg positive-funding
+  sign expectation conflicts with `docs/DOMAIN_RULES.md` R3.1.
+- **D3 review (2026-06-23, Claude):** scaffold A/B/D1 verified sound (9/9 tests,
+  doc-impact gate pass, 30-symbol point-in-time membership correct); Phase C
+  absent → no edge evidence; not promotion/live. Funding-sign conflict resolved —
+  the plan was wrong (R3.1 stands: short receives positive funding), plan fixed in
+  `5c80cc7`, so C1 is unblocked. Phase-C to-fix: annualize the vol-target
+  (currently a no-op) and wire `market_close` into the crash filter. XS scaffold
+  remains uncommitted on `fix/ohlcv-exchange-provenance`. Detail:
+  `tasks/2026-06-23-xs-momentum-d3-review.md`.
+- **Previous goal:** Validation Lab report package and Backtest execution
   profiles are prepared for the 2026-06-22 presentation while Option C fast
   backtest artifact-read work remains the broader active branch context. A
   2026-06-23 Claude docs-only pass rebuilt the deck for an internal-team

@@ -22,6 +22,35 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-23 Codex session note (XS momentum universe scaffold): implemented the
+local A1/A3/B1-B5 portions of
+`docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. Added
+`config/universe.yaml`, point-in-time membership builder/tests, disabled
+`xs_momentum` config/model/stub, dollar-neutral long-short target-weight helpers,
+crash-regime gross scaling, ADR-0009, Change Manifest
+`docs/change_manifests/2026-06-23-xs-momentum-universe.md`, and survivorship
+invariant/failure-mode docs. Generated local research artifact
+`data/universe/universe_membership.parquet` (ignored by git). A2 remains
+unfinished because bulk 1m/funding download plus canonical DB coverage requires
+external data/DB work. C1-C3 remain unfinished; C1 is blocked for review because
+the plan says positive funding reduces short-leg PnL, while `docs/DOMAIN_RULES.md`
+R3.1 says long pays positive funding and vice versa. No research files, live
+gates, deployment modes, or existing result artifacts were modified.
+
+2026-06-23 Claude D3 review note (XS momentum scaffold): reviewed the Codex
+scaffold above. Verdict — Phase A+B+D1 complete, sound, and honestly documented;
+**Phase C (the whole validation) absent → zero edge evidence**; `enabled:false`,
+no promotion/live claim permitted. Verified: 9/9 new unit tests pass, doc-impact
+gate passes, membership covers 30 symbols with correct point-in-time/survivorship
+logic. Resolved the funding-sign open item: the *plan* was wrong, not the code —
+R3.1 is canonical (long pays positive, short receives), plan fixed in commit
+`5c80cc7`, so **C1 is unblocked**. Extra Phase-C fixes flagged: vol-target gross
+is not annualized (currently a no-op) and the crash filter needs the runner to
+pass `market_close`. Full review: `tasks/2026-06-23-xs-momentum-d3-review.md`.
+⚠️ All XS scaffold is still uncommitted on `fix/ohlcv-exchange-provenance` (which
+also holds unrelated `52b4f81`); Codex should commit it with an `AI-Origin: Codex`
+trailer before it is lost.
+
 2026-06-23 Claude session note (audience-facing report rewrite, docs-only): the
 Validation Lab deck was rebuilt for an internal-team/reviewer audience. Per user
 feedback the old deck was too jargon-heavy, mixed Chinese/English mid-sentence,

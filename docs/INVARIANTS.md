@@ -39,6 +39,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I17 | `strategy_fill` artifacts are marked `idealized_fill` and never used as promotion evidence | R5.4, R7.1 | `tests/unit/test_backtesting.py`, API warning tests |
 | I18 | Submitted strategy-order fill counts exclude `terminal_liquidation` fills | R5.4 | `tests/unit/test_backtesting.py` |
 | I19 | A venue-tagged run loads candles only from that venue's provenance-tagged canonical series; source-less parquet or another venue cannot substitute missing bars | R6.4 | `tests/unit/test_data_loader.py` |
+| I20 | Universe membership is point-in-time: no symbol is eligible before listing plus warmup, and ended candle history is not forward-filled into later eligibility | R6.1 | `tests/unit/test_universe_membership.py` |
 
 ## Usage
 
