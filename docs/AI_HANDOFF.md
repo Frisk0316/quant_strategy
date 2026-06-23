@@ -22,6 +22,19 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-23 Codex session note (XS momentum Phase C research runner): scaffold
+work was preserved on independent branch `codex/xs-momentum-universe-scaffold`
+as commit `07a5d9c` with `AI-Origin: Codex`. Phase C now adds a research-only
+vectorized XS runner in `backtesting/xs_momentum_backtest.py`: funding cashflow
+uses R3.1 (`-(position * rate)`, so short receives positive funding), vol-target
+uses annualized realized vol, `market_close` is passed into the crash filter,
+and scans record honest `n_trials`. DB smoke artifact:
+`results/xs_momentum_db_smoke_20260623.json`; status
+`db_smoke_not_promotion`, 22 included symbols, `SOL-USDT-SWAP` excluded by a
+strict Binance venue gap, no WF/CPCV or DSR/PSR, and no promotion/live claim.
+Change Manifest:
+`docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`.
+
 2026-06-23 Codex session note (XS momentum universe scaffold): implemented the
 local A1/A3/B1-B5 portions of
 `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. Added

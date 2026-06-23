@@ -87,6 +87,7 @@ DB parity must be verified per strategy before deployment evidence is accepted.
 
 ```text
 1m candle parquet by symbol -> scripts/build_universe_membership.py -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
@@ -94,9 +95,12 @@ rules, including top-N, rolling ADV threshold, warmup, rebalance cadence, and
 deny-list patterns. `scripts/build_universe_membership.py` derives daily dollar
 volume from candle history and uses only prior history for ADV and warmup
 eligibility. It does not forward-fill symbols across missing or ended candle
-history. Known gap: this local parquet artifact is research-tier until the A2
-coverage task verifies at least 25 symbols with 12 months of both parquet and
-venue-scoped canonical DB coverage.
+history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
+OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
+convention, and can pass a `market_close` proxy into the crash filter. Known gap:
+this remains research-tier until the A2 coverage task verifies at least 25
+symbols with 12 months of both parquet and venue-scoped canonical DB coverage and
+promotion validation runs WF/CPCV plus DSR/PSR.
 
 ## Parquet Fallback Flow
 
@@ -138,8 +142,10 @@ logic.
 frontend Run Backtest form -> POST /api/backtest/run -> routes_backtest.py background job -> scripts/run_replay_backtest.py or strategy-specific runner -> results run directory or DB artifacts -> job status and run list -> frontend Backtest view
 ```
 
-Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. Known gap:
-lightweight Makefile smoke does not yet run a tiny frozen replay fixture.
+Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
+momentum has a separate research-only vectorized runner and is not wired into
+the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
+does not yet run a tiny frozen replay fixture.
 
 Research-only `fill_all_signals` replay raises capacity and stop thresholds
 inside the copied run config before replay starts: order notional, position

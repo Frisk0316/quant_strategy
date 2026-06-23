@@ -16,6 +16,8 @@ from okx_quant.portfolio.allocation import dollar_neutral_long_short_weights
 from okx_quant.signals.regime import composite_risk_multiplier
 from okx_quant.strategies.base import Strategy
 
+TRADING_DAYS_PER_YEAR = 365.0
+
 
 @dataclass
 class XSMomentumParams:
@@ -119,8 +121,8 @@ def target_weights(
         if params.inverse_vol:
             vol = pd.to_numeric(realized_vol.loc[ts, scores.index], errors="coerce")
             inv_vol = 1.0 / vol.replace(0.0, np.nan)
-            median_vol = float(vol.replace(0.0, np.nan).median())
-            gross = min(1.0, params.vol_target_annual / median_vol) if median_vol > 0 else 1.0
+            annual_vol = float(vol.replace(0.0, np.nan).median()) * np.sqrt(TRADING_DAYS_PER_YEAR)
+            gross = min(1.0, params.vol_target_annual / annual_vol) if annual_vol > 0 else 1.0
         else:
             gross = 1.0
         gross *= float(regime_multiplier.loc[ts])

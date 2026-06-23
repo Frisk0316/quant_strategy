@@ -202,18 +202,22 @@ implementation exists.
 - Frontend files: none yet.
 - Backend/API files: none yet.
 - Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
-  stub when explicitly requested, but no vectorized XS momentum backtest runner
-  is wired yet; future work should add a dedicated XS momentum backtest module
-  without changing existing OHLCV rotation behavior.
+  stub when explicitly requested. `backtesting/xs_momentum_backtest.py` is a
+  research-only vectorized runner for target weights, corrected R3.1 funding
+  cashflow signs, honest grid trial counts, and optional `market_close` crash
+  filtering; it is not wired into UI/API promotion gates.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
-  and venue-scoped OHLCV/funding data when a runner is added.
+  and venue-scoped OHLCV/funding data. Local smoke artifacts such as
+  `results/xs_momentum_db_smoke_20260623.json` are research evidence only.
 - Config files: `config/strategies.yaml`, `config/universe.yaml`.
 - Strategy / portfolio files: `src/okx_quant/strategies/xs_momentum.py`,
   `src/okx_quant/portfolio/allocation.py`.
 - Tests: `tests/unit/test_xs_momentum.py`,
+  `tests/unit/test_xs_momentum_backtest.py`,
   `tests/unit/test_universe_membership.py`.
 - Docs to update: `docs/ADR/0009-xs-momentum-research-strategy.md`,
   `docs/change_manifests/2026-06-23-xs-momentum-universe.md`,
+  `docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`,
   `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`.
 - Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
   do not claim live, demo, shadow, or promotion readiness until WF/CPCV,

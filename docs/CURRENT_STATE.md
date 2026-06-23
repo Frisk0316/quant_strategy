@@ -20,6 +20,13 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **XS momentum Phase C research runner (2026-06-23, Codex):** the scaffold is
+  committed on `codex/xs-momentum-universe-scaffold` as `07a5d9c`. Phase C adds
+  `backtesting/xs_momentum_backtest.py` with R3.1 funding signs, annualized
+  vol-target sizing, `market_close` crash-filter wiring, and honest `n_trials`.
+  Smoke artifact `results/xs_momentum_db_smoke_20260623.json` is
+  `db_smoke_not_promotion`: 22 included symbols, strict venue gap on
+  `SOL-USDT-SWAP`, no WF/CPCV or DSR/PSR, and no promotion/live claim.
 - **Current goal:** A 2026-06-23 Codex pass implemented the local A1/A3/B1-B5
   scaffold for XS momentum and point-in-time universe membership from
   `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. The work is

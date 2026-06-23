@@ -90,6 +90,33 @@ def test_crash_regime_reduces_gross_exposure():
     assert weights.loc[pd.Timestamp("2024-01-08")].abs().sum() < weights.loc[pd.Timestamp("2024-01-01")].abs().sum()
 
 
+def test_vol_target_uses_annualized_realized_vol():
+    from okx_quant.strategies.xs_momentum import XSMomentumParams, target_weights
+
+    idx = pd.date_range("2024-01-01", periods=2, freq="D")
+    scores = pd.DataFrame({"A": 1.0, "B": -1.0}, index=idx)
+    membership = pd.DataFrame(
+        [
+            {"date": date, "symbol": symbol, "eligible": True, "adv_usd": 1.0, "listing_ts": idx[0]}
+            for date in idx
+            for symbol in scores.columns
+        ]
+    )
+    daily_vol = 0.01
+    realized_vol = pd.DataFrame(daily_vol, index=idx, columns=scores.columns)
+    params = XSMomentumParams(
+        universe=list(scores.columns),
+        rebalance="daily",
+        quantile=0.5,
+        max_name_weight=1.0,
+        vol_target_annual=daily_vol * np.sqrt(365.0) * 0.5,
+    )
+
+    weights = target_weights(scores, membership, params, realized_vol)
+
+    assert abs(weights.iloc[0].abs().sum() - 0.5) < 1e-9
+
+
 def test_xs_momentum_strategy_stub_is_noop():
     from okx_quant.strategies.xs_momentum import XSMomentumStrategy
 
