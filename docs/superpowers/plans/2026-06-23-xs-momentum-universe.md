@@ -233,9 +233,9 @@ def test_higher_steady_trend_scores_above_noisier_trend():
 - Test: `tests/unit/test_xs_momentum_backtest.py`
 
 **Interfaces:**
-- Produces: `run_xs_momentum_backtest(close, high, low, vol, funding, membership, params) -> result` with an equity curve, turnover, fee+slippage cost per rebalance, and **funding cashflow charged on short legs** (short pays positive funding, receives negative). Emits an artifact with `validation_status` and `idealized_fill: false` by default.
+- Produces: `run_xs_momentum_backtest(close, high, low, vol, funding, membership, params) -> result` with an equity curve, turnover, fee+slippage cost per rebalance, and **funding cashflows on BOTH legs per `docs/DOMAIN_RULES.md` R3.1**: a long pays positive funding (receives negative), a short receives positive funding (pays negative). The book's net funding PnL is the sum across legs and may be net positive or negative depending on the funding cross-section — it is not a one-sided "drag". Emits an artifact with `validation_status` and `idealized_fill: false` by default.
 
-- [ ] **Step 1: Write the failing test:** construct a 2-symbol panel where the short leg has known positive funding; assert realized PnL is reduced by exactly the funding cashflow on the short notional (sign check). Spec invariant: funding sign must match `risk`/PnL conventions in `docs/DOMAIN_RULES.md`.
+- [ ] **Step 1: Write the failing test:** construct a 2-symbol panel with a **short** leg on a symbol with known **positive** funding; assert realized PnL is **increased** by exactly that funding cashflow on the short notional (short receives positive funding, per R3.1), and symmetrically that a long on positive funding is decreased. This corrects the earlier draft which had the short-leg sign backwards; funding sign MUST match `docs/DOMAIN_RULES.md` R3.1 (verified against `funding_carry` PnL).
 - [ ] **Step 2:** Run `-v`. Expected: FAIL.
 - [ ] **Step 3:** Implement the runner mirroring the rotation backtest; add funding accounting; default realistic fills (no `fill_all_signals`).
 - [ ] **Step 4:** Run. Expected: PASS.
