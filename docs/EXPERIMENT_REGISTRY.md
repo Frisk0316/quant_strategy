@@ -24,6 +24,7 @@ positive one and must stay in the log.
 |---|---|---|---|---|---|---|---|
 | E-000 | 2026-06-12 | H-000 | _example: BTC-SWAP 1H, config/strategies.yaml@<sha>, seed=0_ | 1 | _results/<run_id>_ | template | replace; do not delete |
 | E-001 | 2026-06-17 | H-001 | BTC-USDT-SWAP MA crossover on synthetic 1H parquet fixture in `tests/unit/test_multi_venue_convergence.py`; two fixed venue configs (`okx`, `binance`); `instrument_specs` overrides; no DB/network; seed N/A | 1 | `tests/unit/test_multi_venue_convergence.py::test_swap_ct_val_cancels_under_notional_sizing` | supported | Unit golden case passed: 1 passed; validates convergence only, not deployability. |
+| E-002 | 2026-06-23 | H-002 | XS momentum, point-in-time top-30 Binance USDT-perp universe, 1m-derived daily closes; config `config/strategies.yaml::xs_momentum` (pending) + `config/universe.yaml` (pending); grid over `{lookback, skip, quantile, vol_target, top_n}` via `scan_xs_momentum` (Phase C2); WF/CPCV via `backtesting/{walk_forward,cpcv}.py` | TBD (honest count from C2) | pending — `results/xs_momentum_wf_<date>.json`, `results/xs_momentum_cpcv_<date>.json` (Phase C3) | planned (not yet run) | Registered at plan time per [[HYPOTHESIS_LEDGER]] linkage; not evidence until the WF/CPCV artifacts exist and DSR/PSR are reported. Supersede this row with the run-time entry when produced. |
 
 ## Required fields
 

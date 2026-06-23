@@ -427,6 +427,50 @@ Deflated Sharpe Ratio checks before promotion.
   diagnostics with roll-day and holiday filters in place. Any comparison
   table between the two outputs must cite the divergence note above.
 
+## Strategy 11: Cross-Sectional Momentum (Market-Neutral)
+
+- **Theoretical basis:** Jegadeesh and Titman 1993; Moskowitz, Ooi and Pedersen
+  2012; Daniel and Moskowitz 2016 (crash risk); Liu and Tsyvinski 2019 (crypto
+  momentum / attention).
+- **Core logic:** Rank a point-in-time liquid USDT-perp universe by
+  vol-normalized trailing return and hold a **dollar-neutral** book — long the
+  top quantile, short the bottom quantile — vol-targeted, weekly rebalance.
+  Distinct from the existing long-only `ohlcv_rotation` baseline by being
+  market-neutral and survivorship-controlled.
+- **Signal source:** Derived daily closes from 1m OHLCV (Binance canonical),
+  trailing return over lookback (default 28d, optional skip), trailing realized
+  vol, and a point-in-time `universe_membership` artifact. No order-book data.
+- **Sizing rule:** Inverse-vol within each leg; legs scaled to equal gross so the
+  book is dollar-neutral; portfolio vol target (~15-20% annual); per-name and
+  gross/net caps; crash-regime exposure scaler.
+- **Execution:** Maker-first weekly rebalance. Vectorised backtest first
+  (`on_market` no-op like `ohlcv_rotation`); live wiring is a later phase. Taker
+  only for risk exits if live policy allows.
+- **Applicable instruments:** Top ~30 liquid USDT perps by point-in-time ADV,
+  survivorship-controlled; not a fixed symbol list.
+- **Expected edge:** Cross-sectional momentum premium net of costs and short-leg
+  funding. Must beat an equal-weight universe basket and BTC buy-hold after costs
+  to be worth promoting.
+- **Risk controls:** Momentum-crash filter (Daniel-Moskowitz), vol target,
+  per-name cap, ADV liquidity floor, point-in-time membership (survivorship
+  guard), explicit short-leg funding accounting.
+- **Validation / anti-overfit:** vectorbt sweep with honest `n_trials` →
+  walk-forward → CPCV; **DSR ≥ 0.95 and PSR ≥ 0.95** before any promotion claim;
+  realistic fills (`fill_all_signals` artifacts are not edge evidence); ct_val
+  provenance; venue-scoped canonical reads for promotion-grade runs. This is the
+  highest overfitting-risk family in the project (wide universe + parameter
+  search); the gates above are mandatory, not advisory.
+- **Status:** Hypothesis / design only (ledger **H-002**). Not implemented, not
+  validated; will be `enabled: false` at first wiring. Spec:
+  `docs/superpowers/specs/2026-06-23-xs-momentum-universe-design.md`; plan:
+  `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`.
+- **Fit with existing system:** New `src/okx_quant/strategies/xs_momentum.py`
+  reusing `ohlcv_rotation.build_feature_panel`; long-short helper in
+  `portfolio/allocation.py`; `backtesting/xs_momentum_backtest.py` mirroring
+  `ohlcv_rotation_backtest.py`.
+- **Backtest path:** `backtesting/xs_momentum_backtest.py`, then
+  `backtesting/walk_forward.py` and `backtesting/cpcv.py`.
+
 ## Research Feature Data Caveats
 
 These are caveats that apply to the external-feature datasets feeding research

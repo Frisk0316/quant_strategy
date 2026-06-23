@@ -31,6 +31,7 @@ needs the gates in `docs/ai_collaboration.md`.
 |---|---|---|---|---|---|
 | H-000 | _example: "Funding-carry edge on BTC-SWAP survives fees+funding over a full settlement window."_ | DESIGN_SPACE | proposed | — | template row; replace |
 | H-001 | Cross-venue PnL metrics converge for the same strategy/params when only `ct_val` differs because notional sizing cancels the contract multiplier, modulo venue lot rounding. | ADR-0007 | supported | E-001 | Supported by the deterministic golden test: OKX `ctVal=0.01` and Binance `ctVal=1.0` produce matching `total_return` and `sharpe` within `1e-6`. This is not promotion evidence by itself. |
+| H-002 | A dollar-neutral cross-sectional momentum book over a point-in-time top-30 liquid USDT-perp universe earns a positive net-of-cost (fees + slippage + short-leg funding) Sharpe that beats an equal-weight universe basket under walk-forward, surviving DSR ≥ 0.95 and PSR ≥ 0.95. | `research/strategy_synthesis.md` Strategy 11; 2026-06-23 design spec | proposed | planned E-002 (Phase C3) | Not yet tested. Highest overfitting-risk family (wide universe + param search); resolution requires honest `n_trials`, survivorship-controlled membership, and realistic fills — not `idealized_fill`. |
 
 ## How to add an entry
 
