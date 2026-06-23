@@ -1662,7 +1662,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
+              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th>Exchange</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
               <th class="num">Gaps</th><th></th>
             </tr>
@@ -1674,6 +1674,10 @@ function MarketDataCard({ onCoverageChange } = {}) {
                 <td>${row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")}</td>
                 <td class="mono">${row.bar}</td>
                 <td class="mono">${row.provider || "-"}</td>
+                <td class="mono">
+                  ${row.exchange ? row.exchange.toUpperCase() : "-"}
+                  ${row.mixed && html`<span style=${{ color: "var(--warn)", marginLeft: 6 }} title="Multiple source exchanges — Binance preferred, OKX fills gaps">⚠ mixed</span>`}
+                </td>
                 <td class="num mono">${row.first_ts ? new Date(row.first_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num mono">${row.last_ts ? new Date(row.last_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num">${(row.row_count || 0).toLocaleString()}</td>
@@ -1693,7 +1697,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
               </tr>
             `)}
             ${(!coverage || !coverage.length) && html`
-              <tr><td colSpan=${9} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
             `}
           </tbody>
         </table>

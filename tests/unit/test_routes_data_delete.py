@@ -6,6 +6,16 @@ from fastapi.testclient import TestClient
 import okx_quant.api.routes_data as routes_data
 
 
+def test_coverage_exchange_label_and_mixed_flag():
+    # Single source -> that exchange, not mixed.
+    assert routes_data._coverage_exchange(["binance"]) == ("binance", False)
+    # Multiple sources -> joined + mixed (Binance-preferred fill with OKX gaps).
+    assert routes_data._coverage_exchange(["okx", "binance"]) == ("binance+okx", True)
+    # Empty / null -> no label.
+    assert routes_data._coverage_exchange(None) == (None, False)
+    assert routes_data._coverage_exchange([None]) == (None, False)
+
+
 def test_pair_delete_statements_order_and_keys():
     stmts = routes_data._pair_delete_statements("MATIC-USDT-SWAP")
     tables = [sql.split("FROM")[1].split()[0] for sql, _ in stmts]

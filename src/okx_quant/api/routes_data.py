@@ -43,6 +43,19 @@ _FETCH_BAR_MS: dict[str, int] = {
 }
 
 
+def _coverage_exchange(sources: list[str] | None) -> tuple[str | None, bool]:
+    """Collapse a canonical source_primary list into (label, mixed).
+
+    Returns the source exchange(s) backing a coverage row. `mixed` is True when
+    more than one source feeds the same symbol/bar (Binance-preferred fill with
+    OKX gap-fill is the expected case, not corruption).
+    """
+    vals = sorted({str(s).lower() for s in (sources or []) if s})
+    if not vals:
+        return None, False
+    return "+".join(vals), len(vals) > 1
+
+
 class FetchRequest(BaseModel):
     symbol: str | None = None
     symbols: list[str] = Field(default_factory=list)
@@ -126,7 +139,8 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
                 """
                 SELECT inst_id, bar,
                        MIN(ts) AS first_ts, MAX(ts) AS last_ts,
-                       COUNT(*) AS row_count
+                       COUNT(*) AS row_count,
+                       array_agg(DISTINCT source_primary) AS sources
                 FROM canonical_candles
                 GROUP BY inst_id, bar
                 ORDER BY inst_id, bar
@@ -136,19 +150,25 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
                 """
                 SELECT inst_id, 'funding' AS bar,
                        MIN(ts) AS first_ts, MAX(ts) AS last_ts,
-                       COUNT(*) AS row_count
+                       COUNT(*) AS row_count,
+                       array_agg(DISTINCT source) AS sources
                 FROM funding_rates
                 GROUP BY inst_id
                 ORDER BY inst_id
                 """
             )
             external = await _fetch_external_coverage(conn)
+
+            def _row(r: dict, *, data_kind: str, provider: str) -> dict:
+                d = dict(r)
+                exchange, mixed = _coverage_exchange(d.pop("sources", None))
+                return {**d, "gap_count": 0, "data_kind": data_kind,
+                        "provider": provider, "exchange": exchange, "mixed": mixed}
+
             return [
-                {**dict(r), "gap_count": 0, "data_kind": "ohlcv", "provider": "canonical"}
-                for r in rows
+                _row(r, data_kind="ohlcv", provider="canonical") for r in rows
             ] + [
-                {**dict(r), "gap_count": 0, "data_kind": "funding", "provider": "okx"}
-                for r in fr
+                _row(r, data_kind="funding", provider="okx") for r in fr
             ] + external
         finally:
             await conn.close()
