@@ -27,6 +27,12 @@ handoff between sessions; this is the one-screen "where are we" that
   Smoke artifact `results/xs_momentum_db_smoke_20260623.json` is
   `db_smoke_not_promotion`: 22 included symbols, strict venue gap on
   `SOL-USDT-SWAP`, no WF/CPCV or DSR/PSR, and no promotion/live claim.
+- **Funding-carry venue fallback fix (2026-06-23, Codex):**
+  `backtesting/replay.py::load_l1_books` now preserves the existing explicit
+  `BTC-USDT` spot-to-`BTC-USDT-SWAP` fallback for funding-carry synthetic books
+  after a primary venue-scoped candle gap. The fallback still uses the same
+  `exchange` and does not permit parquet or cross-venue substitution. Manifest:
+  `docs/change_manifests/2026-06-23-funding-carry-venue-fallback.md`.
 - **Current goal:** A 2026-06-23 Codex pass implemented the local A1/A3/B1-B5
   scaffold for XS momentum and point-in-time universe membership from
   `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. The work is

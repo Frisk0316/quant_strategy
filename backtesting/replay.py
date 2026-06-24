@@ -618,6 +618,10 @@ def load_l1_books(
             )
         except FileNotFoundError:
             candles = pd.DataFrame()
+        except ValueError as exc:
+            if not fallback_inst_id or "Venue-scoped candle gap" not in str(exc):
+                raise
+            candles = pd.DataFrame()
         if candles.empty and fallback_inst_id:
             try:
                 candles = load_ohlcv_candles(

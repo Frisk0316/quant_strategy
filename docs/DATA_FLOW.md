@@ -29,6 +29,8 @@ Venue-tagged replay runs are stricter: when a run declares `exchange`, candles
 must come from the canonical Postgres path filtered by `source_primary=<exchange>`.
 If that venue's bar is missing, the run reports a gap/error instead of falling
 back to source-less parquet or another venue.
+Funding-carry spot synthetic books may use an explicit same-venue perp fallback
+when spot candles are absent; the fallback remains venue-scoped.
 
 ## Market Data Fetch Queue Flow
 

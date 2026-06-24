@@ -35,6 +35,16 @@ strict Binance venue gap, no WF/CPCV or DSR/PSR, and no promotion/live claim.
 Change Manifest:
 `docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`.
 
+2026-06-23 Codex session note (funding-carry venue fallback bugfix): fixed a
+replay startup failure where `funding_carry` on Binance tried to load
+venue-scoped spot candles for `BTC-USDT`, hit an explicit venue gap, and raised
+before the existing explicit `fallback_inst_id=BTC-USDT-SWAP` path could run.
+`backtesting/replay.py::load_l1_books` now lets only that primary venue-gap case
+fall through to the configured fallback, which is still loaded with the same
+`exchange` and still does not allow parquet or cross-venue substitution.
+Regression coverage lives in `tests/unit/test_data_loader.py`; Change Manifest:
+`docs/change_manifests/2026-06-23-funding-carry-venue-fallback.md`.
+
 2026-06-23 Codex session note (XS momentum universe scaffold): implemented the
 local A1/A3/B1-B5 portions of
 `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. Added

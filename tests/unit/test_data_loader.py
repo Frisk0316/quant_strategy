@@ -122,6 +122,49 @@ def test_replay_l1_loader_passes_exchange_to_candle_loader(monkeypatch):
     assert calls == [("BTC-USDT-SWAP", "postgres", "postgresql://unit", "binance")]
 
 
+def test_replay_l1_loader_uses_same_venue_fallback_after_primary_venue_gap(monkeypatch):
+    calls = []
+
+    def fake_load_candles(
+        inst_id,
+        *,
+        bar,
+        data_dir,
+        start,
+        end,
+        backend,
+        dsn,
+        exchange,
+    ):
+        calls.append((inst_id, backend, dsn, exchange))
+        if inst_id == "BTC-USDT":
+            raise ValueError(
+                "Venue-scoped candle gap for BTC-USDT 1H exchange='binance': "
+                "expected 2 bars, found 0. No cross-venue fallback is allowed."
+            )
+        return pd.DataFrame(
+            {"open": [1.0], "high": [1.0], "low": [1.0], "close": [10_000.0], "vol": [1.0]},
+            index=pd.DatetimeIndex(["2024-01-01T00:00:00"]),
+        )
+
+    monkeypatch.setattr(replay, "load_ohlcv_candles", fake_load_candles)
+
+    loaded = replay.load_l1_books(
+        "BTC-USDT",
+        fallback_inst_id="BTC-USDT-SWAP",
+        backend="postgres",
+        dsn="postgresql://unit",
+        exchange="binance",
+    )
+
+    assert not loaded.empty
+    assert loaded.iloc[0]["inst_id"] == "BTC-USDT"
+    assert calls == [
+        ("BTC-USDT", "postgres", "postgresql://unit", "binance"),
+        ("BTC-USDT-SWAP", "postgres", "postgresql://unit", "binance"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_canonical_candles_can_filter_source_primary():
     class _Pool:
