@@ -22,6 +22,17 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-24 Results cleanup (user-approved): all pre-6/18 `results/` artifacts were
+deleted to declutter — scratch runs (smoke/test/verify/sweep/old-UI + old PNGs)
+and pre-6/18 cited evidence (`cme_gap_research*.json`,
+`codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
+`ui_funding_carry_ac454742`). 6/18 and later are kept, including the durable
+adr0007 source-provenance PASS artifact. Consequence: on-disk
+differential/signal-validation evidence is gone — re-run
+`make strategy-signal-validation` (CI regenerates it) before citing fresh
+validation evidence. `docs/results_validation_manifest.md` rows for deleted files
+are now historical-only.
+
 2026-06-24 Codex follow-up (DSR harness + XS portfolio-vol correctness): fixed
 DSR computation so `src/okx_quant/analytics/dsr.py` uses per-observation Sharpe
 from the same return series that feeds `sqrt(T-1)`, and

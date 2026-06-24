@@ -20,6 +20,14 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Results cleanup (2026-06-24, user-approved):** all pre-6/18 `results/`
+  artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
+  `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
+  `ui_funding_carry_ac454742`, old PNGs). 6/18+ kept, incl. the adr0007 PASS
+  evidence. Consequence: no on-disk strategy-signal-validation evidence remains —
+  re-run `make strategy-signal-validation` before any promotion citation (CI
+  regenerates it). `docs/results_validation_manifest.md` rows for deleted files
+  are historical only.
 - **Latest XS momentum / validation state (2026-06-24, Codex) - DSR fixed,
   portfolio-vol correctness rerun, promotion still blocked:** DSR now uses the
   same per-observation return-series basis as PSR and CPCV no longer treats
