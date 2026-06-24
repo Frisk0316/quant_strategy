@@ -20,6 +20,44 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Latest XS momentum / validation state (2026-06-24, Codex) - DSR fixed,
+  portfolio-vol correctness rerun, promotion still blocked:** DSR now uses the
+  same per-observation return-series basis as PSR and CPCV no longer treats
+  overlapping paths as one independent sample; invariant `DSR <= PSR(0)` is
+  guarded by `tests/unit/test_dsr.py` and `tests/unit/test_cpcv.py`. XS momentum
+  sizing now targets estimated portfolio book vol with `MAX_GROSS_LEVERAGE=2.0`.
+  New artifact: `results/xs_momentum_validation_20260624_portfoliovol/` with
+  WF OOS Sharpe 1.2412, CPCV OOS Sharpe 0.6027, DSR 0.7823, PSR 0.8234,
+  `n_trials=8`, `n_combinations=15`, `promotion_gate_passed:false`, and
+  `status:"review_required"`. PSR remains below 0.95, so there is **no
+  promotion support**. `xs_momentum` remains disabled; live/demo/shadow gates
+  unchanged.
+
+- **Latest XS momentum Phase C state (2026-06-24, Codex) - leak fixed,
+  promotion still blocked:** `backtesting/xs_momentum_backtest.py` now shifts
+  daily targets one full day before intraday expansion, so day-D positions
+  cannot use day-D close information. Regression:
+  `tests/unit/test_xs_momentum_backtest.py::test_daily_close_target_is_not_traded_on_same_day`.
+  The leaked `results/xs_momentum_validation_20260623/` artifact has
+  `SUPERSEDED.md` and remains **INVALID / do not cite** despite its old
+  `promotion_gate_passed:true` JSON field. Leak-free rerun:
+  `results/xs_momentum_validation_20260624_leakfix/` with 27 loaded symbols,
+  `n_trials=8`, `n_combinations=15`, WF combined OOS Sharpe 0.8825, CPCV overall
+  OOS Sharpe 0.5577, DSR 1.0, PSR 0.7961, `promotion_gate_passed:false`, and
+  `status:"review_required"`. PSR is below 0.95, so this does **not** support
+  promotion. Vol-target under-leverage remains a separate Claude/user decision.
+
+- **XS momentum Phase C review (2026-06-24, Claude) — LEAK, BLOCK promotion:**
+  `backtesting/xs_momentum_backtest.py` has a look-ahead leak — the day-D target
+  weight is built from day-D's own 23:00 close and lagged only one intraday bar,
+  so rebalance days are partially traded with hindsight. The committed validation
+  artifact `results/xs_momentum_validation_20260623/` (OOS Sharpe 2.4–5.1, ~2–3%
+  vol, `dsr=1.0`, `psr=0.99`, `promotion_gate_passed:true`) is **INVALID /
+  superseded — do not cite as evidence.** D3 fixes (annualized vol-target,
+  `market_close` wiring) landed and are tested; funding sign is R3.1-correct;
+  vol-target still under-levers ~5× (separate spec-conformance item). Fix +
+  re-run: `tasks/2026-06-24-xs-momentum-lookahead-fix-task.md`; review:
+  `tasks/2026-06-24-xs-momentum-phase-c-review.md`.
 - **XS momentum Phase C research runner (2026-06-23, Codex):** the scaffold is
   committed on `codex/xs-momentum-universe-scaffold` as `07a5d9c`. Phase C adds
   `backtesting/xs_momentum_backtest.py` with R3.1 funding signs, annualized
@@ -66,7 +104,7 @@ handoff between sessions; this is the one-screen "where are we" that
   function-vs-limit comparison; 10 main + 6 appendix slides) and added a full
   methodology document `docs/validation_methodology_zh.docx` via
   `scripts/generate_validation_methodology_doc.py` (needs `python-docx`).
-- **Current branch:** `codex/impl-multi-venue-instrument-specs`.
+- **Current branch:** `codex/xs-momentum-universe-scaffold`.
 - **Backtest execution profiles:** Implementation is complete from
   `docs/superpowers/specs/2026-06-22-backtest-execution-profiles-design.md`.
   User-facing choices are `Strategy Fill` and `Dual Output`; live/demo/shadow

@@ -3,7 +3,7 @@ status: current
 type: adr
 owner: codex
 created: 2026-06-23
-last_reviewed: 2026-06-23
+last_reviewed: 2026-06-24
 expires: none
 superseded_by: null
 ---
@@ -13,6 +13,20 @@ superseded_by: null
 ## Status
 
 Accepted - 2026-06-23, research-only scaffold.
+
+**Validation outcome (2026-06-24): BLOCKED / shelved.** Full Phase C ran
+leak-free with a corrected DSR. Both anti-overfit gates fail — E-005
+(portfolio-vol sizing, DSR-fixed) reports DSR 0.7823, PSR 0.8234, CPCV OOS
+Sharpe 0.60 with dispersed, partly-negative groups (HYPOTHESIS_LEDGER H-002
+refuted; EXPERIMENT_REGISTRY E-003 invalid, E-004/E-005 refuted). `xs_momentum`
+stays `enabled:false`; not promotion/live evidence. Decision: shelve as a
+spec-correct research baseline; do **not** tune research assumptions to chase the
+gate (that raises honest `n_trials` and deflates DSR further). Revisit only with
+materially more OOS history or a genuinely new signal thesis with honest
+`n_trials` declared up front. Open item: the CPCV `n_trials` is still hard-set to
+8 — making it honest lowers DSR further and reinforces the block. The
+architectural decision below (add `xs_momentum` as a disabled research family)
+still stands.
 
 ## Context
 
@@ -37,8 +51,8 @@ Add `xs_momentum` as a disabled-by-default, research-only strategy family.
   membership.
 - The strategy constructs long top-quantile and short bottom-quantile target
   weights through `dollar_neutral_long_short_weights`, with equal gross legs,
-  optional inverse-vol leg weights, per-name caps, vol targeting, and a
-  market-drawdown/high-vol gross scaler.
+  optional inverse-vol leg weights, per-name caps, portfolio book-vol targeting,
+  a max gross-leverage cap, and a market-drawdown/high-vol gross scaler.
 - `XSMomentumStrategy.on_market()` remains a no-op until a separate task wires
   live/replay execution semantics. Current use is vectorized research only.
 - Promotion-grade validation must use venue-scoped canonical DB data and must
@@ -60,5 +74,5 @@ Add `xs_momentum` as a disabled-by-default, research-only strategy family.
   promotion-ready until the incomplete A2/C validation tasks are implemented and
   all gates in `docs/ai_collaboration.md` pass with explicit human approval.
 - Tests must keep guarding dollar-neutral gross normalization, point-in-time
-  membership, target-weight caps, disabled config loading, and crash-regime
-  exposure reduction.
+  membership, target-weight caps, portfolio-vol gross sizing, disabled config
+  loading, and crash-regime exposure reduction.

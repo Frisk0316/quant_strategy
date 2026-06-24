@@ -22,6 +22,54 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-24 Codex follow-up (DSR harness + XS portfolio-vol correctness): fixed
+DSR computation so `src/okx_quant/analytics/dsr.py` uses per-observation Sharpe
+from the same return series that feeds `sqrt(T-1)`, and
+`backtesting/cpcv.py` computes DSR over non-overlapping CPCV paths with honest
+`n_trials`; the harness now refuses `DSR > PSR(0)` and emits `dsr=0.0` with
+`validation.n_trials_missing` when callers omit researched trial count. Added
+I21/F20. XS momentum sizing now targets estimated portfolio book vol with
+`MAX_GROSS_LEVERAGE = 2.0` rather than median single-name vol capped at 1.0;
+added I22/F21 and updated ADR-0009. Correctness-only rerun:
+`results/xs_momentum_validation_20260624_portfoliovol/` with
+`promotion_gate_passed:false`, `status:"review_required"`, WF OOS Sharpe 1.2412,
+CPCV OOS Sharpe 0.6027, DSR 0.7823, PSR 0.8234, `n_trials=8`,
+`n_combinations=15`. PSR remains below 0.95, so promotion remains **BLOCKED**.
+`xs_momentum` stays disabled; no live/demo/shadow/deployment gates changed.
+
+2026-06-24 Claude review note (XS momentum Phase C runner): **BLOCK promotion —
+look-ahead leak found.** `backtesting/xs_momentum_backtest.py` builds the day-D
+target weight from day-D's own close (`_daily_close` bins at 00:00 but holds the
+day's 23:00 close) and lags it by only one intraday bar (`positions =
+target.shift(1)`), so every rebalance day is partially traded with same-day-close
+hindsight. This inflates the committed WF/CPCV evidence
+(`results/xs_momentum_validation_20260623/`: OOS Sharpe 2.4–5.1 at ~2–3% vol,
+`dsr=1.0`, `psr=0.99`) — that artifact is **INVALID / superseded, not promotion
+evidence, do not cite.** It also carries `summary.json:"promotion_gate_passed":
+true`, which must be retracted (no user approval, leaked numbers). Separately, the
+vol-target sizes on median single-name vol capped at gross≤1.0 → ~5× chronic
+under-leverage (spec-conformance issue, not the leak). The D3-flagged fixes
+(annualized vol-target, `market_close` wiring) did land and are tested. Funding
+sign is R3.1-correct. Fix is daily-level lag + regression test + leak-free re-run:
+Codex task `tasks/2026-06-24-xs-momentum-lookahead-fix-task.md`; full review
+`tasks/2026-06-24-xs-momentum-phase-c-review.md`.
+
+2026-06-24 Codex follow-up (XS momentum lookahead fix): fixed
+`backtesting/xs_momentum_backtest.py` so daily targets are shifted one full day
+before intraday expansion, while retaining the existing one-bar execution lag.
+Regression coverage:
+`tests/unit/test_xs_momentum_backtest.py::test_daily_close_target_is_not_traded_on_same_day`.
+Leak-free validation rerun was written to
+`results/xs_momentum_validation_20260624_leakfix/` with
+`promotion_gate_passed:false`, `status:"review_required"`, 27 loaded symbols,
+8 searched parameter trials, 15 CPCV combinations, WF combined OOS Sharpe
+0.8825, CPCV overall OOS Sharpe 0.5577, DSR 1.0, and PSR 0.7961. Because PSR is
+below 0.95, this rerun does **not** support promotion. The leaked
+`results/xs_momentum_validation_20260623/` artifact now has `SUPERSEDED.md` and
+must not be cited. Vol-target quantity/sizing remains a separate Claude/user
+decision; no `src/okx_quant/strategies/`, risk, portfolio, execution, config, or
+deployment gate files were changed.
+
 2026-06-23 Codex session note (XS momentum Phase C research runner): scaffold
 work was preserved on independent branch `codex/xs-momentum-universe-scaffold`
 as commit `07a5d9c` with `AI-Origin: Codex`. Phase C now adds a research-only
