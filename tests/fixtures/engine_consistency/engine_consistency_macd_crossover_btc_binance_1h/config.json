@@ -1,0 +1,150 @@
+{
+  "system": {
+    "mode": "demo",
+    "symbols": [
+      "BTC-USDT-SWAP"
+    ],
+    "spot_symbols": [
+      "BTC-USDT",
+      "ETH-USDT"
+    ],
+    "equity_usd": 5000.0,
+    "log_level": "INFO",
+    "json_logs": false
+  },
+  "strategies": {
+    "funding_carry": {
+      "enabled": true,
+      "perp_symbol": "BTC-USDT-SWAP",
+      "spot_symbol": "BTC-USDT",
+      "min_apr_threshold": 0.12,
+      "rebalance_drift_threshold": 0.02,
+      "max_abs_basis_z": 2.5,
+      "max_crowding": 0.85,
+      "funding_check_interval_secs": 300,
+      "td_mode": "cross"
+    },
+    "pairs_trading": {
+      "enabled": false,
+      "symbol_y": "ETH-USDT-SWAP",
+      "symbol_x": "BTC-USDT-SWAP",
+      "kalman_delta": 0.0001,
+      "entry_z": 2.0,
+      "exit_z": 0.3,
+      "stop_z": 4.0,
+      "lookback_hours": 168,
+      "max_half_life_hours": 48.0,
+      "max_hedge_uncertainty": 10.0,
+      "td_mode": "cross"
+    },
+    "ma_crossover": {
+      "enabled": true,
+      "symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "fast_window": 20,
+      "slow_window": 50,
+      "indicator_db_warmup": false,
+      "td_mode": "cross"
+    },
+    "ema_crossover": {
+      "enabled": true,
+      "symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "fast_span": 20,
+      "slow_span": 50,
+      "indicator_db_warmup": false,
+      "td_mode": "cross"
+    },
+    "macd_crossover": {
+      "enabled": true,
+      "symbols": [
+        "BTC-USDT-SWAP"
+      ],
+      "fast_span": 12,
+      "slow_span": 26,
+      "signal_span": 9,
+      "indicator_db_warmup": false,
+      "td_mode": "cross"
+    },
+    "fear_greed_sentiment": {
+      "enabled": false,
+      "symbol": "BTC-USDT-SWAP",
+      "dataset_id": "fear_greed_btc",
+      "max_age_seconds": 172800,
+      "extreme_fear_label": "Extreme Fear",
+      "exit_labels": [
+        "Greed",
+        "Extreme Greed"
+      ],
+      "extreme_fear_threshold": 25.0,
+      "exit_value_threshold": 51.0,
+      "max_missing_signal_ratio": 0.05,
+      "max_stale_signal_ratio": 0.05,
+      "td_mode": "cross"
+    },
+    "cme_gap_fill": {
+      "enabled": false,
+      "symbol": "BTC-USDT-SWAP",
+      "dataset_id": "cme_btc1_continuous",
+      "max_age_seconds": 604800,
+      "min_gap_bps": 25.0,
+      "max_hold_days": 2.0,
+      "stop_loss_bps_mult": 1.5,
+      "max_gap_bps": 0.0,
+      "allow_direction": "long_only",
+      "roll_dates": [],
+      "max_missing_signal_ratio": 0.05,
+      "max_stale_signal_ratio": 0.05,
+      "td_mode": "cross"
+    }
+  },
+  "risk": {
+    "max_order_notional_usd": 1000000000000.0,
+    "max_pos_pct_equity": 1000000.0,
+    "max_leverage": 3.0,
+    "max_daily_loss_pct": 1000000.0,
+    "soft_drawdown_pct": 1000000.0,
+    "hard_drawdown_pct": 1000001.0,
+    "stale_quote_pct": 1000000.0,
+    "ws_reconnect_circuit_threshold": 3,
+    "ws_reconnect_window_secs": 60,
+    "rest_error_rate_circuit_threshold": 0.05,
+    "rest_error_rate_window": 100,
+    "hard_stop_cooldown_hours": 48
+  },
+  "backtest": {
+    "order_latency_ms": 0,
+    "cancel_latency_ms": 0,
+    "queue_fill_fraction": 1.0,
+    "liquidate_on_end": true,
+    "fill_all_signals": true
+  },
+  "storage": {
+    "backend": "parquet",
+    "parquet_dir": "./data/ticks",
+    "timescale_dsn": "postgresql://quant:changeme@localhost:5432/quant",
+    "redis_url": "redis://localhost:6379",
+    "candle_backend": "postgres",
+    "primary_exchange": "binance"
+  },
+  "cli_args": {
+    "strategy": [
+      "macd_crossover"
+    ],
+    "start": "2024-01-01",
+    "end": "2026-04-30",
+    "bar": "1H",
+    "strategy_params": {
+      "fast_span": 12,
+      "slow_span": 26,
+      "signal_span": 9
+    },
+    "risk_overrides": {
+      "max_order_notional_usd": 250.0,
+      "max_pos_pct_equity": 1.0
+    },
+    "execution_profile": "strategy_fill"
+  }
+}

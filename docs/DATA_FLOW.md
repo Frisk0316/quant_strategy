@@ -25,6 +25,12 @@ exchange REST candles -> scripts/market_data/ingest.py or legacy download script
 Current: DB-backed ingestion is available when `DATABASE_URL` or
 `config/settings.yaml` DSN is reachable. Known gap: local environments without DB
 must rely on parquet fallback or skip DB-dependent validation.
+Venue-tagged replay runs are stricter: when a run declares `exchange`, candles
+must come from the canonical Postgres path filtered by `source_primary=<exchange>`.
+If that venue's bar is missing, the run reports a gap/error instead of falling
+back to source-less parquet or another venue.
+Funding-carry spot synthetic books may use an explicit same-venue perp fallback
+when spot candles are absent; the fallback remains venue-scoped.
 
 ## Market Data Fetch Queue Flow
 
@@ -78,6 +84,27 @@ OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
+The coverage API labels funding provider/exchange from `funding_rates.source`
+instead of a hard-coded venue label.
+
+## Point-In-Time Universe Membership Flow
+
+```text
+1m candle parquet by symbol -> scripts/build_universe_membership.py -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
+```
+
+Current: `config/universe.yaml` defines the Binance USDT-perp research universe
+rules, including top-N, rolling ADV threshold, warmup, rebalance cadence, and
+deny-list patterns. `scripts/build_universe_membership.py` derives daily dollar
+volume from candle history and uses only prior history for ADV and warmup
+eligibility. It does not forward-fill symbols across missing or ended candle
+history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
+OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
+convention, and can pass a `market_close` proxy into the crash filter. Known gap:
+this remains research-tier until the A2 coverage task verifies at least 25
+symbols with 12 months of both parquet and venue-scoped canonical DB coverage and
+promotion validation runs WF/CPCV plus DSR/PSR.
 
 ## Parquet Fallback Flow
 
@@ -88,6 +115,8 @@ local parquet candles/funding -> backtesting.data_loader -> scripts/run_replay_b
 Current: parquet fallback supports no-DB development and historical compatibility.
 Known gap: fallback artifacts are not a substitute for DB parity or authoritative
 `ct_val` provenance when promotion gates require them.
+Parquet fallback is disabled for venue-tagged candle reads because local parquet
+mirrors do not carry a per-row source venue.
 
 ## TimescaleDB / Canonical Candle Flow
 
@@ -96,6 +125,13 @@ raw exchange rows -> CandleStore upsert and canonicalize methods -> raw_candles,
 ```
 
 Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
+The Market Data Coverage API reads OHLCV list rows from `instrument_bars`
+metadata first, not from a full `canonical_candles` aggregation. That keeps the
+UI responsive while large 1m backfills are running; the displayed OHLCV row count
+is an estimate from first/last timestamp and bar interval. Targeted diagnostics
+or export paths remain the place for exact counts and gap inspection. Funding
+coverage rows still come from `funding_rates` and label provider/exchange from
+the stored `source`.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the
@@ -105,6 +141,11 @@ structure remains a separate artifact-level check because replay price series ma
 carry close-flattened O/H/L and quote-volume units. The validation output must
 surface the venue scope as `checks.db_parity.canonical_source_primary`; a Binance
 DB-backed PASS must show `binance` there.
+Replay candle loading now uses the same venue scope before artifact generation,
+not only during post-run validation.
+`scripts/resample_binance_1h_canonical.py` can derive Binance 1H canonical rows
+from already-ingested Binance 1m canonical rows without changing schema or gate
+logic.
 
 ## Backtest Run Flow
 
@@ -112,8 +153,10 @@ DB-backed PASS must show `binance` there.
 frontend Run Backtest form -> POST /api/backtest/run -> routes_backtest.py background job -> scripts/run_replay_backtest.py or strategy-specific runner -> results run directory or DB artifacts -> job status and run list -> frontend Backtest view
 ```
 
-Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. Known gap:
-lightweight Makefile smoke does not yet run a tiny frozen replay fixture.
+Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
+momentum has a separate research-only vectorized runner and is not wired into
+the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
+does not yet run a tiny frozen replay fixture.
 
 Research-only `fill_all_signals` replay raises capacity and stop thresholds
 inside the copied run config before replay starts: order notional, position
@@ -122,6 +165,19 @@ drawdown limits are all lifted, latency is zeroed, and replay execution uses
 `fill_all_on_submit`. The output records these values in
 `result.validation.fill_all_signals_controls`. These runs remain idealized-fill
 artifacts and are not live, promotion, or edge evidence.
+
+Execution-profile flow:
+
+```text
+UI/API execution_profile -> scripts/run_replay_backtest.py -> apply_execution_profile_controls -> ReplayBacktestEngine -> save_backtest_artifacts
+```
+
+For `dual_output`, the script writes `<base>_strategy_fill/`,
+`<base>_realistic_execution/`, and `<base>_execution_comparison.json`.
+Run detail reads the child run summary, shows `result.validation.execution_profile`,
+and links comparison JSON through
+`GET /api/backtest/{run_id}/execution-comparison`, which reads only the matching
+`*_execution_comparison.json` artifact.
 
 ## Backtest Artifact Generation Flow
 
@@ -182,6 +238,10 @@ their run directory; DB-only runs read `backtest_artifacts` payloads into a
 temporary validation input bundle and write only the new validation evidence under
 `results/<run_id>/validation/<validation_id>/`. This is not a backtest artifact
 backfill and does not mutate existing result payloads.
+`make engine-consistency-smoke` validates the frozen
+`tests/fixtures/engine_consistency/` Binance BTC-USDT-SWAP 1H technical-strategy
+fixtures against vectorbt and backtrader in no-DB/offline mode. That smoke proves
+signal-logic engine consistency only; it is not promotion evidence.
 Known gap status must come from `docs/AI_HANDOFF.md`,
 `docs/ai_collaboration.md`, and fresh validation artifacts; missing optional
 reference-engine dependencies produce SKIP rows and do not satisfy

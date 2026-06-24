@@ -35,7 +35,7 @@ from backtesting.parameter_sweep import (
     run_parameter_sweep,
 )
 from backtesting.artifact_rows import read_artifact_rows, validation_artifact_type
-from backtesting.research_controls import ResearchControlError, sanitize_risk_overrides
+from backtesting.research_controls import ResearchControlError, normalize_execution_profile, sanitize_risk_overrides
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
 _run_jobs: dict[str, dict[str, Any]] = {}
@@ -200,13 +200,13 @@ def _dsn_reachable(dsn: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def _resolve_candle_backend() -> tuple[str, str | None]:
+def _resolve_candle_backend(exchange: str | None = None) -> tuple[str, str | None]:
     """Resolve the candle backend the backtest subprocesses should use.
 
     Returns (backend, dsn). Prefers `cfg.storage.candle_backend` from
     config/settings.yaml. Falls back to parquet when the DSN is missing OR
-    unreachable so backtests don't crash on ConnectionRefusedError when the
-    DB process is not running.
+    unreachable unless an exchange was declared; venue-scoped candles require
+    canonical source provenance.
     """
     backend = "parquet"
     dsn: str | None = None
@@ -222,6 +222,11 @@ def _resolve_candle_backend() -> tuple[str, str | None]:
         dsn = os.environ.get("DATABASE_URL")
     if backend == "postgres":
         if not dsn or not _dsn_reachable(dsn):
+            if exchange:
+                raise ValueError(
+                    f"Venue-scoped candle backend for exchange='{exchange}' requires "
+                    "a reachable postgres DSN; parquet candles have no source provenance."
+                )
             backend = "parquet"
             dsn = None
     return backend, dsn
@@ -292,6 +297,7 @@ class RunBacktestRequest(BaseModel):
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     risk_overrides: dict[str, Any] = Field(default_factory=dict)
     fill_all_signals: bool = False
+    execution_profile: str = "strategy_fill"
 
 
 class ParameterSweepRequest(BaseModel):
@@ -340,8 +346,8 @@ def _run_ohlcv_rotation_job(
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
 
-        backend, dsn = _resolve_candle_backend()
         exchange = _normalize_exchange(req.exchange)
+        backend, dsn = _resolve_candle_backend(exchange)
         benchmark = req.benchmark or "BTC-USDT-SWAP"
 
         if backend == "parquet":
@@ -1067,6 +1073,7 @@ def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
         },
         "risk": req.risk_overrides or {},
         "backtest": {
+            "execution_profile": req.execution_profile,
             "fill_all_signals": bool(req.fill_all_signals),
         },
         "overrides": {
@@ -1689,6 +1696,8 @@ def _run_backtest_job(
             str(results_dir),
             "--run-id",
             run_id,
+            "--execution-profile",
+            req.execution_profile,
         ]
         if req.start:
             cmd.extend(["--start", req.start])
@@ -1773,7 +1782,16 @@ def _run_backtest_job(
             })
             return
         warning_fields: dict[str, Any] = {}
-        result_path = results_dir / run_id / "result.json"
+        effective_run_id = run_id
+        comparison_path = results_dir / f"{Path(run_id).name}_execution_comparison.json"
+        comparison_payload: dict[str, Any] = {}
+        if req.execution_profile == "dual_output" and comparison_path.exists():
+            try:
+                comparison_payload = json.loads(comparison_path.read_text(encoding="utf-8"))
+                effective_run_id = str(comparison_payload.get("strategy_fill_run_id") or f"{run_id}_strategy_fill")
+            except Exception:
+                effective_run_id = f"{run_id}_strategy_fill"
+        result_path = results_dir / effective_run_id / "result.json"
         if result_path.exists():
             try:
                 warning_fields = _attach_idealized_fill_warning(
@@ -1786,6 +1804,14 @@ def _run_backtest_job(
             "status": "done",
             "progress": 100,
             "message": "Backtest complete",
+            "run_id": effective_run_id,
+            "base_run_id": run_id if req.execution_profile == "dual_output" else None,
+            "execution_profile": req.execution_profile,
+            "execution_comparison": str(comparison_path) if comparison_payload else None,
+            "comparison_run_ids": {
+                "strategy_fill": comparison_payload.get("strategy_fill_run_id"),
+                "realistic_execution": comparison_payload.get("realistic_execution_run_id"),
+            } if comparison_payload else None,
             "output": output[-4000:],
             **warning_fields,
         })
@@ -2648,6 +2674,28 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         """Return lightweight run metadata for immediate UI selection."""
         return _summary_payload(await _read_result_payload(run_id))
 
+    @router.get("/{run_id}/execution-comparison")
+    async def get_execution_comparison(run_id: str):
+        """Return the paired Strategy Fill vs realistic execution comparison."""
+        result = await _read_result_payload(run_id)
+        clean_run_id = Path(run_id).name
+        candidates: list[Path] = []
+        for value in (
+            result.get("execution_comparison"),
+            (result.get("validation") or {}).get("execution_comparison"),
+            (result.get("artifacts") or {}).get("execution_comparison"),
+        ):
+            if isinstance(value, str) and value:
+                candidates.append(results_dir / Path(value).name)
+        for suffix in ("_strategy_fill", "_realistic_execution"):
+            if clean_run_id.endswith(suffix):
+                candidates.append(results_dir / f"{clean_run_id[:-len(suffix)]}_execution_comparison.json")
+        candidates.append(results_dir / f"{clean_run_id}_execution_comparison.json")
+        for path in candidates:
+            if path.name.endswith("_execution_comparison.json") and path.exists():
+                return _read_json(path)
+        raise HTTPException(status_code=404, detail="Execution comparison artifact not found")
+
     # ------------------------------------------------------------------
     # Metrics
     # ------------------------------------------------------------------
@@ -3025,6 +3073,8 @@ def _normalize_backtest_request(req: RunBacktestRequest) -> RunBacktestRequest:
         normalized.perp_symbol = normalize_swap_symbol(normalized.perp_symbol)
     if normalized.spot_symbol:
         normalized.spot_symbol = normalize_spot_symbol(normalized.spot_symbol)
+    if normalized.fill_all_signals:
+        normalized.execution_profile = "strategy_fill"
     return normalized
 
 
@@ -3042,6 +3092,10 @@ def _resolve_data_dir(data_dir: str | None) -> Path:
 
 def _validate_backtest_request(req: RunBacktestRequest) -> None:
     _resolve_data_dir(req.data_dir)
+    try:
+        req.execution_profile = normalize_execution_profile(req.execution_profile)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if req.start and not _SAFE_DATE_RE.match(req.start):
         raise HTTPException(status_code=400, detail="Invalid start date format")
     if req.end and not _SAFE_DATE_RE.match(req.end):

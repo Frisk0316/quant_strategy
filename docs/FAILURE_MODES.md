@@ -37,6 +37,10 @@ failure modes say how it silently breaks.
 | F13 | Stale doc treated as current | Implementing target behavior as if it exists | DOC_LIFECYCLE status check | — |
 | F14 | Chat memory as source of truth | Strategy drift, untracked assumption | Read config/research, not memory | — |
 | F15 | Close-flattened artifact OHLC treated as canonical OHLC | DB parity compares the right exchange but fails on O/H/L or volume even though every close matches | Close-only `db_parity` regression plus artifact-level OHLCV structural checks | R6.2, R7.2 |
+| F16 | Reduce-only close blocked by entry fat-finger cap | Strategy remains in-position after a valid exit signal; later entry/re-entry behavior is distorted | `tests/unit/test_risk_guard.py::test_reduce_only_close_can_exceed_fat_finger_cap_up_to_current_position` | R4.2 |
+| F17 | Queue-fraction lot rounding creates zero-fill exits | A small reduce-only close order repeatedly touches the L1 book but `remaining_sz * queue_fill_fraction` rounds below `lotSz`/`minSz`, so no fill row is emitted and the strategy stays in-position until cancellation or terminal liquidation | Gate 2 fill-rate warning, `orders.csv`/`fills.csv`/`cancel_log.csv` audit, and replay lot-rounding tests in `tests/unit/test_execution_flow.py` | R5.1, R5.2 |
+| F18 | Terminal liquidation counted as submitted-order fill | `real_fill_count`/`orders_filled_count` include end-of-run liquidation rows whose `cl_ord_id` was never in `orders.csv`, slightly inflating fill-rate interpretation | Cross-check `fills.csv` `cl_ord_id` against `orders.csv` and `validation.terminal_liquidation_fill_count` | R5.1, R7.2 |
+| F19 | Survivorship-biased universe membership | Delisted or newly listed symbols are treated as if they were tradable throughout history, inflating cross-sectional strategy results | I20 point-in-time membership tests and review of `data/universe/universe_membership.parquet` provenance | R6.1 |
 
 ## How to add a failure mode
 

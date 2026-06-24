@@ -1,0 +1,257 @@
+{
+  "symbols": [
+    "ICP-USDT-SWAP",
+    "ALGO-USDT-SWAP",
+    "AAVE-USDT-SWAP",
+    "ETC-USDT-SWAP",
+    "BTC-USDT-SWAP",
+    "1000SHIB-USDT-SWAP",
+    "XMR-USDT-SWAP",
+    "TON-USDT-SWAP",
+    "ADA-USDT-SWAP",
+    "AVAX-USDT-SWAP",
+    "BCH-USDT-SWAP",
+    "BNB-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "DOT-USDT-SWAP",
+    "HBAR-USDT-SWAP",
+    "LINK-USDT-SWAP",
+    "LTC-USDT-SWAP",
+    "SUI-USDT-SWAP",
+    "TRX-USDT-SWAP",
+    "XLM-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "ATOM-USDT-SWAP",
+    "ZEC-USDT-SWAP",
+    "TAO-USDT-SWAP",
+    "SOL-USDT-SWAP",
+    "POL-USDT-SWAP",
+    "HYPE-USDT-SWAP"
+  ],
+  "loaded": [
+    {
+      "symbol": "ICP-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "ALGO-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "AAVE-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "ETC-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "BTC-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "1000SHIB-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "XMR-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "TON-USDT-SWAP",
+      "effective_start": "2024-03-01T12:31:00+00:00",
+      "hourly_rows": 20092,
+      "funding_rows": 5022,
+      "first_hour": "2024-03-01T12:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "ADA-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "AVAX-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "BCH-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "BNB-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "DOGE-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "DOT-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "HBAR-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "LINK-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "LTC-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "SUI-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "TRX-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "XLM-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "XRP-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "ATOM-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "ZEC-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21544,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "TAO-USDT-SWAP",
+      "effective_start": "2024-04-11T14:30:00+00:00",
+      "hourly_rows": 19106,
+      "funding_rows": 4776,
+      "first_hour": "2024-04-11T14:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "SOL-USDT-SWAP",
+      "effective_start": "2024-01-01T00:00:00+00:00",
+      "hourly_rows": 21482,
+      "funding_rows": 2693,
+      "first_hour": "2024-01-01T00:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "POL-USDT-SWAP",
+      "effective_start": "2024-09-13T12:15:00+00:00",
+      "hourly_rows": 15388,
+      "funding_rows": 3846,
+      "first_hour": "2024-09-13T12:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    },
+    {
+      "symbol": "HYPE-USDT-SWAP",
+      "effective_start": "2025-05-30T10:30:00+00:00",
+      "hourly_rows": 9174,
+      "funding_rows": 2293,
+      "first_hour": "2025-05-30T10:00:00",
+      "last_hour": "2026-06-16T15:00:00"
+    }
+  ],
+  "skipped": [
+    {
+      "symbol": "ETH-USDT-SWAP",
+      "reason": "insufficient hourly candles or funding",
+      "hourly_rows": 0,
+      "funding_rows": 0
+    }
+  ]
+}

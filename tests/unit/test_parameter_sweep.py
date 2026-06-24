@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -14,11 +15,17 @@ from backtesting.parameter_sweep import (
     rank_sweep_rows,
 )
 from backtesting.research_controls import (
+    EXECUTION_PROFILE_DUAL_OUTPUT,
+    EXECUTION_PROFILE_REALISTIC,
+    EXECUTION_PROFILE_STRATEGY_FILL,
     FILL_ALL_HARD_DRAWDOWN_PCT,
     FILL_ALL_MAX_DAILY_LOSS_PCT,
     FILL_ALL_SOFT_DRAWDOWN_PCT,
+    ResearchControlError,
+    apply_execution_profile_controls,
     apply_fill_all_signal_controls,
     apply_research_risk_overrides,
+    normalize_execution_profile,
 )
 from backtesting.walk_forward import WalkForward
 from okx_quant.api import routes_backtest as routes
@@ -188,6 +195,63 @@ def test_fill_all_signal_controls_copy_config_without_mutating_base():
     assert updated.risk.soft_drawdown_pct == FILL_ALL_SOFT_DRAWDOWN_PCT
     assert updated.risk.hard_drawdown_pct == FILL_ALL_HARD_DRAWDOWN_PCT
     assert cfg.backtest.fill_all_signals is False
+
+
+def test_normalize_execution_profile_defaults_to_strategy_fill():
+    assert normalize_execution_profile(None) == EXECUTION_PROFILE_STRATEGY_FILL
+    assert normalize_execution_profile("") == EXECUTION_PROFILE_STRATEGY_FILL
+    assert normalize_execution_profile(" Strategy_Fill ") == EXECUTION_PROFILE_STRATEGY_FILL
+
+
+def test_normalize_execution_profile_rejects_internal_realistic_for_public_surface():
+    with pytest.raises(ResearchControlError):
+        normalize_execution_profile(EXECUTION_PROFILE_REALISTIC)
+
+    assert (
+        normalize_execution_profile(EXECUTION_PROFILE_REALISTIC, allow_internal=True)
+        == EXECUTION_PROFILE_REALISTIC
+    )
+
+
+def test_normalize_execution_profile_allows_public_dual_output():
+    assert normalize_execution_profile("dual_output") == EXECUTION_PROFILE_DUAL_OUTPUT
+
+
+def test_apply_execution_profile_strategy_fill_uses_existing_fill_all_controls():
+    cfg = load_config(require_secrets=False)
+
+    updated, controls = apply_execution_profile_controls(cfg, EXECUTION_PROFILE_STRATEGY_FILL)
+
+    assert controls["execution_profile"] == EXECUTION_PROFILE_STRATEGY_FILL
+    assert controls["idealized_fill"] is True
+    assert controls["research_fill_all_signals"]["enabled"] is True
+    assert updated.backtest.fill_all_signals is True
+    assert updated.backtest.queue_fill_fraction == 1.0
+    assert updated.risk.max_order_notional_usd >= cfg.risk.max_order_notional_usd
+    assert cfg.backtest.fill_all_signals is False
+
+
+def test_apply_execution_profile_realistic_keeps_config_unchanged():
+    cfg = load_config(require_secrets=False)
+
+    updated, controls = apply_execution_profile_controls(
+        cfg,
+        EXECUTION_PROFILE_REALISTIC,
+        allow_internal=True,
+    )
+
+    assert updated is cfg
+    assert controls == {
+        "execution_profile": EXECUTION_PROFILE_REALISTIC,
+        "idealized_fill": False,
+    }
+
+
+def test_apply_execution_profile_dual_must_be_orchestrated_by_runner():
+    cfg = load_config(require_secrets=False)
+
+    with pytest.raises(ResearchControlError):
+        apply_execution_profile_controls(cfg, EXECUTION_PROFILE_DUAL_OUTPUT)
 
 
 def test_cpcv_propagates_idealized_fill_from_any_window():

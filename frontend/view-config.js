@@ -61,6 +61,18 @@ const RISK_OVERRIDE_SPECS = [
     help: "Research leverage ceiling, expressed as gross notional divided by equity. Kept with the copied risk config and dashboard parity; order blocking is mainly driven by max order USD and max pos pct.",
   },
 ];
+const EXECUTION_PROFILE_OPTIONS = [
+  {
+    value: "strategy_fill",
+    label: "Strategy Fill",
+    hint: "Evaluate the strategy after signals become fills.",
+  },
+  {
+    value: "dual_output",
+    label: "Dual Output",
+    hint: "Run Strategy Fill and realistic execution side by side.",
+  },
+];
 const SWEEP_PARAM_SPECS = {
   ma_crossover: [
     ["fast_window", "fast"],
@@ -297,7 +309,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [strategyParams, setStrategyParams] = useConfigState(STRATEGY_PARAM_DEFAULTS);
   const [sweepParams, setSweepParams] = useConfigState(SWEEP_PARAM_DEFAULTS);
   const [riskOverrides, setRiskOverrides] = useConfigState(RISK_OVERRIDE_DEFAULTS);
-  const [fillAllSignals, setFillAllSignals] = useConfigState(false);
+  const [executionProfile, setExecutionProfile] = useConfigState("strategy_fill");
+  const fillAllSignals = executionProfile === "strategy_fill";
   const [sweepFinalistValidation, setSweepFinalistValidation] = useConfigState("none");
   const [sweepTopPct, setSweepTopPct] = useConfigState(10);
   const [sweepMaxFinalists, setSweepMaxFinalists] = useConfigState(20);
@@ -331,7 +344,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
-  const fullBacktestEstimate = singleReplaySeconds * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
+  const executionProfileMultiplier = executionProfile === "dual_output" ? 2 : 1;
+  const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
 
   useConfigEffect(() => {
     window.API.fetchDataCoverage()
@@ -460,6 +474,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       initial_equity: +equity || 5000,
       strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
       risk_overrides: cleanRiskOverrides(riskOverrides),
+      execution_profile: executionProfile,
       fill_all_signals: fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
@@ -790,20 +805,20 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                   </div>
                 `)}
               </div>
-              <label class="row" style=${{ gap: 8, marginTop: 10, alignItems: "flex-start" }}>
-                <input type="checkbox" checked=${fillAllSignals}
-                  onChange=${(e) => setFillAllSignals(e.target.checked)}
-                  style=${{ marginTop: 2 }} />
-                <span>
-                  <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-                  <span class="field-hint">Research-only idealized execution: bypasses capacity/drawdown stops and fills every submitted strategy signal order.</span>
-                </span>
-              </label>
-              <div class="field-hint" style=${{ marginTop: 6 }}>Blank means use config default. If signals continue but fills stop after a drawdown stop, lower Max order USD / Max pos pct for realistic sensitivity, or enable Fill all signals for research-only full signal replay. Live risk config is unchanged.</div>
+              <div class="field" style=${{ marginTop: 10 }}>
+                <div class="field-label">Execution profile</div>
+                <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
+                  ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
+                </select>
+                <div class="field-hint">
+                  ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+                </div>
+              </div>
+              <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
-            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
           </div>
           ${runJob && html`
             <div class="col" style=${{ gap: 8, marginTop: 16 }}>
@@ -832,7 +847,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="card-sub mono">${strategy}</div>
             </div>
           </div>
-          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} fillAllSignals=${fillAllSignals} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
+          <${StrategyParams} id=${strategy} params=${strategyParams[strategy] || {}} riskOverrides=${riskOverrides} executionProfile=${executionProfile} setParams=${(next) => setStrategyParams((all) => ({ ...all, [strategy]: next }))} />
           ${isTechnical && html`
             <div class="sep" style=${{ margin: "12px 0" }}></div>
             <${ParameterSweepPanel}
@@ -851,8 +866,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               setFinalistTopPct=${setSweepTopPct}
               maxFinalists=${sweepMaxFinalists}
               setMaxFinalists=${setSweepMaxFinalists}
-              fillAllSignals=${fillAllSignals}
-              setFillAllSignals=${setFillAllSignals}
+              executionProfile=${executionProfile}
               setView=${setView}
               setSelectedRunId=${setSelectedRunId}
             />
@@ -865,7 +879,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   `;
 }
 
-function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fillAllSignals = false, setParams = () => {} }) {
+function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, executionProfile = "strategy_fill", setParams = () => {} }) {
   const specs = {
     funding_carry: [
       ["min_apr_threshold", "0.12", "min APR to enter", "Minimum annualized funding rate (APR) required to open a carry position. Filters out low-yield periods. 0.12 = 12% APR."],
@@ -925,12 +939,12 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, fil
   const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
   const riskMaxPos = Number(riskOverrides.max_pos_pct_equity);
   const riskMaxLeverage = Number(riskOverrides.max_leverage);
-  const hasRiskOverride = fillAllSignals || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
+  const hasRiskOverride = executionProfile === "strategy_fill" || [riskMaxOrder, riskMaxPos, riskMaxLeverage].some((v) => Number.isFinite(v) && v > 0);
   const riskSummary = [
     `max_order_notional: ${Number.isFinite(riskMaxOrder) && riskMaxOrder > 0 ? fmtUSD(riskMaxOrder, 0) : "$500"}`,
     `max_pos_pct: ${Number.isFinite(riskMaxPos) && riskMaxPos > 0 ? fmtPct(riskMaxPos, 0) : "30%"}`,
     `max_leverage: ${Number.isFinite(riskMaxLeverage) && riskMaxLeverage > 0 ? `${fmtNum(riskMaxLeverage, 1)}x` : "3.0x"}`,
-    `fill_all_signals: ${fillAllSignals ? "on" : "off"}`,
+    `execution_profile: ${executionProfile}`,
   ].join(" - ");
   function parseParam(value) {
     const num = Number(value);
@@ -971,8 +985,7 @@ function ParameterSweepPanel({
   setFinalistTopPct = () => {},
   maxFinalists = 20,
   setMaxFinalists = () => {},
-  fillAllSignals = false,
-  setFillAllSignals = () => {},
+  executionProfile = "strategy_fill",
   setView,
   setSelectedRunId,
 }) {
@@ -1058,15 +1071,9 @@ function ParameterSweepPanel({
           <option value="both">Both (WF + CPCV)</option>
         </select>
       </div>
-      <label class="row" style=${{ gap: 8, alignItems: "flex-start" }}>
-        <input type="checkbox" checked=${fillAllSignals}
-          onChange=${(e) => setFillAllSignals(e.target.checked)}
-          style=${{ marginTop: 2 }} />
-        <span>
-          <span class="field-label" style=${{ display: "block", fontSize: 12 }}>Fill all signals</span>
-          <span class="field-hint">Bypass capacity/drawdown stops for this sweep and fill submitted strategy signal orders; research-only idealized execution.</span>
-        </span>
-      </label>
+      <div class="field-hint">
+        Sweep finalist reruns use ${executionProfile === "strategy_fill" ? "Strategy Fill" : "realistic execution"}.
+      </div>
       <div class="field-hint">
         ${parseError
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
@@ -1136,6 +1143,8 @@ function ParameterSweepPanel({
 
 function MarketDataCard({ onCoverageChange } = {}) {
   const [coverage, setCoverage] = useConfigState(null);
+  const [coverageError, setCoverageError] = useConfigState("");
+  const [coverageFilters, setCoverageFilters] = useConfigState({ exchange: "all", query: "", kind: "all" });
   const [instruments, setInstruments] = useConfigState([]);
   const [fetchJobs, setFetchJobs] = useConfigState([]);
   const [exportJob, setExportJob] = useConfigState(null);
@@ -1154,6 +1163,12 @@ function MarketDataCard({ onCoverageChange } = {}) {
     .sort()
     .at(-1) || "";
   const exportKind = exportForm.kind || "ohlcv";
+  const exportBarParam = exportKind === "ohlcv" ? exportForm.bar : exportKind === "funding" ? "funding" : "external";
+  const exportEmptyMessage = exportKind === "funding"
+    ? "No DB funding pairs available."
+    : exportKind === "external"
+      ? "No external datasets available."
+      : `No DB trading pairs available for ${exportForm.bar}.`;
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
   const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96, funding: 3, external: 1 };
   const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
@@ -1192,16 +1207,36 @@ function MarketDataCard({ onCoverageChange } = {}) {
   const allSearchResultsSelected = searchResultSymbols.length > 0
     && searchResultSymbols.every((symbol) => (fetchForm.symbols || []).includes(symbol));
   const anyFetchActive = (fetchJobs || []).some((job) => !FETCH_TERMINAL_STATUSES.has(job.status));
+  const coverageExchanges = [...new Set((coverage || [])
+    .flatMap((row) => String(row.exchange || "").toLowerCase().split("+"))
+    .map((exchange) => exchange.trim())
+    .filter(Boolean))]
+    .sort();
+  const filteredCoverage = (coverage || []).filter((row) => {
+    const kind = row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv");
+    const exchange = String(row.exchange || "").toLowerCase().split("+");
+    const query = String(coverageFilters.query || "").trim().toUpperCase();
+    return (coverageFilters.kind === "all" || kind === coverageFilters.kind)
+      && (coverageFilters.exchange === "all" || exchange.includes(coverageFilters.exchange))
+      && (!query || String(row.inst_id || "").toUpperCase().includes(query));
+  });
+  function fmtCoverageRowCount(row) {
+    if (row?.row_count == null) return "-";
+    const label = Number(row.row_count).toLocaleString();
+    return row.row_count_estimated ? `~${label}` : label;
+  }
 
   function refreshCoverage() {
     window.API.fetchDataCoverage()
       .then((rows) => {
         const next = rows || [];
         setCoverage(next);
+        setCoverageError("");
         onCoverageChange?.(next);
       })
-      .catch(() => {
+      .catch((err = {}) => {
         setCoverage([]);
+        setCoverageError(err.message || "Coverage request failed");
         onCoverageChange?.([]);
       });
   }
@@ -1377,7 +1412,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
   function triggerExport() {
     const body = {
       kind: exportKind,
-      bar: exportForm.bar,
+      bar: exportBarParam,
       start: exportForm.start,
       end: exportForm.end,
       format: exportForm.format,
@@ -1458,7 +1493,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
                         </td>
                         <td class="mono">${symbol}</td>
                       </tr>
-                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${exportForm.bar}.</td></tr>`}
+                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>${exportEmptyMessage}</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -1477,11 +1512,15 @@ function MarketDataCard({ onCoverageChange } = {}) {
               </select>
             </div>
             <div class="field">
-              <div class="field-label">Bar</div>
-              <select class="select mono" value=${exportForm.bar}
+              <div class="field-label">${exportKind === "ohlcv" ? "Bar" : "Frequency"}</div>
+              <select class="select mono" value=${exportBarParam}
                 disabled=${exportKind !== "ohlcv"}
                 onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
-                ${["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
+                ${exportKind === "funding" ? html`
+                  <option value="funding">8H</option>
+                ` : exportKind === "external" ? html`
+                  <option value="external">n/a</option>
+                ` : ["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
             </div>
             <div class="field">
@@ -1651,25 +1690,61 @@ function MarketDataCard({ onCoverageChange } = {}) {
         </div>
       `}
 
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 12 }}>
+        <div class="field">
+          <div class="field-label">Exchange</div>
+          <select class="select mono" value=${coverageFilters.exchange}
+            onChange=${(e) => setCoverageFilters((f) => ({ ...f, exchange: e.target.value }))}>
+            <option value="all">All exchanges</option>
+            ${coverageExchanges.map((exchange) => html`
+              <option key=${exchange} value=${exchange}>${exchange.toUpperCase()}</option>
+            `)}
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-label">Trading pair</div>
+          <input
+            class="input mono"
+            placeholder="Search pair or dataset"
+            value=${coverageFilters.query}
+            onInput=${(e) => setCoverageFilters((f) => ({ ...f, query: e.currentTarget.value }))}
+          />
+        </div>
+        <div class="field">
+          <div class="field-label">Data type</div>
+          <select class="select mono" value=${coverageFilters.kind}
+            onChange=${(e) => setCoverageFilters((f) => ({ ...f, kind: e.target.value }))}>
+            <option value="all">All types</option>
+            <option value="ohlcv">OHLCV</option>
+            <option value="funding">Funding rate</option>
+            <option value="external">Other</option>
+          </select>
+        </div>
+      </div>
+
       <div class="tbl-wrap">
         <table class="tbl">
           <thead>
             <tr>
-              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th class="num">First date</th>
+              <th>Dataset / Trading Pair</th><th>Type</th><th>Bar / Frequency</th><th>Provider</th><th>Exchange</th><th class="num">First date</th>
               <th class="num">Last date</th><th class="num">Rows</th>
               <th class="num">Gaps</th><th></th>
             </tr>
           </thead>
           <tbody>
-            ${(coverage || []).map((row, i) => html`
+            ${filteredCoverage.map((row, i) => html`
               <tr key=${i}>
                 <td class="mono">${row.inst_id}</td>
                 <td>${row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")}</td>
                 <td class="mono">${row.bar}</td>
                 <td class="mono">${row.provider || "-"}</td>
+                <td class="mono">
+                  ${row.exchange ? row.exchange.toUpperCase() : "-"}
+                  ${row.mixed && html`<span style=${{ color: "var(--warn)", marginLeft: 6 }} title="Multiple source exchanges — Binance preferred, OKX fills gaps">⚠ mixed</span>`}
+                </td>
                 <td class="num mono">${row.first_ts ? new Date(row.first_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num mono">${row.last_ts ? new Date(row.last_ts).toISOString().slice(0, 10) : "-"}</td>
-                <td class="num">${(row.row_count || 0).toLocaleString()}</td>
+                <td class="num">${fmtCoverageRowCount(row)}</td>
                 <td class="num" style=${{ color: row.gap_count > 0 ? "var(--warn)" : "var(--profit)" }}>
                   ${row.gap_count ?? "-"}
                 </td>
@@ -1685,8 +1760,16 @@ function MarketDataCard({ onCoverageChange } = {}) {
                 </td>
               </tr>
             `)}
-            ${(!coverage || !coverage.length) && html`
-              <tr><td colSpan=${9} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
+            ${coverageError && (!coverage || !coverage.length) && html`
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24, color: "var(--warn)" }}>
+                Market data coverage unavailable: ${coverageError}. Data may still exist; retry after active fetch jobs finish.
+              </td></tr>
+            `}
+            ${!coverageError && (!coverage || !coverage.length) && html`
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
+            `}
+            ${!coverageError && coverage?.length > 0 && !filteredCoverage.length && html`
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No matching coverage rows.</td></tr>
             `}
           </tbody>
         </table>

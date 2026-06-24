@@ -26,10 +26,10 @@ Legend:
 
 | # | Changed area (trigger) | Must also review / update | Manifest? | ADR? |
 |---|---|---|---|---|
-| A1 | `src/okx_quant/strategies/`, `src/okx_quant/signals/` | `research/strategy_synthesis.md`, `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/INVARIANTS.md`, relevant ADR | Yes | If assumptions change |
+| A1 | `src/okx_quant/strategies/`, `src/okx_quant/signals/` | `research/strategy_synthesis.md`, `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If assumptions change |
 | A2 | `src/okx_quant/portfolio/`, `src/okx_quant/execution/` | `docs/DOMAIN_RULES.md` (R1–R5), `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If accounting/fill policy changes |
 | A3 | `src/okx_quant/risk/`, `config/risk.yaml` | `docs/DOMAIN_RULES.md` (R4), `docs/INVARIANTS.md`, `docs/ai_collaboration.md`, relevant ADR | Yes | If limits/semantics change |
-| A4 | `config/strategies.yaml`, `config/settings.yaml` | `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `research/strategy_synthesis.md` | Yes | If a mode/gate changes |
+| A4 | `config/strategies.yaml`, `config/settings.yaml`, `config/universe.yaml` | `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`, `research/strategy_synthesis.md` | Yes | If a mode/gate changes |
 | A5 | `backtesting/`, `scripts/run_backtest.py`, `scripts/run_replay_backtest.py` | `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/GOLDEN_CASES.md`, ADR-0002/0005 | Yes | If result schema or gates change |
 | A6 | `sql/`, DB schema / migrations | `docs/DATA_FLOW.md`, ADR-0002, `docs/KNOWN_ISSUES.md` | Yes | Yes |
 | A7 | `src/okx_quant/api/` | `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md` | No | If schema contract changes |

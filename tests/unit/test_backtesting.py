@@ -926,6 +926,42 @@ def _terminal_book(engine: ReplayBacktestEngine, inst_id: str, bid: float, ask: 
     return book
 
 
+def test_execution_metrics_exclude_terminal_liquidation_from_submitted_order_fill_count():
+    recorder = ReplayRecorder(initial_equity=10_000.0)
+    recorder.order_log.append({
+        "ts": 1,
+        "cl_ord_id": "strategy-entry",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "buy",
+        "px": 100.0,
+        "sz": "1",
+        "strategy": "unit",
+        "notional_usd": 100.0,
+    })
+    recorder.fill_log.append({
+        "ts": 2,
+        "cl_ord_id": "terminal-close",
+        "ord_id": "terminal-close",
+        "inst_id": "BTC-USDT-SWAP",
+        "side": "sell",
+        "fill_px": 101.0,
+        "fill_sz": 1.0,
+        "fee": 0.0,
+        "notional_usd": 101.0,
+        "strategy": "terminal_liquidation",
+        "state": "filled",
+        "metadata": {"action": "terminal_liquidation"},
+    })
+
+    metrics = recorder._execution_metrics(pd.Series([0.0, 0.01], index=[1, 2]))
+
+    assert metrics["real_fill_count"] == 1
+    assert metrics["terminal_liquidation_fill_count"] == 1
+    assert metrics["submitted_order_fill_count"] == 0
+    assert metrics["orders_filled_count"] == 0
+    assert metrics["fill_rate"] == 0.0
+
+
 def test_replay_terminal_liquidation_closes_open_swap_position(minimal_cfg):
     engine = ReplayBacktestEngine(_use_okx_registry(minimal_cfg), strategy_names=["funding_carry"])
     positions = PositionLedger(initial_equity=10_000.0)
@@ -1211,6 +1247,121 @@ def test_run_replay_backtest_cli_enables_fill_all_signals(monkeypatch, minimal_c
     assert cfg.backtest.queue_fill_fraction == pytest.approx(1.0)
     assert cfg.risk.max_order_notional_usd >= FILL_ALL_MAX_ORDER_NOTIONAL_USD
     assert cfg.risk.max_pos_pct_equity >= FILL_ALL_MAX_POS_PCT_EQUITY
+
+
+def test_run_replay_backtest_cli_strategy_fill_profile_marks_result(monkeypatch, minimal_cfg, tmp_path):
+    from scripts import run_replay_backtest as cli
+
+    calls = {}
+    saved = {}
+
+    def fake_run_replay_backtest(**kwargs):
+        calls.update(kwargs)
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0], index=[1]),
+            equity_curve=pd.Series([10_000.0], index=[1]),
+            metrics={"total_return": 0.0, "fill_rate": 1.0, "real_fill_count": 1},
+            order_log=pd.DataFrame([{"cl_ord_id": "o1"}]),
+            fill_log=pd.DataFrame([{"cl_ord_id": "o1", "fill_sz": 1.0, "state": "filled", "fee": 0.0}]),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    def fake_save_backtest_artifacts(**kwargs):
+        saved["validation"] = dict(kwargs["result"].validation)
+        run_dir = tmp_path / kwargs["run_id"]
+        run_dir.mkdir()
+        return run_dir
+
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(cli, "save_backtest_artifacts", fake_save_backtest_artifacts)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_replay_backtest.py",
+            "--strategy",
+            "ma_crossover",
+            "--execution-profile",
+            "strategy_fill",
+            "--save-artifacts",
+            "--output-dir",
+            str(tmp_path),
+            "--run-id",
+            "unit_profile",
+        ],
+    )
+
+    cli.main()
+
+    assert calls["cfg"].backtest.fill_all_signals is True
+    assert saved["validation"]["execution_profile"] == "strategy_fill"
+    assert saved["validation"]["idealized_fill"] is True
+
+
+def test_run_replay_backtest_cli_dual_output_saves_two_runs_and_comparison(monkeypatch, minimal_cfg, tmp_path):
+    from scripts import run_replay_backtest as cli
+
+    saved_run_ids = []
+
+    def fake_run_replay_backtest(**kwargs):
+        is_strategy_fill = bool(kwargs["cfg"].backtest.fill_all_signals)
+        total_return = 0.20 if is_strategy_fill else 0.05
+        fill_rate = 1.0 if is_strategy_fill else 0.25
+        return ReplayBacktestResult(
+            returns=pd.Series([0.0, total_return], index=[1, 2]),
+            equity_curve=pd.Series([10_000.0, 10_000.0 * (1 + total_return)], index=[1, 2]),
+            metrics={
+                "total_return": total_return,
+                "max_drawdown": -0.01,
+                "fill_rate": fill_rate,
+                "submitted_order_count": 4,
+                "real_fill_count": 4 if is_strategy_fill else 1,
+                "submitted_order_fill_count": 4 if is_strategy_fill else 1,
+                "terminal_liquidation_fill_count": 0,
+            },
+            order_log=pd.DataFrame([{"cl_ord_id": "o1"}]),
+            fill_log=pd.DataFrame([{"cl_ord_id": "o1", "fill_sz": 1.0, "state": "filled", "fee": 0.0}]),
+            funding_log=pd.DataFrame(),
+            trade_log=pd.DataFrame(),
+        )
+
+    def fake_save_backtest_artifacts(**kwargs):
+        saved_run_ids.append(kwargs["run_id"])
+        run_dir = tmp_path / kwargs["run_id"]
+        run_dir.mkdir()
+        return run_dir
+
+    monkeypatch.setattr(cli, "load_config", lambda require_secrets=False: minimal_cfg)
+    monkeypatch.setattr(cli, "run_replay_backtest", fake_run_replay_backtest)
+    monkeypatch.setattr(cli, "save_backtest_artifacts", fake_save_backtest_artifacts)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_replay_backtest.py",
+            "--strategy",
+            "macd_crossover",
+            "--execution-profile",
+            "dual_output",
+            "--save-artifacts",
+            "--output-dir",
+            str(tmp_path),
+            "--run-id",
+            "unit_dual",
+        ],
+    )
+
+    cli.main()
+
+    assert saved_run_ids == ["unit_dual_strategy_fill", "unit_dual_realistic_execution"]
+    comparison = json.loads((tmp_path / "unit_dual_execution_comparison.json").read_text(encoding="utf-8"))
+    assert comparison["execution_profile"] == "dual_output"
+    assert comparison["strategy_fill_run_id"] == "unit_dual_strategy_fill"
+    assert comparison["realistic_execution_run_id"] == "unit_dual_realistic_execution"
+    assert comparison["deltas"]["strategy_minus_realistic_return"] == pytest.approx(0.15)
+    assert comparison["deltas"]["strategy_minus_realistic_fill_rate"] == pytest.approx(0.75)
 
 
 def test_replay_feed_builder_tolerates_empty_requested_data(tmp_path):

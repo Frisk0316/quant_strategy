@@ -1,0 +1,902 @@
+{
+  "symbol": "BTC-USDT-SWAP",
+  "exchange": "binance",
+  "bar": "1H",
+  "start": "2024-01-01",
+  "end": "2026-04-30",
+  "risk_defaults": {
+    "max_order_notional_usd": 500.0,
+    "max_pos_pct_equity": 0.3,
+    "max_leverage": 3.0
+  },
+  "cases": [
+    {
+      "strategy": "ma_crossover",
+      "params": {
+        "fast_window": 10,
+        "slow_window": 200
+      },
+      "run_dir": "C:\\quant_strategy\\results\\validation_lab_ma_crossover_btc_binance_1h_20260622",
+      "verdict": "PASS_SIGNAL_TO_ORDER",
+      "backend": null,
+      "signal_count": 117,
+      "submitted_order_count": 5,
+      "order_log_rows": 5,
+      "fill_log_rows": 31,
+      "real_fill_count": 31,
+      "rejected_count": 112,
+      "risk_event_count": 112,
+      "risk_summary": {
+        "total": 112,
+        "by_reason": {
+          "fat_finger": 112
+        },
+        "by_symbol": {
+          "BTC-USDT-SWAP": 112
+        },
+        "by_reason_symbol": {
+          "fat_finger|BTC-USDT-SWAP": 112
+        },
+        "first_datetime": null,
+        "last_datetime": null
+      },
+      "ct_val_sources": {
+        "ETH-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        },
+        "ETH-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        }
+      },
+      "ct_val_all_authoritative": true,
+      "gate3_data_coverage": {
+        "coverage_pct": 1.0,
+        "bar": "1H",
+        "start": "2024-01-01",
+        "end": "2026-04-30",
+        "symbols": [
+          {
+            "inst_id": "BTC-USDT-SWAP",
+            "actual_bars": 20400,
+            "expected_bars": 20400,
+            "coverage_pct": 1.0
+          }
+        ],
+        "features": []
+      },
+      "first_signals": [
+        {
+          "ts": 1706284800000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 41944.3,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 40913.99,
+            "slow_ma": 40751.501000000004,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1707087600000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "strength": 1.0,
+          "fair_value": 42570.3,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 42772.71,
+            "slow_ma": 42772.8205,
+            "action": "exit",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1707127200000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 43129.899999999994,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 42821.4,
+            "slow_ma": 42816.595,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        }
+      ],
+      "first_orders": [
+        {
+          "ts": 1706284800000,
+          "cl_ord_id": "e4459659e49a43468b689e476b646e3c",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 41944.3,
+          "sz": "0.011",
+          "strategy": "ma_crossover",
+          "notional_usd": 461.3873
+        },
+        {
+          "ts": 1707087600000,
+          "cl_ord_id": "4b56bae9977547dea63c0a8c0a84a62e",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 42570.3,
+          "sz": "0.011",
+          "strategy": "ma_crossover",
+          "notional_usd": 468.2733
+        },
+        {
+          "ts": 1707127200000,
+          "cl_ord_id": "a8b88034c97a4f59b868c9b2e4d8f7a2",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 43129.9,
+          "sz": "0.011",
+          "strategy": "ma_crossover",
+          "notional_usd": 474.4289
+        }
+      ],
+      "first_fills": [
+        {
+          "ts": 1706288400000,
+          "cl_ord_id": "e4459659e49a43468b689e476b646e3c",
+          "ord_id": "replay-e4459659e49a43468b689e476b646e3c",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 41944.3,
+          "fill_sz": 0.002,
+          "fee": 0.01677772,
+          "notional_usd": 83.8886,
+          "strategy": "ma_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 40913.99,
+            "slow_ma": 40751.501,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 83.8886,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.009,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1706306400000,
+          "cl_ord_id": "e4459659e49a43468b689e476b646e3c",
+          "ord_id": "replay-e4459659e49a43468b689e476b646e3c",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 41944.3,
+          "fill_sz": 0.002,
+          "fee": 0.01677772,
+          "notional_usd": 83.8886,
+          "strategy": "ma_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 40913.99,
+            "slow_ma": 40751.501,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 83.8886,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.007,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1706310000000,
+          "cl_ord_id": "e4459659e49a43468b689e476b646e3c",
+          "ord_id": "replay-e4459659e49a43468b689e476b646e3c",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 41944.3,
+          "fill_sz": 0.002,
+          "fee": 0.01677772,
+          "notional_usd": 83.8886,
+          "strategy": "ma_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_window": 10,
+            "slow_window": 200,
+            "fast_ma": 40913.99,
+            "slow_ma": 40751.501,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 83.8886,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.005,
+            "execution_model": "replay_l1_resting"
+          }
+        }
+      ],
+      "first_rejections": [
+        {
+          "ts": 1708520400000,
+          "cl_ord_id": "de17b5457b99412ebc4b6ec2d145db2f",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 51218.0,
+          "reason": "fat_finger"
+        },
+        {
+          "ts": 1708930800000,
+          "cl_ord_id": "316555e6e9a54f5589eadf95431f014e",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 51327.5,
+          "reason": "fat_finger"
+        },
+        {
+          "ts": 1710482400000,
+          "cl_ord_id": "315413622fcd41958923556ce72252a5",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 68708.4,
+          "reason": "fat_finger"
+        }
+      ],
+      "first_risk_events": [
+        {
+          "ts": 1708520400000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 51218.0,
+          "sz": 0.011,
+          "notional_usd": 563.3979999999999,
+          "reason": "fat_finger",
+          "current_position": 563.3979999999999,
+          "position_limit": 1524.614678071239,
+          "current_equity": 5082.04892690413,
+          "metadata": {}
+        },
+        {
+          "ts": 1708930800000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 51327.5,
+          "sz": 0.011,
+          "notional_usd": 564.6025,
+          "reason": "fat_finger",
+          "current_position": 564.6025,
+          "position_limit": 1524.6751013572273,
+          "current_equity": 5082.250337857425,
+          "metadata": {}
+        },
+        {
+          "ts": 1710482400000,
+          "strategy": "ma_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 68708.4,
+          "sz": 0.011,
+          "notional_usd": 755.7923999999999,
+          "reason": "fat_finger",
+          "current_position": 755.7923999999999,
+          "position_limit": 1576.544001328687,
+          "current_equity": 5255.146671095624,
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "strategy": "ema_crossover",
+      "params": {
+        "fast_span": 10,
+        "slow_span": 200
+      },
+      "run_dir": "C:\\quant_strategy\\results\\validation_lab_ema_crossover_btc_binance_1h_20260622",
+      "verdict": "PASS_SIGNAL_TO_ORDER",
+      "backend": null,
+      "signal_count": 127,
+      "submitted_order_count": 4,
+      "order_log_rows": 4,
+      "fill_log_rows": 22,
+      "real_fill_count": 22,
+      "rejected_count": 123,
+      "risk_event_count": 123,
+      "risk_summary": {
+        "total": 123,
+        "by_reason": {
+          "fat_finger": 123
+        },
+        "by_symbol": {
+          "BTC-USDT-SWAP": 123
+        },
+        "by_reason_symbol": {
+          "fat_finger|BTC-USDT-SWAP": 123
+        },
+        "first_datetime": null,
+        "last_datetime": null
+      },
+      "ct_val_sources": {
+        "ETH-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        },
+        "ETH-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        }
+      },
+      "ct_val_all_authoritative": true,
+      "gate3_data_coverage": {
+        "coverage_pct": 1.0,
+        "bar": "1H",
+        "start": "2024-01-01",
+        "end": "2026-04-30",
+        "symbols": [
+          {
+            "inst_id": "BTC-USDT-SWAP",
+            "actual_bars": 20400,
+            "expected_bars": 20400,
+            "coverage_pct": 1.0
+          }
+        ],
+        "features": []
+      },
+      "first_signals": [
+        {
+          "ts": 1706281200000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 41399.8,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 40881.81455355314,
+            "slow_ema": 40821.30040896443,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1707102000000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 42708.0,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 42622.74726182091,
+            "slow_ema": 42613.05574603711,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1707181200000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "strength": 1.0,
+          "fair_value": 42650.5,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 42654.47315415832,
+            "slow_ema": 42654.79156570006,
+            "action": "exit",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        }
+      ],
+      "first_orders": [
+        {
+          "ts": 1706281200000,
+          "cl_ord_id": "e4c7e2c20d294e91803423aea56961ef",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 41399.8,
+          "sz": "0.012",
+          "strategy": "ema_crossover",
+          "notional_usd": 496.7976
+        },
+        {
+          "ts": 1707102000000,
+          "cl_ord_id": "9e1c064b6f964110a4dd448ebf76ff47",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 42708.0,
+          "sz": "0.011",
+          "strategy": "ema_crossover",
+          "notional_usd": 469.788
+        },
+        {
+          "ts": 1707181200000,
+          "cl_ord_id": "dbb67b262c0c4f30b923e3bcdcca0690",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 42650.5,
+          "sz": "0.011",
+          "strategy": "ema_crossover",
+          "notional_usd": 469.1555
+        }
+      ],
+      "first_fills": [
+        {
+          "ts": 1707145200000,
+          "cl_ord_id": "9e1c064b6f964110a4dd448ebf76ff47",
+          "ord_id": "replay-9e1c064b6f964110a4dd448ebf76ff47",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 42708.0,
+          "fill_sz": 0.002,
+          "fee": 0.0170832,
+          "notional_usd": 85.416,
+          "strategy": "ema_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 42622.7472618209,
+            "slow_ema": 42613.0557460371,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 85.416,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.009,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1707163200000,
+          "cl_ord_id": "9e1c064b6f964110a4dd448ebf76ff47",
+          "ord_id": "replay-9e1c064b6f964110a4dd448ebf76ff47",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 42708.0,
+          "fill_sz": 0.002,
+          "fee": 0.0170832,
+          "notional_usd": 85.416,
+          "strategy": "ema_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 42622.7472618209,
+            "slow_ema": 42613.0557460371,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 85.416,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.007,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1707166800000,
+          "cl_ord_id": "9e1c064b6f964110a4dd448ebf76ff47",
+          "ord_id": "replay-9e1c064b6f964110a4dd448ebf76ff47",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 42708.0,
+          "fill_sz": 0.002,
+          "fee": 0.0170832,
+          "notional_usd": 85.416,
+          "strategy": "ema_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 10,
+            "slow_span": 200,
+            "fast_ema": 42622.7472618209,
+            "slow_ema": 42613.0557460371,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 85.416,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.005,
+            "execution_model": "replay_l1_resting"
+          }
+        }
+      ],
+      "first_rejections": [
+        {
+          "ts": 1710478800000,
+          "cl_ord_id": "68131dfaf6f741f5a577da93f758d39a",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 67478.79999999999,
+          "reason": "fat_finger"
+        },
+        {
+          "ts": 1711033200000,
+          "cl_ord_id": "d96ab79f0d5e4ba78cccf91ba997e6f8",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 66601.6,
+          "reason": "fat_finger"
+        },
+        {
+          "ts": 1711987200000,
+          "cl_ord_id": "5b259be011e44cff945afbec46422b89",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 68621.6,
+          "reason": "fat_finger"
+        }
+      ],
+      "first_risk_events": [
+        {
+          "ts": 1710478800000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 67478.79999999999,
+          "sz": 0.009,
+          "notional_usd": 607.3091999999999,
+          "reason": "fat_finger",
+          "current_position": 607.3091999999999,
+          "position_limit": 1538.1260704625427,
+          "current_equity": 5127.086901541809,
+          "metadata": {}
+        },
+        {
+          "ts": 1711033200000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 66601.6,
+          "sz": 0.009,
+          "notional_usd": 599.4144000000001,
+          "reason": "fat_finger",
+          "current_position": 599.4144000000001,
+          "position_limit": 1535.09001804598,
+          "current_equity": 5116.966726819934,
+          "metadata": {}
+        },
+        {
+          "ts": 1711987200000,
+          "strategy": "ema_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 68621.6,
+          "sz": 0.009,
+          "notional_usd": 617.5944000000002,
+          "reason": "fat_finger",
+          "current_position": 617.5944000000002,
+          "position_limit": 1538.9940782908643,
+          "current_equity": 5129.980260969548,
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "strategy": "macd_crossover",
+      "params": {
+        "fast_span": 12,
+        "slow_span": 26,
+        "signal_span": 9
+      },
+      "run_dir": "C:\\quant_strategy\\results\\validation_lab_macd_crossover_btc_binance_1h_20260622",
+      "verdict": "PASS_SIGNAL_TO_ORDER",
+      "backend": null,
+      "signal_count": 779,
+      "submitted_order_count": 779,
+      "order_log_rows": 779,
+      "fill_log_rows": 15,
+      "real_fill_count": 15,
+      "rejected_count": 0,
+      "risk_event_count": 0,
+      "risk_summary": {
+        "total": 0,
+        "by_reason": {},
+        "by_symbol": {},
+        "by_reason_symbol": {}
+      },
+      "ct_val_sources": {
+        "ETH-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT-SWAP": {
+          "value": 1.0,
+          "source": "db",
+          "exchange": "binance"
+        },
+        "BTC-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        },
+        "ETH-USDT": {
+          "value": 1.0,
+          "source": "spot_unit",
+          "exchange": "binance"
+        }
+      },
+      "ct_val_all_authoritative": true,
+      "gate3_data_coverage": {
+        "coverage_pct": 1.0,
+        "bar": "1H",
+        "start": "2024-01-01",
+        "end": "2026-04-30",
+        "symbols": [
+          {
+            "inst_id": "BTC-USDT-SWAP",
+            "actual_bars": 20400,
+            "expected_bars": 20400,
+            "coverage_pct": 1.0
+          }
+        ],
+        "features": []
+      },
+      "first_signals": [
+        {
+          "ts": 1704330000000,
+          "strategy": "macd_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 42716.6,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": -531.3963857489216,
+            "macd_signal": -535.5448111253583,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1704445200000,
+          "strategy": "macd_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "strength": 1.0,
+          "fair_value": 44147.8,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": 85.88001295759022,
+            "macd_signal": 80.09112291549346,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        },
+        {
+          "ts": 1704517200000,
+          "strategy": "macd_crossover",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "strength": 1.0,
+          "fair_value": 43695.9,
+          "target_bid": null,
+          "target_ask": null,
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": 44.232023596938234,
+            "macd_signal": 51.37607298879828,
+            "action": "exit",
+            "cancel_existing": true,
+            "mode": "long_flat"
+          }
+        }
+      ],
+      "first_orders": [
+        {
+          "ts": 1704330000000,
+          "cl_ord_id": "feb86970f89c48bfb4fafcae237a160e",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 42716.6,
+          "sz": "0.011",
+          "strategy": "macd_crossover",
+          "notional_usd": 469.8826
+        },
+        {
+          "ts": 1704445200000,
+          "cl_ord_id": "9ec4db63508f4502a126e1272a6efe0d",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "px": 44147.8,
+          "sz": "0.011",
+          "strategy": "macd_crossover",
+          "notional_usd": 485.6258
+        },
+        {
+          "ts": 1704517200000,
+          "cl_ord_id": "1284dcfe874d4e488461c86c1e1c555b",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "sell",
+          "px": 43695.9,
+          "sz": "0.011",
+          "strategy": "macd_crossover",
+          "notional_usd": 480.6549
+        }
+      ],
+      "first_fills": [
+        {
+          "ts": 1704448800000,
+          "cl_ord_id": "9ec4db63508f4502a126e1272a6efe0d",
+          "ord_id": "replay-9ec4db63508f4502a126e1272a6efe0d",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 44147.8,
+          "fill_sz": 0.002,
+          "fee": 0.01765912,
+          "notional_usd": 88.2956,
+          "strategy": "macd_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": 85.8800129576,
+            "macd_signal": 80.0911229155,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 88.2956,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.009,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1704452400000,
+          "cl_ord_id": "9ec4db63508f4502a126e1272a6efe0d",
+          "ord_id": "replay-9ec4db63508f4502a126e1272a6efe0d",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 44147.8,
+          "fill_sz": 0.002,
+          "fee": 0.01765912,
+          "notional_usd": 88.2956,
+          "strategy": "macd_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": 85.8800129576,
+            "macd_signal": 80.0911229155,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 88.2956,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.007,
+            "execution_model": "replay_l1_resting"
+          }
+        },
+        {
+          "ts": 1704456000000,
+          "cl_ord_id": "9ec4db63508f4502a126e1272a6efe0d",
+          "ord_id": "replay-9ec4db63508f4502a126e1272a6efe0d",
+          "inst_id": "BTC-USDT-SWAP",
+          "side": "buy",
+          "fill_px": 44147.8,
+          "fill_sz": 0.002,
+          "fee": 0.01765912,
+          "notional_usd": 88.2956,
+          "strategy": "macd_crossover",
+          "state": "partially_filled",
+          "metadata": {
+            "fast_span": 12,
+            "slow_span": 26,
+            "signal_span": 9,
+            "macd": 85.8800129576,
+            "macd_signal": 80.0911229155,
+            "action": "entry",
+            "cancel_existing": true,
+            "mode": "long_flat",
+            "position_size_before": 0.0,
+            "reduce_only": false,
+            "notional_usd": 88.2956,
+            "fee_rate": 0.0002,
+            "ct_val": 1.0,
+            "remaining_sz": 0.005,
+            "execution_model": "replay_l1_resting"
+          }
+        }
+      ],
+      "first_rejections": [],
+      "first_risk_events": []
+    }
+  ]
+}

@@ -309,6 +309,24 @@ class CMEGapFillParams(BaseModel):
         return normalized
 
 
+class XSMomentumConfig(BaseModel):
+    enabled: bool = False
+    universe: list[str] = Field(default_factory=list)
+    bar: str = "1m"
+    rebalance: str = "weekly"
+    lookback_days: int = Field(default=28, gt=0)
+    skip_days: int = Field(default=0, ge=0)
+    quantile: float = Field(default=0.30, gt=0.0, lt=0.5)
+    vol_window_days: int = Field(default=28, gt=0)
+    inverse_vol: bool = True
+    vol_target_annual: float = Field(default=0.175, gt=0.0)
+    max_name_weight: float = Field(default=0.10, gt=0.0)
+    fee_bps: float = Field(default=2.0, ge=0.0)
+    slippage_bps: float = Field(default=2.0, ge=0.0)
+    long_only: bool = False
+    td_mode: str = "cross"
+
+
 class StrategiesConfig(BaseModel):
     funding_carry: FundingCarryParams = FundingCarryParams()
     pairs_trading: PairsTradingParams = PairsTradingParams()
@@ -317,6 +335,7 @@ class StrategiesConfig(BaseModel):
     macd_crossover: MACDCrossoverParams = MACDCrossoverParams()
     fear_greed_sentiment: FearGreedSentimentParams = FearGreedSentimentParams()
     cme_gap_fill: CMEGapFillParams = CMEGapFillParams()
+    xs_momentum: XSMomentumConfig = XSMomentumConfig()
 
 
 def _canonical_fear_greed_label(value: str) -> str:

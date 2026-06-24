@@ -43,6 +43,19 @@ _FETCH_BAR_MS: dict[str, int] = {
 }
 
 
+def _coverage_exchange(sources: list[str] | None) -> tuple[str | None, bool]:
+    """Collapse a canonical source_primary list into (label, mixed).
+
+    Returns the source exchange(s) backing a coverage row. `mixed` is True when
+    more than one source feeds the same symbol/bar (Binance-preferred fill with
+    OKX gap-fill is the expected case, not corruption).
+    """
+    vals = sorted({str(s).lower() for s in (sources or []) if s})
+    if not vals:
+        return None, False
+    return "+".join(vals), len(vals) > 1
+
+
 class FetchRequest(BaseModel):
     symbol: str | None = None
     symbols: list[str] = Field(default_factory=list)
@@ -124,31 +137,53 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
         try:
             rows = await conn.fetch(
                 """
-                SELECT inst_id, bar,
-                       MIN(ts) AS first_ts, MAX(ts) AS last_ts,
-                       COUNT(*) AS row_count
-                FROM canonical_candles
-                GROUP BY inst_id, bar
-                ORDER BY inst_id, bar
+                SELECT
+                    ib.inst_id,
+                    ib.bar,
+                    ib.first_candle_ts AS first_ts,
+                    ib.last_candle_ts AS last_ts,
+                    (
+                        FLOOR(
+                            EXTRACT(EPOCH FROM (ib.last_candle_ts - ib.first_candle_ts))
+                            * 1000 / bi.interval_ms
+                        )::bigint + 1
+                    ) AS row_count,
+                    TRUE AS row_count_estimated,
+                    ARRAY[LOWER(i.exchange)] AS sources
+                FROM instrument_bars ib
+                JOIN instruments i ON i.inst_id = ib.inst_id
+                JOIN bar_intervals bi ON bi.bar = ib.bar
+                WHERE ib.is_active = TRUE
+                  AND i.is_active = TRUE
+                  AND ib.first_candle_ts IS NOT NULL
+                  AND ib.last_candle_ts IS NOT NULL
+                ORDER BY ib.inst_id, ib.bar
                 """
             )
             fr = await conn.fetch(
                 """
                 SELECT inst_id, 'funding' AS bar,
                        MIN(ts) AS first_ts, MAX(ts) AS last_ts,
-                       COUNT(*) AS row_count
+                       COUNT(*) AS row_count,
+                       array_agg(DISTINCT source) AS sources
                 FROM funding_rates
                 GROUP BY inst_id
                 ORDER BY inst_id
                 """
             )
             external = await _fetch_external_coverage(conn)
+
+            def _row(r: dict, *, data_kind: str, provider: str | None) -> dict:
+                d = dict(r)
+                exchange, mixed = _coverage_exchange(d.pop("sources", None))
+                provider = provider or exchange
+                return {**d, "gap_count": 0, "data_kind": data_kind,
+                        "provider": provider, "exchange": exchange, "mixed": mixed}
+
             return [
-                {**dict(r), "gap_count": 0, "data_kind": "ohlcv", "provider": "canonical"}
-                for r in rows
+                _row(r, data_kind="ohlcv", provider="canonical") for r in rows
             ] + [
-                {**dict(r), "gap_count": 0, "data_kind": "funding", "provider": "okx"}
-                for r in fr
+                _row(r, data_kind="funding", provider=None) for r in fr
             ] + external
         finally:
             await conn.close()

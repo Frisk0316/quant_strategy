@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -126,3 +128,64 @@ async def test_parameter_sweep_endpoint_marks_job_done(client, monkeypatch):
     assert payload["finished_at"]
     assert seen_kwargs["fill_all_signals"] is True
     assert "idealized_fill" in payload["warnings"]
+
+
+@pytest.mark.asyncio
+async def test_backtest_run_passes_execution_profile_to_subprocess(client, monkeypatch, tmp_path):
+    from okx_quant.api import routes_backtest
+
+    seen_cmd = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = iter(["PROGRESS:50:unit\n"])
+        stderr = iter([])
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        seen_cmd["cmd"] = cmd
+        run_id = cmd[cmd.index("--run-id") + 1]
+        out_dir = tmp_path / "results" / f"{run_id}_strategy_fill"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "results" / f"{run_id}_execution_comparison.json").write_text(
+            json.dumps({
+                "strategy_fill_run_id": f"{run_id}_strategy_fill",
+                "realistic_execution_run_id": f"{run_id}_realistic_execution",
+            }),
+            encoding="utf-8",
+        )
+        (out_dir / "result.json").write_text(
+            json.dumps({
+                "run_id": f"{run_id}_strategy_fill",
+                "metrics": {},
+                "validation": {"execution_profile": "strategy_fill"},
+            }),
+            encoding="utf-8",
+        )
+        return FakeProc()
+
+    monkeypatch.setattr(routes_backtest.subprocess, "Popen", fake_popen)
+
+    response = await client.post(
+        "/api/backtest/run",
+        json={
+            "strategy": "ma_crossover",
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1H",
+            "start": "2024-01-01",
+            "end": "2024-01-02",
+            "execution_profile": "dual_output",
+        },
+    )
+
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+    status = await client.get(f"/api/backtest/run/status/{job_id}")
+    payload = status.json()
+    assert payload["status"] == "done"
+    assert payload["execution_profile"] == "dual_output"
+    assert payload["run_id"].endswith("_strategy_fill")
+    assert "--execution-profile" in seen_cmd["cmd"]
+    assert seen_cmd["cmd"][seen_cmd["cmd"].index("--execution-profile") + 1] == "dual_output"

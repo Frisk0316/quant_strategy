@@ -26,6 +26,9 @@ implementation exists.
 - Backtesting files: `scripts/run_replay_backtest.py`, `scripts/backtest_ohlcv_rotation.py`,
   `backtesting/replay.py`, `backtesting/parameter_sweep.py`,
   `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`.
+  Execution-profile controls live in `backtesting/research_controls.py` and are
+  exposed by `scripts/run_replay_backtest.py`, `src/okx_quant/api/routes_backtest.py`,
+  and `frontend/view-config.js`.
 - Data / DB / artifact files: `src/okx_quant/data/candle_store.py`,
   `backtesting/artifacts.py`, `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`, runtime artifacts under results run
@@ -143,7 +146,8 @@ implementation exists.
   `src/okx_quant/data/migrations/001_ohlcv_pipeline_v2.sql`,
   `src/okx_quant/data/migrations/002_market_canonical_bridge.sql`,
   `scripts/_db_writer.py`, `scripts/market_data/canonicalize.py`,
-  `scripts/market_data/import_parquet_ohlcv.py`, `sql/canonicalize_binance_to_legacy.sql`.
+  `scripts/market_data/import_parquet_ohlcv.py`,
+  `scripts/resample_binance_1h_canonical.py`, `sql/canonicalize_binance_to_legacy.sql`.
 - Config files: `config/settings.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_db_writer.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
@@ -170,6 +174,54 @@ implementation exists.
   `docs/backtest_live_parity_plan.md`.
 - Do-not-touch notes: funding cashflow sign and `ct_val` scaling are high-risk
   accounting paths.
+
+## Point-In-Time Universe Membership
+
+- User-facing behavior: build a deterministic liquid USDT-perp universe artifact
+  for cross-sectional research without pre-listing or delisting survivorship
+  leakage.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/data_loader.py` is the downstream candle
+  aggregation authority; no dedicated backtest runner is wired yet.
+- Data / DB / artifact files: `scripts/build_universe_membership.py`,
+  local candles under `data/ticks/<inst_id>/candles_1m.parquet`, generated
+  artifact `data/universe/universe_membership.parquet`.
+- Config files: `config/universe.yaml`, `config/settings.yaml`.
+- Tests: `tests/unit/test_universe_membership.py`.
+- Docs to update: `docs/DATA_FLOW.md`, `docs/INVARIANTS.md`,
+  `docs/FAILURE_MODES.md`, `docs/AI_HANDOFF.md`.
+- Do-not-touch notes: do not use a hand-picked final symbol list as historical
+  membership; promotion-grade runs still need venue-scoped DB coverage evidence.
+
+## XS Momentum Research Strategy
+
+- User-facing behavior: disabled-by-default research strategy scaffold for
+  dollar-neutral cross-sectional momentum target weights over a point-in-time
+  universe.
+- Frontend files: none yet.
+- Backend/API files: none yet.
+- Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
+  stub when explicitly requested. `backtesting/xs_momentum_backtest.py` is a
+  research-only vectorized runner for target weights, corrected R3.1 funding
+  cashflow signs, honest grid trial counts, and optional `market_close` crash
+  filtering; it is not wired into UI/API promotion gates.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
+  and venue-scoped OHLCV/funding data. Local smoke artifacts such as
+  `results/xs_momentum_db_smoke_20260623.json` are research evidence only.
+- Config files: `config/strategies.yaml`, `config/universe.yaml`.
+- Strategy / portfolio files: `src/okx_quant/strategies/xs_momentum.py`,
+  `src/okx_quant/portfolio/allocation.py`.
+- Tests: `tests/unit/test_xs_momentum.py`,
+  `tests/unit/test_xs_momentum_backtest.py`,
+  `tests/unit/test_universe_membership.py`.
+- Docs to update: `docs/ADR/0009-xs-momentum-research-strategy.md`,
+  `docs/change_manifests/2026-06-23-xs-momentum-universe.md`,
+  `docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`,
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`.
+- Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
+  do not claim live, demo, shadow, or promotion readiness until WF/CPCV,
+  DSR/PSR, source parity, funding accounting, and human approval are complete.
 
 ## Strategy Registry / Strategy Selection
 
@@ -217,13 +269,16 @@ implementation exists.
   `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
 - Backtesting files: `backtesting/differential_validation.py`,
-  `scripts/run_differential_validation.py`, `backtesting/walk_forward.py`,
+  `scripts/run_differential_validation.py`,
+  `scripts/run_engine_consistency_smoke.py`, `backtesting/walk_forward.py`,
   `backtesting/cpcv.py`.
 - Data / DB / artifact files: runtime validation result directories and validation
-  artifacts.
+  artifacts; frozen offline engine-consistency fixtures live under
+  `tests/fixtures/engine_consistency/`.
 - Config files: `config/strategies.yaml`, `config/risk.yaml`,
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_differential_validation.py`,
+  `tests/unit/test_engine_consistency_smoke.py`,
   `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`.
 - Docs to update: `docs/ai_collaboration.md`, `docs/backtest_live_parity_plan.md`,
   `docs/results_validation_manifest.md`, `docs/AI_HANDOFF.md`.

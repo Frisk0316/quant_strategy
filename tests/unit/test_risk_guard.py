@@ -56,9 +56,17 @@ def test_fat_finger_blocked():
     assert rg.last_block_reason == "fat_finger"
 
 
-def test_reduce_only_close_still_respects_fat_finger_cap():
+def test_reduce_only_close_can_exceed_fat_finger_cap_up_to_current_position():
     rg = make_risk_guard(equity=10_000.0, max_order_notional_usd=500.0)
     order = make_reduce_only_order(sz="10", px="100.0", side="sell")
+
+    assert rg.check(order, current_pos_notional=1_000.0, current_mid=100.0) is True
+    assert rg.last_bypass_reason == "fat_finger_reduce_only"
+
+
+def test_reduce_only_close_above_current_position_still_fat_finger_blocks():
+    rg = make_risk_guard(equity=10_000.0, max_order_notional_usd=500.0)
+    order = make_reduce_only_order(sz="11", px="100.0", side="sell")
 
     assert rg.check(order, current_pos_notional=1_000.0, current_mid=100.0) is False
     assert rg.last_block_reason == "fat_finger"

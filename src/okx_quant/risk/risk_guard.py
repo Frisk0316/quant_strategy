@@ -98,7 +98,7 @@ class RiskGuard:
                 self.last_block_reason = "invalid_order_size_or_price"
                 return False
 
-        if notional > self.max_order_notional:
+        if notional > self.max_order_notional and not (is_reduce_only and notional <= current_pos_notional + 1e-9):
             logger.warning(
                 "Order blocked: fat-finger",
                 notional=notional,
@@ -107,6 +107,8 @@ class RiskGuard:
             )
             self.last_block_reason = "fat_finger"
             return False
+        if is_reduce_only and notional > self.max_order_notional:
+            note_reduce_only_bypass("fat_finger_reduce_only")
 
         # Position size limit
         if current_pos_notional + notional > self.max_pos_pct * eq:

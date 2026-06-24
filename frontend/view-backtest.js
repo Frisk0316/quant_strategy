@@ -178,6 +178,31 @@ function validationModeForRun(result) {
   );
 }
 
+function executionProfileInfo(result, runId) {
+  const validation = result?.validation || {};
+  const artifacts = result?.artifacts || {};
+  const profile = validation.execution_profile || result?.execution_profile || null;
+  if (!profile) return null;
+  const labels = {
+    strategy_fill: "Strategy Fill",
+    realistic_execution: "Realistic Execution",
+    dual_output: "Dual Output",
+  };
+  const comparisonPath = validation.execution_comparison || result?.execution_comparison || artifacts.execution_comparison || "";
+  const inferredComparison = profile === "dual_output"
+    || String(runId || "").endsWith("_strategy_fill")
+    || String(runId || "").endsWith("_realistic_execution");
+  return {
+    profile,
+    label: labels[profile] || profile,
+    comparisonPath,
+    comparisonHref: (comparisonPath || inferredComparison)
+      ? `/api/backtest/${encodeURIComponent(runId)}/execution-comparison`
+      : "",
+    researchOnly: profile === "strategy_fill" || profile === "dual_output",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Metric descriptions for tooltip (title) on hover
 // ---------------------------------------------------------------------------
@@ -760,6 +785,7 @@ function RunDetailView({ runId, onBack, onDelete }) {
   const bar = result.bar || "—";
   const start = result.start ? result.start.slice(0, 10) : "—";
   const end = result.end ? result.end.slice(0, 10) : "—";
+  const profileInfo = executionProfileInfo(result, runId);
 
   const equityChartRows = equity.filter(r => r.equity != null);
   const drawdownChartRows = equity.filter(r => r.drawdown != null);
@@ -924,6 +950,21 @@ function RunDetailView({ runId, onBack, onDelete }) {
           <span class="chip">${start} → ${end}</span>
           <${StatusBadge} ok=${!m.bankrupt}>${m.bankrupt ? "BANKRUPT" : "OK"}<//>
         </div>
+        ${profileInfo && html`
+          <div class="run-meta-strip">
+            <span class="chip">Execution Profile: ${profileInfo.label}</span>
+            ${profileInfo.researchOnly && html`<span class="chip warn">Research-only</span>`}
+            ${profileInfo.comparisonHref && html`
+              <a
+                class="btn ghost sm"
+                href=${profileInfo.comparisonHref}
+                target="_blank"
+                rel="noreferrer"
+                title=${profileInfo.comparisonPath || "Inferred dual-output comparison artifact"}
+              >Open comparison JSON</a>
+            `}
+          </div>
+        `}
         <button
           class="btn ghost sm"
           style=${{ color: "var(--loss)", borderColor: "var(--loss)" }}

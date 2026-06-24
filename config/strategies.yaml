@@ -66,6 +66,23 @@ macd_crossover:
   indicator_db_warmup: false
   td_mode: cross
 
+xs_momentum:
+  enabled: false
+  universe: []
+  bar: 1m
+  rebalance: weekly
+  lookback_days: 28
+  skip_days: 0
+  quantile: 0.30
+  vol_window_days: 28
+  inverse_vol: true
+  vol_target_annual: 0.175
+  max_name_weight: 0.10
+  fee_bps: 2.0
+  slippage_bps: 2.0
+  long_only: false
+  td_mode: cross
+
 fear_greed_sentiment:
   enabled: false
   symbol: BTC-USDT-SWAP

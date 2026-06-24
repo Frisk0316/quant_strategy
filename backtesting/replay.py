@@ -54,6 +54,7 @@ from okx_quant.strategies.technical_indicators import (
     MACDCrossoverStrategy,
     MACrossoverStrategy,
 )
+from okx_quant.strategies.xs_momentum import XSMomentumStrategy
 
 
 TERMINAL_TAKER_FEE_RATE = 0.0005
@@ -303,6 +304,11 @@ class ReplayRecorder:
             validation=dict(validation or {}),
         )
 
+    @staticmethod
+    def _is_terminal_liquidation_fill(row: dict[str, Any]) -> bool:
+        metadata = row.get("metadata")
+        return isinstance(metadata, dict) and metadata.get("action") == "terminal_liquidation"
+
     def _execution_metrics(self, returns: pd.Series) -> dict:
         """
         Compute replay-level execution and significance metrics.
@@ -321,8 +327,23 @@ class ReplayRecorder:
         pending_fills = [row for row in self.fill_log if row.get("state") == "pending"]
         partial_fills = [row for row in real_fills if row.get("state") == "partially_filled"]
         real_fill_count = len(real_fills)
-        filled_order_ids = {row.get("cl_ord_id") for row in real_fills if row.get("cl_ord_id")}
-        orders_filled_count = len(filled_order_ids)
+        submitted_order_ids = {
+            row.get("cl_ord_id")
+            for row in self.order_log
+            if row.get("cl_ord_id")
+        }
+        terminal_liquidation_fills = [
+            row for row in real_fills
+            if self._is_terminal_liquidation_fill(row)
+        ]
+        submitted_fill_ids = {
+            row.get("cl_ord_id")
+            for row in real_fills
+            if row.get("cl_ord_id") in submitted_order_ids
+            and not self._is_terminal_liquidation_fill(row)
+        }
+        orders_filled_count = len(submitted_fill_ids)
+        terminal_liquidation_fill_count = len(terminal_liquidation_fills)
         total_fees = float(sum(row["fee"] for row in real_fills))
         fill_notional = float(sum(row.get("notional_usd", 0.0) for row in real_fills))
         funding_cashflow = float(sum(row["cashflow"] for row in self.funding_log))
@@ -338,6 +359,8 @@ class ReplayRecorder:
             "submitted_order_count": submitted_order_count,
             "order_count": submitted_order_count,
             "orders_filled_count": orders_filled_count,
+            "submitted_order_fill_count": orders_filled_count,
+            "terminal_liquidation_fill_count": terminal_liquidation_fill_count,
             "real_fill_count": real_fill_count,
             "fill_count": real_fill_count,
             "pending_fill_event_count": len(pending_fills),
@@ -567,6 +590,7 @@ def load_l1_books(
     fallback_inst_id: Optional[str] = None,
     backend: str = "parquet",
     dsn: Optional[str] = None,
+    exchange: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load top-of-book snapshots.
@@ -577,6 +601,9 @@ def load_l1_books(
     3. Synthetic L1 books derived from candle closes
     """
     inst_dir = Path(data_dir) / inst_id.replace("-", "_")
+    venue = str(exchange).strip().lower() if exchange else None
+    if venue and backend == "parquet":
+        backend = "postgres"
     if backend == "postgres":
         try:
             candles = load_ohlcv_candles(
@@ -587,8 +614,13 @@ def load_l1_books(
                 end=end,
                 backend="postgres",
                 dsn=dsn,
+                exchange=venue,
             )
         except FileNotFoundError:
+            candles = pd.DataFrame()
+        except ValueError as exc:
+            if not fallback_inst_id or "Venue-scoped candle gap" not in str(exc):
+                raise
             candles = pd.DataFrame()
         if candles.empty and fallback_inst_id:
             try:
@@ -600,6 +632,7 @@ def load_l1_books(
                     end=end,
                     backend="postgres",
                     dsn=dsn,
+                    exchange=venue,
                 )
             except FileNotFoundError:
                 candles = pd.DataFrame()
@@ -608,6 +641,11 @@ def load_l1_books(
                 inst_id=inst_id,
                 candles=candles,
                 synthetic_spread_bps=synthetic_spread_bps,
+            )
+        if venue:
+            raise ValueError(
+                f"Venue-scoped candle load for exchange='{venue}' returned no candles for {inst_id}; "
+                "no parquet or cross-venue fallback is allowed."
             )
 
     if inst_dir.exists():
@@ -1127,6 +1165,7 @@ class ReplayBacktestEngine:
             ("macd_crossover", MACDCrossoverStrategy(strat_cfg.macd_crossover.model_dump())),
             ("fear_greed_sentiment", FearGreedSentimentStrategy(strat_cfg.fear_greed_sentiment.model_dump())),
             ("cme_gap_fill", CMEGapFillStrategy(strat_cfg.cme_gap_fill.model_dump())),
+            ("xs_momentum", XSMomentumStrategy(strat_cfg.xs_momentum.model_dump())),
         ]
         enabled = {
             "funding_carry": strat_cfg.funding_carry.enabled,
@@ -1136,6 +1175,7 @@ class ReplayBacktestEngine:
             "macd_crossover": strat_cfg.macd_crossover.enabled,
             "fear_greed_sentiment": strat_cfg.fear_greed_sentiment.enabled,
             "cme_gap_fill": strat_cfg.cme_gap_fill.enabled,
+            "xs_momentum": strat_cfg.xs_momentum.enabled,
         }
 
         for name, strategy in candidates:
@@ -1654,6 +1694,12 @@ def build_feed_for_strategies(
     trade_frames: list[pd.DataFrame] = []
 
     strategy_set = set(strategy_names)
+    candle_exchange = (
+        getattr(cfg.storage, "primary_exchange", None)
+        if getattr(cfg.storage, "candle_backend", "parquet") == "postgres"
+        and getattr(cfg.storage, "timescale_dsn", None)
+        else None
+    )
     if "pairs_trading" in strategy_set:
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_y,
@@ -1663,6 +1709,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         market_frames.append(load_l1_books(
             cfg.strategies.pairs_trading.symbol_x,
@@ -1672,6 +1719,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
 
     if "funding_carry" in strategy_set:
@@ -1685,6 +1733,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         market_frames.append(
             load_l1_books(
@@ -1696,6 +1745,7 @@ def build_feed_for_strategies(
                 fallback_inst_id=perp,
                 backend=cfg.storage.candle_backend,
                 dsn=cfg.storage.timescale_dsn,
+                exchange=candle_exchange,
             )
         )
         funding_frames.append(load_funding_events(
@@ -1723,6 +1773,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
 
     if "fear_greed_sentiment" in strategy_set:
@@ -1735,6 +1786,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         feature_frames.append(load_external_feature_events(
             params.dataset_id,
@@ -1755,6 +1807,7 @@ def build_feed_for_strategies(
             bar=bar,
             backend=cfg.storage.candle_backend,
             dsn=cfg.storage.timescale_dsn,
+            exchange=candle_exchange,
         ))
         feature_frames.append(load_external_feature_events(
             params.dataset_id,

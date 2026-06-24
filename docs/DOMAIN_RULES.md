@@ -70,8 +70,11 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 - **R4.1** Position sizing is driven by `config/risk.yaml` and the portfolio
   layer, never by chat memory or ad-hoc constants.
 - **R4.2** Reduce-only and risk-limit semantics must not be weakened without an
-  ADR and explicit human approval.
-- **R4.3** No order may exceed configured per-instrument or per-portfolio caps.
+  ADR and explicit human approval. Reduce-only close orders may bypass the
+  single-order fat-finger cap only up to the current position notional; they
+  must not increase absolute exposure.
+- **R4.3** No exposure-increasing order may exceed configured per-instrument or
+  per-portfolio caps.
 
 Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 
@@ -83,6 +86,11 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   phantom positions.
 - **R5.3** Replay fill model must not look ahead: a fill at bar *t* may only use
   information available at or before *t*.
+- **R5.4** Backtest execution profiles are explicit: `strategy_fill` is
+  research-only immediate full fill for submitted signal orders, while
+  `realistic_execution` keeps maker queue, cancel latency, lot/min rounding,
+  post-only behavior, and terminal liquidation. `dual_output` runs both against
+  the same data/params and writes a comparison artifact.
 
 ## R6. Data Provenance and Leakage
 
@@ -92,11 +100,16 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   timestamped `close` values; OHLCV structure and volume-unit sanity are separate
   artifact/data-quality checks.
 - **R6.3** Trial count must be tracked; hidden trials inflate selection bias.
+- **R6.4** A run that declares an execution venue must source candles only from
+  provenance-tagged data for that venue. Missing venue bars are explicit
+  gaps/errors; they must not be silently substituted from another venue or from
+  source-less parquet.
 
 ## R7. Promotion Gates
 
 - **R7.1** `naive_backtest`, `in_sample`, idealized-fill, and advisory
-  validation output are **not** promotion evidence.
+  validation output are **not** promotion evidence. This includes
+  `strategy_fill` artifacts and `dual_output` comparison summaries.
 - **R7.2** No live / shadow / demo readiness claim is valid unless every gate in
   `docs/ai_collaboration.md` passes and the human explicitly approves.
 - **R7.3** Promotion candidates require reproducible artifacts and

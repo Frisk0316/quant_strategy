@@ -1,0 +1,896 @@
+{
+  "driver_start": "2024-01-01T00:00:00",
+  "driver_end": "2026-06-15T00:00:00",
+  "driver_days": 897,
+  "market_close_proxy": "BTC-USDT-SWAP",
+  "n_trials": 8,
+  "grid": {
+    "lookback_days": [
+      21,
+      28
+    ],
+    "skip_days": [
+      0,
+      3
+    ],
+    "quantile": [
+      0.3
+    ],
+    "vol_target_annual": [
+      0.15,
+      0.175
+    ],
+    "top_n": [
+      25
+    ]
+  },
+  "walk_forward": {
+    "is_days": 365,
+    "oos_days": 90,
+    "windows": [
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2024-12-30T00:00:00",
+        "test_start": "2024-12-31T00:00:00",
+        "test_end": "2025-03-30T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.5945091473167876,
+        "test_metrics": {
+          "total_return": 0.013811126822464326,
+          "annualized_return": 0.05727242650851716,
+          "annualized_volatility": 0.023758869120038172,
+          "sharpe": 2.4105703945401062,
+          "max_drawdown": -0.008085886955807253,
+          "calmar": 7.08301103163263,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.000442888729150061,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.00020169640630174525,
+          "funding_settlement_count": 444
+        },
+        "oos_daily_perf": {
+          "total_return": 0.013811126822460995,
+          "annualized_return": 0.05720488455103867,
+          "annualized_volatility": 0.02444491329712073,
+          "sharpe": 2.3401549375827244,
+          "max_drawdown": -0.006190983974371789,
+          "n": 90
+        },
+        "window": 1
+      },
+      {
+        "train_start": "2024-03-31T00:00:00",
+        "train_end": "2025-03-30T00:00:00",
+        "test_start": "2025-03-31T00:00:00",
+        "test_end": "2025-06-28T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 3.562793840461334,
+        "test_metrics": {
+          "total_return": 0.03652143950335596,
+          "annualized_return": 0.1567810739743185,
+          "annualized_volatility": 0.0339339674458834,
+          "sharpe": 4.620181068551651,
+          "max_drawdown": -0.0074777763286594245,
+          "calmar": 20.966269527671923,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0008359776522982456,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.00024981961513368783,
+          "funding_settlement_count": 288
+        },
+        "oos_daily_perf": {
+          "total_return": 0.03652143950335729,
+          "annualized_return": 0.15658783096867768,
+          "annualized_volatility": 0.030647403305557486,
+          "sharpe": 5.1093343670092475,
+          "max_drawdown": -0.0053489302498920255,
+          "n": 90
+        },
+        "window": 2
+      },
+      {
+        "train_start": "2024-06-29T00:00:00",
+        "train_end": "2025-06-28T00:00:00",
+        "test_start": "2025-06-29T00:00:00",
+        "test_end": "2025-09-26T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 3.8730701592986,
+        "test_metrics": {
+          "total_return": 0.01781277224103084,
+          "annualized_return": 0.0743190905017963,
+          "annualized_volatility": 0.027437257402703943,
+          "sharpe": 2.7086923962914806,
+          "max_drawdown": -0.009017487653094625,
+          "calmar": 8.24166257397552,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0009824334390763731,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.00031084121961003444,
+          "funding_settlement_count": 226
+        },
+        "oos_daily_perf": {
+          "total_return": 0.017812772241028396,
+          "annualized_return": 0.07423074981122957,
+          "annualized_volatility": 0.027487866653639725,
+          "sharpe": 2.700491483990829,
+          "max_drawdown": -0.005976714869981858,
+          "n": 90
+        },
+        "window": 3
+      },
+      {
+        "train_start": "2024-09-27T00:00:00",
+        "train_end": "2025-09-26T00:00:00",
+        "test_start": "2025-09-27T00:00:00",
+        "test_end": "2025-12-25T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.4723357350255615,
+        "test_metrics": {
+          "total_return": 0.008213765245202342,
+          "annualized_return": 0.03377114240042012,
+          "annualized_volatility": 0.011292266207414421,
+          "sharpe": 2.9906434882172923,
+          "max_drawdown": -0.0029303035592429527,
+          "calmar": 11.524793154585298,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0002557670138530351,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -1.3208043606235274e-05,
+          "funding_settlement_count": 245
+        },
+        "oos_daily_perf": {
+          "total_return": 0.008213765245201232,
+          "annualized_return": 0.03373175708543186,
+          "annualized_volatility": 0.00890198136110637,
+          "sharpe": 3.78924148648628,
+          "max_drawdown": -0.002397276976016327,
+          "n": 90
+        },
+        "window": 4
+      },
+      {
+        "train_start": "2024-12-26T00:00:00",
+        "train_end": "2025-12-25T00:00:00",
+        "test_start": "2025-12-26T00:00:00",
+        "test_end": "2026-03-25T00:00:00",
+        "selected_params": {
+          "lookback_days": 28,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.1709859024270273,
+        "test_metrics": {
+          "total_return": 0.0007974518624991322,
+          "annualized_return": 0.0032417773812316586,
+          "annualized_volatility": 0.007860478669858685,
+          "sharpe": 0.41241475454445053,
+          "max_drawdown": -0.003583730333223789,
+          "calmar": 0.9045818406530264,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0002248758420765148,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.00010567978742820526,
+          "funding_settlement_count": 233
+        },
+        "oos_daily_perf": {
+          "total_return": 0.0007974518624995763,
+          "annualized_return": 0.003238052695805127,
+          "annualized_volatility": 0.00851705876603007,
+          "sharpe": 0.3801843787576016,
+          "max_drawdown": -0.00309064802247927,
+          "n": 90
+        },
+        "window": 5
+      }
+    ],
+    "combined_oos_perf": {
+      "total_return": 0.07920028872732066,
+      "annualized_return": 0.06377417506116068,
+      "annualized_volatility": 0.022153517394634354,
+      "sharpe": 2.878738122037766,
+      "max_drawdown": -0.007742783213809279,
+      "n": 450
+    }
+  },
+  "cpcv": {
+    "sharpe_list": [
+      1.2626681252393894,
+      1.7417118957663718,
+      0.3093271723839342,
+      0.8665593851237895,
+      -0.20124478404839147,
+      3.1424414763677153,
+      1.4027013414958782,
+      2.9001225597830302,
+      1.674474015858429,
+      2.3420280998050083,
+      3.3258480441326905,
+      2.4326109615898024,
+      1.9554923627874687,
+      0.8268524487463573,
+      2.058858106720496
+    ],
+    "overall_oos_sharpe": 1.5921451955479735,
+    "dsr": 1.0,
+    "n_combinations": 15,
+    "mean_oos_sharpe": 1.7360300807834645,
+    "psr": 0.9923554197567876,
+    "n_paths": 5,
+    "path_sharpes": [
+      1.801806997167062,
+      1.6263791458066503,
+      1.5677357961718266,
+      1.4824020192971674,
+      1.4824020192971612
+    ],
+    "n_trials": 8,
+    "validation": {},
+    "details": [
+      {
+        "train_start": "2024-11-12T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-01-01T00:00:00",
+        "test_end": "2024-10-24T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 1.8174955477038204,
+        "test_metrics": {
+          "total_return": 0.03951041078814033,
+          "annualized_return": 0.04864746631898886,
+          "annualized_volatility": 0.03502166235267782,
+          "sharpe": 1.3890678811615347,
+          "max_drawdown": -0.019305584566950085,
+          "calmar": 2.5198649722459163,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0009561766705888942,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.0026140048693870047,
+          "funding_settlement_count": 1355
+        },
+        "oos_daily_perf": {
+          "total_return": 0.03951041078813344,
+          "annualized_return": 0.048606412652419495,
+          "annualized_volatility": 0.038166927858395955,
+          "sharpe": 1.2735217472245952,
+          "max_drawdown": -0.0182645341661567,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-06-16T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-01-01T00:00:00",
+        "test_end": "2025-03-22T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.474065802114894,
+        "test_metrics": {
+          "total_return": 0.11481982873299024,
+          "annualized_return": 0.09288687138639817,
+          "annualized_volatility": 0.03769263585046169,
+          "sharpe": 2.4643241124051136,
+          "max_drawdown": -0.02091509021325544,
+          "calmar": 4.4411413213761275,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0009213326993142075,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.0029180628424226147,
+          "funding_settlement_count": 2090
+        },
+        "oos_daily_perf": {
+          "total_return": 0.06616743555583793,
+          "annualized_return": 0.08163682054386312,
+          "annualized_volatility": 0.04565792142545831,
+          "sharpe": 1.7880100099857679,
+          "max_drawdown": -0.0182645341661567,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-06-16T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-01-01T00:00:00",
+        "test_end": "2025-08-18T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.474065802114894,
+        "test_metrics": {
+          "total_return": 0.13234027570892115,
+          "annualized_return": 0.0791487465551084,
+          "annualized_volatility": 0.03693488747696217,
+          "sharpe": 2.1429264297739303,
+          "max_drawdown": -0.03008916319940369,
+          "calmar": 2.6304735040513516,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.000934073528390019,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.0026088471663622053,
+          "funding_settlement_count": 2540
+        },
+        "oos_daily_perf": {
+          "total_return": 0.009768554711246269,
+          "annualized_return": 0.011977946585343124,
+          "annualized_volatility": 0.041236137581490515,
+          "sharpe": 0.2904720783238344,
+          "max_drawdown": -0.027903182230433532,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-06-16T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-01-01T00:00:00",
+        "test_end": "2026-01-14T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.474065802114894,
+        "test_metrics": {
+          "total_return": 0.1683968049942901,
+          "annualized_return": 0.07929278847974919,
+          "annualized_volatility": 0.034802271491462006,
+          "sharpe": 2.278379688498263,
+          "max_drawdown": -0.03008916319940369,
+          "calmar": 2.6352606735610586,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.000854407761201054,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.002305337856255878,
+          "funding_settlement_count": 2942
+        },
+        "oos_daily_perf": {
+          "total_return": 0.025800668929139237,
+          "annualized_return": 0.03169254362407514,
+          "annualized_volatility": 0.03678625637459897,
+          "sharpe": 0.8615321793374697,
+          "max_drawdown": -0.0182645341661567,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-06-16T00:00:00",
+        "train_end": "2026-01-13T00:00:00",
+        "test_start": "2024-01-01T00:00:00",
+        "test_end": "2026-06-15T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.8093740899820805,
+        "test_metrics": {
+          "total_return": 0.1683968049942901,
+          "annualized_return": 0.06542636698427096,
+          "annualized_volatility": 0.03171800690674066,
+          "sharpe": 2.062751520820391,
+          "max_drawdown": -0.03008916319940369,
+          "calmar": 2.1744163023306537,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0007096251751335397,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.0023053378562558785,
+          "funding_settlement_count": 3332
+        },
+        "oos_daily_perf": {
+          "total_return": -0.005855367532186517,
+          "annualized_return": -0.007095935853404289,
+          "annualized_volatility": 0.032727118504218985,
+          "sharpe": -0.21682128392970262,
+          "max_drawdown": -0.0182645341661567,
+          "n": 301
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-05-29T00:00:00",
+        "test_end": "2025-03-22T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.08893322420639693,
+          "annualized_return": 0.11008875829529341,
+          "annualized_volatility": 0.03210044468549239,
+          "sharpe": 3.4295088237530673,
+          "max_drawdown": -0.020915090213256105,
+          "calmar": 5.263604276758917,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0007026323556218618,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.0006274842311863563,
+          "funding_settlement_count": 1474
+        },
+        "oos_daily_perf": {
+          "total_return": 0.08893322420638938,
+          "annualized_return": 0.10999320799199297,
+          "annualized_volatility": 0.03338907972033709,
+          "sharpe": 3.2942869019836074,
+          "max_drawdown": -0.017914379046440443,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-05-29T00:00:00",
+        "test_end": "2025-08-18T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.10604683873254839,
+          "annualized_return": 0.08585364503992654,
+          "annualized_volatility": 0.03294232906883936,
+          "sharpe": 2.6061801781081955,
+          "max_drawdown": -0.030089163199398916,
+          "calmar": 2.8533078328227357,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0007925202422870588,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 0.00031826855512594724,
+          "funding_settlement_count": 1924
+        },
+        "oos_daily_perf": {
+          "total_return": 0.03133006253439796,
+          "annualized_return": 0.0385081443349955,
+          "annualized_volatility": 0.027201615053476725,
+          "sharpe": 1.4156565431607948,
+          "max_drawdown": -0.027903182230432866,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-05-29T00:00:00",
+        "test_end": "2026-01-14T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.14126611962122526,
+          "annualized_return": 0.08435430394065424,
+          "annualized_volatility": 0.031043753163231814,
+          "sharpe": 2.717271442570397,
+          "max_drawdown": -0.030089163199398916,
+          "calmar": 2.80347789606656,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0007283263548265925,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 1.4759245019620626e-05,
+          "funding_settlement_count": 2326
+        },
+        "oos_daily_perf": {
+          "total_return": 0.04770450921503122,
+          "annualized_return": 0.058739582832336934,
+          "annualized_volatility": 0.01975011697350906,
+          "sharpe": 2.9741384778188737,
+          "max_drawdown": -0.010048446245314868,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-01-13T00:00:00",
+        "test_start": "2024-05-29T00:00:00",
+        "test_end": "2026-06-15T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.280029610533188,
+        "test_metrics": {
+          "total_return": 0.14126611962122526,
+          "annualized_return": 0.06665437528535811,
+          "annualized_volatility": 0.02771245786861094,
+          "sharpe": 2.405213409845379,
+          "max_drawdown": -0.030089163199398916,
+          "calmar": 2.2152286138249817,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0005803242078564828,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": 1.475924501962068e-05,
+          "funding_settlement_count": 2716
+        },
+        "oos_daily_perf": {
+          "total_return": 0.015372523919067405,
+          "annualized_return": 0.01867144328680359,
+          "annualized_volatility": 0.011084652875429984,
+          "sharpe": 1.6844409560348372,
+          "max_drawdown": -0.004632918762628169,
+          "n": 301
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-10-25T00:00:00",
+        "test_end": "2025-08-18T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.07253048630249981,
+          "annualized_return": 0.08962594918065414,
+          "annualized_volatility": 0.03496016215017866,
+          "sharpe": 2.563659424565802,
+          "max_drawdown": -0.03008916319939836,
+          "calmar": 2.9786786886265495,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0008116164557862845,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0003431965575094301,
+          "funding_settlement_count": 1185
+        },
+        "oos_daily_perf": {
+          "total_return": 0.07253048630248982,
+          "annualized_return": 0.08954886768865533,
+          "annualized_volatility": 0.03691313455007583,
+          "sharpe": 2.425935071083563,
+          "max_drawdown": -0.0279031822304332,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2024-10-25T00:00:00",
+        "test_end": "2026-01-14T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.10668252321084504,
+          "annualized_return": 0.08636360931970155,
+          "annualized_volatility": 0.03185199483416792,
+          "sharpe": 2.7114034699973812,
+          "max_drawdown": -0.03008916319939836,
+          "calmar": 2.8702562695870655,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0007196592013392544,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0006467058676157568,
+          "funding_settlement_count": 1587
+        },
+        "oos_daily_perf": {
+          "total_return": 0.08955907288141174,
+          "annualized_return": 0.11077464336189657,
+          "annualized_volatility": 0.031743367355965155,
+          "sharpe": 3.4896941499522423,
+          "max_drawdown": -0.010048446245315312,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-01-13T00:00:00",
+        "test_start": "2024-10-25T00:00:00",
+        "test_end": "2026-06-15T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.280029610533188,
+        "test_metrics": {
+          "total_return": 0.10668252321084504,
+          "annualized_return": 0.06376485943652588,
+          "annualized_volatility": 0.027517548836464865,
+          "sharpe": 2.317243436742008,
+          "max_drawdown": -0.03008916319939836,
+          "calmar": 2.119196835550444,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0005370411736204452,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0006467058676157568,
+          "funding_settlement_count": 1977
+        },
+        "oos_daily_perf": {
+          "total_return": 0.055935462776041556,
+          "annualized_return": 0.06822629146066217,
+          "annualized_volatility": 0.027285688773768715,
+          "sharpe": 2.500442339071608,
+          "max_drawdown": -0.008570152365309225,
+          "n": 301
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-06-15T00:00:00",
+        "test_start": "2025-03-23T00:00:00",
+        "test_end": "2026-01-14T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.062751520820391,
+        "test_metrics": {
+          "total_return": 0.05003247464920846,
+          "annualized_return": 0.06167406752304938,
+          "annualized_volatility": 0.03135713381601689,
+          "sharpe": 1.9668273218117571,
+          "max_drawdown": -0.030089163199404245,
+          "calmar": 2.0497102931819158,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.000809223951858885,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0006421126367199999,
+          "funding_settlement_count": 852
+        },
+        "oos_daily_perf": {
+          "total_return": 0.0500324746492109,
+          "annualized_return": 0.06162170157447644,
+          "annualized_volatility": 0.030823769889749997,
+          "sharpe": 1.9991617441631582,
+          "max_drawdown": -0.0279031822304332,
+          "n": 298
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2026-01-13T00:00:00",
+        "test_start": "2025-03-23T00:00:00",
+        "test_end": "2026-06-15T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.280029610533188,
+        "test_metrics": {
+          "total_return": 0.05003247464920846,
+          "annualized_return": 0.04042587279336107,
+          "annualized_volatility": 0.025518121456349654,
+          "sharpe": 1.5842025386748027,
+          "max_drawdown": -0.030089163199404245,
+          "calmar": 1.3435359609522637,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0005358860836754394,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0006421126367199999,
+          "funding_settlement_count": 1242
+        },
+        "oos_daily_perf": {
+          "total_return": 0.017628648730700247,
+          "annualized_return": 0.021416812336177093,
+          "annualized_volatility": 0.026037258274120744,
+          "sharpe": 0.8225448359693056,
+          "max_drawdown": -0.0279031822304332,
+          "n": 301
+        }
+      },
+      {
+        "train_start": "2024-01-01T00:00:00",
+        "train_end": "2025-08-17T00:00:00",
+        "test_start": "2025-08-19T00:00:00",
+        "test_end": "2026-06-15T00:00:00",
+        "selected_params": {
+          "lookback_days": 21,
+          "skip_days": 0,
+          "quantile": 0.3,
+          "vol_target_annual": 0.175,
+          "top_n": 25
+        },
+        "train_best_sharpe": 2.110128767153147,
+        "test_metrics": {
+          "total_return": 0.0274218275523177,
+          "annualized_return": 0.03337654787225808,
+          "annualized_volatility": 0.01686377278824009,
+          "sharpe": 1.9791862883454603,
+          "max_drawdown": -0.015230896474737632,
+          "calmar": 2.1913711991685654,
+          "number_of_trades": 0,
+          "average_holding_minutes": 0.0,
+          "average_turnover": 0.0002375401066101266,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "validation_status": "research_backtest",
+          "idealized_fill": false,
+          "funding_cashflow": -0.0002905874906218921,
+          "funding_settlement_count": 792
+        },
+        "oos_daily_perf": {
+          "total_return": 0.027421827552319034,
+          "annualized_return": 0.03334863289962131,
+          "annualized_volatility": 0.015995951508263297,
+          "sharpe": 2.0848170790211413,
+          "max_drawdown": -0.01119601095749767,
+          "n": 301
+        }
+      }
+    ]
+  },
+  "baselines": {
+    "equal_weight_selected_universe_daily": {
+      "total_return": 0.10993684221339395,
+      "annualized_return": 0.04335572947809285,
+      "annualized_volatility": 0.656127527432369,
+      "sharpe": 0.06607820532657317,
+      "max_drawdown": -0.6285333978306624,
+      "n": 897
+    },
+    "btc_buy_hold_daily": {
+      "total_return": 0.4986570261947767,
+      "annualized_return": 0.1789498814127628,
+      "annualized_volatility": 0.48221314078487154,
+      "sharpe": 0.3711012128817063,
+      "max_drawdown": -0.511751324937713,
+      "n": 897
+    }
+  },
+  "summary": {
+    "status": "review_required",
+    "promotion_gate_passed": true,
+    "dsr_threshold": 0.95,
+    "psr_threshold": 0.95,
+    "funding_included": true,
+    "funding_sign_rule": "R3.1: strategy return subtracts positions * funding_rate; short receives positive funding when rate is positive",
+    "data_source": "canonical_candles 1m source_primary=binance, aggregated to 1H in SQL; funding_rates source=binance",
+    "coverage_path": "results\\universe_coverage_20260623.json",
+    "membership_path": "results\\xs_momentum_validation_20260623\\universe_membership.parquet",
+    "selected_symbols_path": "results\\xs_momentum_validation_20260623\\selected_symbols.json",
+    "symbol_count": 27,
+    "validation_start_floor": "2024-01-01T00:00:00+00:00",
+    "validation_common_end": "2026-06-16T16:00:00+00:00",
+    "bar": "1H_from_canonical_1m"
+  }
+}
