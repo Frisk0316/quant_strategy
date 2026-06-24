@@ -33,6 +33,14 @@ handoff between sessions; this is the one-screen "where are we" that
   after a primary venue-scoped candle gap. The fallback still uses the same
   `exchange` and does not permit parquet or cross-venue substitution. Manifest:
   `docs/change_manifests/2026-06-23-funding-carry-venue-fallback.md`.
+- **Market Data Coverage fast path (2026-06-23, Codex):**
+  `/api/data/coverage` now reads OHLCV list rows from `instrument_bars` metadata
+  instead of full-scanning `canonical_candles`; the UI shows estimated OHLCV row
+  counts with `~` and shows a visible unavailable/error state when the coverage
+  request fails instead of implying the DB is empty. Funding coverage provider
+  labels now come from `funding_rates.source`, not a hard-coded OKX label. The
+  coverage table has local exchange, pair/dataset search, and data-type filters;
+  funding export displays fixed `8H` frequency instead of an OHLCV bar.
 - **Current goal:** A 2026-06-23 Codex pass implemented the local A1/A3/B1-B5
   scaffold for XS momentum and point-in-time universe membership from
   `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. The work is

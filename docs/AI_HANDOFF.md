@@ -45,6 +45,23 @@ fall through to the configured fallback, which is still loaded with the same
 Regression coverage lives in `tests/unit/test_data_loader.py`; Change Manifest:
 `docs/change_manifests/2026-06-23-funding-carry-venue-fallback.md`.
 
+2026-06-23 Codex session note (Market Data Coverage fast path): fixed the
+coverage panel timeout/false-empty problem. `/api/data/coverage` now reads OHLCV
+coverage rows from `instrument_bars` metadata instead of full-scanning
+`canonical_candles`; the UI marks those OHLCV row counts as estimated with `~`.
+If coverage loading fails, `frontend/view-config.js` now shows
+"Market data coverage unavailable" instead of "No data in DB". Latest real DB
+check via FastAPI TestClient against the configured DSN returned 58 coverage
+rows, including 27 funding rows and 0 funding provider/exchange mismatches.
+Follow-up in the same pass fixed funding coverage labels so provider now comes
+from `funding_rates.source` instead of hard-coded `okx`; Binance funding rows no
+longer show provider `okx` with exchange `binance`. This is API/UI read-path
+only; no data was deleted, no schema changed, and no trading/business rule
+changed. The Market Data Coverage table also has local exchange, pair/dataset
+search, and data-type filters; these filter the already-loaded coverage rows and
+do not add a second backend query path. Funding export now displays fixed `8H`
+frequency and sends `bar=funding`, avoiding the misleading disabled `1H` label.
+
 2026-06-23 Codex session note (XS momentum universe scaffold): implemented the
 local A1/A3/B1-B5 portions of
 `docs/superpowers/plans/2026-06-23-xs-momentum-universe.md`. Added

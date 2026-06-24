@@ -1143,6 +1143,8 @@ function ParameterSweepPanel({
 
 function MarketDataCard({ onCoverageChange } = {}) {
   const [coverage, setCoverage] = useConfigState(null);
+  const [coverageError, setCoverageError] = useConfigState("");
+  const [coverageFilters, setCoverageFilters] = useConfigState({ exchange: "all", query: "", kind: "all" });
   const [instruments, setInstruments] = useConfigState([]);
   const [fetchJobs, setFetchJobs] = useConfigState([]);
   const [exportJob, setExportJob] = useConfigState(null);
@@ -1161,6 +1163,12 @@ function MarketDataCard({ onCoverageChange } = {}) {
     .sort()
     .at(-1) || "";
   const exportKind = exportForm.kind || "ohlcv";
+  const exportBarParam = exportKind === "ohlcv" ? exportForm.bar : exportKind === "funding" ? "funding" : "external";
+  const exportEmptyMessage = exportKind === "funding"
+    ? "No DB funding pairs available."
+    : exportKind === "external"
+      ? "No external datasets available."
+      : `No DB trading pairs available for ${exportForm.bar}.`;
   const exportCoverageBar = exportForm.bar === "1H" ? "1m" : exportForm.bar;
   const ROWS_PER_DAY = { "1H": 24, "1m": 1440, "5m": 288, "15m": 96, funding: 3, external: 1 };
   const estDays = Math.max(0, (new Date(exportForm.end) - new Date(exportForm.start)) / 86_400_000);
@@ -1199,16 +1207,36 @@ function MarketDataCard({ onCoverageChange } = {}) {
   const allSearchResultsSelected = searchResultSymbols.length > 0
     && searchResultSymbols.every((symbol) => (fetchForm.symbols || []).includes(symbol));
   const anyFetchActive = (fetchJobs || []).some((job) => !FETCH_TERMINAL_STATUSES.has(job.status));
+  const coverageExchanges = [...new Set((coverage || [])
+    .flatMap((row) => String(row.exchange || "").toLowerCase().split("+"))
+    .map((exchange) => exchange.trim())
+    .filter(Boolean))]
+    .sort();
+  const filteredCoverage = (coverage || []).filter((row) => {
+    const kind = row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv");
+    const exchange = String(row.exchange || "").toLowerCase().split("+");
+    const query = String(coverageFilters.query || "").trim().toUpperCase();
+    return (coverageFilters.kind === "all" || kind === coverageFilters.kind)
+      && (coverageFilters.exchange === "all" || exchange.includes(coverageFilters.exchange))
+      && (!query || String(row.inst_id || "").toUpperCase().includes(query));
+  });
+  function fmtCoverageRowCount(row) {
+    if (row?.row_count == null) return "-";
+    const label = Number(row.row_count).toLocaleString();
+    return row.row_count_estimated ? `~${label}` : label;
+  }
 
   function refreshCoverage() {
     window.API.fetchDataCoverage()
       .then((rows) => {
         const next = rows || [];
         setCoverage(next);
+        setCoverageError("");
         onCoverageChange?.(next);
       })
-      .catch(() => {
+      .catch((err = {}) => {
         setCoverage([]);
+        setCoverageError(err.message || "Coverage request failed");
         onCoverageChange?.([]);
       });
   }
@@ -1384,7 +1412,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
   function triggerExport() {
     const body = {
       kind: exportKind,
-      bar: exportForm.bar,
+      bar: exportBarParam,
       start: exportForm.start,
       end: exportForm.end,
       format: exportForm.format,
@@ -1465,7 +1493,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
                         </td>
                         <td class="mono">${symbol}</td>
                       </tr>
-                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>No DB trading pairs available for ${exportForm.bar}.</td></tr>`}
+                    `) : html`<tr><td colSpan=${2} class="field-hint" style=${{ padding: 12 }}>${exportEmptyMessage}</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -1484,11 +1512,15 @@ function MarketDataCard({ onCoverageChange } = {}) {
               </select>
             </div>
             <div class="field">
-              <div class="field-label">Bar</div>
-              <select class="select mono" value=${exportForm.bar}
+              <div class="field-label">${exportKind === "ohlcv" ? "Bar" : "Frequency"}</div>
+              <select class="select mono" value=${exportBarParam}
                 disabled=${exportKind !== "ohlcv"}
                 onChange=${(e) => setExportForm((f) => ({ ...f, bar: e.target.value, symbols: [] }))}>
-                ${["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
+                ${exportKind === "funding" ? html`
+                  <option value="funding">8H</option>
+                ` : exportKind === "external" ? html`
+                  <option value="external">n/a</option>
+                ` : ["1H", "1m", "5m", "15m"].map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
             </div>
             <div class="field">
@@ -1658,6 +1690,38 @@ function MarketDataCard({ onCoverageChange } = {}) {
         </div>
       `}
 
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 12 }}>
+        <div class="field">
+          <div class="field-label">Exchange</div>
+          <select class="select mono" value=${coverageFilters.exchange}
+            onChange=${(e) => setCoverageFilters((f) => ({ ...f, exchange: e.target.value }))}>
+            <option value="all">All exchanges</option>
+            ${coverageExchanges.map((exchange) => html`
+              <option key=${exchange} value=${exchange}>${exchange.toUpperCase()}</option>
+            `)}
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-label">Trading pair</div>
+          <input
+            class="input mono"
+            placeholder="Search pair or dataset"
+            value=${coverageFilters.query}
+            onInput=${(e) => setCoverageFilters((f) => ({ ...f, query: e.currentTarget.value }))}
+          />
+        </div>
+        <div class="field">
+          <div class="field-label">Data type</div>
+          <select class="select mono" value=${coverageFilters.kind}
+            onChange=${(e) => setCoverageFilters((f) => ({ ...f, kind: e.target.value }))}>
+            <option value="all">All types</option>
+            <option value="ohlcv">OHLCV</option>
+            <option value="funding">Funding rate</option>
+            <option value="external">Other</option>
+          </select>
+        </div>
+      </div>
+
       <div class="tbl-wrap">
         <table class="tbl">
           <thead>
@@ -1668,7 +1732,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
             </tr>
           </thead>
           <tbody>
-            ${(coverage || []).map((row, i) => html`
+            ${filteredCoverage.map((row, i) => html`
               <tr key=${i}>
                 <td class="mono">${row.inst_id}</td>
                 <td>${row.data_kind || (row.bar === "funding" ? "funding" : "ohlcv")}</td>
@@ -1680,7 +1744,7 @@ function MarketDataCard({ onCoverageChange } = {}) {
                 </td>
                 <td class="num mono">${row.first_ts ? new Date(row.first_ts).toISOString().slice(0, 10) : "-"}</td>
                 <td class="num mono">${row.last_ts ? new Date(row.last_ts).toISOString().slice(0, 10) : "-"}</td>
-                <td class="num">${(row.row_count || 0).toLocaleString()}</td>
+                <td class="num">${fmtCoverageRowCount(row)}</td>
                 <td class="num" style=${{ color: row.gap_count > 0 ? "var(--warn)" : "var(--profit)" }}>
                   ${row.gap_count ?? "-"}
                 </td>
@@ -1696,8 +1760,16 @@ function MarketDataCard({ onCoverageChange } = {}) {
                 </td>
               </tr>
             `)}
-            ${(!coverage || !coverage.length) && html`
+            ${coverageError && (!coverage || !coverage.length) && html`
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24, color: "var(--warn)" }}>
+                Market data coverage unavailable: ${coverageError}. Data may still exist; retry after active fetch jobs finish.
+              </td></tr>
+            `}
+            ${!coverageError && (!coverage || !coverage.length) && html`
               <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No data in DB. Use "Fetch from Exchange" or external ingest scripts to load historical data.</td></tr>
+            `}
+            ${!coverageError && coverage?.length > 0 && !filteredCoverage.length && html`
+              <tr><td colSpan=${10} class="field-hint" style=${{ textAlign: "center", padding: 24 }}>No matching coverage rows.</td></tr>
             `}
           </tbody>
         </table>

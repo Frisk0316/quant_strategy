@@ -57,6 +57,36 @@ def test_data_coverage_uses_short_inflight_cache():
     assert 'fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage")' in text
 
 
+def test_market_data_coverage_fetch_errors_have_visible_state():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "coverageError" in text
+    assert "Market data coverage unavailable" in text
+    assert "setCoverageError(err.message" in text
+
+
+def test_market_data_coverage_has_local_query_filters():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "coverageFilters" in text
+    assert "filteredCoverage" in text
+    assert "Search pair or dataset" in text
+    assert '<option value="funding">Funding rate</option>' in text
+    assert '<option value="external">Other</option>' in text
+
+
+def test_funding_export_uses_fixed_8h_frequency_label():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "exportBarParam" in text
+    assert 'exportKind === "funding" ? "funding"' in text
+    assert '<option value="funding">8H</option>' in text
+    assert "No DB funding pairs available." in text
+
+
 def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")

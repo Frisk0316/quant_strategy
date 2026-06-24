@@ -133,11 +133,27 @@ manual reload behavior.
 ## Market Data Coverage
 
 - `frontend/view-config.js` owns the Market Data Coverage card.
+- `GET /api/data/coverage` uses `instrument_bars` metadata for the OHLCV table
+  fast path, so the card does not full-scan `canonical_candles` on every load.
+  OHLCV row counts in this view are estimated from first/last timestamp and bar
+  interval and are prefixed with `~`; exact row/gap checks belong in targeted
+  diagnostics or export queries.
+- Funding coverage rows use `funding_rates.source` for both provider and
+  exchange labels; Binance funding rows should not display provider `okx`.
 - Fetch submissions are no longer blocked by another active fetch. The card
   renders the `/api/data/fetch/jobs` list with queued/running/done/error/cancelled
   statuses and per-job cancel controls. For Binance, `POST /api/data/fetch`
   also syncs exchangeInfo-derived venue specs into `venue_instrument_specs`
   before candle writes.
+- If coverage loading fails or times out, the card shows a visible "Market data
+  coverage unavailable" state instead of rendering the "No data in DB" empty
+  state.
+- The coverage table has local filters for exchange, trading pair/dataset text
+  search, and data type (`OHLCV`, funding rate, or other/external). These
+  filters do not call a separate backend query.
+- The export panel treats funding as fixed-frequency data: the disabled
+  frequency field displays `8H`, and the export request uses `bar=funding`
+  rather than an OHLCV bar such as `1H`.
 - Coverage rows for OHLCV and funding pairs include a Delete button. The button
   uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
   coverage when the API succeeds. External dataset rows are not pair-delete

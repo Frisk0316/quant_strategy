@@ -84,6 +84,8 @@ OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
+The coverage API labels funding provider/exchange from `funding_rates.source`
+instead of a hard-coded venue label.
 
 ## Point-In-Time Universe Membership Flow
 
@@ -123,6 +125,13 @@ raw exchange rows -> CandleStore upsert and canonicalize methods -> raw_candles,
 ```
 
 Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
+The Market Data Coverage API reads OHLCV list rows from `instrument_bars`
+metadata first, not from a full `canonical_candles` aggregation. That keeps the
+UI responsive while large 1m backfills are running; the displayed OHLCV row count
+is an estimate from first/last timestamp and bar interval. Targeted diagnostics
+or export paths remain the place for exact counts and gap inspection. Funding
+coverage rows still come from `funding_rates` and label provider/exchange from
+the stored `source`.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the
