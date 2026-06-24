@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-24
 expires: none
 superseded_by: null
 ---
@@ -40,6 +40,16 @@ handoff between sessions; this is the one-screen "where are we" that
   `status:"review_required"`. PSR remains below 0.95, so there is **no
   promotion support**. `xs_momentum` remains disabled; live/demo/shadow gates
   unchanged.
+- **DSR all-strategy recheck (2026-06-24, Codex):** `scripts/recheck_dsr.py`
+  scans saved JSON artifacts for DSR fields. Current run found 45 DSR-bearing
+  JSON rows: 7 CPCV rows and 38 replay-level single-run diagnostic rows. The
+  single-run rows set `dsr == psr` and are not the CPCV multiple-trial DSR
+  defect. Daily Winner CPCV was recomputed from saved returns and remains near
+  zero DSR. `xs_momentum_validation_20260623` and
+  `xs_momentum_validation_20260624_leakfix` have `DSR > PSR(0)` and are
+  untrusted. `xs_momentum_validation_20260624_portfoliovol` passes the invariant
+  and stays below gate, but raw path returns were not saved, so the audit cannot
+  independently recompute it from artifacts alone.
 
 - **Latest XS momentum Phase C state (2026-06-24, Codex) - leak fixed,
   promotion still blocked:** `backtesting/xs_momentum_backtest.py` now shifts
@@ -51,9 +61,10 @@ handoff between sessions; this is the one-screen "where are we" that
   `promotion_gate_passed:true` JSON field. Leak-free rerun:
   `results/xs_momentum_validation_20260624_leakfix/` with 27 loaded symbols,
   `n_trials=8`, `n_combinations=15`, WF combined OOS Sharpe 0.8825, CPCV overall
-  OOS Sharpe 0.5577, DSR 1.0, PSR 0.7961, `promotion_gate_passed:false`, and
-  `status:"review_required"`. PSR is below 0.95, so this does **not** support
-  promotion. Vol-target under-leverage remains a separate Claude/user decision.
+  OOS Sharpe 0.5577, pre-fix DSR 1.0 (**untrusted; DSR > PSR**), PSR 0.7961,
+  `promotion_gate_passed:false`, and `status:"review_required"`. PSR is below
+  0.95, so this does **not** support promotion. Vol-target under-leverage remains
+  a separate Claude/user decision.
 
 - **XS momentum Phase C review (2026-06-24, Claude) — LEAK, BLOCK promotion:**
   `backtesting/xs_momentum_backtest.py` has a look-ahead leak — the day-D target

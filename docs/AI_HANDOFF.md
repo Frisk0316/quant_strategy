@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-24
 expires: none
 superseded_by: null
 ---
@@ -48,6 +48,19 @@ CPCV OOS Sharpe 0.6027, DSR 0.7823, PSR 0.8234, `n_trials=8`,
 `n_combinations=15`. PSR remains below 0.95, so promotion remains **BLOCKED**.
 `xs_momentum` stays disabled; no live/demo/shadow/deployment gates changed.
 
+2026-06-24 Codex follow-up (DSR all-strategy recheck): added
+`scripts/recheck_dsr.py` and ran it against current `results/**/*.json`.
+The audit found 45 DSR-bearing JSON rows: 7 CPCV rows and 38 replay-level
+single-run diagnostic rows. The single-run rows set `dsr == psr` and are not the
+CPCV multiple-trial DSR defect. Daily Winner CPCV was recomputed from saved
+returns (`old dsr=0.0`, recomputed `dsr=6.81623e-39`, `psr=0.658074`).
+`results/xs_momentum_validation_20260623/{cpcv,summary}.json` and
+`results/xs_momentum_validation_20260624_leakfix/{cpcv,summary}.json` are
+**untrusted** for DSR because `DSR > PSR(0)`. The portfolio-vol artifact passes
+the invariant (`0.7823 <= 0.8234`) and remains below gate, but it stores only
+summary/path Sharpe fields, not raw path returns; the audit cannot independently
+recompute it from artifacts alone. No result payloads were modified.
+
 2026-06-24 Claude review note (XS momentum Phase C runner): **BLOCK promotion —
 look-ahead leak found.** `backtesting/xs_momentum_backtest.py` builds the day-D
 target weight from day-D's own close (`_daily_close` bins at 00:00 but holds the
@@ -74,8 +87,8 @@ Leak-free validation rerun was written to
 `results/xs_momentum_validation_20260624_leakfix/` with
 `promotion_gate_passed:false`, `status:"review_required"`, 27 loaded symbols,
 8 searched parameter trials, 15 CPCV combinations, WF combined OOS Sharpe
-0.8825, CPCV overall OOS Sharpe 0.5577, DSR 1.0, and PSR 0.7961. Because PSR is
-below 0.95, this rerun does **not** support promotion. The leaked
+0.8825, CPCV overall OOS Sharpe 0.5577, pre-fix DSR 1.0 (**untrusted; DSR > PSR**),
+and PSR 0.7961. Because PSR is below 0.95, this rerun does **not** support promotion. The leaked
 `results/xs_momentum_validation_20260623/` artifact now has `SUPERSEDED.md` and
 must not be cited. Vol-target quantity/sizing remains a separate Claude/user
 decision; no `src/okx_quant/strategies/`, risk, portfolio, execution, config, or

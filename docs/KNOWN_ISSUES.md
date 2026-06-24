@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-24
 expires: none
 superseded_by: null
 ---
@@ -48,6 +48,16 @@ over time.
   tiny fixture workloads.
 - Advisory validation evidence, in-sample backtests, idealized-fill artifacts, and
   DB parity SKIP states are not promotion evidence.
+- `scripts/recheck_dsr.py` is the current audit for DSR-bearing JSON artifacts.
+  The 2026-06-24 run found 7 CPCV rows and 38 replay-level single-run diagnostic
+  rows. `xs_momentum_validation_20260623` and
+  `xs_momentum_validation_20260624_leakfix` have stored CPCV DSR values that
+  violate `DSR <= PSR(0)` and must not be cited. Daily Winner CPCV was
+  recomputed from saved returns and remains non-passing. The portfolio-vol XS
+  artifact has a fixed, non-passing DSR/PSR pair, but only summary/path Sharpe
+  fields were saved; future CPCV artifacts should retain raw path returns or a
+  recompute bundle so DSR can be independently audited without rerunning a DB
+  validation job.
 - ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
   adding venue-aware specs, provenance exchange tags, and frontend/API exchange
   selection; Known Issue 20's root cause is closed. Remaining environment gap:
