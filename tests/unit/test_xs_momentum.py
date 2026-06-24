@@ -90,7 +90,7 @@ def test_crash_regime_reduces_gross_exposure():
     assert weights.loc[pd.Timestamp("2024-01-08")].abs().sum() < weights.loc[pd.Timestamp("2024-01-01")].abs().sum()
 
 
-def test_vol_target_uses_annualized_realized_vol():
+def test_vol_target_uses_portfolio_book_vol_and_cap():
     from okx_quant.strategies.xs_momentum import XSMomentumParams, target_weights
 
     idx = pd.date_range("2024-01-01", periods=2, freq="D")
@@ -104,17 +104,33 @@ def test_vol_target_uses_annualized_realized_vol():
     )
     daily_vol = 0.01
     realized_vol = pd.DataFrame(daily_vol, index=idx, columns=scores.columns)
+    unit_book_annual_vol = np.sqrt((0.5 * daily_vol) ** 2 + (0.5 * daily_vol) ** 2) * np.sqrt(365.0)
     params = XSMomentumParams(
         universe=list(scores.columns),
         rebalance="daily",
         quantile=0.5,
-        max_name_weight=1.0,
-        vol_target_annual=daily_vol * np.sqrt(365.0) * 0.5,
+        max_name_weight=10.0,
+        vol_target_annual=unit_book_annual_vol * 0.5,
     )
 
     weights = target_weights(scores, membership, params, realized_vol)
 
     assert abs(weights.iloc[0].abs().sum() - 0.5) < 1e-9
+
+    capped = target_weights(
+        scores,
+        membership,
+        XSMomentumParams(
+            universe=list(scores.columns),
+            rebalance="daily",
+            quantile=0.5,
+            max_name_weight=10.0,
+            vol_target_annual=unit_book_annual_vol * 100.0,
+        ),
+        realized_vol,
+    )
+
+    assert abs(capped.iloc[0].abs().sum() - 2.0) < 1e-9
 
 
 def test_xs_momentum_strategy_stub_is_noop():

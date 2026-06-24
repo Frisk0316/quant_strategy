@@ -101,7 +101,10 @@ volume from candle history and uses only prior history for ADV and warmup
 eligibility. It does not forward-fill symbols across missing or ended candle
 history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
-convention, and can pass a `market_close` proxy into the crash filter. Known gap:
+convention, shifts daily target weights one full day before intraday expansion to
+avoid same-day-close lookahead, sizes XS momentum gross from estimated portfolio
+book volatility with a max-gross cap, and can pass a `market_close` proxy into
+the crash filter. Known gap:
 this remains research-tier until the A2 coverage task verifies at least 25
 symbols with 12 months of both parquet and venue-scoped canonical DB coverage and
 promotion validation runs WF/CPCV plus DSR/PSR.

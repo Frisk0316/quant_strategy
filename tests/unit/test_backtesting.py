@@ -265,7 +265,7 @@ def test_cpcv_accepts_result_dict_with_returns():
     assert results["mean_oos_sharpe"] > 0
 
 
-def test_cpcv_dsr_differs_from_psr_when_multiple_paths_exist():
+def test_cpcv_dsr_does_not_exceed_psr_when_multiple_paths_exist():
     rng = np.random.default_rng(0)
     idx = pd.date_range("2024-01-01", periods=60, freq="1h")
     df = pd.DataFrame({"ret": rng.normal(0.0002, 0.005, len(idx))}, index=idx)
@@ -275,7 +275,7 @@ def test_cpcv_dsr_differs_from_psr_when_multiple_paths_exist():
 
     assert results["n_paths"] > 1
     assert results["n_trials"] == 27
-    assert results["dsr"] != pytest.approx(results["psr"])
+    assert results["dsr"] <= results["psr"]
 
 
 def test_cpcv_n_trials_changes_deflated_sharpe_penalty():

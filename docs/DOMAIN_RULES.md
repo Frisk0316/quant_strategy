@@ -75,6 +75,10 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
   must not increase absolute exposure.
 - **R4.3** No exposure-increasing order may exceed configured per-instrument or
   per-portfolio caps.
+- **R4.4** Strategy vol-target sizing must target the quantity named by the
+  strategy spec. For market-neutral book-level targets, gross leverage is sized
+  from estimated book volatility, not median single-name volatility, and an
+  explicit max-gross cap must prevent unbounded leverage in calm regimes.
 
 Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 
@@ -114,6 +118,10 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   `docs/ai_collaboration.md` passes and the human explicitly approves.
 - **R7.3** Promotion candidates require reproducible artifacts and
   walk-forward / CPCV evidence.
+- **R7.4** DSR must be computed on the same return-series basis as PSR(0), using
+  non-overlapping OOS observations for its sample-size term and honest researched
+  `n_trials` as the multiple-trial penalty. For the same series, DSR must not
+  exceed PSR(0).
 
 ---
 

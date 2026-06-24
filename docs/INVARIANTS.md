@@ -40,6 +40,8 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I18 | Submitted strategy-order fill counts exclude `terminal_liquidation` fills | R5.4 | `tests/unit/test_backtesting.py` |
 | I19 | A venue-tagged run loads candles only from that venue's provenance-tagged canonical series; source-less parquet or another venue cannot substitute missing bars | R6.4 | `tests/unit/test_data_loader.py` |
 | I20 | Universe membership is point-in-time: no symbol is eligible before listing plus warmup, and ended candle history is not forward-filled into later eligibility | R6.1 | `tests/unit/test_universe_membership.py` |
+| I21 | DSR is computed on the same per-observation return basis as PSR(0), and `DSR <= PSR(0)` for the same series when `n_trials > 1` | R7.4 | `tests/unit/test_dsr.py`, `tests/unit/test_cpcv.py` |
+| I22 | XS momentum portfolio-vol targeting sizes gross from estimated book volatility and enforces the max-gross cap | R4.4 | `tests/unit/test_xs_momentum.py::test_vol_target_uses_portfolio_book_vol_and_cap` |
 
 ## Usage
 

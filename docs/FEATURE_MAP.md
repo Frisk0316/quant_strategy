@@ -204,8 +204,9 @@ implementation exists.
 - Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
   stub when explicitly requested. `backtesting/xs_momentum_backtest.py` is a
   research-only vectorized runner for target weights, corrected R3.1 funding
-  cashflow signs, honest grid trial counts, and optional `market_close` crash
-  filtering; it is not wired into UI/API promotion gates.
+  cashflow signs, honest grid trial counts, portfolio-vol gross sizing, and
+  optional `market_close` crash filtering; it is not wired into UI/API promotion
+  gates.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
   and venue-scoped OHLCV/funding data. Local smoke artifacts such as
   `results/xs_momentum_db_smoke_20260623.json` are research evidence only.
@@ -218,7 +219,8 @@ implementation exists.
 - Docs to update: `docs/ADR/0009-xs-momentum-research-strategy.md`,
   `docs/change_manifests/2026-06-23-xs-momentum-universe.md`,
   `docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`,
-  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`.
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`.
 - Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
   do not claim live, demo, shadow, or promotion readiness until WF/CPCV,
   DSR/PSR, source parity, funding accounting, and human approval are complete.

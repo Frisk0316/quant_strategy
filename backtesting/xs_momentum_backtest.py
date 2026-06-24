@@ -58,7 +58,8 @@ def run_xs_momentum_backtest(
     realized_vol = close_daily.pct_change().rolling(params.vol_window_days, min_periods=2).std()
     market_daily = market_close.resample("1D").last() if market_close is not None else None
     target_daily = build_target_weights(scores, membership, params, realized_vol, market_close=market_daily)
-    target = target_daily.reindex(close.index).ffill().fillna(0.0)
+    # Daily closes are timestamped at midnight; shift before intraday expansion.
+    target = target_daily.shift(1).reindex(close.index).ffill().fillna(0.0)
     positions = target.shift(1).fillna(0.0)
 
     bar_returns = close.pct_change().fillna(0.0)

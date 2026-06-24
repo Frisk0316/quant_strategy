@@ -44,10 +44,16 @@ def deflated_sharpe(
     if T < 4:
         return 0.0
 
+    std = r.std(ddof=1)
+    if std == 0:
+        return 0.0
+    sr_hat = float(r.mean() / std)
     g3 = float(skew(r))
     g4 = float(kurtosis(r, fisher=False))  # non-excess kurtosis
     clean_sr_list = np.asarray(sr_list, dtype=float)
     clean_sr_list = clean_sr_list[~np.isnan(clean_sr_list)]
+    if np.isfinite(sr) and sr != 0:
+        clean_sr_list = clean_sr_list * abs(sr_hat / float(sr))
     var_sr = float(np.var(clean_sr_list, ddof=1)) if len(clean_sr_list) >= 2 else 0.0
     euler = 0.5772156649  # Euler-Mascheroni constant
 
@@ -61,11 +67,11 @@ def deflated_sharpe(
         )
 
     # Variance correction for non-normality
-    denom = np.sqrt(1 - g3 * sr + (g4 - 1) / 4 * sr ** 2)
+    denom = np.sqrt(1 - g3 * sr_hat + (g4 - 1) / 4 * sr_hat ** 2)
     if denom <= 0:
         return 0.0
 
-    return float(norm.cdf((sr - SR0) * np.sqrt(T - 1) / denom))
+    return float(norm.cdf((sr_hat - SR0) * np.sqrt(T - 1) / denom))
 
 
 def psr(returns: np.ndarray, sr_benchmark: float = 0.0) -> float:
@@ -88,7 +94,10 @@ def psr(returns: np.ndarray, sr_benchmark: float = 0.0) -> float:
     if n < 4:
         return 0.0
 
-    sr_hat = r.mean() / r.std(ddof=1)
+    std = r.std(ddof=1)
+    if std == 0:
+        return 0.0
+    sr_hat = r.mean() / std
     g3 = float(skew(r))
     g4 = float(kurtosis(r, fisher=False))
 
