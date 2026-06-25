@@ -100,3 +100,12 @@ def test_progress_route_returns_200_with_workstreams_shape(tmp_path: Path):
     assert payload["error"] is None
     assert "timeline" not in payload
     assert "branches" not in payload
+
+
+def test_shipped_workstreams_yaml_is_valid():
+    repo_root = Path(__file__).resolve().parents[2]
+    cards, err = _load_workstreams(repo_root)
+    assert err is None, err
+    assert cards, "expected seeded workstreams"
+    bad = [c["name"] for c in cards if c["error"]]
+    assert not bad, f"cards with errors: {bad}"

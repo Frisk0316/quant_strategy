@@ -1,0 +1,40 @@
+# Hand-maintained source for the Progress panel.
+# Update this alongside docs/AI_HANDOFF.md at session end.
+# status: active | blocked | done | shelved
+# Milestones before `current` are done; `current` is in progress; the rest pending.
+workstreams:
+  - name: XS momentum
+    status: blocked
+    milestones: [spec, impl, backtest, wf_cpcv, demo, live]
+    current: wf_cpcv
+    state: "PSR 0.82 < 0.95; promotion BLOCKED; xs_momentum stays disabled"
+    next: "re-run after portfolio-vol sizing decision; raise PSR >= 0.95"
+    links: [docs/superpowers/plans/2026-06-23-xs-momentum-universe.md]
+    updated: 2026-06-25
+
+  - name: Strategy research pipeline (batch 1 S5/S6/S7)
+    status: blocked
+    milestones: [spec, impl, backtest, wf_cpcv, review]
+    current: wf_cpcv
+    state: "S6 statistical_gate_passed:false; S5 data-universe artifact; S7 shelved_pending_research_review"
+    next: "research review of refit artifacts before any adapter/ct_val work"
+    links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md]
+    updated: 2026-06-25
+
+  - name: Multi-venue instrument specs (ADR-0007 P1)
+    status: active
+    milestones: [spec, impl, validation, consolidated_pr, merge]
+    current: consolidated_pr
+    state: "DB-parity PASS evidence committed; waiting on one consolidated P1 PR to main"
+    next: "open the consolidated P1 PR"
+    links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
+    updated: 2026-06-23
+
+  - name: User manual
+    status: done
+    milestones: [draft, write, verify]
+    current: verify
+    state: "All chapters written; manual.json marks chapters as written"
+    next: ""
+    links: [docs/superpowers/plans/2026-06-25-user-manual.md]
+    updated: 2026-06-25
