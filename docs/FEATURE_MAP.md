@@ -87,6 +87,22 @@ implementation exists.
 - Do-not-touch notes: API schema changes require matching frontend and test updates;
   do not silently rename result fields.
 
+## In-Dashboard User Manual
+
+- User-facing behavior: browse 使用手冊 chapters from the Help nav group, render
+  written markdown chapters, and show `待補` for stub chapters.
+- Frontend files: `frontend/app.js`, `frontend/index.html`,
+  `frontend/view-manual.js`.
+- Backend/API files: `src/okx_quant/api/routes_manual.py`,
+  `src/okx_quant/api/server.py`.
+- Manual content files: `docs/manual/manual.json`, `docs/manual/*.md`.
+- Tests: `tests/unit/test_manual_manifest.py`,
+  `tests/unit/test_routes_manual.py`.
+- Docs to update: `docs/UI_MAP.md`, `docs/FEATURE_MAP.md`.
+- Do-not-touch notes: manual content is documentation/read-path only; do not
+  change strategy, risk, portfolio, execution, config, result artifacts, or
+  live/demo/shadow gates for this feature.
+
 ## Indicator Series / Indicator Chart
 
 - User-facing behavior: technical-indicator runs display per-symbol price plus

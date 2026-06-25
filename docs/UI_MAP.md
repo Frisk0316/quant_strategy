@@ -96,6 +96,16 @@ Main app views in `frontend/app.js`:
 - Backtest metric cards are rendered from result metrics in `frontend/view-backtest.js`
   and summary panels in `frontend/view-results.js`.
 
+## User Manual
+
+- `frontend/view-manual.js` owns the 使用手冊 view in the Help nav group.
+- It calls `GET /api/manual` for the manifest and `GET /api/manual/{slug}` for
+  manifest-declared markdown chapters, then renders written chapters with
+  `marked`.
+- Stub chapters render a visible `待補` placeholder instead of a blank page.
+- Backend endpoints are implemented in `src/okx_quant/api/routes_manual.py` and
+  registered in `src/okx_quant/api/server.py` before the static file mount.
+
 ## API Calls Used By Frontend
 
 `frontend/data.js` maps frontend calls to FastAPI endpoints:
@@ -123,6 +133,8 @@ Main app views in `frontend/app.js`:
 - `fetchDataFetchJobs`: `GET /api/data/fetch/jobs`.
 - `fetchDataFetchStatus`: `GET /api/data/fetch/status/{job_id}`.
 - `cancelDataFetch`: `POST /api/data/fetch/cancel/{job_id}`.
+- `fetch manual manifest/chapter`: `GET /api/manual`,
+  `GET /api/manual/{slug}`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
 cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh

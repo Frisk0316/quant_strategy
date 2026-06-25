@@ -28,6 +28,7 @@ function NavGlyph({ kind }) {
     case "metrics": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M3 2.5h10v11H3z"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/></svg>`;
     case "risk": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M8 1.5l6 2.5v4c0 3.5-2.5 6-6 7-3.5-1-6-3.5-6-7v-4l6-2.5z"/></svg>`;
     case "backtest": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><rect x="1.5" y="2" width="13" height="9" rx="1.5"/><path d="M4 13h8M8 11v2"/><path d="M5 6l2 2 4-3"/></svg>`;
+    case "manual": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M3 2.5h7a2 2 0 0 1 2 2v9H5a2 2 0 0 0-2 2z"/><path d="M5 5.5h4M5 8h4"/></svg>`;
     default: return null;
   }
 }
@@ -169,6 +170,7 @@ function App() {
     { id: "compare", label: "Compare runs", group: "Analysis", glyph: "compare" },
     { id: "metrics", label: "Metrics Glossary", group: "Analysis", glyph: "metrics" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
+    { id: "manual", label: "使用手冊", group: "Help", glyph: "manual" },
   ];
   const groups = [...new Set(NAV.map((n) => n.group))];
   const titleMap = {
@@ -181,6 +183,7 @@ function App() {
     compare: ["Compare Runs", "Aligned equity comparison across saved runs"],
     metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
+    manual: ["使用手冊", "架構、驗證、風控與設定來源"],
   };
   const selectedRunSummary = allRuns.find((r) => r.run_id === selectedRunId);
 
@@ -267,6 +270,7 @@ function App() {
         ${view === "compare" && html`<${window.CompareView} selectedRunId=${selectedRunId} />`}
         ${view === "metrics" && html`<${window.MetricsGlossaryView} />`}
         ${view === "risk" && html`<${window.RiskView} selectedRunId=${selectedRunId} />`}
+        ${view === "manual" && html`<${window.ManualView} />`}
       </main>
 
       <${window.TweaksPanel} title="Tweaks">
