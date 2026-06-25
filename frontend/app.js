@@ -184,7 +184,7 @@ function App() {
     trades: ["Trades / Orders", "Filterable order and trade ledger"],
     compare: ["Compare Runs", "Aligned equity comparison across saved runs"],
     metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
-    progress: ["進度 / Progress", "Git timeline and branch status board"],
+    progress: ["進度 / Progress", "Per-workstream milestone progress"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
     manual: ["使用手冊", "架構、驗證、風控與設定來源"],
   };
