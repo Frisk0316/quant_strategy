@@ -77,40 +77,54 @@ def _interesting_doc(path: str) -> bool:
     )
 
 
-def _commit_branch(repo_dir: Path, sha: str) -> str:
+def _branch_names(repo_dir: Path, shas: list[str]) -> dict[str, str]:
+    """Map each sha to its nearest local-branch name in one name-rev call.
+
+    name-rev walks the commit graph once regardless of how many shas it names,
+    so batching all 60 timeline shas costs ~the same as naming one.
+    """
+    if not shas:
+        return {}
     try:
-        name = _run_git(repo_dir, ["name-rev", "--name-only", "--refs=refs/heads/*", sha])
+        names = _run_git(repo_dir, ["name-rev", "--name-only", "--refs=refs/heads/*", *shas]).splitlines()
     except (FileNotFoundError, subprocess.CalledProcessError):
-        return ""
-    return "" if name == "undefined" else name
+        return {}
+    return {sha: ("" if name == "undefined" else name) for sha, name in zip(shas, names)}
 
 
 def _timeline(repo_dir: Path) -> list[dict[str, Any]]:
+    # One `git log --name-only` carries commit fields AND changed files; one
+    # batched name-rev resolves branches. Replaces the old ~2 subprocesses per
+    # commit (diff-tree + name-rev) with 2 subprocesses total.
+    # The trailing %x1f after %B delimits the body from the appended file list
+    # (body never contains \x1f); records are split on the leading %x1e.
     raw = _run_git(
         repo_dir,
-        ["log", "--all", "-n", "60", "--date=iso-strict", "--format=%H%x1f%aI%x1f%s%x1f%B%x1e"],
+        ["log", "--all", "-n", "60", "--date=iso-strict", "--name-only",
+         "--format=%x1e%H%x1f%aI%x1f%s%x1f%B%x1f"],
     )
-    items = []
-    for record in raw.strip("\x1e").split("\x1e"):
-        if not record.strip():
+    rows = []
+    for chunk in raw.split("\x1e"):
+        if not chunk.strip():
             continue
-        parts = record.strip().split("\x1f", 3)
-        while len(parts) < 4:
-            parts.append("")
-        sha, date, subject, body = parts[:4]
-        try:
-            paths = _run_git(repo_dir, ["diff-tree", "--no-commit-id", "--name-only", "-r", sha]).splitlines()
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            paths = []
-        items.append({
+        fields = chunk.split("\x1f")
+        while len(fields) < 5:
+            fields.append("")
+        sha, date, subject, body, files_blob = fields[:5]
+        files = [line for line in files_blob.splitlines() if line.strip()]
+        rows.append((sha.strip(), date.strip(), subject, body, files))
+    branches = _branch_names(repo_dir, [sha for sha, *_ in rows])
+    return [
+        {
             "sha": sha[:12],
             "date": date,
             "actor": classify_actor(body),
-            "branch": _commit_branch(repo_dir, sha),
+            "branch": branches.get(sha, ""),
             "subject": subject,
-            "docs": [path for path in paths if _interesting_doc(path)],
-        })
-    return items
+            "docs": [path for path in files if _interesting_doc(path)],
+        }
+        for sha, date, subject, body, files in rows
+    ]
 
 
 def _branch_git(repo_dir: Path, branch: str, now: datetime) -> dict[str, Any]:
