@@ -876,6 +876,13 @@ When using Codex and Claude together, follow [docs/ai_collaboration.md](docs/ai_
 2. `research/strategy_synthesis.md` updated with any changed assumptions
 3. User explicit approval — neither AI can self-promote to live
 
+### Human Review Overview
+
+For multi-document AI-generated plans, start from
+[docs/review_index.md](docs/review_index.md). Human Review Overviews summarize
+what changed, what requires human decision, which source docs are must-read, and
+what remains unverified. They do not replace the source docs.
+
 ---
 
 ## Implementation Notes

@@ -245,6 +245,21 @@ Deployment readiness:
 | --- | --- | --- |
 | `daily_winner` | 驗證 DB 每日聚合、交易生成、metrics 與前端 artifact 串接 | 不得用於 live trading；顯示用成本來自合併 `cost_rate`（fee+slip 不分開），不可視為純手續費 PnL；validation 必須顯式指定 `wf`/`cpcv`/`both`，`validation=none` 不自動生成 WF/CPCV；trades 欄位非 ADR-0002 fills schema；1D 資料僅支援 Postgres（無 parquet fallback） |
 
+## Human Review Overview
+
+當 AI 產生的計畫或治理工作一次牽涉多份 source docs 時，agent 必須在
+`docs/human_overviews/` 新增或更新一份 Human Review Overview。
+
+這份 overview 是給人類看的決策與審核入口，必須列出 source docs、風險等級、需要
+人類拍板的決策點、不能只看摘要的必讀章節、AI 尚未驗證的 unknowns，以及測試 /
+doc impact / schema 驗證狀態。
+
+overview **不取代 source docs**。若兩者衝突，以 source docs 為準，且 overview 必須
+把衝突講出來。何時必須建立、責任分工與優先順序的完整規則見
+[`AI_OUTPUT_CONTRACT.md`](AI_OUTPUT_CONTRACT.md)；總索引見
+[`review_index.md`](review_index.md)；格式檢查為
+`python scripts/docs/check_human_overview.py`。
+
 ## 最小完成定義
 
 一個 AI 任務完成時，至少應留下：
