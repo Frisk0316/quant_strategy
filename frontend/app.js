@@ -29,6 +29,7 @@ function NavGlyph({ kind }) {
     case "risk": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M8 1.5l6 2.5v4c0 3.5-2.5 6-6 7-3.5-1-6-3.5-6-7v-4l6-2.5z"/></svg>`;
     case "backtest": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><rect x="1.5" y="2" width="13" height="9" rx="1.5"/><path d="M4 13h8M8 11v2"/><path d="M5 6l2 2 4-3"/></svg>`;
     case "manual": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M3 2.5h7a2 2 0 0 1 2 2v9H5a2 2 0 0 0-2 2z"/><path d="M5 5.5h4M5 8h4"/></svg>`;
+    case "progress": return html`<svg class="nav-glyph" viewBox="0 0 16 16" ...${common}><path d="M2.5 12.5h11"/><path d="M4 12V6.5M8 12V3.5M12 12V8"/><circle cx="4" cy="6.5" r="1"/><circle cx="8" cy="3.5" r="1"/><circle cx="12" cy="8" r="1"/></svg>`;
     default: return null;
   }
 }
@@ -169,6 +170,7 @@ function App() {
     { id: "validation", label: "Validation Lab", group: "Backtest", glyph: "validation" },
     { id: "compare", label: "Compare runs", group: "Analysis", glyph: "compare" },
     { id: "metrics", label: "Metrics Glossary", group: "Analysis", glyph: "metrics" },
+    { id: "progress", label: "進度 / Progress", group: "Analysis", glyph: "progress" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
     { id: "manual", label: "使用手冊", group: "Help", glyph: "manual" },
   ];
@@ -182,6 +184,7 @@ function App() {
     trades: ["Trades / Orders", "Filterable order and trade ledger"],
     compare: ["Compare Runs", "Aligned equity comparison across saved runs"],
     metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
+    progress: ["進度 / Progress", "Git timeline and branch status board"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
     manual: ["使用手冊", "架構、驗證、風控與設定來源"],
   };
@@ -269,6 +272,7 @@ function App() {
         ${view === "trades" && html`<${window.TradesView} selectedRunId=${selectedRunId} />`}
         ${view === "compare" && html`<${window.CompareView} selectedRunId=${selectedRunId} />`}
         ${view === "metrics" && html`<${window.MetricsGlossaryView} />`}
+        ${view === "progress" && html`<${window.ProgressView} />`}
         ${view === "risk" && html`<${window.RiskView} selectedRunId=${selectedRunId} />`}
         ${view === "manual" && html`<${window.ManualView} />`}
       </main>

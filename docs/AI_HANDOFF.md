@@ -22,6 +22,45 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-25 Codex follow-up (manual completion + standalone Progress route):
+`scripts/run_server.py` now includes `/api/progress` after Claude/user approval.
+Manual chapters `docs/manual/00-architecture.md` through
+`docs/manual/80-glossary.md` were rewritten into readable Traditional Chinese
+summaries from existing project docs, and `docs/manual/manual.json` now marks all
+chapters as `written`. Scope is documentation/read-only API surface only: no
+research files, strategy behavior, config gates, risk rules, live/shadow/demo
+behavior, or result artifacts changed.
+
+2026-06-25 Codex follow-up (read-only Progress panel): added `/api/progress`
+and the `進度 / Progress` Analysis nav panel. The route reads local git metadata,
+`STATUS.md`, and linked plan checkboxes only; no DB, network, write endpoint,
+strategy, risk, config gate, deployment, or result-artifact behavior changed.
+`STATUS.md` seeds the branch board. Checks run: `tests/unit/test_routes_progress.py`
+passed, frontend JS syntax checks passed via direct `node --check` commands
+because `make` is unavailable in this Windows shell, `api_smoke.py` skipped
+cleanly without `API_BASE_URL`, and docs metadata/feature-map link checks passed
+with existing metadata warnings.
+
+2026-06-25 Codex follow-up (pipeline batch 1 Stage 3/refit checkpoint after
+data repair): Binance canonical data is complete for S6/S7 over `2024-01-01`
+through `2026-06-16 23:59 UTC`: `BTC-USDT-SWAP`, `ETH-USDT-SWAP`,
+`BTC-USDT`, and `ETH-USDT` each have 1,293,120 1m rows with 0 gaps, and
+BTC/ETH perp funding each has 2,694 rows. ETH perp was loaded with
+`scripts/download_binance_data.py`; ETH funding was loaded with
+`scripts/market_data/ingest.py` after fixing Binance funding windowing and
+legacy `funding_rates` mirroring. The old S5/S6 summaries are superseded because
+they used a non-refitting WF/CPCV harness. New fold-refit artifacts are under
+`results/pipeline_batch1_20260625_refit/`: S6 has WF OOS Sharpe 0.0088, CPCV
+OOS Sharpe 0.5422, DSR 0.1963, PSR 0.7387, `statistical_gate_passed:false`, so
+adapter/ct_val work should not start. S5 reran with ETH factor data but current
+point-in-time membership plus venue-scoped candle coverage produces
+`nonzero_grid_activity:false`, so it is a data-universe artifact, not support or
+refutation. S7 (`results/pipeline_batch1_20260625/s7/summary.json`) reran with a
+non-degenerate finite half-life grid and is `shelved_pending_research_review`
+(WF -0.4359, CPCV -1.1124, DSR/PSR ~0), not refuted from the prior all-zero
+no-trade artifact. No first-batch strategy is promotion evidence or
+live/demo/shadow ready.
+
 2026-06-25 Codex follow-up (Strategy Research Pipeline Stage 1): Claude brainstormed
 + planned a semi-autonomous strategy-research pipeline so one kickoff runs backlog
 candidates through 文獻→假設 → 可行性 → 實作+回測, stops at one Claude evidence

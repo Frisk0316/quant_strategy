@@ -103,6 +103,23 @@ implementation exists.
   change strategy, risk, portfolio, execution, config, result artifacts, or
   live/demo/shadow gates for this feature.
 
+## Progress Panel
+
+- User-facing behavior: browse a read-only git-derived progress timeline and
+  per-branch status cards from the Analysis nav group.
+- Frontend files: `frontend/app.js`, `frontend/index.html`,
+  `frontend/view-progress.js`, `frontend/data.js`, `frontend/styles.css`.
+- Backend/API files: `src/okx_quant/api/routes_progress.py`,
+  `src/okx_quant/api/server.py`.
+- Data / docs files: `STATUS.md` plus local git metadata; linked plan files are
+  counted for checkbox progress only.
+- Tests: `tests/unit/test_routes_progress.py`, `make frontend-check`,
+  `make api-smoke`.
+- Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`.
+- Do-not-touch notes: progress is ops/meta read-only; do not change DB schema,
+  strategy, risk, portfolio, execution, config gates, or result artifacts.
+
 ## Indicator Series / Indicator Chart
 
 - User-facing behavior: technical-indicator runs display per-symbol price plus
@@ -240,6 +257,39 @@ implementation exists.
 - Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
   do not claim live, demo, shadow, or promotion readiness until WF/CPCV,
   DSR/PSR, source parity, funding accounting, and human approval are complete.
+
+## Pipeline Batch 1 Research Candidates
+
+- User-facing behavior: disabled-by-default research candidate scaffolds for S5
+  residual mean reversion, S6 slow time-series momentum, and S7 perp-vs-spot
+  basis mean reversion. These are checkpoint artifacts only, not UI/API
+  promotion surfaces.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/s5_residual_meanrev_backtest.py`,
+  `backtesting/s6_ts_momentum_backtest.py`,
+  `backtesting/s7_basis_meanrev_backtest.py`,
+  `backtesting/differential_validation.py` contract entries,
+  `scripts/run_pipeline_batch1_checkpoint.py`.
+- Data / DB / artifact files: consumes venue-scoped Binance canonical
+  `canonical_candles` and `funding_rates`; generated checkpoint summaries live
+  under `results/pipeline_batch1_20260625/`. Binance S6/S7 data is loaded for
+  BTC/ETH perps and BTC/ETH spot (1m OHLCV) plus BTC/ETH perp funding. S6 is
+  statistical-pass but promotion-blocked; S7 is non-passing/refuted.
+- Config files: `config/strategies.yaml`, `config/universe.yaml`.
+- Strategy / portfolio files: `src/okx_quant/strategies/s5_residual_meanrev.py`,
+  `src/okx_quant/strategies/s6_ts_momentum.py`,
+  `src/okx_quant/strategies/s7_basis_meanrev.py`.
+- Tests: `tests/unit/test_s5_residual_meanrev_backtest.py`,
+  `tests/unit/test_s6_ts_momentum_backtest.py`,
+  `tests/unit/test_s7_basis_meanrev_backtest.py`,
+  `tests/unit/test_pipeline_batch1_contracts.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`, `docs/KNOWN_ISSUES.md`,
+  `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, relevant Change Manifest.
+- Do-not-touch notes: keep entries `enabled:false`; do not wire to UI/API,
+  demo/shadow/live gates, risk/portfolio/execution, or promotion until
+  source parity, portable validation, ct_val provenance, WF/CPCV gates, and
+  human approval are complete.
 
 ## Strategy Registry / Strategy Selection
 

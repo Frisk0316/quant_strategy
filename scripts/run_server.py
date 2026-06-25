@@ -23,6 +23,7 @@ import uvicorn
 from okx_quant.api.routes_backtest import make_backtest_router
 from okx_quant.api.routes_config import make_config_router
 from okx_quant.api.routes_data import make_data_router
+from okx_quant.api.routes_progress import make_progress_router
 from okx_quant.core.config import load_config
 
 
@@ -45,6 +46,7 @@ def create_app(results_dir: Path, frontend_dir: Path) -> FastAPI:
     app.include_router(make_backtest_router(results_dir), prefix="/api/backtest", tags=["backtest"])
     app.include_router(make_config_router(), prefix="/api", tags=["config"])
     app.include_router(make_data_router(_db_dsn()), prefix="/api/data", tags=["data"])
+    app.include_router(make_progress_router(PROJECT_ROOT), prefix="/api/progress", tags=["progress"])
 
     @app.get("/api/live/status")
     def live_status():

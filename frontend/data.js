@@ -406,6 +406,7 @@ window.API = (function () {
       if (!r.ok) throw new Error(payload.detail || ("HTTP " + r.status));
       return payload;
     },
+    fetchProgress:            ()        => _get("/api/progress"),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),

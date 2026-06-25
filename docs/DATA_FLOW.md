@@ -227,6 +227,18 @@ The Backtest Risk tab loads `signals`, `fills`, and `risk-events` together. It
 uses the selected chart symbols to show whether sparse trading came from few
 strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
 
+## Progress Panel Flow
+
+```text
+local git metadata + STATUS.md + linked plan checkboxes -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
+```
+
+Current: the Progress panel is a read-only operations surface. It does not read
+from DB, call the network, write repository state, alter strategy/config/gate
+behavior, or modify result artifacts. If git is unavailable or the directory is
+not a repository, the route returns HTTP 200 with an `error` field so the panel
+can show an unavailable state.
+
 ## Validation Artifact Flow
 
 ```text

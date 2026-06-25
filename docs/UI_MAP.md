@@ -29,6 +29,8 @@ Main app views in `frontend/app.js`:
 - `validation`: `window.ValidationLabView` from `frontend/view-validation.js`.
 - `wf` / `cpcv`: walk-forward and CPCV panels from `frontend/view-results.js`.
 - `trades`, `compare`, `metrics`, and `risk`: secondary review views.
+- `progress`: read-only git timeline and branch status board from
+  `frontend/view-progress.js`.
 
 ## Backtest View
 
@@ -96,6 +98,18 @@ Main app views in `frontend/app.js`:
 - Backtest metric cards are rendered from result metrics in `frontend/view-backtest.js`
   and summary panels in `frontend/view-results.js`.
 
+## Progress Panel
+
+- `frontend/view-progress.js` owns the `進度 / Progress` view in the Analysis nav
+  group.
+- It calls `GET /api/progress` through `window.API.fetchProgress`.
+- The panel renders commit timeline rows colored by actor and branch cards from
+  `STATUS.md`; task bars are derived from checkboxes in linked plan files.
+- Backend endpoints are implemented in `src/okx_quant/api/routes_progress.py` and
+  registered in `src/okx_quant/api/server.py` before the static file mount.
+- The route is read-only and uses local git plus `STATUS.md`; it does not use DB,
+  network, write endpoints, or trading-core code.
+
 ## User Manual
 
 - `frontend/view-manual.js` owns the 使用手冊 view in the Help nav group.
@@ -135,6 +149,7 @@ Main app views in `frontend/app.js`:
 - `cancelDataFetch`: `POST /api/data/fetch/cancel/{job_id}`.
 - `fetch manual manifest/chapter`: `GET /api/manual`,
   `GET /api/manual/{slug}`.
+- `fetchProgress`: `GET /api/progress`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
 cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh

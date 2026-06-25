@@ -1,42 +1,33 @@
-# 回測與驗證 gate
+# 回測與驗證 Gate
 
-這章解釋：為什麼一個「回測很漂亮」的策略**還不能**上線。本專案把過擬合當成頭號敵
-人，所以在回測與上線之間放了一串 gate。這章講每個 gate 的**意義與理由**；精確門檻與
-硬規則以 `docs/ai_collaboration.md` 為準（連結在最後）。
+回測結果要能被引用，必須有可追溯 artifact，並清楚標示驗證狀態。單次漂亮績效不是 edge evidence。
 
-## 為什麼需要 gate
+## 常見 Gate
 
-歷史回測只證明「這組參數在過去這段資料上看起來賺錢」。在大量嘗試下，純靠運氣也能挑
-出漂亮曲線。gate 的目的是把「真 edge」和「過擬合的幻覺」分開。
+| Gate | 說明 |
+| --- | --- |
+| Replay backtest | 使用 replay engine 產生 price、equity、fills、result artifacts |
+| Walk-forward | 依時間切 train/test，檢查 OOS 表現 |
+| CPCV | Combinatorial Purged Cross-Validation，用 purge/embargo 降低 leakage |
+| DSR / PSR | 檢查 Sharpe 是否仍能承受多次嘗試與統計不確定性 |
+| honest `n_trials` | 人工調參、grid sweep、未保留 artifact 的嘗試都要算入 |
+| differential validation | 用 reference engine 交叉檢查 signal logic |
+| source data validation | 檢查 artifact 資料來源、DB parity、funding/external observations |
+| `ct_val` provenance | SWAP 回測必須知道 contract value 來源是否 authoritative |
 
-## 各 gate 的意義
+## 不可當作 promotion evidence
 
-| Gate | 在防什麼 | 為什麼重要 |
-|---|---|---|
-| **Replay 引擎** | 用事件驅動 replay（含 maker 費、滑價、部分成交、取消延遲）取代理想化撮合 | 理想化成交會高估 edge；replay 逼近真實執行 |
-| **Walk-forward** | 非重疊 IS/OOS 視窗滾動 | 證明參數不是只 fit 單一區間 |
-| **CPCV** | Combinatorial Purged Cross-Validation（López de Prado） | 多路徑 OOS + purge/embargo，擋 train/test 洩漏 |
-| **DSR / PSR** | Deflated / Probabilistic Sharpe Ratio | 依「嘗試次數」對 Sharpe 打折，懲罰大海撈針 |
-| **honest `n_trials`** | DSR 必須餵入**誠實**的嘗試次數（按假設家族累計，非單次 grid 數） | 低報 `n_trials` 會灌水 DSR，讓假 edge 過關 |
-| **idealized-fill 排除** | `fill_all_signals` / `strategy_fill` 等理想化成交產物 | 這類產物是 capacity/敏感度工具，**不得**當 edge 證據 |
-| **differential validation** | 用外部 reference 引擎（vectorbt/backtrader）重核訊號邏輯 | 抓「實作把策略做歪」的 bug |
-| **ct_val provenance** | SWAP 的合約乘數必須來自權威來源（DB/交易所結構性恆等） | ct_val 是 PnL/notional/funding/margin 的線性乘子，錯了 PnL 偏差可達 10–1000 倍 |
+- `validation_status: in_sample`
+- `validation_status: naive_backtest`
+- `fill_all_signals: true`
+- `idealized_fill: true`
+- `execution_profile: strategy_fill`
+- `execution_profile: dual_output`
+- 任何 skip 的 validation check
 
-> **核心觀念（honest `n_trials`）**：在誠實計數下，沒有真 edge 的想法期望通過數 ≈ 0；
-> 有真 edge 的想法期望嘗試 ≈ 1/(真 edge 基率)。真正的槓桿是**先驗品質**，不是試更多
-> 次。把重試假裝成「新家族」來繞過計數，就是降標準。
+## 使用者檢查順序
 
-## 「驗證通過」不等於「可上線」
-
-即使 CPCV/DSR 過了，仍要經過 replay/shadow、demo、人類批准等**部署 gate**（見「部署
-階段 gate」章）。本手冊與引擎都**不會**自動把策略推上線——上線是使用者的決定。
-
-## 真值來源 / 延伸閱讀
-
-- 回測正確性 Gate、部署 Gate、ct_val 來源檢查、differential validation 的精確條文：
-  `docs/ai_collaboration.md`。
-- DSR/PSR 的程式介面與門檻：`README.md`（Replay Validation 段落）、`analytics/dsr.py`。
-- 不變量與失敗模式：`docs/INVARIANTS.md`、`docs/FAILURE_MODES.md`。
-
-> 本章只解釋「為什麼」。任何數字門檻（例如 DSR/PSR ≥ 0.95）與硬規則以
-> `docs/ai_collaboration.md` 為準。
+1. 看 `result.json` 的 `validation_status`、`validation`、`execution_profile`。
+2. 看 Validation Lab 或 validation artifact 的 pass/fail/skip。
+3. 看 `docs/AI_HANDOFF.md` 與 `docs/CURRENT_STATE.md` 是否仍列阻擋項。
+4. 若要往 demo/shadow/live，回到 `docs/ai_collaboration.md` 的部署 Gate。

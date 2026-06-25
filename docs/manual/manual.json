@@ -1,14 +1,14 @@
 {
-  "title": "使用手冊",
+  "title": "使用者手冊",
   "chapters": [
-    { "slug": "architecture", "title": "系統架構總覽", "file": "00-architecture.md", "status": "written" },
-    { "slug": "backtest-validation", "title": "回測與驗證 gate", "file": "10-backtest-validation.md", "status": "written" },
-    { "slug": "strategies", "title": "策略與其參數", "file": "20-strategies.md", "status": "written" },
+    { "slug": "architecture", "title": "系統架構", "file": "00-architecture.md", "status": "written" },
+    { "slug": "backtest-validation", "title": "回測與驗證 Gate", "file": "10-backtest-validation.md", "status": "written" },
+    { "slug": "strategies", "title": "策略與參數", "file": "20-strategies.md", "status": "written" },
     { "slug": "risk-limits", "title": "風控限制", "file": "30-risk-limits.md", "status": "written" },
-    { "slug": "data-pipeline", "title": "資料管線", "file": "40-data-pipeline.md", "status": "stub" },
-    { "slug": "deployment-gates", "title": "部署階段 gate", "file": "50-deployment-gates.md", "status": "stub" },
-    { "slug": "frontend-views", "title": "前端各頁說明", "file": "60-frontend-views.md", "status": "stub" },
-    { "slug": "config-files", "title": "設定檔總覽", "file": "70-config-files.md", "status": "stub" },
-    { "slug": "glossary", "title": "名詞對照", "file": "80-glossary.md", "status": "stub" }
+    { "slug": "data-pipeline", "title": "資料管線", "file": "40-data-pipeline.md", "status": "written" },
+    { "slug": "deployment-gates", "title": "部署 Gate", "file": "50-deployment-gates.md", "status": "written" },
+    { "slug": "frontend-views", "title": "前端頁面導覽", "file": "60-frontend-views.md", "status": "written" },
+    { "slug": "config-files", "title": "設定檔對照", "file": "70-config-files.md", "status": "written" },
+    { "slug": "glossary", "title": "名詞對照", "file": "80-glossary.md", "status": "written" }
   ]
 }

@@ -20,6 +20,32 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **User manual completion (2026-06-25, Codex):** manual chapters
+  `00-architecture` through `80-glossary` are now readable Traditional Chinese
+  summaries and declared `written` in `docs/manual/manual.json`. The content
+  summarizes existing docs only; no research files, strategy behavior, config
+  gates, risk rules, deployment behavior, or result artifacts changed.
+
+- **Read-only Progress panel (2026-06-25, Codex):** `/api/progress` and the
+  `進度 / Progress` Analysis nav panel show a git-derived timeline plus
+  `STATUS.md` branch cards. The route is local/read-only: git metadata,
+  `STATUS.md`, and linked plan checkboxes only; no DB/network/write path and no
+  trading-core, config-gate, deployment, or result-artifact change.
+- **Pipeline batch 1 Stage 3/refit checkpoint (2026-06-25, Codex):** Binance
+  canonical data is complete for S6/S7 over `2024-01-01` through
+  `2026-06-16 23:59 UTC`: BTC/ETH perps and BTC/ETH spot each have 1,293,120 1m
+  rows with 0 gaps; BTC/ETH perp funding each has 2,694 rows. The defective
+  full-sample-select-then-slice harness is superseded by fold-refit validation
+  (`backtesting/pipeline_refit.py`, I24/F22). New S5/S6 artifacts are under
+  `results/pipeline_batch1_20260625_refit/`: S6 has WF OOS Sharpe 0.0088, CPCV
+  OOS Sharpe 0.5422, DSR 0.1963, PSR 0.7387, `statistical_gate_passed:false`;
+  do **not** start adapter/ct_val work. S5 reran with ETH factor data but current
+  point-in-time membership plus venue-scoped candle coverage produces
+  `nonzero_grid_activity:false`, so it is a data-universe artifact, not a
+  strategy verdict. S7 was rerun with a non-degenerate finite half-life grid and
+  is `shelved_pending_research_review` (WF -0.4359, CPCV -1.1124, DSR/PSR ~0),
+  not refuted from the prior all-zero no-trade artifact. No strategy is
+  promotion-ready or live/demo/shadow ready.
 - **Strategy Research Pipeline Stage 1 machinery (2026-06-25, Codex):** spec
   `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md` and
   plan `docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`

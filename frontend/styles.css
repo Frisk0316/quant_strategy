@@ -31,8 +31,8 @@
   --gap: 16px;
   --gap-lg: 24px;
 
-  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --font-ui: "Inter", "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", "Heiti TC", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Microsoft JhengHei", ui-monospace, Menlo, monospace;
 }
 
 [data-theme="dark"] {
