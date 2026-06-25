@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-24
+last_reviewed: 2026-06-25
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,26 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-06-25 Codex follow-up (Strategy Research Pipeline Stage 1): Claude brainstormed
++ planned a semi-autonomous strategy-research pipeline so one kickoff runs backlog
+candidates through 文獻→假設 → 可行性 → 實作+回測, stops at one Claude evidence
+review, and emits a shortlist (publish stays the user's call). Spec
+`docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md`, plan
+`docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`, driver +
+stage templates under `docs/superpowers/pipeline/`. Decisions: backlog source,
+single manual checkpoint, **per-family cumulative `n_trials`** (K=2 retry limit),
+two-pass backtest (parquet pre-screen → DB CPCV), publish = `enabled:false`
+candidate (never touches demo/shadow/live gates). Codex completed Task 1
+code/tests and Tasks 2-4 docs: `scan_xs_momentum` accepts
+`prior_family_n_trials`, records family-cumulative `attrs["n_trials"]`, and the
+Stage 3 template requires passing the family count into CPCV. The generic
+validation runner already passes caller-provided `n_trials` into
+`CPCV.evaluate()`. Family trial-accounting docs, invariant I23, Change Manifest
+`docs/change_manifests/2026-06-25-family-cumulative-n-trials.md`, driver,
+three stage templates, and shortlist template are in place. First batch when run
+= [S7, S5, S6]. Nothing run yet; no strategy promotion, result artifact value,
+config, or demo/shadow/live gate changed.
 
 2026-06-24 Results cleanup (user-approved): all pre-6/18 `results/` artifacts were
 deleted to declutter — scratch runs (smoke/test/verify/sweep/old-UI + old PNGs)

@@ -12,6 +12,16 @@ Deflated Sharpe Ratio checks before promotion.
 > retained as archival research context only; all remaining active strategies
 > still require portable validation before any promotion claim.
 
+> 2026-06-25 Stage 1 pipeline note: the unimplemented in-scope candidates
+> Strategy 7 Basis Z-Score Mean Reversion (`S7`), Strategy 5 Crypto Factor
+> Residual Basket (`S5`), and Strategy 6 Slow Time-Series Momentum Overlay
+> (`S6`) are the Strategy Research Pipeline first batch in order [S7, S5, S6].
+> Spec: `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md`;
+> plan: `docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`;
+> driver/templates: `docs/superpowers/pipeline/`. The pipeline has not been run.
+> Before CPCV, it must use family-cumulative `n_trials` from
+> `docs/HYPOTHESIS_LEDGER.md` and `docs/EXPERIMENT_REGISTRY.md`.
+
 ## Strategy 1: Multi-Level OFI Maker Skew
 
 - **Theoretical basis:** Glosten and Milgrom 1985; Cont, Kukanov and Stoikov

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-24
+last_reviewed: 2026-06-25
 expires: none
 superseded_by: null
 ---
@@ -20,6 +20,15 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Strategy Research Pipeline Stage 1 machinery (2026-06-25, Codex):** spec
+  `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md` and
+  plan `docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`
+  now have the minimal driver/templates under `docs/superpowers/pipeline/`.
+  `scan_xs_momentum` accepts `prior_family_n_trials` and reports
+  family-cumulative `n_trials`; the ledgers define family trial accounting and
+  I23. The machinery has **not** been run; first batch remains [S7, S5, S6]. No
+  strategy promotion, config, result artifact values, or demo/shadow/live gates
+  changed.
 - **Results cleanup (2026-06-24, user-approved):** all pre-6/18 `results/`
   artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
   `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,

@@ -93,9 +93,11 @@ def scan_xs_momentum(
     params: XSMomentumParams,
     grid: dict[str, list[Any]],
     market_close: pd.Series | None = None,
+    prior_family_n_trials: int = 0,
 ) -> pd.DataFrame:
     keys = list(grid)
     combos = [dict(zip(keys, values)) for values in product(*(grid[key] for key in keys))]
+    total_n_trials = int(prior_family_n_trials) + len(combos)
     rows = []
     param_fields = set(XSMomentumParams.__dataclass_fields__)
     for combo in combos:
@@ -110,9 +112,9 @@ def scan_xs_momentum(
             run_params,
             market_close=market_close,
         )
-        rows.append({**combo, "n_trials": len(combos), **result.metrics})
+        rows.append({**combo, "n_trials": total_n_trials, **result.metrics})
     out = pd.DataFrame(rows)
-    out.attrs["n_trials"] = len(combos)
+    out.attrs["n_trials"] = total_n_trials
     return out
 
 

@@ -73,6 +73,42 @@ def test_scan_xs_momentum_records_honest_n_trials():
     assert set(result["n_trials"]) == {16}
 
 
+def test_scan_adds_prior_family_trials_to_n_trials():
+    from backtesting.xs_momentum_backtest import scan_xs_momentum
+
+    close, high, low, vol, funding, membership = _panels()
+    params = XSMomentumParams(
+        universe=list(close.columns),
+        rebalance="daily",
+        lookback_days=1,
+        vol_window_days=2,
+        quantile=0.5,
+        max_name_weight=1.0,
+        vol_target_annual=10.0,
+    )
+
+    result = scan_xs_momentum(
+        close,
+        high,
+        low,
+        vol,
+        funding,
+        membership,
+        params,
+        grid={
+            "lookback_days": [1, 2],
+            "skip_days": [0],
+            "quantile": [0.25, 0.5],
+            "vol_target_annual": [0.1, 0.2],
+            "top_n": [2, 3],
+        },
+        prior_family_n_trials=10,
+    )
+
+    assert result.attrs["n_trials"] == 26
+    assert set(result["n_trials"]) == {26}
+
+
 def test_backtest_passes_market_close_to_crash_filter():
     from backtesting.xs_momentum_backtest import run_xs_momentum_backtest
 

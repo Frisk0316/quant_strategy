@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-25
 expires: none
 superseded_by: null
 ---
@@ -42,6 +42,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I20 | Universe membership is point-in-time: no symbol is eligible before listing plus warmup, and ended candle history is not forward-filled into later eligibility | R6.1 | `tests/unit/test_universe_membership.py` |
 | I21 | DSR is computed on the same per-observation return basis as PSR(0), and `DSR <= PSR(0)` for the same series when `n_trials > 1` | R7.4 | `tests/unit/test_dsr.py`, `tests/unit/test_cpcv.py` |
 | I22 | XS momentum portfolio-vol targeting sizes gross from estimated book volatility and enforces the max-gross cap | R4.4 | `tests/unit/test_xs_momentum.py::test_vol_target_uses_portfolio_book_vol_and_cap` |
+| I23 | Candidate CPCV `n_trials` must be at least the family-cumulative trial count recorded in `docs/EXPERIMENT_REGISTRY.md`; a per-run grid count alone is a violation | R6.3, R7.4 | `tests/unit/test_xs_momentum_backtest.py::test_scan_adds_prior_family_trials_to_n_trials`; review of `backtesting.replay.run_replay_validations` caller-provided `n_trials` passthrough |
 
 ## Usage
 
