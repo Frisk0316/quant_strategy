@@ -2,101 +2,83 @@ import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { html } from 'htm/preact';
 
-const ACTOR_CLASS = { you: "accent", claude: "warn", codex: "ok" };
-const ACTOR_COLOR = { you: "var(--accent)", claude: "var(--warn)", codex: "var(--profit)" };
+const STATUS_CHIP = { active: "accent", blocked: "bad", done: "ok", shelved: "" };
 
-function fmtDate(value) {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function fmtAge(days) {
-  if (days == null) return "-";
-  if (days === 0) return "today";
-  return `${days}d`;
-}
-
-function chipClass(value) {
-  const text = String(value || "").toLowerCase();
-  if (text.includes("done")) return "ok";
-  if (text.includes("blocked") || text.includes("stale")) return "bad";
-  if (text.includes("waiting")) return "warn";
-  return "accent";
-}
-
-function TimelineItem({ item }) {
-  const docs = item.docs || [];
+function Stepper({ milestones, status }) {
   return html`
-    <div style=${{ display: "grid", gridTemplateColumns: "18px minmax(0, 1fr)", gap: 12 }}>
-      <div style=${{ display: "grid", justifyItems: "center" }}>
-        <span style=${{
-          width: 10,
-          height: 10,
-          borderRadius: 999,
-          marginTop: 4,
-          background: ACTOR_COLOR[item.actor] || "var(--text-subtle)",
-        }}></span>
-        <span style=${{ width: 1, minHeight: 54, background: "var(--border)", marginTop: 4 }}></span>
-      </div>
-      <div style=${{ minWidth: 0, paddingBottom: 12 }}>
-        <div class="between" style=${{ alignItems: "flex-start" }}>
-          <div style=${{ minWidth: 0 }}>
-            <div style=${{ fontWeight: 600, overflowWrap: "anywhere" }}>${item.subject || "(no subject)"}</div>
-            <div class="mono" style=${{ color: "var(--text-subtle)", fontSize: 11, marginTop: 3, overflowWrap: "anywhere" }}>
-              ${item.sha} · ${item.branch || "branch?"} · ${fmtDate(item.date)}
+    <div class="row wrap" style=${{ gap: 0, alignItems: "flex-start" }}>
+      ${milestones.map((m, i) => {
+        const isDone = m.state === "done";
+        const isCurrent = m.state === "current";
+        const color = isDone
+          ? "var(--profit)"
+          : isCurrent
+            ? (status === "blocked" ? "var(--loss, #e5484d)" : "var(--accent)")
+            : "var(--border)";
+        const filled = isDone || isCurrent;
+        const glyph = isDone ? "✓" : isCurrent ? "•" : "";
+        return html`
+          <div key=${m.name} class="row" style=${{ gap: 0, alignItems: "center" }}>
+            ${i > 0 && html`<span style=${{ width: 16, height: 2, background: "var(--border)", marginTop: -14 }}></span>`}
+            <div class="col" style=${{ alignItems: "center", gap: 3, width: 64 }}>
+              <span style=${{
+                width: 18, height: 18, borderRadius: 999, display: "grid", placeItems: "center",
+                fontSize: 11, lineHeight: 1,
+                color: filled ? "#fff" : "var(--text-subtle)",
+                background: filled ? color : "transparent",
+                border: `1px solid ${color}`,
+              }}>${glyph}</span>
+              <span class="mono" style=${{
+                fontSize: 10, textAlign: "center", overflowWrap: "anywhere",
+                color: isCurrent ? "var(--text)" : "var(--text-subtle)",
+                fontWeight: isCurrent ? 600 : 400,
+              }}>${m.name}</span>
             </div>
           </div>
-          <span class=${`chip ${ACTOR_CLASS[item.actor] || ""}`}>${item.actor}</span>
-        </div>
-        ${docs.length ? html`
-          <div class="row wrap" style=${{ gap: 6, marginTop: 8 }}>
-            ${docs.slice(0, 6).map((doc) => html`<span key=${doc} class="chip" style=${{ textTransform: "none", overflowWrap: "anywhere" }}>${doc}</span>`)}
-            ${docs.length > 6 && html`<span class="chip">+${docs.length - 6}</span>`}
-          </div>
-        ` : null}
-      </div>
+        `;
+      })}
     </div>
   `;
 }
 
-function BranchCard({ branch }) {
-  const total = branch.tasks_total;
-  const done = branch.tasks_done || 0;
-  const pct = total ? Math.round((done / total) * 100) : 0;
+function WorkstreamCard({ ws }) {
+  if (ws.error) {
+    return html`
+      <div class="card">
+        <div class="card-h">
+          <div class="card-title" style=${{ overflowWrap: "anywhere" }}>${ws.name}</div>
+          <span class="chip bad">error</span>
+        </div>
+        <div class="empty">${ws.error}</div>
+      </div>
+    `;
+  }
+  const dim = ws.status === "shelved";
   return html`
-    <div class="card">
+    <div class="card" style=${{ opacity: dim ? 0.55 : 1 }}>
       <div class="card-h">
         <div style=${{ minWidth: 0 }}>
-          <div class="card-title" style=${{ overflowWrap: "anywhere" }}>${branch.branch}</div>
-          <div class="card-sub">${fmtAge(branch.age_days)} · ahead ${branch.ahead ?? "-"} / behind ${branch.behind ?? "-"}</div>
+          <div class="card-title" style=${{ overflowWrap: "anywhere" }}>${ws.name}</div>
+          ${ws.updated && html`<div class="card-sub">updated ${ws.updated}</div>`}
         </div>
-        <span class=${`chip ${chipClass(branch.state)}`}>${branch.state || "-"}</span>
+        <span class=${`chip ${STATUS_CHIP[ws.status] || ""}`}>${ws.status}</span>
       </div>
-      <div class="grid" style=${{ gap: 10 }}>
-        <div class="between">
-          <span class="metric-label">Turn</span>
-          <span class="mono" style=${{ fontSize: 12 }}>${branch.whose_turn || "-"}</span>
-        </div>
-        <div style=${{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.45, overflowWrap: "anywhere" }}>
-          ${branch.next || "-"}
-        </div>
-        ${total != null && html`
-          <div>
-            <div class="between" style=${{ marginBottom: 5 }}>
-              <span class="metric-label">Tasks</span>
-              <span class="mono" style=${{ fontSize: 11 }}>${done}/${total}</span>
-            </div>
-            <div class="bar"><i style=${{ width: `${pct}%` }}></i></div>
-          </div>
-        `}
-        ${branch.plan && html`
-          <a class="mono" href=${"/" + branch.plan} target="_blank" rel="noreferrer" style=${{ color: "var(--accent)", fontSize: 11, overflowWrap: "anywhere" }}>
-            ${branch.plan}
-          </a>
-        `}
-        ${branch.git_error && html`<div class="mono" style=${{ color: "var(--text-subtle)", fontSize: 10, overflowWrap: "anywhere" }}>${branch.git_error}</div>`}
+      <div class="grid" style=${{ gap: 12 }}>
+        <${Stepper} milestones=${ws.milestones || []} status=${ws.status} />
+        ${ws.state && html`
+          <div style=${{ fontSize: 13, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+            <span class="metric-label">state </span>${ws.state}
+          </div>`}
+        ${ws.next && html`
+          <div style=${{ fontSize: 13, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
+            <span class="metric-label">next </span>${ws.next}
+          </div>`}
+        ${ws.links && ws.links.length ? html`
+          <div class="row wrap" style=${{ gap: 6 }}>
+            ${ws.links.map((lnk) => html`
+              <a key=${lnk} class="chip" href=${"/" + lnk} target="_blank" rel="noreferrer"
+                 style=${{ textTransform: "none", overflowWrap: "anywhere" }}>${lnk}</a>`)}
+          </div>` : null}
       </div>
     </div>
   `;
@@ -114,70 +96,26 @@ function ProgressView() {
     return () => { alive = false; };
   }, []);
 
-  if (loadError) {
-    return html`<div class="card"><div class="empty">${loadError}</div></div>`;
-  }
-  if (!payload) {
-    return html`<div class="card"><div class="empty">Loading progress...</div></div>`;
-  }
-  if (payload.error) {
-    return html`<div class="card"><div class="empty">${payload.error}</div></div>`;
-  }
+  if (loadError) return html`<div class="card"><div class="empty">${loadError}</div></div>`;
+  if (!payload) return html`<div class="card"><div class="empty">Loading progress...</div></div>`;
+  if (payload.error) return html`<div class="card"><div class="empty">${payload.error}</div></div>`;
 
-  const timeline = payload.timeline || [];
-  const branches = payload.branches || [];
-  const attribution = payload.attribution || {};
+  const workstreams = payload.workstreams || [];
+  const countBy = (s) => workstreams.filter((w) => w.status === s).length;
 
   return html`
     <div class="col" style=${{ gap: "var(--gap-lg)" }}>
-      <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        <div class="kpi">
-          <div class="kpi-label">Branch</div>
-          <div class="kpi-value" style=${{ fontSize: 18, overflowWrap: "anywhere" }}>${payload.current_branch || "-"}</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Timeline</div>
-          <div class="kpi-value">${timeline.length}</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Branches</div>
-          <div class="kpi-value">${branches.length}</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Attribution</div>
-          <div class="row wrap" style=${{ gap: 6 }}>
-            ${["you", "claude", "codex"].map((actor) => html`
-              <span key=${actor} class=${`chip ${ACTOR_CLASS[actor]}`}>${actor}: ${attribution[actor] ?? 0}</span>
-            `)}
-          </div>
-        </div>
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+        <div class="kpi"><div class="kpi-label">Workstreams</div><div class="kpi-value">${workstreams.length}</div></div>
+        <div class="kpi"><div class="kpi-label">Active</div><div class="kpi-value">${countBy("active")}</div></div>
+        <div class="kpi"><div class="kpi-label">Blocked</div><div class="kpi-value">${countBy("blocked")}</div></div>
+        <div class="kpi"><div class="kpi-label">Done</div><div class="kpi-value">${countBy("done")}</div></div>
       </div>
-
-      <div class="card">
-        <div class="card-h">
-          <div>
-            <div class="card-title">Timeline</div>
-            <div class="card-sub">generated ${fmtDate(payload.generated_at)}</div>
-          </div>
-        </div>
-        <div class="grid" style=${{ gap: 0 }}>
-          ${timeline.length
-            ? timeline.map((item) => html`<${TimelineItem} key=${item.sha} item=${item} />`)
-            : html`<div class="empty">No commits found</div>`}
-        </div>
+      <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+        ${workstreams.length
+          ? workstreams.map((ws) => html`<${WorkstreamCard} key=${ws.name} ws=${ws} />`)
+          : html`<div class="card"><div class="empty">No workstreams in config/workstreams.yaml</div></div>`}
       </div>
-
-      <section>
-        <div class="section-h">
-          <h2>Branches</h2>
-          <div class="section-sub">${branches.length} tracked</div>
-        </div>
-        <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-          ${branches.length
-            ? branches.map((branch) => html`<${BranchCard} key=${branch.branch} branch=${branch} />`)
-            : html`<div class="card"><div class="empty">No branch rows in STATUS.md</div></div>`}
-        </div>
-      </section>
     </div>
   `;
 }
