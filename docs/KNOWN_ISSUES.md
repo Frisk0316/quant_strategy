@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-24
+last_reviewed: 2026-06-25
 expires: none
 superseded_by: null
 ---
@@ -85,6 +85,17 @@ over time.
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact still
   records the pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as
   PASS.
+- Pipeline batch 1's `ETH-USDT-SWAP` data blocker was resolved on 2026-06-25:
+  Binance `ETH-USDT-SWAP` canonical 1m OHLCV now covers 2024-01-01 through
+  2026-06-16 23:59 UTC with 1,293,120 rows and 0 gaps, and Binance funding has
+  2,694 rows. The remaining gap is validation quality, not data availability:
+  S6 did not re-earn the statistical gate on the fold-refit harness, so portable
+  validation adapters and authoritative ct_val evidence must not start for S6.
+  S7 is shelved after a non-degenerate half-life rerun. S5 has a separate
+  point-in-time universe/canonical coverage mismatch: the current membership
+  artifact plus strict venue-scoped complete-window candle coverage produces
+  `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
+  artifact rather than a strategy verdict.
 
 ## Operations
 

@@ -269,13 +269,16 @@ implementation exists.
 - Backtesting files: `backtesting/s5_residual_meanrev_backtest.py`,
   `backtesting/s6_ts_momentum_backtest.py`,
   `backtesting/s7_basis_meanrev_backtest.py`,
+  `backtesting/pipeline_refit.py`,
   `backtesting/differential_validation.py` contract entries,
   `scripts/run_pipeline_batch1_checkpoint.py`.
 - Data / DB / artifact files: consumes venue-scoped Binance canonical
   `canonical_candles` and `funding_rates`; generated checkpoint summaries live
-  under `results/pipeline_batch1_20260625/`. Binance S6/S7 data is loaded for
-  BTC/ETH perps and BTC/ETH spot (1m OHLCV) plus BTC/ETH perp funding. S6 is
-  statistical-pass but promotion-blocked; S7 is non-passing/refuted.
+  under `results/pipeline_batch1_20260625/` and
+  `results/pipeline_batch1_20260625_refit/`. Binance S6/S7 data is loaded for
+  BTC/ETH perps and BTC/ETH spot (1m OHLCV) plus BTC/ETH perp funding. S6 failed
+  the fold-refit statistical gate, S7 is shelved after the non-degenerate
+  half-life rerun, and S5 is a data-universe artifact.
 - Config files: `config/strategies.yaml`, `config/universe.yaml`.
 - Strategy / portfolio files: `src/okx_quant/strategies/s5_residual_meanrev.py`,
   `src/okx_quant/strategies/s6_ts_momentum.py`,
@@ -283,6 +286,8 @@ implementation exists.
 - Tests: `tests/unit/test_s5_residual_meanrev_backtest.py`,
   `tests/unit/test_s6_ts_momentum_backtest.py`,
   `tests/unit/test_s7_basis_meanrev_backtest.py`,
+  `tests/unit/test_pipeline_refit.py`,
+  `tests/unit/test_pipeline_batch1_checkpoint_runner.py`,
   `tests/unit/test_pipeline_batch1_contracts.py`.
 - Docs to update: `docs/EXPERIMENT_REGISTRY.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, relevant Change Manifest.

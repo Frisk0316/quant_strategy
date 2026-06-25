@@ -2,7 +2,7 @@
 
 Writes the multi-exchange canonical tables:
 market_instruments, market_klines, market_funding_rates.
-For backward compatibility, OKX data is also mirrored into the legacy
+For backward compatibility, funding data is also mirrored into the legacy
 raw_candles/canonical_candles/funding_rates path used by the current backtests.
 """
 from __future__ import annotations
@@ -92,6 +92,14 @@ def _base_ccy(symbol: str) -> str:
 def _normalize_symbol(exchange: str, symbol: str) -> str:
     if exchange == "okx":
         return symbol.replace("-", "").replace("SWAP", "")
+    return symbol
+
+
+def _legacy_inst_id(exchange: str, symbol: str) -> str:
+    if exchange == "okx":
+        return symbol
+    if symbol.endswith("USDT"):
+        return f"{symbol[:-4]}-USDT-SWAP"
     return symbol
 
 
@@ -224,10 +232,11 @@ def _fetch_page(
 
     if dataset == "funding_rate":
         if exchange == "binance":
-            rows = client.get_funding_rates(symbol, start_ms=cursor_ms, end_ms=end_ms - 1, limit=1000)
+            window_end = min(cursor_ms + 1000 * EIGHT_HOURS_MS - 1, end_ms - 1)
+            rows = client.get_funding_rates(symbol, start_ms=cursor_ms, end_ms=window_end, limit=1000)
             rows = [r for r in rows if start_ms <= r["ts_ms"] < end_ms]
-            next_cursor = (rows[-1]["ts_ms"] + 1) if rows else end_ms
-            return rows, next_cursor, next_cursor >= end_ms or not rows
+            next_cursor = (rows[-1]["ts_ms"] + 1) if rows else window_end + 1
+            return rows, next_cursor, next_cursor >= end_ms
 
         if exchange == "bybit":
             window_end = min(cursor_ms + 200 * EIGHT_HOURS_MS - 1, end_ms - 1)
@@ -304,15 +313,15 @@ async def _flush(
             data_source=exchange,
         )
         await store.refresh_market_funding_intervals(instrument_id)
-        if exchange == "okx":
-            await store.register_instrument(
-                inst_id=symbol,
-                base_ccy=base_ccy,
-                exchange=exchange,
-                inst_type="SWAP",
-            )
-            await store.upsert_funding_rates(rows, source=exchange, inst_id=symbol)
-            await store.refresh_funding_intervals(exchange, symbol)
+        legacy_inst_id = _legacy_inst_id(exchange, symbol)
+        await store.register_instrument(
+            inst_id=legacy_inst_id,
+            base_ccy=base_ccy,
+            exchange=exchange,
+            inst_type="SWAP",
+        )
+        await store.upsert_funding_rates(rows, source=exchange, inst_id=legacy_inst_id)
+        await store.refresh_funding_intervals(exchange, legacy_inst_id)
 
     inserted = int(result.get("inserted", len(rows)))
     await store.update_checkpoint(

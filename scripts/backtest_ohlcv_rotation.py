@@ -194,10 +194,17 @@ def main() -> None:
                 dsn=args.dsn,
                 exchange=args.exchange,
             )
-            dfs[inst] = df
-            print(f"  {inst}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
         except FileNotFoundError as exc:
             print(f"  WARNING: {exc} — skipping {inst}")
+            continue
+        # load_candles can legitimately return an empty frame when the bar/window
+        # has no rows (e.g. parquet thin-mirror, or 1m→bar derivation yields none).
+        # Skip it instead of indexing df.index[0] into an IndexError.
+        if df is None or df.empty:
+            print(f"  WARNING: no {args.bar} data for {inst} in [{args.start} → {args.end}] — skipping")
+            continue
+        dfs[inst] = df
+        print(f"  {inst}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
 
     if args.benchmark not in dfs:
         sys.exit(f"Error: benchmark '{args.benchmark}' could not be loaded. Aborting.")

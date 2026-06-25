@@ -181,8 +181,11 @@ async def _upsert_async(
             for rec in records
         ]
         if raw_rows:
-            await conn.executemany(
-                """
+            chunk_size = 1000
+            for i in range(0, len(raw_rows), chunk_size):
+                chunk = raw_rows[i : i + chunk_size]
+                await conn.executemany(
+                    """
                 INSERT INTO raw_candles
                     (ts, source, inst_id, bar, open, high, low, close,
                      vol_contract, vol_base, vol_quote, is_closed, raw_payload)
@@ -197,8 +200,8 @@ async def _upsert_async(
                     vol_quote = EXCLUDED.vol_quote,
                     ingested_at = NOW()
                 """,
-                raw_rows,
-            )
+                    chunk,
+                )
             raw_written = len(raw_rows)
 
         canonical_rows = [
