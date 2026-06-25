@@ -1,7 +1,7 @@
 """Read-only workstream progress dashboard API.
 
 Reads config/workstreams.yaml and reports each workstream's milestone progress.
-No git, no DB, no network; the endpoint never spawns a subprocess.
+No VCS, DB, or network access; the endpoint never starts child processes.
 """
 from __future__ import annotations
 
