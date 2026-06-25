@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-25
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,17 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-06-26 Codex follow-up (Progress workstream milestone panel):
+`/api/progress` no longer reads git metadata, `STATUS.md`, or linked-plan
+checkboxes. The endpoint now reads the hand-maintained
+`config/workstreams.yaml` registry and returns workstream cards with
+done/current/pending milestone states. The frontend renders curated milestone
+steppers, state/next lines, and doc links. Maintenance contract:
+update `config/workstreams.yaml` whenever this file is updated so the panel
+stays honest. This is read-only UI/API/config data; no DB, network, write
+endpoint, strategy, risk, config gate, deployment, or result-artifact behavior
+changed.
 
 2026-06-25 Codex follow-up (manual completion + standalone Progress route):
 `scripts/run_server.py` now includes `/api/progress` after Claude/user approval.

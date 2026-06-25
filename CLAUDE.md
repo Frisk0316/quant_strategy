@@ -143,6 +143,8 @@ Before finishing:
 
 - Update `docs/AI_HANDOFF.md` and `docs/CURRENT_STATE.md` for current state and
   next actions.
+- Update `config/workstreams.yaml` whenever you update `docs/AI_HANDOFF.md`, so the
+  Progress panel's per-workstream milestone status stays honest.
 - Write a Context Handoff (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) and Session
   Handoff (`tasks/SESSION_HANDOFF_TEMPLATE.md`), including **Human Learning
   Notes**.

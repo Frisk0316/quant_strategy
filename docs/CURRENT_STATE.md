@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-25
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -26,11 +26,12 @@ handoff between sessions; this is the one-screen "where are we" that
   summarizes existing docs only; no research files, strategy behavior, config
   gates, risk rules, deployment behavior, or result artifacts changed.
 
-- **Read-only Progress panel (2026-06-25, Codex):** `/api/progress` and the
-  `進度 / Progress` Analysis nav panel show a git-derived timeline plus
-  `STATUS.md` branch cards. The route is local/read-only: git metadata,
-  `STATUS.md`, and linked plan checkboxes only; no DB/network/write path and no
-  trading-core, config-gate, deployment, or result-artifact change.
+- **Read-only Progress panel (2026-06-26, Codex):** `/api/progress` and the
+  Progress Analysis nav panel now shows curated workstream milestone cards from
+  `config/workstreams.yaml`. The route is local/read-only: YAML registry only;
+  no git, `STATUS.md`, DB, network, write path, trading-core, config-gate,
+  deployment, or result-artifact change. Maintenance contract: update
+  `config/workstreams.yaml` alongside `docs/AI_HANDOFF.md`.
 - **Pipeline batch 1 Stage 3/refit checkpoint (2026-06-25, Codex):** Binance
   canonical data is complete for S6/S7 over `2024-01-01` through
   `2026-06-16 23:59 UTC`: BTC/ETH perps and BTC/ETH spot each have 1,293,120 1m
@@ -59,7 +60,7 @@ handoff between sessions; this is the one-screen "where are we" that
   artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
   `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
   `ui_funding_carry_ac454742`, old PNGs). 6/18+ kept, incl. the adr0007 PASS
-  evidence. Consequence: no on-disk strategy-signal-validation evidence remains —
+  evidence. Consequence: no on-disk strategy-signal-validation evidence remains ??
   re-run `make strategy-signal-validation` before any promotion citation (CI
   regenerates it). `docs/results_validation_manifest.md` rows for deleted files
   are historical only.
@@ -101,15 +102,15 @@ handoff between sessions; this is the one-screen "where are we" that
   0.95, so this does **not** support promotion. Vol-target under-leverage remains
   a separate Claude/user decision.
 
-- **XS momentum Phase C review (2026-06-24, Claude) — LEAK, BLOCK promotion:**
-  `backtesting/xs_momentum_backtest.py` has a look-ahead leak — the day-D target
+- **XS momentum Phase C review (2026-06-24, Claude) ??LEAK, BLOCK promotion:**
+  `backtesting/xs_momentum_backtest.py` has a look-ahead leak ??the day-D target
   weight is built from day-D's own 23:00 close and lagged only one intraday bar,
   so rebalance days are partially traded with hindsight. The committed validation
-  artifact `results/xs_momentum_validation_20260623/` (OOS Sharpe 2.4–5.1, ~2–3%
+  artifact `results/xs_momentum_validation_20260623/` (OOS Sharpe 2.4??.1, ~2??%
   vol, `dsr=1.0`, `psr=0.99`, `promotion_gate_passed:true`) is **INVALID /
-  superseded — do not cite as evidence.** D3 fixes (annualized vol-target,
+  superseded ??do not cite as evidence.** D3 fixes (annualized vol-target,
   `market_close` wiring) landed and are tested; funding sign is R3.1-correct;
-  vol-target still under-levers ~5× (separate spec-conformance item). Fix +
+  vol-target still under-levers ~5? (separate spec-conformance item). Fix +
   re-run: `tasks/2026-06-24-xs-momentum-lookahead-fix-task.md`; review:
   `tasks/2026-06-24-xs-momentum-phase-c-review.md`.
 - **XS momentum Phase C research runner (2026-06-23, Codex):** the scaffold is
@@ -144,7 +145,7 @@ handoff between sessions; this is the one-screen "where are we" that
   sign expectation conflicts with `docs/DOMAIN_RULES.md` R3.1.
 - **D3 review (2026-06-23, Claude):** scaffold A/B/D1 verified sound (9/9 tests,
   doc-impact gate pass, 30-symbol point-in-time membership correct); Phase C
-  absent → no edge evidence; not promotion/live. Funding-sign conflict resolved —
+  absent ??no edge evidence; not promotion/live. Funding-sign conflict resolved ??
   the plan was wrong (R3.1 stands: short receives positive funding), plan fixed in
   `5c80cc7`, so C1 is unblocked. Phase-C to-fix: annualize the vol-target
   (currently a no-op) and wire `market_close` into the crash filter. XS scaffold
@@ -266,9 +267,9 @@ handoff between sessions; this is the one-screen "where are we" that
   `results/validation_lab_{ma,ema,macd}_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill/validation/claude_engine_consistency_20260623/validation_result.json`.
   This is signal-logic engine-consistency only: `admissibility == advisory_only`,
   `promotion_gate_evidence == false`, `ohlcv_source_validation == artifact_pass_db_skipped`
-  (no DSN → DB parity skipped), and the runs are idealized `strategy_fill`. Not
+  (no DSN ??DB parity skipped), and the runs are idealized `strategy_fill`. Not
   promotion/live evidence. Measured runtime: vectorbt ~125s/run; backtrader is the
-  bottleneck, so the long-window batch is impractical as an inline check — see the
+  bottleneck, so the long-window batch is impractical as an inline check ??see the
   `tasks/2026-06-23-engine-consistency-smoke-task.md` Codex task for a fast offline
   frozen-fixture smoke (`make engine-consistency-smoke`).
 - **Engine-consistency smoke (2026-06-23, Codex):** an offline frozen-fixture

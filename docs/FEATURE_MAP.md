@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -105,14 +105,14 @@ implementation exists.
 
 ## Progress Panel
 
-- User-facing behavior: browse a read-only git-derived progress timeline and
-  per-branch status cards from the Analysis nav group.
+- User-facing behavior: browse a read-only workstream milestone view sourced from
+  `config/workstreams.yaml` in the Analysis nav group.
 - Frontend files: `frontend/app.js`, `frontend/index.html`,
   `frontend/view-progress.js`, `frontend/data.js`, `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_progress.py`,
   `src/okx_quant/api/server.py`.
-- Data / docs files: `STATUS.md` plus local git metadata; linked plan files are
-  counted for checkbox progress only.
+- Data / docs files: `config/workstreams.yaml`; linked plan files are only
+  surfaced as card links.
 - Tests: `tests/unit/test_routes_progress.py`, `make frontend-check`,
   `make api-smoke`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/AI_HANDOFF.md`,

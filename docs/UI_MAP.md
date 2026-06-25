@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -29,8 +29,7 @@ Main app views in `frontend/app.js`:
 - `validation`: `window.ValidationLabView` from `frontend/view-validation.js`.
 - `wf` / `cpcv`: walk-forward and CPCV panels from `frontend/view-results.js`.
 - `trades`, `compare`, `metrics`, and `risk`: secondary review views.
-- `progress`: read-only git timeline and branch status board from
-  `frontend/view-progress.js`.
+- `progress`: read-only workstream milestone view from `frontend/view-progress.js`.
 
 ## Backtest View
 
@@ -103,12 +102,11 @@ Main app views in `frontend/app.js`:
 - `frontend/view-progress.js` owns the `進度 / Progress` view in the Analysis nav
   group.
 - It calls `GET /api/progress` through `window.API.fetchProgress`.
-- The panel renders commit timeline rows colored by actor and branch cards from
-  `STATUS.md`; task bars are derived from checkboxes in linked plan files.
-- Backend endpoints are implemented in `src/okx_quant/api/routes_progress.py` and
-  registered in `src/okx_quant/api/server.py` before the static file mount.
-- The route is read-only and uses local git plus `STATUS.md`; it does not use DB,
-  network, write endpoints, or trading-core code.
+- The panel renders one card per workstream from `config/workstreams.yaml`, each
+  with a horizontal milestone stepper (done/current/pending; current turns red
+  when status is blocked) plus state/next lines and doc links.
+- Backend endpoint is implemented in `src/okx_quant/api/routes_progress.py`; it
+  reads `config/workstreams.yaml` only, with no git, DB, or network access.
 
 ## User Manual
 

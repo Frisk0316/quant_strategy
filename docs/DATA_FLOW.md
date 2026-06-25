@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -230,14 +230,14 @@ strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
 ## Progress Panel Flow
 
 ```text
-local git metadata + STATUS.md + linked plan checkboxes -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
+config/workstreams.yaml -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
 ```
 
 Current: the Progress panel is a read-only operations surface. It does not read
-from DB, call the network, write repository state, alter strategy/config/gate
-behavior, or modify result artifacts. If git is unavailable or the directory is
-not a repository, the route returns HTTP 200 with an `error` field so the panel
-can show an unavailable state.
+from git, DB, or the network, write repository state, alter strategy/config/gate
+behavior, or modify result artifacts. Missing `config/workstreams.yaml` returns
+HTTP 200 with an empty `workstreams` list; malformed YAML returns HTTP 200 with
+an `error` field so the panel can show an unavailable state.
 
 ## Validation Artifact Flow
 
