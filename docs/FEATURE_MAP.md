@@ -204,9 +204,9 @@ implementation exists.
 - Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
   stub when explicitly requested. `backtesting/xs_momentum_backtest.py` is a
   research-only vectorized runner for target weights, corrected R3.1 funding
-  cashflow signs, honest grid trial counts, portfolio-vol gross sizing, and
-  optional `market_close` crash filtering; it is not wired into UI/API promotion
-  gates.
+  cashflow signs, family-cumulative grid trial counts via
+  `prior_family_n_trials`, portfolio-vol gross sizing, and optional
+  `market_close` crash filtering; it is not wired into UI/API promotion gates.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
   and venue-scoped OHLCV/funding data. Local smoke artifacts such as
   `results/xs_momentum_db_smoke_20260623.json` are research evidence only.
