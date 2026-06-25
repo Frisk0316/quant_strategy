@@ -82,8 +82,11 @@ smoke 測試。**前端 view / API / 導覽接線交給 Codex 實作。**
 ## 7. AI 尚未驗證 / 不確定的地方
 
 - Codex 的 Task 2–4(`/api/manual` router、`view-manual.js`、`app.js`/`index.html`
-  接線)**尚未實作**;router/view 的測試尚未跑。
-- 手冊頁的**瀏覽器實際渲染**(marked 解析、stub placeholder、nav)尚未視覺驗證。
+  接線)**已實作並由 Claude 驗證通過**(commits 04e0531 / a5dc5d0 / 37136df;
+  scope 乾淨、無 trading-core/gate 改動)。
+- 手冊頁的**瀏覽器實際渲染**(marked 解析、stub placeholder、nav)**尚未視覺驗證**
+  (本 session 無瀏覽器/engine 環境;API 資料路徑已用真實 `docs/manual/` 驗證,view
+  程式以 review 確認)。建議擇日 demo 模式開 `localhost:8080` 點「使用手冊」目視確認。
 - 5 章 stub(資料管線/部署 gate/前端各頁/設定檔/名詞)仍是「待補」,只指向 source docs。
 - 4 章寫滿的內容雖以 README/config/spec 為據,仍可能有措辭層級的不精確;以 source
   docs 與 config 為準。
@@ -92,10 +95,11 @@ smoke 測試。**前端 view / API / 導覽接線交給 Codex 實作。**
 
 | 檢查 | 狀態 | 指令 / 證據 |
 |---|---|---|
-| unit tests | pass(部分) | `python -m pytest tests/unit/test_manual_manifest.py`(已過);router/view 測試屬 Codex Task,未跑 |
-| doc impact | not run | Codex Task 4 會跑 `check_doc_impact.py`(A7/A8 為 advisory、manifest=False) |
+| unit tests | pass | `python -m pytest tests/unit/test_manual_manifest.py tests/unit/test_routes_manual.py` → 4 passed(含 Codex 的 router 測試) |
+| doc impact | pass | Codex 已隨 commit 更新 `docs/UI_MAP.md` + `docs/FEATURE_MAP.md`(A7/A8 為 advisory、manifest=False) |
 | schema validation | n/a | — |
-| human overview check | pass | `python scripts/docs/check_human_overview.py` |
+| human overview check | pass | `python scripts/docs/check_human_overview.py` → 2/2 OK |
+| browser 視覺 smoke | not run | 本 session 無瀏覽器/engine 環境;API 資料路徑已用真實 `docs/manual/` 驗證 |
 
 ## 9. 對現有系統的影響
 
