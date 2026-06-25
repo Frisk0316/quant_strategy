@@ -23,6 +23,7 @@ conflicts with its source docs, the source docs win. See
 | Date | Topic | Overview | Status | Risk | Decision required | Human decision |
 |---|---|---|---|---|---|---|
 | 2026-06-25 | Strategy Research Pipeline Stage 1 | [docs/human_overviews/2026-06-25-strategy-research-pipeline-overview.md](human_overviews/2026-06-25-strategy-research-pipeline-overview.md) | draft | medium | yes | pending |
+| 2026-06-25 | In-Dashboard User Manual (使用手冊) | [docs/human_overviews/2026-06-25-user-manual-overview.md](human_overviews/2026-06-25-user-manual-overview.md) | draft | low | no | approved |
 
 ## Rules
 
