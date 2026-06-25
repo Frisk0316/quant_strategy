@@ -31,10 +31,10 @@ workstreams:
     updated: 2026-06-23
 
   - name: User manual
-    status: done
+    status: active
     milestones: [draft, write, verify]
     current: verify
-    state: "All chapters written; manual.json marks chapters as written"
-    next: ""
+    state: "Core chapters written; 90-research-pipeline chapter in flight (uncommitted)"
+    next: "finish + commit the research-pipeline manual chapter"
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
-    updated: 2026-06-25
+    updated: 2026-06-26
