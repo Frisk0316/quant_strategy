@@ -359,6 +359,60 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "c2_funding_carry": {
+        "strategy_class": "carry",
+        "minimum_reference_engines": 1,
+        "portable_validation_required": True,
+        "engines": {
+            "vectorbt": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute funding-APR plus basis-z carry targets before this can pass the portable gate.",
+            },
+            "backtrader": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute funding-APR plus basis-z carry targets before this can pass the portable gate.",
+            },
+            "nautilus": {
+                "status": "adapter_required",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Nautilus export/replay adapter is not implemented for this research family.",
+            },
+        },
+    },
+    "c1_pairs_ou": {
+        "strategy_class": "stat_arb",
+        "minimum_reference_engines": 1,
+        "portable_validation_required": True,
+        "engines": {
+            "vectorbt": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute rolling hedge-ratio, z-score, and OU half-life targets before this can pass the portable gate.",
+            },
+            "backtrader": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute rolling hedge-ratio, z-score, and OU half-life targets before this can pass the portable gate.",
+            },
+            "nautilus": {
+                "status": "adapter_required",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "funding_rates.csv"],
+                "limitation": "Nautilus export/replay adapter is not implemented for this research family.",
+            },
+        },
+    },
 }
 REFERENCE_ROLES = {
     "reference_signals_only",
