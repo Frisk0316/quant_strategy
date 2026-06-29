@@ -21,6 +21,24 @@ WF/CPCV harness in `scripts/run_pipeline_batch1_checkpoint.py` never refits per
 fold, so the "OOS" numbers are in-sample and the five CPCV `path_sharpes` are
 byte-identical (`1.1324740507618738`), which neuters DSR (`dsr == psr == 0.9621`).
 
+## Status (updated 2026-06-25)
+
+- **T1 (refit harness + S5/S6/S7 rerun): DONE** — commit `98e505c`;
+  `backtesting/pipeline_refit.py`, I24/F22; results in
+  `results/pipeline_batch1_20260625_refit/`; old S5/S6 dirs carry `SUPERSEDED.md`.
+  Outcome: all three fail the statistical gate (S6 DSR 0.1963, S5 no grid
+  activity, S7 negative). Gate working as designed; batch 1 CLOSED.
+- **T3 (ledger / handoff honesty): DONE** — H-005 downgraded
+  `supported`→`inconclusive`; E-012 tagged invalid-harness; CURRENT_STATE +
+  AI_HANDOFF reflect the real refit numbers.
+- **T4 (portable adapter + ct_val + realistic fill): MOOT** — hard precondition
+  (S6 DSR≥0.95 & PSR≥0.95 on the refit harness) FAILED (S6 DSR 0.1963). Do not
+  start; S6 shelved.
+- **T2 (CPCV raw-path retention + honest n_trials): OPEN** — the one remaining
+  validation-hygiene debt; do before any batch-2 DSR is trusted. Active Codex
+  code task (see the standalone paste in the 2026-06-25 session, and the open
+  `tasks/2026-06-24-cpcv-path-return-retention-honest-ntrials-task.md`).
+
 ## Why this bundle (one-paragraph context)
 
 `_wf_cpcv_from_daily` ([run_pipeline_batch1_checkpoint.py:50-61](../scripts/run_pipeline_batch1_checkpoint.py#L50-L61))

@@ -94,10 +94,18 @@ def scan_xs_momentum(
     grid: dict[str, list[Any]],
     market_close: pd.Series | None = None,
     prior_family_n_trials: int = 0,
+    researched_n_trials: int | None = None,
 ) -> pd.DataFrame:
     keys = list(grid)
     combos = [dict(zip(keys, values)) for values in product(*(grid[key] for key in keys))]
-    total_n_trials = int(prior_family_n_trials) + len(combos)
+    if researched_n_trials is None:
+        total_n_trials = int(prior_family_n_trials) + len(combos)
+        n_trials_provenance = "grid_size_floor"
+        n_trials_is_floor = True
+    else:
+        total_n_trials = int(researched_n_trials)
+        n_trials_provenance = "caller_declared"
+        n_trials_is_floor = False
     rows = []
     param_fields = set(XSMomentumParams.__dataclass_fields__)
     for combo in combos:
@@ -112,9 +120,17 @@ def scan_xs_momentum(
             run_params,
             market_close=market_close,
         )
-        rows.append({**combo, "n_trials": total_n_trials, **result.metrics})
+        rows.append({
+            **combo,
+            "n_trials": total_n_trials,
+            "n_trials_provenance": n_trials_provenance,
+            "n_trials_is_floor": n_trials_is_floor,
+            **result.metrics,
+        })
     out = pd.DataFrame(rows)
     out.attrs["n_trials"] = total_n_trials
+    out.attrs["n_trials_provenance"] = n_trials_provenance
+    out.attrs["n_trials_is_floor"] = n_trials_is_floor
     return out
 
 

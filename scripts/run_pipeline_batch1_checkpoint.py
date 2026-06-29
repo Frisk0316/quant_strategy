@@ -14,10 +14,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backtesting.cpcv import CPCV
 from backtesting.pipeline_refit import (
     combo_key as _pipeline_combo_key,
     refit_validation as _pipeline_refit_validation,
     select_combo_on,
+    validation_frame as _pipeline_validation_frame,
 )
 from backtesting.s5_residual_meanrev_backtest import (
     load_s5_inputs,
@@ -103,7 +105,7 @@ def _refit_validation(
         _combo_key(record["combo"]): record["daily_returns"]
         for record in records
     }
-    return _pipeline_refit_validation(
+    validation = _pipeline_refit_validation(
         combo_returns,
         n_trials,
         is_days=is_days,
@@ -113,6 +115,57 @@ def _refit_validation(
         embargo_pct=embargo_pct,
         purge_size=purge_size,
     )
+    cpcv = _retained_cpcv_fields(
+        combo_returns,
+        n_trials,
+        cpcv_n_splits=cpcv_n_splits,
+        cpcv_k_test=cpcv_k_test,
+        embargo_pct=embargo_pct,
+        purge_size=purge_size,
+    )
+    validation["cpcv"].update(cpcv)
+    return validation
+
+
+def _retained_cpcv_fields(
+    combo_returns: dict[str, pd.Series],
+    n_trials: int,
+    *,
+    cpcv_n_splits: int,
+    cpcv_k_test: int,
+    embargo_pct: float,
+    purge_size: int,
+) -> dict[str, Any]:
+    frame = _pipeline_validation_frame(combo_returns)
+
+    def cpcv_returns(train: pd.DataFrame, test: pd.DataFrame) -> pd.Series:
+        selected = select_combo_on(train.index, combo_returns)
+        return combo_returns[selected].reindex(test.index).fillna(0.0)
+
+    cpcv = CPCV(
+        n_splits=cpcv_n_splits,
+        k_test=cpcv_k_test,
+        embargo_pct=embargo_pct,
+        purge_size=purge_size,
+    ).evaluate(
+        frame,
+        cpcv_returns,
+        periods=365,
+        n_trials=n_trials,
+        n_trials_provenance="caller_declared",
+    )
+    keys = (
+        "path_returns",
+        "path_return_periods",
+        "path_return_lengths",
+        "combined_returns",
+        "combined_return_periods",
+        "combined_return_length",
+        "n_trials",
+        "n_trials_provenance",
+        "n_trials_is_floor",
+    )
+    return {key: _jsonable(cpcv.get(key)) for key in keys}
 
 
 def _precompute_records(

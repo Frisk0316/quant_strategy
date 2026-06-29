@@ -12,13 +12,13 @@ workstreams:
     links: [docs/superpowers/plans/2026-06-23-xs-momentum-universe.md]
     updated: 2026-06-25
 
-  - name: Strategy research pipeline (batch 1 S5/S6/S7)
-    status: blocked
+  - name: Strategy research pipeline (batch 2 C1/C2/C3)
+    status: active
     milestones: [spec, impl, backtest, wf_cpcv, review]
-    current: wf_cpcv
-    state: "S6 statistical_gate_passed:false; S5 data-universe artifact; S7 shelved_pending_research_review"
-    next: "research review of refit artifacts before any adapter/ct_val work"
-    links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md]
+    current: spec
+    state: "batch 1 [S5/S6/S7] CLOSED — all refuted under fold-refit harness; batch 2 [C3,C2,C1] pre-registered (H-006/007/008, E-017/018/019)"
+    next: "Claude writes Stage-1 specs; then Codex Stage 2->3; T2 CPCV raw-path retention still open"
+    links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, tasks/2026-06-25-pipeline-batch1-followup-tasks.md]
     updated: 2026-06-25
 
   - name: Multi-venue instrument specs (ADR-0007 P1)

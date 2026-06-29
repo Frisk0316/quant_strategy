@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-25
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -55,9 +55,10 @@ over time.
   violate `DSR <= PSR(0)` and must not be cited. Daily Winner CPCV was
   recomputed from saved returns and remains non-passing. The portfolio-vol XS
   artifact has a fixed, non-passing DSR/PSR pair, but only summary/path Sharpe
-  fields were saved; future CPCV artifacts should retain raw path returns or a
-  recompute bundle so DSR can be independently audited without rerunning a DB
-  validation job.
+  fields were saved. As of 2026-06-29, future CPCV outputs retain raw path
+  returns, or combined returns when path assembly is unavailable, so
+  `scripts/recheck_dsr.py` can recompute DSR from saved artifacts; historical
+  artifacts were not backfilled and remain summary-only.
 - ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
   adding venue-aware specs, provenance exchange tags, and frontend/API exchange
   selection; Known Issue 20's root cause is closed. Remaining environment gap:

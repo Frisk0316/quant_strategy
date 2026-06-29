@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -19,6 +19,19 @@ handoff between sessions; this is the one-screen "where are we" that
 [[CONTEXT_BUDGET]] marks must-load.
 
 ## Snapshot
+
+- **CPCV path-return retention + n_trials provenance (2026-06-29, Codex):**
+  future `backtesting.cpcv.CPCV.evaluate()` outputs retain raw `path_returns`
+  (or `combined_returns` when no path assembly exists), lengths, periods,
+  `n_trials_provenance`, and `n_trials_is_floor`. Missing `n_trials` now falls
+  back to the observed grid/combo floor and is tagged `grid_size_floor`; explicit
+  nonpositive values still set `validation.n_trials_missing`. XS momentum scans
+  accept `researched_n_trials` and otherwise tag the family/grid count as a
+  floor. `scripts/recheck_dsr.py` recomputes DSR from retained returns and prints
+  old-to-new DSR; pipeline checkpoint summaries carry retained CPCV fields with
+  `caller_declared` family-cumulative trial provenance. Existing result
+  artifacts were not rewritten, so historical summary-only CPCV artifacts remain
+  non-recomputable offline.
 
 - **User manual completion (2026-06-25, Codex):** manual chapters
   `00-architecture` through `80-glossary` are now readable Traditional Chinese
@@ -47,15 +60,28 @@ handoff between sessions; this is the one-screen "where are we" that
   is `shelved_pending_research_review` (WF -0.4359, CPCV -1.1124, DSR/PSR ~0),
   not refuted from the prior all-zero no-trade artifact. No strategy is
   promotion-ready or live/demo/shadow ready.
+- **Pipeline batch 1 CLOSED + batch 2 pre-registered (2026-06-25, Claude):**
+  Batch 1 [S7, S5, S6] is closed — all three fail the statistical gate under the
+  fold-refit harness (see above); none has edge, the gate worked. Do **not** tune
+  S5/S6/S7 to chase the gate (mirrors H-002). Batch 2 is pre-registered, not yet
+  run: C1 BTC/ETH OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2
+  funding carry + basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed
+  long/flat (H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data Stage-2 check
+  pending). Run order [C3, C2, C1]; batch id `pipeline_batch2_20260625`. Claude
+  writes Stage-1 specs before Codex runs Stage 2->3. T2
+  (CPCV raw-path retention + honest n_trials) is implemented for future artifacts;
+  follow-up task history is in
+  `tasks/2026-06-25-pipeline-batch1-followup-tasks.md`.
 - **Strategy Research Pipeline Stage 1 machinery (2026-06-25, Codex):** spec
   `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md` and
   plan `docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`
   now have the minimal driver/templates under `docs/superpowers/pipeline/`.
   `scan_xs_momentum` accepts `prior_family_n_trials` and reports
   family-cumulative `n_trials`; the ledgers define family trial accounting and
-  I23. The machinery has **not** been run; first batch remains [S7, S5, S6]. No
-  strategy promotion, config, result artifact values, or demo/shadow/live gates
-  changed.
+  I23. The autonomous driver has **not** been run end-to-end; batch 1
+  [S7, S5, S6] was run via `scripts/run_pipeline_batch1_checkpoint.py` and is now
+  closed (all refuted); batch 2 = [C3, C2, C1] is pre-registered. No strategy
+  promotion, config, result artifact values, or demo/shadow/live gates changed.
 - **Results cleanup (2026-06-24, user-approved):** all pre-6/18 `results/`
   artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
   `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,

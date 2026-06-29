@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-25
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -51,6 +51,9 @@ new family to dodge the retry limit or DSR penalty is forbidden.
 | E-014 | 2026-06-25 | H-004 | F-S5-RESIDUAL-MEANREV | Supersedes E-009 with fold-refit WF/CPCV after ETH perp data repair. Binance DB canonical 1m source-primary complete-window membership intersection (19 symbols incl. `ETH-USDT-SWAP`), point-in-time membership from `data/universe/universe_membership.parquet`, grid `{L, Z_enter, Z_exit, factors, top_n}` = 72. The validation callback selects the best combo on each train fold and returns only held-out test returns. | 72 | `results/pipeline_batch1_20260625_refit/s5/summary.json` | shelved / data-universe artifact | `nonzero_grid_activity:false`; WF OOS Sharpe 0.0, CPCV OOS Sharpe 0.0, DSR 0.0, PSR 0.0, `promotion_gate_passed:false`. Current point-in-time membership and venue-scoped candle coverage produce a no-trade artifact; do not treat as support or refutation. |
 | E-015 | 2026-06-25 | H-005 | F-S6-TS-MOMENTUM | Supersedes E-012 with fold-refit WF/CPCV. Binance DB canonical 1m source-primary BTC/ETH perps from 2024-01-01 through 2026-06-16 23:59 UTC, Binance funding for both perps, grid `{L, vol_target, crash_filter, rebalance}` = 48. The validation callback selects the best combo on each train fold and returns only held-out test returns; CPCV path Sharpes are dispersed. | 48 | `results/pipeline_batch1_20260625_refit/s6/summary.json` | checkpoint / statistical-fail | WF OOS Sharpe 0.0088, CPCV OOS Sharpe 0.5422, DSR 0.1963, PSR 0.7387, `statistical_gate_passed:false`, `promotion_gate_passed:false`; CPCV path Sharpe std 0.4974. No adapter or ct_val work until the statistical gate is re-earned on a refitting harness. |
 | E-016 | 2026-06-25 | H-003 | F-S7-BASIS-MEANREV | Supersedes E-013's no-trade artifact with a non-degenerate finite half-life grid (`max_half_life_days` 7d/14d) and fold-refit WF/CPCV. Binance DB canonical 1m source-primary BTC/ETH perps + BTC/ETH spot, Binance funding for both perps, grid `{L, Z_enter, Z_exit, half_life_max, max_hold}` = 72. | 72 | `results/pipeline_batch1_20260625/s7/summary.json` | shelved / statistical-fail | `nonzero_grid_activity:true`; WF OOS Sharpe -0.4359, CPCV OOS Sharpe -1.1124, DSR ~0, PSR ~0, `promotion_gate_passed:false`; CPCV path Sharpe std 1.3773. Shelved pending Claude review; the prior all-zero result is not a refutation verdict. |
+| E-017 | 2026-06-25 | H-006 | F-PAIRS-OU | BTC/ETH OU-gated relative value, Binance perp 1m-derived daily closes; grid {lookback_days[7,14,30], z_enter[2.0,2.5], z_exit[0.0,0.5], max_half_life_days[3,7]} = 24; two-pass parquet pre-screen -> DB venue-scoped CPCV (N=6/k=2/embargo=2%/purge=1); fold-refit harness; spec `docs/superpowers/specs/2026-06-29-c1-pairs-ou-hypothesis.md` | 24 (planned) | pending - `results/pipeline_batch2_20260625/c1_pairs_ou/summary.json` | planned (not yet run) | Pipeline batch 2 C1. New family, prior=0. Stage-2 distinctness vs `pairs_trading`/`funding_carry` + cost-after-edge smell test pending. Not evidence until run + checkpoint review. |
+| E-018 | 2026-06-25 | H-007 | F-FUNDING-CARRY | Funding carry long-spot/short-perp with funding-APR + basis-z entry filter, BTC/ETH, Binance funding+spot+perp; grid {funding_enter_apr[0.05,0.10,0.15], basis_z_max[2.0,3.0], exit_funding_apr[0.0,0.02], rebalance[daily,weekly]} = 24; two-pass -> DB CPCV; fold-refit harness; spec `docs/superpowers/specs/2026-06-29-c2-funding-carry-filter-hypothesis.md` | 24 (planned) | pending - `results/pipeline_batch2_20260625/c2_funding_carry/summary.json` | planned (not yet run) | Pipeline batch 2 C2. Mechanism = existing `funding_carry` + filter; future tweaks are retries. prior=0. OI crowding deferred. Not evidence until run + review. |
+| E-019 | 2026-06-25 | H-008 | F-SENTIMENT | Fear & Greed long/flat on BTC-USDT-SWAP, daily; grid {extreme_fear_threshold[20,25,30], exit_value_threshold[50,55,60]} = 9; WF/CPCV via fold-refit harness; reuses implemented `FearGreedSentimentStrategy`; spec `docs/superpowers/specs/2026-06-29-c3-sentiment-hypothesis.md` | 9 (planned) | pending - `results/pipeline_batch2_20260625/c3_sentiment/summary.json` | planned (not yet run) | Pipeline batch 2 C3. Data-availability GATING: `fear_greed_btc` in `external_observations` unconfirmed. Subject to External-Feature Coverage Gate. prior=0. Not evidence until run + review. |
 
 ## Required fields
 
@@ -60,9 +63,13 @@ new family to dodge the retry limit or DSR penalty is forbidden.
   reference (path + commit or hash), seed, and data source (DB vs parquet).
 - **Trials** is this row's count of parameter/strategy combinations searched.
   Hidden trials are a leakage bug (I13). CPCV receives the family cumulative
-  count across rows with the same Family ID.
+  count across rows with the same Family ID. CPCV artifacts must label
+  `n_trials_provenance`; a `grid_size_floor` value is a lower bound, not the
+  researched trial count.
 - **Artifact** points to the reproducible output (a `results/` run_id or file).
   Idealized-fill / in-sample artifacts must be labelled as such (R7.1).
+  CPCV evidence must retain raw `path_returns`, or `combined_returns` when path
+  assembly is unavailable, plus periods/lengths so DSR can be recomputed offline.
 - **Outcome** states the measured result and whether it supported the hypothesis.
 
 ## Rules

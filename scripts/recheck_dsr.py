@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(ROOT) not in sys.path:
@@ -19,6 +21,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from okx_quant.api.routes_backtest import _daily_winner_cpcv, _daily_winner_return_series
+from okx_quant.analytics.dsr import deflated_sharpe, psr as probabilistic_sharpe
+from okx_quant.analytics.performance import sharpe
 
 
 FIX_COMMIT = "fecdd98"
@@ -120,6 +124,46 @@ def _recompute_daily_winner(payload: dict[str, Any]) -> tuple[float | None, floa
     return _number(cpcv.get("dsr")), _number(cpcv.get("psr"))
 
 
+def _return_array(values: Any) -> np.ndarray | None:
+    try:
+        arr = np.asarray(values, dtype=float)
+    except (TypeError, ValueError):
+        return None
+    arr = arr[np.isfinite(arr)]
+    return arr if len(arr) else None
+
+
+def _recompute_retained_cpcv(cpcv: dict[str, Any]) -> tuple[float, float, str] | None:
+    n_trials = int(cpcv.get("n_trials") or 0)
+    if n_trials <= 0:
+        return None
+    periods = int(cpcv.get("path_return_periods") or cpcv.get("combined_return_periods") or 365)
+    path_returns = cpcv.get("path_returns")
+    if isinstance(path_returns, list) and path_returns:
+        arrays = [arr for values in path_returns if (arr := _return_array(values)) is not None]
+        if arrays:
+            path_sharpes = [sharpe(arr, periods=periods) for arr in arrays]
+            new_dsr = float(np.mean([
+                deflated_sharpe(arr, sr=sr, sr_list=path_sharpes, N=n_trials)
+                for arr, sr in zip(arrays, path_sharpes)
+            ]))
+            new_psr = float(np.mean([probabilistic_sharpe(arr) for arr in arrays]))
+            return new_dsr, new_psr, "recomputed from retained CPCV path returns"
+
+    combined = _return_array(cpcv.get("combined_returns"))
+    if combined is not None:
+        sr = sharpe(combined, periods=periods)
+        sr_list = cpcv.get("sharpe_list")
+        if not isinstance(sr_list, list) or not sr_list:
+            sr_list = [sr]
+        return (
+            deflated_sharpe(combined, sr=sr, sr_list=[float(x) for x in sr_list], N=n_trials),
+            probabilistic_sharpe(combined),
+            "recomputed from retained CPCV combined returns",
+        )
+    return None
+
+
 def _sanity(old_dsr: float | None, psr: float | None) -> str:
     if old_dsr is None or psr is None:
         return "unknown"
@@ -134,7 +178,12 @@ def _cpcv_row(path: Path, payload: dict[str, Any], cpcv: dict[str, Any], fix_tim
     new_dsr = None
     note = ""
 
-    if _is_daily_winner(payload):
+    retained = _recompute_retained_cpcv(cpcv)
+    if retained:
+        new_dsr, psr, note = retained
+        sanity = _sanity(new_dsr, psr)
+        status = "recomputed"
+    elif _is_daily_winner(payload):
         recomputed = _recompute_daily_winner(payload)
         if recomputed:
             new_dsr, new_psr = recomputed
@@ -217,15 +266,17 @@ def _print_table(rows: list[DsrRow], *, kind: str) -> None:
     if not selected:
         return
     print(f"\n## {kind}\n")
-    print("| Path | Before fecdd98 | Old DSR | New DSR | PSR | DSR<=PSR | Status | Note |")
-    print("|---|---:|---:|---:|---:|---|---|---|")
+    print("| Path | Before fecdd98 | Old->New DSR | Old DSR | New DSR | PSR | DSR<=PSR | Status | Note |")
+    print("|---|---:|---:|---:|---:|---:|---|---|---|")
     for row in selected:
+        transition = f"{_format_number(row.old_dsr)}->{_format_number(row.new_dsr)}"
         print(
             "| "
             + " | ".join(
                 [
                     f"`{row.path}`",
                     row.generated_before_fix,
+                    transition,
                     _format_number(row.old_dsr),
                     _format_number(row.new_dsr),
                     _format_number(row.psr),

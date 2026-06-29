@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-25
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -44,6 +44,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I22 | XS momentum portfolio-vol targeting sizes gross from estimated book volatility and enforces the max-gross cap | R4.4 | `tests/unit/test_xs_momentum.py::test_vol_target_uses_portfolio_book_vol_and_cap` |
 | I23 | Candidate CPCV `n_trials` must be at least the family-cumulative trial count recorded in `docs/EXPERIMENT_REGISTRY.md`; a per-run grid count alone is a violation | R6.3, R7.4 | `tests/unit/test_xs_momentum_backtest.py::test_scan_adds_prior_family_trials_to_n_trials`; review of `backtesting.replay.run_replay_validations` caller-provided `n_trials` passthrough |
 | I24 | WF/CPCV evidence must select parameters inside each train fold and evaluate only on the held-out test fold; slicing one full-sample-selected return series is in-sample evidence | R6.3, R7.4 | `tests/unit/test_pipeline_refit.py`, `tests/unit/test_pipeline_batch1_checkpoint_runner.py` |
+| I25 | Future CPCV artifacts must retain raw path returns, or the combined return series when path assembly is unavailable, plus periods/lengths and n_trials provenance so DSR can be recomputed offline | R6.3, R7.4 | `tests/unit/test_cpcv.py::test_cpcv_emits_path_returns_that_recompute_dsr`, `tests/unit/test_pipeline_batch1_contracts.py::test_pipeline_refit_summary_carries_cpcv_retention_fields` |
 
 ## Usage
 

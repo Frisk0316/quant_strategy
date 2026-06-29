@@ -109,6 +109,71 @@ def test_scan_adds_prior_family_trials_to_n_trials():
     assert set(result["n_trials"]) == {26}
 
 
+def test_scan_tags_floor_n_trials_when_researched_count_absent():
+    from backtesting.xs_momentum_backtest import scan_xs_momentum
+
+    close, high, low, vol, funding, membership = _panels()
+    params = XSMomentumParams(
+        universe=list(close.columns),
+        rebalance="daily",
+        lookback_days=1,
+        vol_window_days=2,
+        quantile=0.5,
+        max_name_weight=1.0,
+        vol_target_annual=10.0,
+    )
+
+    result = scan_xs_momentum(
+        close,
+        high,
+        low,
+        vol,
+        funding,
+        membership,
+        params,
+        grid={"lookback_days": [1, 2]},
+    )
+
+    assert result.attrs["n_trials_provenance"] == "grid_size_floor"
+    assert result.attrs["n_trials_is_floor"] is True
+    assert set(result["n_trials_provenance"]) == {"grid_size_floor"}
+    assert set(result["n_trials_is_floor"]) == {True}
+
+
+def test_scan_accepts_caller_declared_researched_n_trials():
+    from backtesting.xs_momentum_backtest import scan_xs_momentum
+
+    close, high, low, vol, funding, membership = _panels()
+    params = XSMomentumParams(
+        universe=list(close.columns),
+        rebalance="daily",
+        lookback_days=1,
+        vol_window_days=2,
+        quantile=0.5,
+        max_name_weight=1.0,
+        vol_target_annual=10.0,
+    )
+
+    result = scan_xs_momentum(
+        close,
+        high,
+        low,
+        vol,
+        funding,
+        membership,
+        params,
+        grid={"lookback_days": [1, 2]},
+        researched_n_trials=9,
+    )
+
+    assert result.attrs["n_trials"] == 9
+    assert result.attrs["n_trials_provenance"] == "caller_declared"
+    assert result.attrs["n_trials_is_floor"] is False
+    assert set(result["n_trials"]) == {9}
+    assert set(result["n_trials_provenance"]) == {"caller_declared"}
+    assert set(result["n_trials_is_floor"]) == {False}
+
+
 def test_backtest_passes_market_close_to_crash_filter():
     from backtesting.xs_momentum_backtest import run_xs_momentum_backtest
 

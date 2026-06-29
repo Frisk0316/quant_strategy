@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -30,11 +30,11 @@ Legend:
 | A2 | `src/okx_quant/portfolio/`, `src/okx_quant/execution/` | `docs/DOMAIN_RULES.md` (R1–R5), `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If accounting/fill policy changes |
 | A3 | `src/okx_quant/risk/`, `config/risk.yaml` | `docs/DOMAIN_RULES.md` (R4), `docs/INVARIANTS.md`, `docs/ai_collaboration.md`, relevant ADR | Yes | If limits/semantics change |
 | A4 | `config/strategies.yaml`, `config/settings.yaml`, `config/universe.yaml` | `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`, `research/strategy_synthesis.md` | Yes | If a mode/gate changes |
-| A5 | `backtesting/`, `scripts/run_backtest.py`, `scripts/run_replay_backtest.py` | `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/GOLDEN_CASES.md`, ADR-0002/0005 | Yes | If result schema or gates change |
+| A5 | `backtesting/`, `scripts/run_backtest.py`, `scripts/run_replay_backtest.py` | `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/GOLDEN_CASES.md`, `docs/INVARIANTS.md`, ADR-0002/0005; CPCV result-retention/schema changes must also review `docs/KNOWN_ISSUES.md` and `docs/EXPERIMENT_REGISTRY.md` | Yes | If result schema or gates change |
 | A6 | `sql/`, DB schema / migrations | `docs/DATA_FLOW.md`, ADR-0002, `docs/KNOWN_ISSUES.md` | Yes | Yes |
 | A7 | `src/okx_quant/api/` | `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md` | No | If schema contract changes |
 | A8 | `frontend/` | `docs/UI_MAP.md`, `docs/FEATURE_MAP.md` | No | No |
-| A9 | Validation / gates (`backtesting/differential_validation.py`, gate logic) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md` | Yes | Yes |
+| A9 | Validation / gates (`backtesting/differential_validation.py`, gate logic, DSR/PSR audit tooling) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md`; n_trials provenance changes must also review `docs/EXPERIMENT_REGISTRY.md` | Yes | Yes |
 | A10 | Governance docs, `AGENTS.md`, `CLAUDE.md`, `AI_CONTEXT.md` | `docs/README.md`, `docs/DOC_LIFECYCLE.md`, this matrix | No | If authority order changes |
 | A11 | Experiments / research runs | `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` | No | No |
 

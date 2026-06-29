@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,41 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-06-29 Codex follow-up (T2 CPCV retention/provenance mechanism):
+`backtesting.cpcv.CPCV.evaluate()` now emits retained `path_returns` (or
+`combined_returns` when path assembly is unavailable), return lengths, periods,
+`n_trials_provenance`, and `n_trials_is_floor`. Absent `n_trials` is tagged as a
+`grid_size_floor`; explicit nonpositive `n_trials` still sets
+`validation.n_trials_missing`. `backtesting/xs_momentum_backtest.py` accepts
+caller-declared `researched_n_trials` and otherwise labels scan counts as a
+floor. `scripts/recheck_dsr.py` recomputes DSR from retained returns and prints
+old-to-new DSR when artifacts carry the raw series. Pipeline batch checkpoint
+summaries copy retained CPCV fields with `n_trials_provenance="caller_declared"`
+because those counts are family-cumulative. No existing
+result artifact payloads were rewritten; historical summary-only CPCV artifacts
+remain non-recomputable offline.
+
+2026-06-25 Claude (pipeline batch 1 closeout + batch 2 pre-registration):
+Pipeline batch 1 is **CLOSED — all three candidates refuted under the fold-refit
+WF/CPCV harness**. S6 (E-015) WF 0.0088 / CPCV 0.5422 / DSR 0.1963 / PSR 0.7387,
+statistical-fail (the original `statistical_gate_passed:true` was a
+non-refitting-harness artifact); S5 (E-014) no grid activity, data-universe
+artifact; S7 (E-016) WF -0.4359 / CPCV -1.1124, shelved. H-003 shelved,
+H-004/H-005 inconclusive. **Do not tune S5/S6/S7 to chase the gate** (mirrors the
+H-002 shelve decision); the total refutation is the gate working, and it is
+research signal that price-momentum/mean-reversion alpha on BTC/ETH net of cost
+is weak in 2024-2026. **Batch 2 pre-registered** (not yet run): C1 BTC/ETH
+OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2 funding carry +
+basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed long/flat
+(H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data-availability Stage-2 check
+pending). Run order [C3, C2, C1]; batch id `pipeline_batch2_20260625`. Next:
+Claude writes Stage-1 hypothesis specs, then Codex runs Stage 2->3. The one open
+Codex code task before any batch-2 DSR was trustworthy was **T2** (CPCV raw-path
+retention + honest n_trials provenance), now implemented for future artifacts;
+follow-up tasks tracked in
+`tasks/2026-06-25-pipeline-batch1-followup-tasks.md` (T1 done, T3 done, T4 moot,
+T2 done).
 
 2026-06-26 Codex follow-up (Progress workstream milestone panel):
 `/api/progress` no longer reads git metadata, `STATUS.md`, or linked-plan
