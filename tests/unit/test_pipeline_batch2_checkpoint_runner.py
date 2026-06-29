@@ -5,6 +5,7 @@ from scripts.run_pipeline_batch2_checkpoint import (
     _c3_gate_failure_reason,
     _stage2_data_fail_summary,
     _stage2_result_to_summary_fields,
+    run_c3,
 )
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
 
@@ -125,3 +126,25 @@ def test_c3_gate_failure_reason_preserves_zero_event_reason_and_reports_nonzero_
     reason = _c3_gate_failure_reason({"event_count": 3, "missing_ratio": 0.2, "stale_ratio": 0.4})
 
     assert reason == "fear_greed_btc external-feature gate failed: event_count=3, missing_ratio=0.2, stale_ratio=0.4"
+
+
+def test_c3_feature_gate_pass_writes_stage2_feasibility_artifact(tmp_path, monkeypatch):
+    import scripts.run_pipeline_batch2_checkpoint as runner
+
+    async def fake_gate():
+        return {
+            "event_count": 10,
+            "market_event_count": 10,
+            "missing_ratio": 0.0,
+            "stale_ratio": 0.0,
+            "feature_gate_passed": True,
+        }
+
+    monkeypatch.setattr(runner, "OUT", tmp_path)
+    monkeypatch.setattr(runner, "_c3_feature_gate", fake_gate)
+
+    run_c3()
+
+    artifact = tmp_path / "c3_sentiment" / "stage2_feasibility.json"
+    assert artifact.exists()
+    assert json.loads(artifact.read_text(encoding="utf-8"))["stage2_status"] == "PASS"

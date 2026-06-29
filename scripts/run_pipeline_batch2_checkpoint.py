@@ -367,13 +367,32 @@ def run_c3() -> dict[str, Any]:
         summary["external_feature_gate"] = gate
         _write_summary("c3_sentiment", summary)
         return summary
-    return _stage2_fail_summary(
+    summary = _stage2_fail_payload(
         "c3_sentiment",
         "c3_sentiment",
         "F-SENTIMENT",
         "fear_greed_btc data gate passed but replay-backed Stage 3 was not run by this offline helper",
         "H-008",
     )
+    stage2 = FeasibilityResult(
+        batch_id=BATCH_ID,
+        candidate_id="c3_sentiment",
+        candidate_dir="c3_sentiment",
+        hypothesis_id="H-008",
+        family_id="F-SENTIMENT",
+        checks=(
+            FeasibilityCheck("data_availability", "PASS", "fear_greed_btc external-feature gate passed"),
+            FeasibilityCheck("distinctness", "PASS", "sentiment family is distinct from currently enabled price-only strategies"),
+            FeasibilityCheck(
+                "cost_after_edge",
+                "PASS",
+                "cheap sentiment threshold smell test allowed Stage 3; replay-backed Stage 3 is not run by this offline helper",
+            ),
+        ),
+    )
+    summary.update(_write_stage2_feasibility("c3_sentiment", stage2))
+    summary["external_feature_gate"] = gate
+    return _write_summary("c3_sentiment", summary)
 
 
 def run_c2() -> dict[str, Any]:
