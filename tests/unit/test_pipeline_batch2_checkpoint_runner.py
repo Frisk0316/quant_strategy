@@ -63,13 +63,24 @@ def test_stage2_result_to_summary_fields_carries_check_artifact_status():
         family_id="F-SENTIMENT",
         checks=(
             FeasibilityCheck("data_availability", "FAIL", "fear_greed_btc event_count=0"),
-            FeasibilityCheck("distinctness", "PASS", "sentiment family is distinct"),
-            FeasibilityCheck("cost_after_edge", "FAIL", "cost smell test cannot run without feature data"),
+            FeasibilityCheck(
+                "distinctness",
+                "PASS",
+                "sentiment family is distinct from currently enabled price-only strategies",
+            ),
+            FeasibilityCheck(
+                "cost_after_edge",
+                "FAIL",
+                "cost smell test cannot run without the required external feature",
+            ),
         ),
     )
 
     fields = _stage2_result_to_summary_fields(result)
 
     assert fields["stage2_status"] == "FAIL"
-    assert fields["stage2_reason"] == "fear_greed_btc event_count=0; cost smell test cannot run without feature data"
+    assert (
+        fields["stage2_reason"]
+        == "fear_greed_btc event_count=0; cost smell test cannot run without the required external feature"
+    )
     assert fields["stage2_checks"]["data_availability"]["status"] == "FAIL"
