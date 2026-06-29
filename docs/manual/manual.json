@@ -9,6 +9,7 @@
     { "slug": "deployment-gates", "title": "部署 Gate", "file": "50-deployment-gates.md", "status": "written" },
     { "slug": "frontend-views", "title": "前端頁面導覽", "file": "60-frontend-views.md", "status": "written" },
     { "slug": "config-files", "title": "設定檔對照", "file": "70-config-files.md", "status": "written" },
-    { "slug": "glossary", "title": "名詞對照", "file": "80-glossary.md", "status": "written" }
+    { "slug": "glossary", "title": "名詞對照", "file": "80-glossary.md", "status": "written" },
+    { "slug": "research-pipeline", "title": "策略研究管線", "file": "90-research-pipeline.md", "status": "written" }
   ]
 }
