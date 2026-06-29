@@ -3,6 +3,7 @@ import json
 from scripts.run_pipeline_batch2_checkpoint import (
     _base_summary,
     _c3_gate_failure_reason,
+    _shortlist_reason,
     _stage2_data_fail_summary,
     _stage2_result_to_summary_fields,
     run_c3,
@@ -143,8 +144,38 @@ def test_c3_feature_gate_pass_writes_stage2_feasibility_artifact(tmp_path, monke
     monkeypatch.setattr(runner, "OUT", tmp_path)
     monkeypatch.setattr(runner, "_c3_feature_gate", fake_gate)
 
-    run_c3()
+    summary = run_c3()
 
     artifact = tmp_path / "c3_sentiment" / "stage2_feasibility.json"
     assert artifact.exists()
     assert json.loads(artifact.read_text(encoding="utf-8"))["stage2_status"] == "PASS"
+    assert summary["stage2_status"] == "PASS"
+    assert summary["status"] == "stage2_passed_stage3_not_run"
+    assert summary["stage2_reason"] == "fear_greed_btc data gate passed but replay-backed Stage 3 was not run by this offline helper"
+
+
+def test_shortlist_reason_reports_c3_stage2_pass_without_stage3_and_preserves_stage2_fail():
+    assert (
+        _shortlist_reason(
+            {
+                "candidate_id": "c3_sentiment",
+                "status": "stage2_passed_stage3_not_run",
+                "stage2_status": "PASS",
+                "statistical_gate_passed": False,
+                "portable_validation_gate": False,
+            }
+        )
+        == "Stage-2 passed; Stage-3 replay not run by offline helper"
+    )
+
+    assert (
+        _shortlist_reason(
+            {
+                "candidate_id": "c3_sentiment",
+                "stage2_status": "FAIL",
+                "stage2_reason": "fear_greed_btc event_count=0",
+                "external_feature_gate": {"event_count": 0},
+            }
+        )
+        == "Stage-2 data gate failed: `fear_greed_btc` event_count=0"
+    )

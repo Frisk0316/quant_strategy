@@ -159,6 +159,8 @@ def _shortlist_reason(row: dict[str, Any]) -> str:
         if row.get("candidate_id") == "c3_sentiment" and gate.get("event_count") == 0:
             return "Stage-2 data gate failed: `fear_greed_btc` event_count=0"
         return f"Stage-2 failed: {row.get('stage2_reason', 'unavailable')}"
+    if row.get("status") == "stage2_passed_stage3_not_run":
+        return "Stage-2 passed; Stage-3 replay not run by offline helper"
     if not row.get("statistical_gate_passed"):
         return "statistical fail: DSR/PSR below gate and promotion gate false"
     if not row.get("portable_validation_gate"):
@@ -391,6 +393,8 @@ def run_c3() -> dict[str, Any]:
         ),
     )
     summary.update(_write_stage2_feasibility("c3_sentiment", stage2))
+    summary["status"] = "stage2_passed_stage3_not_run"
+    summary["stage2_reason"] = "fear_greed_btc data gate passed but replay-backed Stage 3 was not run by this offline helper"
     summary["external_feature_gate"] = gate
     return _write_summary("c3_sentiment", summary)
 
