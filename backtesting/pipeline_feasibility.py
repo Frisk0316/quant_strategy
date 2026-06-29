@@ -52,10 +52,17 @@ def _check_from_dict(payload: dict[str, Any]) -> FeasibilityCheck:
 
 
 def result_from_dict(payload: dict[str, Any]) -> FeasibilityResult:
+    if not isinstance(payload, dict):
+        raise ValueError("Stage 2 payload must be an object")
     checks_payload = payload.get("checks")
     if not isinstance(checks_payload, list):
         raise ValueError("Stage 2 field 'checks' must be a list")
     checks = tuple(_check_from_dict(row) for row in checks_payload)
+    seen: set[str] = set()
+    for check in checks:
+        if check.name in seen:
+            raise ValueError(f"duplicate Stage 2 check {check.name!r}")
+        seen.add(check.name)
     schema_version = payload.get("schema_version", SCHEMA_VERSION)
     if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
         raise ValueError(f"unsupported Stage 2 schema_version {schema_version!r}")

@@ -77,6 +77,30 @@ def test_result_from_dict_rejects_unknown_status() -> None:
         result_from_dict(payload)
 
 
+def test_result_from_dict_rejects_non_object_payload() -> None:
+    with pytest.raises(ValueError, match="Stage 2 payload must be an object"):
+        result_from_dict([])
+
+
+def test_result_from_dict_rejects_duplicate_required_check_names() -> None:
+    payload = {
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [
+            {"name": "data_availability", "status": "FAIL", "reason": "missing data"},
+            {"name": "data_availability", "status": "PASS", "reason": "last-wins mask"},
+            {"name": "distinctness", "status": "PASS", "reason": "distinct"},
+            {"name": "cost_after_edge", "status": "PASS", "reason": "cost ok"},
+        ],
+    }
+
+    with pytest.raises(ValueError, match="duplicate Stage 2 check"):
+        result_from_dict(payload)
+
+
 def test_result_from_dict_rejects_lowercase_status() -> None:
     payload = {
         "batch_id": "pipeline_test",
