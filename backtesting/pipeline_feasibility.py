@@ -44,8 +44,6 @@ def _check_from_dict(payload: dict[str, Any]) -> FeasibilityCheck:
     if status not in VALID_STATUSES:
         raise ValueError(f"unknown Stage 2 status {status!r}")
     details = payload.get("details", {})
-    if details is None:
-        details = {}
     if not isinstance(details, dict):
         raise ValueError("Stage 2 check details must be an object")
     return FeasibilityCheck(name=name, status=status, reason=reason, details=dict(details))

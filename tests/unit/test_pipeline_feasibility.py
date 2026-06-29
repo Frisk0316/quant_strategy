@@ -176,6 +176,27 @@ def test_result_from_dict_rejects_non_object_check() -> None:
         result_from_dict(payload)
 
 
+def test_result_from_dict_rejects_null_check_details() -> None:
+    payload = {
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [
+            {
+                "name": "data_availability",
+                "status": "FAIL",
+                "reason": "missing data",
+                "details": None,
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Stage 2 check details must be an object"):
+        result_from_dict(payload)
+
+
 def test_result_to_dict_includes_computed_stage2_status() -> None:
     result = FeasibilityResult(
         batch_id="pipeline_test",
