@@ -77,6 +77,51 @@ def test_result_from_dict_rejects_unknown_status() -> None:
         result_from_dict(payload)
 
 
+def test_result_from_dict_rejects_lowercase_status() -> None:
+    payload = {
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [
+            {"name": "data_availability", "status": "pass", "reason": "lowercase"}
+        ],
+    }
+
+    with pytest.raises(ValueError, match="unknown Stage 2 status"):
+        result_from_dict(payload)
+
+
+def test_result_from_dict_rejects_string_schema_version() -> None:
+    payload = {
+        "schema_version": "1",
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [],
+    }
+
+    with pytest.raises(ValueError, match="unsupported Stage 2 schema_version"):
+        result_from_dict(payload)
+
+
+def test_result_from_dict_rejects_non_object_check() -> None:
+    payload = {
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": ["not an object"],
+    }
+
+    with pytest.raises(ValueError, match="Stage 2 check must be an object"):
+        result_from_dict(payload)
+
+
 def test_result_to_dict_includes_computed_stage2_status() -> None:
     result = FeasibilityResult(
         batch_id="pipeline_test",

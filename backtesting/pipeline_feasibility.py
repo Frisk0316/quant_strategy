@@ -36,8 +36,10 @@ def _required_text(payload: dict[str, Any], key: str) -> str:
 
 
 def _check_from_dict(payload: dict[str, Any]) -> FeasibilityCheck:
+    if not isinstance(payload, dict):
+        raise ValueError("Stage 2 check must be an object")
     name = _required_text(payload, "name")
-    status = _required_text(payload, "status").upper()
+    status = _required_text(payload, "status")
     reason = _required_text(payload, "reason")
     if status not in VALID_STATUSES:
         raise ValueError(f"unknown Stage 2 status {status!r}")
@@ -54,7 +56,7 @@ def result_from_dict(payload: dict[str, Any]) -> FeasibilityResult:
     if not isinstance(checks_payload, list):
         raise ValueError("Stage 2 field 'checks' must be a list")
     checks = tuple(_check_from_dict(row) for row in checks_payload)
-    schema_version = int(payload.get("schema_version", SCHEMA_VERSION))
+    schema_version = payload.get("schema_version", SCHEMA_VERSION)
     if schema_version != SCHEMA_VERSION:
         raise ValueError(f"unsupported Stage 2 schema_version {schema_version!r}")
     return FeasibilityResult(
