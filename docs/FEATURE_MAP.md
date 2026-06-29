@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -86,6 +86,39 @@ implementation exists.
   `docs/RUNBOOK.md`.
 - Do-not-touch notes: API schema changes require matching frontend and test updates;
   do not silently rename result fields.
+
+## In-Dashboard User Manual
+
+- User-facing behavior: browse 使用手冊 chapters from the Help nav group, render
+  written markdown chapters, and show `待補` for stub chapters.
+- Frontend files: `frontend/app.js`, `frontend/index.html`,
+  `frontend/view-manual.js`.
+- Backend/API files: `src/okx_quant/api/routes_manual.py`,
+  `src/okx_quant/api/server.py`.
+- Manual content files: `docs/manual/manual.json`, `docs/manual/*.md`.
+- Tests: `tests/unit/test_manual_manifest.py`,
+  `tests/unit/test_routes_manual.py`.
+- Docs to update: `docs/UI_MAP.md`, `docs/FEATURE_MAP.md`.
+- Do-not-touch notes: manual content is documentation/read-path only; do not
+  change strategy, risk, portfolio, execution, config, result artifacts, or
+  live/demo/shadow gates for this feature.
+
+## Progress Panel
+
+- User-facing behavior: browse a read-only workstream milestone view sourced from
+  `config/workstreams.yaml` in the Analysis nav group.
+- Frontend files: `frontend/app.js`, `frontend/index.html`,
+  `frontend/view-progress.js`, `frontend/data.js`, `frontend/styles.css`.
+- Backend/API files: `src/okx_quant/api/routes_progress.py`,
+  `src/okx_quant/api/server.py`.
+- Data / docs files: `config/workstreams.yaml`; linked plan files are only
+  surfaced as card links.
+- Tests: `tests/unit/test_routes_progress.py`, `make frontend-check`,
+  `make api-smoke`.
+- Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`.
+- Do-not-touch notes: progress is ops/meta read-only; do not change DB schema,
+  strategy, risk, portfolio, execution, config gates, or result artifacts.
 
 ## Indicator Series / Indicator Chart
 
@@ -204,8 +237,9 @@ implementation exists.
 - Backtesting files: `backtesting/replay.py` can instantiate the no-op strategy
   stub when explicitly requested. `backtesting/xs_momentum_backtest.py` is a
   research-only vectorized runner for target weights, corrected R3.1 funding
-  cashflow signs, honest grid trial counts, and optional `market_close` crash
-  filtering; it is not wired into UI/API promotion gates.
+  cashflow signs, family-cumulative grid trial counts via
+  `prior_family_n_trials`, portfolio-vol gross sizing, and optional
+  `market_close` crash filtering; it is not wired into UI/API promotion gates.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`
   and venue-scoped OHLCV/funding data. Local smoke artifacts such as
   `results/xs_momentum_db_smoke_20260623.json` are research evidence only.
@@ -218,10 +252,49 @@ implementation exists.
 - Docs to update: `docs/ADR/0009-xs-momentum-research-strategy.md`,
   `docs/change_manifests/2026-06-23-xs-momentum-universe.md`,
   `docs/change_manifests/2026-06-23-xs-momentum-phase-c.md`,
-  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`.
+  `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`.
 - Do-not-touch notes: `XSMomentumStrategy.on_market()` is intentionally no-op;
   do not claim live, demo, shadow, or promotion readiness until WF/CPCV,
   DSR/PSR, source parity, funding accounting, and human approval are complete.
+
+## Pipeline Batch 1 Research Candidates
+
+- User-facing behavior: disabled-by-default research candidate scaffolds for S5
+  residual mean reversion, S6 slow time-series momentum, and S7 perp-vs-spot
+  basis mean reversion. These are checkpoint artifacts only, not UI/API
+  promotion surfaces.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/s5_residual_meanrev_backtest.py`,
+  `backtesting/s6_ts_momentum_backtest.py`,
+  `backtesting/s7_basis_meanrev_backtest.py`,
+  `backtesting/pipeline_refit.py`,
+  `backtesting/differential_validation.py` contract entries,
+  `scripts/run_pipeline_batch1_checkpoint.py`.
+- Data / DB / artifact files: consumes venue-scoped Binance canonical
+  `canonical_candles` and `funding_rates`; generated checkpoint summaries live
+  under `results/pipeline_batch1_20260625/` and
+  `results/pipeline_batch1_20260625_refit/`. Binance S6/S7 data is loaded for
+  BTC/ETH perps and BTC/ETH spot (1m OHLCV) plus BTC/ETH perp funding. S6 failed
+  the fold-refit statistical gate, S7 is shelved after the non-degenerate
+  half-life rerun, and S5 is a data-universe artifact.
+- Config files: `config/strategies.yaml`, `config/universe.yaml`.
+- Strategy / portfolio files: `src/okx_quant/strategies/s5_residual_meanrev.py`,
+  `src/okx_quant/strategies/s6_ts_momentum.py`,
+  `src/okx_quant/strategies/s7_basis_meanrev.py`.
+- Tests: `tests/unit/test_s5_residual_meanrev_backtest.py`,
+  `tests/unit/test_s6_ts_momentum_backtest.py`,
+  `tests/unit/test_s7_basis_meanrev_backtest.py`,
+  `tests/unit/test_pipeline_refit.py`,
+  `tests/unit/test_pipeline_batch1_checkpoint_runner.py`,
+  `tests/unit/test_pipeline_batch1_contracts.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`, `docs/KNOWN_ISSUES.md`,
+  `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, relevant Change Manifest.
+- Do-not-touch notes: keep entries `enabled:false`; do not wire to UI/API,
+  demo/shadow/live gates, risk/portfolio/execution, or promotion until
+  source parity, portable validation, ct_val provenance, WF/CPCV gates, and
+  human approval are complete.
 
 ## Strategy Registry / Strategy Selection
 

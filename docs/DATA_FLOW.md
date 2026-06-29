@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 expires: none
 superseded_by: null
 ---
@@ -28,7 +28,12 @@ must rely on parquet fallback or skip DB-dependent validation.
 Venue-tagged replay runs are stricter: when a run declares `exchange`, candles
 must come from the canonical Postgres path filtered by `source_primary=<exchange>`.
 If that venue's bar is missing, the run reports a gap/error instead of falling
-back to source-less parquet or another venue.
+back to source-less parquet or another venue. A late-listing symbol is the
+exception: coverage is measured from its first observed bar (not the requested
+start), so multi-symbol backtests can mix coins with different listing dates.
+An empty venue series still errors, and an internal hole below
+`VENUE_GAP_MIN_COVERAGE` (0.80 from the first bar) still raises — no cross-venue
+substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
 
@@ -101,7 +106,10 @@ volume from candle history and uses only prior history for ADV and warmup
 eligibility. It does not forward-fill symbols across missing or ended candle
 history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
-convention, and can pass a `market_close` proxy into the crash filter. Known gap:
+convention, shifts daily target weights one full day before intraday expansion to
+avoid same-day-close lookahead, sizes XS momentum gross from estimated portfolio
+book volatility with a max-gross cap, and can pass a `market_close` proxy into
+the crash filter. Known gap:
 this remains research-tier until the A2 coverage task verifies at least 25
 symbols with 12 months of both parquet and venue-scoped canonical DB coverage and
 promotion validation runs WF/CPCV plus DSR/PSR.
@@ -223,6 +231,18 @@ and artifact availability can paint before chart/table fetches finish. Full
 The Backtest Risk tab loads `signals`, `fills`, and `risk-events` together. It
 uses the selected chart symbols to show whether sparse trading came from few
 strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
+
+## Progress Panel Flow
+
+```text
+config/workstreams.yaml -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
+```
+
+Current: the Progress panel is a read-only operations surface. It does not read
+from git, DB, or the network, write repository state, alter strategy/config/gate
+behavior, or modify result artifacts. Missing `config/workstreams.yaml` returns
+HTTP 200 with an empty `workstreams` list; malformed YAML returns HTTP 200 with
+an `error` field so the panel can show an unavailable state.
 
 ## Validation Artifact Flow
 

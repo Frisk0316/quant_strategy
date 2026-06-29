@@ -89,6 +89,43 @@ def test_venue_scoped_gap_raises_explicit_error():
         )
 
 
+def test_venue_scoped_gap_allows_late_listing_symbol():
+    # Symbol lists at 02:00 (no bars before that) but is fully covered through the
+    # window end — a multi-symbol backtest must not crash on its later start date.
+    late_listed = pd.DataFrame(
+        {"open": [1.0, 1.0], "high": [1.0, 1.0], "low": [1.0, 1.0],
+         "close": [10.0, 11.0], "vol": [1.0, 1.0]},
+        index=pd.DatetimeIndex(["2024-04-29T02:00:00", "2024-04-29T03:00:00"]),
+    )
+
+    data_loader._raise_on_venue_gap(
+        late_listed,
+        inst_id="CC-USDT-SWAP",
+        bar="1H",
+        start_dt=pd.Timestamp("2024-04-29T00:00:00Z").to_pydatetime(),
+        end_dt=pd.Timestamp("2024-04-29T04:00:00Z").to_pydatetime(),
+        exchange="binance",
+    )
+
+
+def test_venue_scoped_gap_raises_on_sparse_internal_holes():
+    # Listed at 00:00 but only 1 of 10 expected bars present -> genuine data gap.
+    sparse = pd.DataFrame(
+        {"open": [1.0], "high": [1.0], "low": [1.0], "close": [10.0], "vol": [1.0]},
+        index=pd.DatetimeIndex(["2024-04-29T00:00:00"]),
+    )
+
+    with pytest.raises(ValueError, match="No cross-venue fallback is allowed"):
+        data_loader._raise_on_venue_gap(
+            sparse,
+            inst_id="CC-USDT-SWAP",
+            bar="1H",
+            start_dt=pd.Timestamp("2024-04-29T00:00:00Z").to_pydatetime(),
+            end_dt=pd.Timestamp("2024-04-29T10:00:00Z").to_pydatetime(),
+            exchange="binance",
+        )
+
+
 def test_replay_l1_loader_passes_exchange_to_candle_loader(monkeypatch):
     calls = []
 

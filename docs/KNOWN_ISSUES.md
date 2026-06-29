@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -48,6 +48,17 @@ over time.
   tiny fixture workloads.
 - Advisory validation evidence, in-sample backtests, idealized-fill artifacts, and
   DB parity SKIP states are not promotion evidence.
+- `scripts/recheck_dsr.py` is the current audit for DSR-bearing JSON artifacts.
+  The 2026-06-24 run found 7 CPCV rows and 38 replay-level single-run diagnostic
+  rows. `xs_momentum_validation_20260623` and
+  `xs_momentum_validation_20260624_leakfix` have stored CPCV DSR values that
+  violate `DSR <= PSR(0)` and must not be cited. Daily Winner CPCV was
+  recomputed from saved returns and remains non-passing. The portfolio-vol XS
+  artifact has a fixed, non-passing DSR/PSR pair, but only summary/path Sharpe
+  fields were saved. As of 2026-06-29, future CPCV outputs retain raw path
+  returns, or combined returns when path assembly is unavailable, so
+  `scripts/recheck_dsr.py` can recompute DSR from saved artifacts; historical
+  artifacts were not backfilled and remain summary-only.
 - ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
   adding venue-aware specs, provenance exchange tags, and frontend/API exchange
   selection; Known Issue 20's root cause is closed. Remaining environment gap:
@@ -75,6 +86,17 @@ over time.
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact still
   records the pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as
   PASS.
+- Pipeline batch 1's `ETH-USDT-SWAP` data blocker was resolved on 2026-06-25:
+  Binance `ETH-USDT-SWAP` canonical 1m OHLCV now covers 2024-01-01 through
+  2026-06-16 23:59 UTC with 1,293,120 rows and 0 gaps, and Binance funding has
+  2,694 rows. The remaining gap is validation quality, not data availability:
+  S6 did not re-earn the statistical gate on the fold-refit harness, so portable
+  validation adapters and authoritative ct_val evidence must not start for S6.
+  S7 is shelved after a non-degenerate half-life rerun. S5 has a separate
+  point-in-time universe/canonical coverage mismatch: the current membership
+  artifact plus strict venue-scoped complete-window candle coverage produces
+  `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
+  artifact rather than a strategy verdict.
 
 ## Operations
 

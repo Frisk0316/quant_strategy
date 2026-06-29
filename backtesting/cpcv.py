@@ -196,6 +196,7 @@ class CPCV:
         strategy_fn: Callable[[pd.DataFrame, pd.DataFrame], pd.Series],
         periods: int = 365,
         n_trials: int | None = None,
+        n_trials_provenance: str | None = None,
         progress_callback: Callable[[dict], None] | None = None,
     ) -> dict:
         """
@@ -207,8 +208,9 @@ class CPCV:
             periods: Annualization period.
             n_trials: Number of strategy/parameter trials actually researched.
                 Used as N in Deflated Sharpe Ratio. When omitted, falls back to
-                the number of CPCV paths or combinations for backward
-                compatibility.
+                the observed CPCV combination count and tags that value as a
+                floor, not an honest researched count.
+            n_trials_provenance: Source label for caller-supplied n_trials.
 
         Returns:
             dict with combination-level and path-level OOS metrics.
@@ -250,6 +252,20 @@ class CPCV:
                 "result": strategy_result,
             })
 
+        validation: dict[str, object] = {"idealized_fill": True} if idealized_fill else {}
+        if n_trials is None:
+            effective_n_trials = len(combo_results)
+            effective_n_trials_provenance = "grid_size_floor"
+            n_trials_is_floor = True
+        else:
+            effective_n_trials = int(n_trials or 0)
+            effective_n_trials_provenance = n_trials_provenance or "caller_declared"
+            n_trials_is_floor = effective_n_trials_provenance == "grid_size_floor"
+        if effective_n_trials <= 0:
+            validation["n_trials_missing"] = True
+        validation["n_trials_provenance"] = effective_n_trials_provenance
+        validation["n_trials_is_floor"] = n_trials_is_floor
+
         if not combo_results:
             return {
                 "sharpe_list": [],
@@ -260,14 +276,23 @@ class CPCV:
                 "psr": 0.0,
                 "n_paths": 0,
                 "path_sharpes": [],
-                "n_trials": int(n_trials or 0),
-                "validation": {"idealized_fill": True} if idealized_fill else {},
+                "path_returns": [],
+                "path_return_periods": periods,
+                "path_return_lengths": [],
+                "combined_returns": [],
+                "combined_return_periods": periods,
+                "combined_return_length": 0,
+                "n_trials": effective_n_trials,
+                "n_trials_provenance": effective_n_trials_provenance,
+                "n_trials_is_floor": n_trials_is_floor,
+                "validation": validation,
             }
 
         combo_sharpes = [result["sharpe"] for result in combo_results]
         combo_by_groups = {result["test_groups"]: result for result in combo_results}
         path_sharpes = []
         path_returns_list = []
+        combined_returns = pd.Series(dtype=float)
 
         for combo_idx_list in self._path_combo_indices():
             path_chunks = []
@@ -288,27 +313,40 @@ class CPCV:
                 path_sharpes.append(sharpe(path_returns, periods=periods))
 
         if path_returns_list:
-            combined_returns = pd.concat(path_returns_list, ignore_index=True)
             overall_sr = float(np.mean(path_sharpes))
-            dsr_val = deflated_sharpe(
-                returns=np.asarray(combined_returns, dtype=float),
-                sr=overall_sr,
-                sr_list=path_sharpes,
-                N=max(int(n_trials or len(path_sharpes)), 1),
-            )
-            psr_val = float(
-                np.mean([psr(np.asarray(path_returns, dtype=float)) for path_returns in path_returns_list])
-            )
+            path_psrs = [psr(np.asarray(path_returns, dtype=float)) for path_returns in path_returns_list]
+            psr_val = float(np.mean(path_psrs))
+            if effective_n_trials > 0:
+                dsr_val = float(np.mean([
+                    deflated_sharpe(
+                        returns=np.asarray(path_returns, dtype=float),
+                        sr=path_sr,
+                        sr_list=path_sharpes,
+                        N=effective_n_trials,
+                    )
+                    for path_returns, path_sr in zip(path_returns_list, path_sharpes)
+                ]))
+            else:
+                dsr_val = 0.0
         else:
             combined_returns = pd.concat([result["returns"] for result in combo_results], ignore_index=True)
             overall_sr = sharpe(combined_returns, periods=periods)
-            dsr_val = deflated_sharpe(
-                returns=np.asarray(combined_returns, dtype=float),
-                sr=overall_sr,
-                sr_list=combo_sharpes,
-                N=max(int(n_trials or len(combo_sharpes)), 1),
-            )
             psr_val = psr(np.asarray(combined_returns, dtype=float))
+            if effective_n_trials > 0:
+                dsr_val = deflated_sharpe(
+                    returns=np.asarray(combined_returns, dtype=float),
+                    sr=overall_sr,
+                    sr_list=combo_sharpes,
+                    N=effective_n_trials,
+                )
+            else:
+                dsr_val = 0.0
+
+        if dsr_val > psr_val + 1e-12:
+            raise ValueError("DSR invariant violated: deflated Sharpe exceeds PSR(0)")
+
+        path_returns_payload = [series.astype(float).tolist() for series in path_returns_list]
+        combined_returns_payload = combined_returns.astype(float).tolist() if combined_returns is not None else []
 
         return {
             "sharpe_list": combo_sharpes,
@@ -319,6 +357,14 @@ class CPCV:
             "psr": psr_val,
             "n_paths": len(path_sharpes),
             "path_sharpes": path_sharpes,
-            "n_trials": max(int(n_trials or 0), 0),
-            "validation": {"idealized_fill": True} if idealized_fill else {},
+            "path_returns": path_returns_payload,
+            "path_return_periods": periods,
+            "path_return_lengths": [len(values) for values in path_returns_payload],
+            "combined_returns": combined_returns_payload,
+            "combined_return_periods": periods,
+            "combined_return_length": len(combined_returns_payload),
+            "n_trials": effective_n_trials,
+            "n_trials_provenance": effective_n_trials_provenance,
+            "n_trials_is_floor": n_trials_is_floor,
+            "validation": validation,
         }

@@ -694,7 +694,8 @@ def test_reference_validation_contract_covers_all_declared_strategies():
     missing = declared - set(dv.REFERENCE_VALIDATION_CONTRACTS)
 
     assert missing == set()
-    for strategy, contract in dv.REFERENCE_VALIDATION_CONTRACTS.items():
+    for strategy in declared:
+        contract = dv.REFERENCE_VALIDATION_CONTRACTS[strategy]
         statuses = {
             str(capability.get("status"))
             for capability in (contract.get("engines") or {}).values()
@@ -703,11 +704,12 @@ def test_reference_validation_contract_covers_all_declared_strategies():
 
 
 def test_reference_validation_contract_declares_all_engine_portability_paths():
+    allowed_statuses = {"implemented", "adapter_required", "not_targeted"}
     for strategy, contract in dv.REFERENCE_VALIDATION_CONTRACTS.items():
         engines = contract.get("engines") or {}
         assert set(engines) == dv.ENGINE_NAMES, strategy
         for engine, capability in engines.items():
-            assert capability.get("status") == "implemented", f"{strategy}:{engine}"
+            assert capability.get("status") in allowed_statuses, f"{strategy}:{engine}"
             assert capability.get("role") in dv.REFERENCE_ROLES, f"{strategy}:{engine}"
             assert capability.get("limitation"), f"{strategy}:{engine}"
 

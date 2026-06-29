@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,8 +27,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db_writer import upsert_candles_to_db  # noqa: E402
 
 BINANCE_FUTURES_BASE = "https://fapi.binance.com"
-KLINES_ENDPOINT = "/fapi/v1/klines"
+BINANCE_SPOT_BASE = "https://api.binance.com"
+FUTURES_KLINES_ENDPOINT = "/fapi/v1/klines"
+SPOT_KLINES_ENDPOINT = "/api/v3/klines"
 MAX_LIMIT = 1500  # Binance max per request
+
+
+@dataclass(frozen=True)
+class BinanceMarketConfig:
+    base_url: str
+    endpoint: str
+    max_limit: int
+
+
+def market_config_for_inst(inst_id: str) -> BinanceMarketConfig:
+    parts = inst_id.upper().split("-")
+    if parts and parts[-1] in {"SWAP", "PERP", "FUTURES"}:
+        return BinanceMarketConfig(BINANCE_FUTURES_BASE, FUTURES_KLINES_ENDPOINT, 1500)
+    return BinanceMarketConfig(BINANCE_SPOT_BASE, SPOT_KLINES_ENDPOINT, 1000)
 
 # Map our internal bar notation to Binance interval strings
 BAR_MAP = {
@@ -90,25 +107,27 @@ def download_klines(
     start_ms: int,
     end_ms: int,
     base_sleep: float = 0.25,
+    market: BinanceMarketConfig | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
     current_start = start_ms
     bar_dur = BAR_MS.get(interval, 60_000)
 
-    with httpx.Client(base_url=BINANCE_FUTURES_BASE, timeout=30) as client:
+    market = market or BinanceMarketConfig(BINANCE_FUTURES_BASE, FUTURES_KLINES_ENDPOINT, 1500)
+    with httpx.Client(base_url=market.base_url, timeout=30) as client:
         while current_start < end_ms:
             params = {
                 "symbol": symbol,
                 "interval": interval,
                 "startTime": current_start,
                 "endTime": end_ms,
-                "limit": MAX_LIMIT,
+                "limit": market.max_limit,
             }
 
             # retry loop with exponential backoff on 429 / 5xx
             backoff = 2.0
             for attempt in range(8):
-                resp = client.get(KLINES_ENDPOINT, params=params)
+                resp = client.get(market.endpoint, params=params)
                 if resp.status_code == 429:
                     retry_after = float(resp.headers.get("Retry-After", backoff))
                     wait = max(retry_after, backoff)
@@ -150,7 +169,7 @@ def download_klines(
                 f"  total={len(rows):,}"
             )
 
-            if len(data) < MAX_LIMIT:
+            if len(data) < market.max_limit:
                 break
 
             time.sleep(base_sleep)
@@ -188,6 +207,7 @@ def main() -> None:
 
     binance_symbol = inst_to_binance_symbol(args.inst)
     binance_interval = BAR_MAP.get(args.bar, args.bar)
+    market = market_config_for_inst(args.inst)
     out_dir = Path(args.out)
 
     folder = args.inst.replace("-", "_")
@@ -229,7 +249,7 @@ def main() -> None:
         f"({total_days} days, {start_date} → {end_date})"
     )
 
-    rows = download_klines(binance_symbol, binance_interval, start_ms, now_ms)
+    rows = download_klines(binance_symbol, binance_interval, start_ms, now_ms, market=market)
 
     if not rows:
         print("No new data returned.")

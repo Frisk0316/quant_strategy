@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,183 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-06-29 Codex follow-up (T2 CPCV retention/provenance mechanism):
+`backtesting.cpcv.CPCV.evaluate()` now emits retained `path_returns` (or
+`combined_returns` when path assembly is unavailable), return lengths, periods,
+`n_trials_provenance`, and `n_trials_is_floor`. Absent `n_trials` is tagged as a
+`grid_size_floor`; explicit nonpositive `n_trials` still sets
+`validation.n_trials_missing`. `backtesting/xs_momentum_backtest.py` accepts
+caller-declared `researched_n_trials` and otherwise labels scan counts as a
+floor. `scripts/recheck_dsr.py` recomputes DSR from retained returns and prints
+old-to-new DSR when artifacts carry the raw series. Pipeline batch checkpoint
+summaries copy retained CPCV fields with `n_trials_provenance="caller_declared"`
+because those counts are family-cumulative. No existing
+result artifact payloads were rewritten; historical summary-only CPCV artifacts
+remain non-recomputable offline.
+
+2026-06-25 Claude (pipeline batch 1 closeout + batch 2 pre-registration):
+Pipeline batch 1 is **CLOSED — all three candidates refuted under the fold-refit
+WF/CPCV harness**. S6 (E-015) WF 0.0088 / CPCV 0.5422 / DSR 0.1963 / PSR 0.7387,
+statistical-fail (the original `statistical_gate_passed:true` was a
+non-refitting-harness artifact); S5 (E-014) no grid activity, data-universe
+artifact; S7 (E-016) WF -0.4359 / CPCV -1.1124, shelved. H-003 shelved,
+H-004/H-005 inconclusive. **Do not tune S5/S6/S7 to chase the gate** (mirrors the
+H-002 shelve decision); the total refutation is the gate working, and it is
+research signal that price-momentum/mean-reversion alpha on BTC/ETH net of cost
+is weak in 2024-2026. **Batch 2 pre-registered** (not yet run): C1 BTC/ETH
+OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2 funding carry +
+basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed long/flat
+(H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data-availability Stage-2 check
+pending). Run order [C3, C2, C1]; batch id `pipeline_batch2_20260625`. Next:
+Claude writes Stage-1 hypothesis specs, then Codex runs Stage 2->3. The one open
+Codex code task before any batch-2 DSR was trustworthy was **T2** (CPCV raw-path
+retention + honest n_trials provenance), now implemented for future artifacts;
+follow-up tasks tracked in
+`tasks/2026-06-25-pipeline-batch1-followup-tasks.md` (T1 done, T3 done, T4 moot,
+T2 done).
+
+2026-06-26 Codex follow-up (Progress workstream milestone panel):
+`/api/progress` no longer reads git metadata, `STATUS.md`, or linked-plan
+checkboxes. The endpoint now reads the hand-maintained
+`config/workstreams.yaml` registry and returns workstream cards with
+done/current/pending milestone states. The frontend renders curated milestone
+steppers, state/next lines, and doc links. Maintenance contract:
+update `config/workstreams.yaml` whenever this file is updated so the panel
+stays honest. This is read-only UI/API/config data; no DB, network, write
+endpoint, strategy, risk, config gate, deployment, or result-artifact behavior
+changed.
+
+2026-06-25 Codex follow-up (manual completion + standalone Progress route):
+`scripts/run_server.py` now includes `/api/progress` after Claude/user approval.
+Manual chapters `docs/manual/00-architecture.md` through
+`docs/manual/80-glossary.md` were rewritten into readable Traditional Chinese
+summaries from existing project docs, and `docs/manual/manual.json` now marks all
+chapters as `written`. Scope is documentation/read-only API surface only: no
+research files, strategy behavior, config gates, risk rules, live/shadow/demo
+behavior, or result artifacts changed.
+
+2026-06-25 Codex follow-up (read-only Progress panel): added `/api/progress`
+and the `進度 / Progress` Analysis nav panel. The route reads local git metadata,
+`STATUS.md`, and linked plan checkboxes only; no DB, network, write endpoint,
+strategy, risk, config gate, deployment, or result-artifact behavior changed.
+`STATUS.md` seeds the branch board. Checks run: `tests/unit/test_routes_progress.py`
+passed, frontend JS syntax checks passed via direct `node --check` commands
+because `make` is unavailable in this Windows shell, `api_smoke.py` skipped
+cleanly without `API_BASE_URL`, and docs metadata/feature-map link checks passed
+with existing metadata warnings.
+
+2026-06-25 Codex follow-up (pipeline batch 1 Stage 3/refit checkpoint after
+data repair): Binance canonical data is complete for S6/S7 over `2024-01-01`
+through `2026-06-16 23:59 UTC`: `BTC-USDT-SWAP`, `ETH-USDT-SWAP`,
+`BTC-USDT`, and `ETH-USDT` each have 1,293,120 1m rows with 0 gaps, and
+BTC/ETH perp funding each has 2,694 rows. ETH perp was loaded with
+`scripts/download_binance_data.py`; ETH funding was loaded with
+`scripts/market_data/ingest.py` after fixing Binance funding windowing and
+legacy `funding_rates` mirroring. The old S5/S6 summaries are superseded because
+they used a non-refitting WF/CPCV harness. New fold-refit artifacts are under
+`results/pipeline_batch1_20260625_refit/`: S6 has WF OOS Sharpe 0.0088, CPCV
+OOS Sharpe 0.5422, DSR 0.1963, PSR 0.7387, `statistical_gate_passed:false`, so
+adapter/ct_val work should not start. S5 reran with ETH factor data but current
+point-in-time membership plus venue-scoped candle coverage produces
+`nonzero_grid_activity:false`, so it is a data-universe artifact, not support or
+refutation. S7 (`results/pipeline_batch1_20260625/s7/summary.json`) reran with a
+non-degenerate finite half-life grid and is `shelved_pending_research_review`
+(WF -0.4359, CPCV -1.1124, DSR/PSR ~0), not refuted from the prior all-zero
+no-trade artifact. No first-batch strategy is promotion evidence or
+live/demo/shadow ready.
+
+2026-06-25 Codex follow-up (Strategy Research Pipeline Stage 1): Claude brainstormed
++ planned a semi-autonomous strategy-research pipeline so one kickoff runs backlog
+candidates through 文獻→假設 → 可行性 → 實作+回測, stops at one Claude evidence
+review, and emits a shortlist (publish stays the user's call). Spec
+`docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md`, plan
+`docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`, driver +
+stage templates under `docs/superpowers/pipeline/`. Decisions: backlog source,
+single manual checkpoint, **per-family cumulative `n_trials`** (K=2 retry limit),
+two-pass backtest (parquet pre-screen → DB CPCV), publish = `enabled:false`
+candidate (never touches demo/shadow/live gates). Codex completed Task 1
+code/tests and Tasks 2-4 docs: `scan_xs_momentum` accepts
+`prior_family_n_trials`, records family-cumulative `attrs["n_trials"]`, and the
+Stage 3 template requires passing the family count into CPCV. The generic
+validation runner already passes caller-provided `n_trials` into
+`CPCV.evaluate()`. Family trial-accounting docs, invariant I23, Change Manifest
+`docs/change_manifests/2026-06-25-family-cumulative-n-trials.md`, driver,
+three stage templates, and shortlist template are in place. First batch when run
+= [S7, S5, S6]. Nothing run yet; no strategy promotion, result artifact value,
+config, or demo/shadow/live gate changed.
+
+2026-06-24 Results cleanup (user-approved): all pre-6/18 `results/` artifacts were
+deleted to declutter — scratch runs (smoke/test/verify/sweep/old-UI + old PNGs)
+and pre-6/18 cited evidence (`cme_gap_research*.json`,
+`codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
+`ui_funding_carry_ac454742`). 6/18 and later are kept, including the durable
+adr0007 source-provenance PASS artifact. Consequence: on-disk
+differential/signal-validation evidence is gone — re-run
+`make strategy-signal-validation` (CI regenerates it) before citing fresh
+validation evidence. `docs/results_validation_manifest.md` rows for deleted files
+are now historical-only.
+
+2026-06-24 Codex follow-up (DSR harness + XS portfolio-vol correctness): fixed
+DSR computation so `src/okx_quant/analytics/dsr.py` uses per-observation Sharpe
+from the same return series that feeds `sqrt(T-1)`, and
+`backtesting/cpcv.py` computes DSR over non-overlapping CPCV paths with honest
+`n_trials`; the harness now refuses `DSR > PSR(0)` and emits `dsr=0.0` with
+`validation.n_trials_missing` when callers omit researched trial count. Added
+I21/F20. XS momentum sizing now targets estimated portfolio book vol with
+`MAX_GROSS_LEVERAGE = 2.0` rather than median single-name vol capped at 1.0;
+added I22/F21 and updated ADR-0009. Correctness-only rerun:
+`results/xs_momentum_validation_20260624_portfoliovol/` with
+`promotion_gate_passed:false`, `status:"review_required"`, WF OOS Sharpe 1.2412,
+CPCV OOS Sharpe 0.6027, DSR 0.7823, PSR 0.8234, `n_trials=8`,
+`n_combinations=15`. PSR remains below 0.95, so promotion remains **BLOCKED**.
+`xs_momentum` stays disabled; no live/demo/shadow/deployment gates changed.
+
+2026-06-24 Codex follow-up (DSR all-strategy recheck): added
+`scripts/recheck_dsr.py` and ran it against current `results/**/*.json`.
+The audit found 45 DSR-bearing JSON rows: 7 CPCV rows and 38 replay-level
+single-run diagnostic rows. The single-run rows set `dsr == psr` and are not the
+CPCV multiple-trial DSR defect. Daily Winner CPCV was recomputed from saved
+returns (`old dsr=0.0`, recomputed `dsr=6.81623e-39`, `psr=0.658074`).
+`results/xs_momentum_validation_20260623/{cpcv,summary}.json` and
+`results/xs_momentum_validation_20260624_leakfix/{cpcv,summary}.json` are
+**untrusted** for DSR because `DSR > PSR(0)`. The portfolio-vol artifact passes
+the invariant (`0.7823 <= 0.8234`) and remains below gate, but it stores only
+summary/path Sharpe fields, not raw path returns; the audit cannot independently
+recompute it from artifacts alone. No result payloads were modified.
+
+2026-06-24 Claude review note (XS momentum Phase C runner): **BLOCK promotion —
+look-ahead leak found.** `backtesting/xs_momentum_backtest.py` builds the day-D
+target weight from day-D's own close (`_daily_close` bins at 00:00 but holds the
+day's 23:00 close) and lags it by only one intraday bar (`positions =
+target.shift(1)`), so every rebalance day is partially traded with same-day-close
+hindsight. This inflates the committed WF/CPCV evidence
+(`results/xs_momentum_validation_20260623/`: OOS Sharpe 2.4–5.1 at ~2–3% vol,
+`dsr=1.0`, `psr=0.99`) — that artifact is **INVALID / superseded, not promotion
+evidence, do not cite.** It also carries `summary.json:"promotion_gate_passed":
+true`, which must be retracted (no user approval, leaked numbers). Separately, the
+vol-target sizes on median single-name vol capped at gross≤1.0 → ~5× chronic
+under-leverage (spec-conformance issue, not the leak). The D3-flagged fixes
+(annualized vol-target, `market_close` wiring) did land and are tested. Funding
+sign is R3.1-correct. Fix is daily-level lag + regression test + leak-free re-run:
+Codex task `tasks/2026-06-24-xs-momentum-lookahead-fix-task.md`; full review
+`tasks/2026-06-24-xs-momentum-phase-c-review.md`.
+
+2026-06-24 Codex follow-up (XS momentum lookahead fix): fixed
+`backtesting/xs_momentum_backtest.py` so daily targets are shifted one full day
+before intraday expansion, while retaining the existing one-bar execution lag.
+Regression coverage:
+`tests/unit/test_xs_momentum_backtest.py::test_daily_close_target_is_not_traded_on_same_day`.
+Leak-free validation rerun was written to
+`results/xs_momentum_validation_20260624_leakfix/` with
+`promotion_gate_passed:false`, `status:"review_required"`, 27 loaded symbols,
+8 searched parameter trials, 15 CPCV combinations, WF combined OOS Sharpe
+0.8825, CPCV overall OOS Sharpe 0.5577, pre-fix DSR 1.0 (**untrusted; DSR > PSR**),
+and PSR 0.7961. Because PSR is below 0.95, this rerun does **not** support promotion. The leaked
+`results/xs_momentum_validation_20260623/` artifact now has `SUPERSEDED.md` and
+must not be cited. Vol-target quantity/sizing remains a separate Claude/user
+decision; no `src/okx_quant/strategies/`, risk, portfolio, execution, config, or
+deployment gate files were changed.
 
 2026-06-23 Codex session note (XS momentum Phase C research runner): scaffold
 work was preserved on independent branch `codex/xs-momentum-universe-scaffold`

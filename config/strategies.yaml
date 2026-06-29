@@ -83,6 +83,55 @@ xs_momentum:
   long_only: false
   td_mode: cross
 
+s5_residual_meanrev:
+  enabled: false
+  universe: []
+  bar: 1m
+  rebalance: weekly
+  lookback_days: 3
+  z_enter: 2.0
+  z_exit: 0.5
+  factors: BTC
+  top_n: 20
+  vol_window_days: 28
+  inverse_vol: true
+  vol_target_annual: 0.175
+  max_name_weight: 0.10
+  fee_bps: 2.0
+  slippage_bps: 2.0
+  td_mode: cross
+
+s6_ts_momentum:
+  enabled: false
+  symbols:
+    - BTC-USDT-SWAP
+    - ETH-USDT-SWAP
+  bar: 1m
+  rebalance: weekly
+  lookback_days: 60
+  vol_window_days: 28
+  vol_target_annual: 0.15
+  max_leverage: 2.0
+  crash_filter: true
+  fee_bps: 2.0
+  slippage_bps: 2.0
+  td_mode: cross
+
+s7_basis_meanrev:
+  enabled: false
+  pairs:
+    BTC-USDT-SWAP: BTC-USDT
+    ETH-USDT-SWAP: ETH-USDT
+  bar: 1m
+  lookback_days: 7
+  z_enter: 2.0
+  z_exit: 0.5
+  max_half_life_days: 3.0
+  max_hold_days: 7
+  fee_bps: 2.0
+  slippage_bps: 2.0
+  td_mode: cross
+
 fear_greed_sentiment:
   enabled: false
   symbol: BTC-USDT-SWAP

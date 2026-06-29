@@ -298,7 +298,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const [start, setStart] = useConfigState("2024-01-01");
   const [end, setEnd] = useConfigState(yesterday);
   const [equity, setEquity] = useConfigState(5000);
-  const [validation, setValidation] = useConfigState("both");
+  const [validation, setValidation] = useConfigState("none");
   const [runJob, setRunJob] = useConfigState(null);
   const [rotUniverse, setRotUniverse] = useConfigState(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]);
   const [technicalSymbols, setTechnicalSymbols] = useConfigState(["BTC-USDT-SWAP"]);
@@ -400,7 +400,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         const iv = setInterval(() => {
           window.API.fetchBacktestRunStatus(savedJobId).then((st) => {
             setRunJob(st);
-            if (st.status === "done" || st.status === "error") {
+            if (st.status === "done" || st.status === "error" || st.status === "cancelled") {
               clearInterval(iv);
               localStorage.removeItem("activeBacktestJobId");
             }
@@ -484,7 +484,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       const iv = setInterval(() => {
         window.API.fetchBacktestRunStatus(job.job_id).then((s) => {
           setRunJob(s);
-          if (s.status === "done" || s.status === "error") {
+          if (s.status === "done" || s.status === "error" || s.status === "cancelled") {
             clearInterval(iv);
             localStorage.removeItem("activeBacktestJobId");
           }
@@ -495,6 +495,15 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         });
       }, 2000);
     }).catch((err) => setRunJob({ status: "error", message: err.message }));
+  }
+
+  function cancelBacktest() {
+    const jobId = runJob?.job_id;
+    if (!jobId || !window.API.cancelBacktestRun) return;
+    setRunJob((j) => ({ ...(j || {}), status: "cancelling", message: "Cancel requested..." }));
+    window.API.cancelBacktestRun(jobId)
+      .then((s) => setRunJob(s))
+      .catch(() => {});  // poller picks up the final state
   }
 
   function triggerParameterSweep() {
@@ -555,7 +564,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || runJob?.status === "cancelling" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -825,6 +834,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               <div class="row" style=${{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <span class=${`chip ${runJob.status === "done" ? "profit" : runJob.status === "error" ? "loss" : "warn"}`}>${runJob.status}</span>
                 ${runJob.run_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${runJob.run_id}</span>`}
+                ${(runJob.status === "running" || runJob.status === "cancelling") && runJob.job_id && html`
+                  <button class="btn ghost sm" disabled=${runJob.status === "cancelling"} onClick=${cancelBacktest}>
+                    ${runJob.status === "cancelling" ? "Cancelling..." : "Cancel backtest"}
+                  </button>
+                `}
                 ${runJob.status === "done" && runJob.run_id && setView && html`
                   <button class="btn primary sm" onClick=${() => {
                     setSelectedRunId?.(runJob.run_id);

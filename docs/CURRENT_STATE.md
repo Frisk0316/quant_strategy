@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-29
 expires: none
 superseded_by: null
 ---
@@ -20,6 +20,125 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **CPCV path-return retention + n_trials provenance (2026-06-29, Codex):**
+  future `backtesting.cpcv.CPCV.evaluate()` outputs retain raw `path_returns`
+  (or `combined_returns` when no path assembly exists), lengths, periods,
+  `n_trials_provenance`, and `n_trials_is_floor`. Missing `n_trials` now falls
+  back to the observed grid/combo floor and is tagged `grid_size_floor`; explicit
+  nonpositive values still set `validation.n_trials_missing`. XS momentum scans
+  accept `researched_n_trials` and otherwise tag the family/grid count as a
+  floor. `scripts/recheck_dsr.py` recomputes DSR from retained returns and prints
+  old-to-new DSR; pipeline checkpoint summaries carry retained CPCV fields with
+  `caller_declared` family-cumulative trial provenance. Existing result
+  artifacts were not rewritten, so historical summary-only CPCV artifacts remain
+  non-recomputable offline.
+
+- **User manual completion (2026-06-25, Codex):** manual chapters
+  `00-architecture` through `80-glossary` are now readable Traditional Chinese
+  summaries and declared `written` in `docs/manual/manual.json`. The content
+  summarizes existing docs only; no research files, strategy behavior, config
+  gates, risk rules, deployment behavior, or result artifacts changed.
+
+- **Read-only Progress panel (2026-06-26, Codex):** `/api/progress` and the
+  Progress Analysis nav panel now shows curated workstream milestone cards from
+  `config/workstreams.yaml`. The route is local/read-only: YAML registry only;
+  no git, `STATUS.md`, DB, network, write path, trading-core, config-gate,
+  deployment, or result-artifact change. Maintenance contract: update
+  `config/workstreams.yaml` alongside `docs/AI_HANDOFF.md`.
+- **Pipeline batch 1 Stage 3/refit checkpoint (2026-06-25, Codex):** Binance
+  canonical data is complete for S6/S7 over `2024-01-01` through
+  `2026-06-16 23:59 UTC`: BTC/ETH perps and BTC/ETH spot each have 1,293,120 1m
+  rows with 0 gaps; BTC/ETH perp funding each has 2,694 rows. The defective
+  full-sample-select-then-slice harness is superseded by fold-refit validation
+  (`backtesting/pipeline_refit.py`, I24/F22). New S5/S6 artifacts are under
+  `results/pipeline_batch1_20260625_refit/`: S6 has WF OOS Sharpe 0.0088, CPCV
+  OOS Sharpe 0.5422, DSR 0.1963, PSR 0.7387, `statistical_gate_passed:false`;
+  do **not** start adapter/ct_val work. S5 reran with ETH factor data but current
+  point-in-time membership plus venue-scoped candle coverage produces
+  `nonzero_grid_activity:false`, so it is a data-universe artifact, not a
+  strategy verdict. S7 was rerun with a non-degenerate finite half-life grid and
+  is `shelved_pending_research_review` (WF -0.4359, CPCV -1.1124, DSR/PSR ~0),
+  not refuted from the prior all-zero no-trade artifact. No strategy is
+  promotion-ready or live/demo/shadow ready.
+- **Pipeline batch 1 CLOSED + batch 2 pre-registered (2026-06-25, Claude):**
+  Batch 1 [S7, S5, S6] is closed — all three fail the statistical gate under the
+  fold-refit harness (see above); none has edge, the gate worked. Do **not** tune
+  S5/S6/S7 to chase the gate (mirrors H-002). Batch 2 is pre-registered, not yet
+  run: C1 BTC/ETH OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2
+  funding carry + basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed
+  long/flat (H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data Stage-2 check
+  pending). Run order [C3, C2, C1]; batch id `pipeline_batch2_20260625`. Claude
+  writes Stage-1 specs before Codex runs Stage 2->3. T2
+  (CPCV raw-path retention + honest n_trials) is implemented for future artifacts;
+  follow-up task history is in
+  `tasks/2026-06-25-pipeline-batch1-followup-tasks.md`.
+- **Strategy Research Pipeline Stage 1 machinery (2026-06-25, Codex):** spec
+  `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md` and
+  plan `docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md`
+  now have the minimal driver/templates under `docs/superpowers/pipeline/`.
+  `scan_xs_momentum` accepts `prior_family_n_trials` and reports
+  family-cumulative `n_trials`; the ledgers define family trial accounting and
+  I23. The autonomous driver has **not** been run end-to-end; batch 1
+  [S7, S5, S6] was run via `scripts/run_pipeline_batch1_checkpoint.py` and is now
+  closed (all refuted); batch 2 = [C3, C2, C1] is pre-registered. No strategy
+  promotion, config, result artifact values, or demo/shadow/live gates changed.
+- **Results cleanup (2026-06-24, user-approved):** all pre-6/18 `results/`
+  artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
+  `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
+  `ui_funding_carry_ac454742`, old PNGs). 6/18+ kept, incl. the adr0007 PASS
+  evidence. Consequence: no on-disk strategy-signal-validation evidence remains ??
+  re-run `make strategy-signal-validation` before any promotion citation (CI
+  regenerates it). `docs/results_validation_manifest.md` rows for deleted files
+  are historical only.
+- **Latest XS momentum / validation state (2026-06-24, Codex) - DSR fixed,
+  portfolio-vol correctness rerun, promotion still blocked:** DSR now uses the
+  same per-observation return-series basis as PSR and CPCV no longer treats
+  overlapping paths as one independent sample; invariant `DSR <= PSR(0)` is
+  guarded by `tests/unit/test_dsr.py` and `tests/unit/test_cpcv.py`. XS momentum
+  sizing now targets estimated portfolio book vol with `MAX_GROSS_LEVERAGE=2.0`.
+  New artifact: `results/xs_momentum_validation_20260624_portfoliovol/` with
+  WF OOS Sharpe 1.2412, CPCV OOS Sharpe 0.6027, DSR 0.7823, PSR 0.8234,
+  `n_trials=8`, `n_combinations=15`, `promotion_gate_passed:false`, and
+  `status:"review_required"`. PSR remains below 0.95, so there is **no
+  promotion support**. `xs_momentum` remains disabled; live/demo/shadow gates
+  unchanged.
+- **DSR all-strategy recheck (2026-06-24, Codex):** `scripts/recheck_dsr.py`
+  scans saved JSON artifacts for DSR fields. Current run found 45 DSR-bearing
+  JSON rows: 7 CPCV rows and 38 replay-level single-run diagnostic rows. The
+  single-run rows set `dsr == psr` and are not the CPCV multiple-trial DSR
+  defect. Daily Winner CPCV was recomputed from saved returns and remains near
+  zero DSR. `xs_momentum_validation_20260623` and
+  `xs_momentum_validation_20260624_leakfix` have `DSR > PSR(0)` and are
+  untrusted. `xs_momentum_validation_20260624_portfoliovol` passes the invariant
+  and stays below gate, but raw path returns were not saved, so the audit cannot
+  independently recompute it from artifacts alone.
+
+- **Latest XS momentum Phase C state (2026-06-24, Codex) - leak fixed,
+  promotion still blocked:** `backtesting/xs_momentum_backtest.py` now shifts
+  daily targets one full day before intraday expansion, so day-D positions
+  cannot use day-D close information. Regression:
+  `tests/unit/test_xs_momentum_backtest.py::test_daily_close_target_is_not_traded_on_same_day`.
+  The leaked `results/xs_momentum_validation_20260623/` artifact has
+  `SUPERSEDED.md` and remains **INVALID / do not cite** despite its old
+  `promotion_gate_passed:true` JSON field. Leak-free rerun:
+  `results/xs_momentum_validation_20260624_leakfix/` with 27 loaded symbols,
+  `n_trials=8`, `n_combinations=15`, WF combined OOS Sharpe 0.8825, CPCV overall
+  OOS Sharpe 0.5577, pre-fix DSR 1.0 (**untrusted; DSR > PSR**), PSR 0.7961,
+  `promotion_gate_passed:false`, and `status:"review_required"`. PSR is below
+  0.95, so this does **not** support promotion. Vol-target under-leverage remains
+  a separate Claude/user decision.
+
+- **XS momentum Phase C review (2026-06-24, Claude) ??LEAK, BLOCK promotion:**
+  `backtesting/xs_momentum_backtest.py` has a look-ahead leak ??the day-D target
+  weight is built from day-D's own 23:00 close and lagged only one intraday bar,
+  so rebalance days are partially traded with hindsight. The committed validation
+  artifact `results/xs_momentum_validation_20260623/` (OOS Sharpe 2.4??.1, ~2??%
+  vol, `dsr=1.0`, `psr=0.99`, `promotion_gate_passed:true`) is **INVALID /
+  superseded ??do not cite as evidence.** D3 fixes (annualized vol-target,
+  `market_close` wiring) landed and are tested; funding sign is R3.1-correct;
+  vol-target still under-levers ~5? (separate spec-conformance item). Fix +
+  re-run: `tasks/2026-06-24-xs-momentum-lookahead-fix-task.md`; review:
+  `tasks/2026-06-24-xs-momentum-phase-c-review.md`.
 - **XS momentum Phase C research runner (2026-06-23, Codex):** the scaffold is
   committed on `codex/xs-momentum-universe-scaffold` as `07a5d9c`. Phase C adds
   `backtesting/xs_momentum_backtest.py` with R3.1 funding signs, annualized
@@ -52,7 +171,7 @@ handoff between sessions; this is the one-screen "where are we" that
   sign expectation conflicts with `docs/DOMAIN_RULES.md` R3.1.
 - **D3 review (2026-06-23, Claude):** scaffold A/B/D1 verified sound (9/9 tests,
   doc-impact gate pass, 30-symbol point-in-time membership correct); Phase C
-  absent → no edge evidence; not promotion/live. Funding-sign conflict resolved —
+  absent ??no edge evidence; not promotion/live. Funding-sign conflict resolved ??
   the plan was wrong (R3.1 stands: short receives positive funding), plan fixed in
   `5c80cc7`, so C1 is unblocked. Phase-C to-fix: annualize the vol-target
   (currently a no-op) and wire `market_close` into the crash filter. XS scaffold
@@ -66,7 +185,7 @@ handoff between sessions; this is the one-screen "where are we" that
   function-vs-limit comparison; 10 main + 6 appendix slides) and added a full
   methodology document `docs/validation_methodology_zh.docx` via
   `scripts/generate_validation_methodology_doc.py` (needs `python-docx`).
-- **Current branch:** `codex/impl-multi-venue-instrument-specs`.
+- **Current branch:** `codex/xs-momentum-universe-scaffold`.
 - **Backtest execution profiles:** Implementation is complete from
   `docs/superpowers/specs/2026-06-22-backtest-execution-profiles-design.md`.
   User-facing choices are `Strategy Fill` and `Dual Output`; live/demo/shadow
@@ -174,9 +293,9 @@ handoff between sessions; this is the one-screen "where are we" that
   `results/validation_lab_{ma,ema,macd}_crossover_btc_binance_1h_20260622_maxord250_pospct1_strategyfill/validation/claude_engine_consistency_20260623/validation_result.json`.
   This is signal-logic engine-consistency only: `admissibility == advisory_only`,
   `promotion_gate_evidence == false`, `ohlcv_source_validation == artifact_pass_db_skipped`
-  (no DSN → DB parity skipped), and the runs are idealized `strategy_fill`. Not
+  (no DSN ??DB parity skipped), and the runs are idealized `strategy_fill`. Not
   promotion/live evidence. Measured runtime: vectorbt ~125s/run; backtrader is the
-  bottleneck, so the long-window batch is impractical as an inline check — see the
+  bottleneck, so the long-window batch is impractical as an inline check ??see the
   `tasks/2026-06-23-engine-consistency-smoke-task.md` Codex task for a fast offline
   frozen-fixture smoke (`make engine-consistency-smoke`).
 - **Engine-consistency smoke (2026-06-23, Codex):** an offline frozen-fixture

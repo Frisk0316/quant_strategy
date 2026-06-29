@@ -1,6 +1,9 @@
 from scripts.market_data.ingest import (
+    EIGHT_HOURS_MS,
     _dedupe_sort,
+    _fetch_page,
     _infer_funding_intervals,
+    _legacy_inst_id,
     _normalize_symbol,
     _resume_cursor,
 )
@@ -95,6 +98,10 @@ def test_okx_symbol_normalization():
     assert _normalize_symbol("okx", "BTC-USDT-SWAP") == "BTCUSDT"
 
 
+def test_binance_symbol_maps_to_legacy_swap_id():
+    assert _legacy_inst_id("binance", "ETHUSDT") == "ETH-USDT-SWAP"
+
+
 def test_duplicate_rows_deduped_by_timestamp():
     rows = [
         {"ts_ms": 2, "close": 2},
@@ -132,3 +139,28 @@ def test_funding_interval_inferred_from_adjacent_timestamps():
     assert inferred[0]["funding_interval_hours"] == 4.0
     assert inferred[1]["funding_interval_hours"] == 8.0
     assert "funding_interval_hours" not in inferred[2]
+
+
+def test_binance_funding_fetch_is_windowed():
+    class FakeClient:
+        def __init__(self):
+            self.end_ms = None
+
+        def get_funding_rates(self, _symbol, *, start_ms, end_ms, limit):
+            self.end_ms = end_ms
+            return [{"ts_ms": start_ms, "funding_rate": 0.1}]
+
+    client = FakeClient()
+
+    _fetch_page(
+        client=client,
+        exchange="binance",
+        dataset="funding_rate",
+        symbol="ETHUSDT",
+        cursor_ms=0,
+        start_ms=0,
+        end_ms=2000 * EIGHT_HOURS_MS,
+        direction="forward",
+    )
+
+    assert client.end_ms == 1000 * EIGHT_HOURS_MS - 1

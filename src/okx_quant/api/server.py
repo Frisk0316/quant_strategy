@@ -23,6 +23,8 @@ from okx_quant.api.routes_backtest import make_backtest_router
 from okx_quant.api.routes_config import make_config_router
 from okx_quant.api.routes_data import make_data_router
 from okx_quant.api.routes_live import make_live_router
+from okx_quant.api.routes_manual import make_manual_router
+from okx_quant.api.routes_progress import make_progress_router
 from okx_quant.api.state import EngineState
 from okx_quant.core.config import load_config
 
@@ -120,6 +122,16 @@ def create_app(
         prefix="/api/data",
         tags=["data"],
         dependencies=api_dependencies,
+    )
+    app.include_router(
+        make_manual_router(frontend_dir.parent / "docs" / "manual"),
+        prefix="/api/manual",
+        tags=["manual"],
+    )
+    app.include_router(
+        make_progress_router(frontend_dir.parent),
+        prefix="/api/progress",
+        tags=["progress"],
     )
 
     @app.websocket("/api/ws")

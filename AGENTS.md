@@ -39,6 +39,7 @@ Three harnesses govern how work is done. Do not rely on chat history as a source
 - Start from `docs/CONTEXT_INDEX.md`; spend context per `docs/CONTEXT_BUDGET.md`; keep `docs/CURRENT_STATE.md` current.
 - Compress per `docs/COMPRESSION_RULES.md` (lossless on rules/decisions/state).
 - Every **session ends with a Context Handoff** (`tasks/CONTEXT_HANDOFF_TEMPLATE.md`) plus a Session Handoff (`tasks/SESSION_HANDOFF_TEMPLATE.md`), including **Human Learning Notes**.
+- Update `config/workstreams.yaml` whenever you update `docs/AI_HANDOFF.md`, so the Progress panel's per-workstream milestone status stays honest.
 
 ## File ownership
 

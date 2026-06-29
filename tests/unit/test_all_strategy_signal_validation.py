@@ -4,6 +4,22 @@ import os
 import scripts.run_all_strategy_signal_validation as runner
 
 
+def test_strategy_list_all_uses_fixture_builders_only():
+    assert runner._strategy_list("all") == list(runner.BUILDERS)
+
+
+def test_strategy_list_rejects_contract_without_fixture_builder():
+    try:
+        runner._strategy_list("s5_residual_meanrev")
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected missing builder to raise")
+
+    assert "No fixture builder" in message
+    assert "s5_residual_meanrev" in message
+
+
 def test_main_passes_selected_engines_to_strategy_validation(tmp_path, monkeypatch, capsys):
     calls = []
 

@@ -58,7 +58,8 @@ def run_xs_momentum_backtest(
     realized_vol = close_daily.pct_change().rolling(params.vol_window_days, min_periods=2).std()
     market_daily = market_close.resample("1D").last() if market_close is not None else None
     target_daily = build_target_weights(scores, membership, params, realized_vol, market_close=market_daily)
-    target = target_daily.reindex(close.index).ffill().fillna(0.0)
+    # Daily closes are timestamped at midnight; shift before intraday expansion.
+    target = target_daily.shift(1).reindex(close.index).ffill().fillna(0.0)
     positions = target.shift(1).fillna(0.0)
 
     bar_returns = close.pct_change().fillna(0.0)
@@ -92,9 +93,19 @@ def scan_xs_momentum(
     params: XSMomentumParams,
     grid: dict[str, list[Any]],
     market_close: pd.Series | None = None,
+    prior_family_n_trials: int = 0,
+    researched_n_trials: int | None = None,
 ) -> pd.DataFrame:
     keys = list(grid)
     combos = [dict(zip(keys, values)) for values in product(*(grid[key] for key in keys))]
+    if researched_n_trials is None:
+        total_n_trials = int(prior_family_n_trials) + len(combos)
+        n_trials_provenance = "grid_size_floor"
+        n_trials_is_floor = True
+    else:
+        total_n_trials = int(researched_n_trials)
+        n_trials_provenance = "caller_declared"
+        n_trials_is_floor = False
     rows = []
     param_fields = set(XSMomentumParams.__dataclass_fields__)
     for combo in combos:
@@ -109,9 +120,17 @@ def scan_xs_momentum(
             run_params,
             market_close=market_close,
         )
-        rows.append({**combo, "n_trials": len(combos), **result.metrics})
+        rows.append({
+            **combo,
+            "n_trials": total_n_trials,
+            "n_trials_provenance": n_trials_provenance,
+            "n_trials_is_floor": n_trials_is_floor,
+            **result.metrics,
+        })
     out = pd.DataFrame(rows)
-    out.attrs["n_trials"] = len(combos)
+    out.attrs["n_trials"] = total_n_trials
+    out.attrs["n_trials_provenance"] = n_trials_provenance
+    out.attrs["n_trials_is_floor"] = n_trials_is_floor
     return out
 
 

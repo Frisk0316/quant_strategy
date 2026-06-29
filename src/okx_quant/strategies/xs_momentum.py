@@ -17,6 +17,7 @@ from okx_quant.signals.regime import composite_risk_multiplier
 from okx_quant.strategies.base import Strategy
 
 TRADING_DAYS_PER_YEAR = 365.0
+MAX_GROSS_LEVERAGE = 2.0
 
 
 @dataclass
@@ -88,6 +89,15 @@ def _market_multipliers(market_close: pd.Series | None, index: pd.DatetimeIndex)
     )
 
 
+def _portfolio_vol_gross(weights: pd.Series, realized_vol: pd.Series, target_annual: float) -> float:
+    vol = pd.to_numeric(realized_vol.reindex(weights.index), errors="coerce")
+    active = weights[weights != 0.0].index
+    book_daily_vol = float(np.sqrt(((weights.loc[active] * vol.loc[active]) ** 2).dropna().sum()))
+    if book_daily_vol <= 0:
+        return 1.0
+    return min(MAX_GROSS_LEVERAGE, target_annual / (book_daily_vol * np.sqrt(TRADING_DAYS_PER_YEAR)))
+
+
 def target_weights(
     score_panel: pd.DataFrame,
     membership: pd.DataFrame,
@@ -118,21 +128,19 @@ def target_weights(
             continue
 
         inv_vol = None
+        vol = pd.to_numeric(realized_vol.loc[ts, scores.index], errors="coerce")
         if params.inverse_vol:
-            vol = pd.to_numeric(realized_vol.loc[ts, scores.index], errors="coerce")
             inv_vol = 1.0 / vol.replace(0.0, np.nan)
-            annual_vol = float(vol.replace(0.0, np.nan).median()) * np.sqrt(TRADING_DAYS_PER_YEAR)
-            gross = min(1.0, params.vol_target_annual / annual_vol) if annual_vol > 0 else 1.0
-        else:
-            gross = 1.0
-        gross *= float(regime_multiplier.loc[ts])
 
-        selected = dollar_neutral_long_short_weights(
+        unit = dollar_neutral_long_short_weights(
             scores,
             q=params.quantile,
             inverse_vol=inv_vol,
-            gross=gross,
+            gross=1.0,
         )
+        unit = _cap_neutral(unit, params.max_name_weight)
+        gross = _portfolio_vol_gross(unit, vol, params.vol_target_annual)
+        selected = unit * gross * float(regime_multiplier.loc[ts])
         current = pd.Series(0.0, index=score_panel.columns, dtype=float)
         current.loc[selected.index] = _cap_neutral(selected, params.max_name_weight)
         out.loc[ts] = current

@@ -43,6 +43,27 @@ _sweep_jobs: dict[str, dict[str, Any]] = {}
 _validation_jobs: dict[str, dict[str, Any]] = {}
 _price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
+# Live backtest subprocesses, keyed by job_id, so /run/cancel can terminate them.
+_run_procs: dict[str, "subprocess.Popen[str]"] = {}
+_RUN_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+
+
+def _run_cancel_requested(job_id: str) -> bool:
+    return bool(_run_jobs.get(job_id, {}).get("cancel_requested"))
+
+
+def _mark_run_cancelled(job_id: str, output: str | None = None) -> None:
+    job = _run_jobs.get(job_id)
+    if job is None:
+        return
+    job.update({
+        "status": "cancelled",
+        "progress": 100,
+        "message": "Backtest cancelled by user",
+    })
+    if output is not None:
+        job["output"] = output[-4000:]
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -405,15 +426,25 @@ def _run_ohlcv_rotation_job(
         env = os.environ.copy()
         env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
         _run_jobs[job_id]["progress"] = 30
-        proc = subprocess.run(
+        # Popen + communicate (not subprocess.run) so /run/cancel can terminate it.
+        proc = subprocess.Popen(
             cmd,
             cwd=PROJECT_ROOT,
             env=env,
             text=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+        _run_procs[job_id] = proc
+        try:
+            stdout, stderr = proc.communicate()
+        finally:
+            _run_procs.pop(job_id, None)
         _run_jobs[job_id]["progress"] = 80
-        output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+        output = ((stdout or "") + "\n" + (stderr or "")).strip()
+        if _run_cancel_requested(job_id):
+            _mark_run_cancelled(job_id, output)
+            return
         if proc.returncode != 0:
             _run_jobs[job_id].update({
                 "status": "error",
@@ -588,6 +619,9 @@ def _run_daily_winner_job(
         skipped: list[str] = []
         data_sources: list[dict[str, Any]] = []
         for i, inst in enumerate(universe):
+            if _run_cancel_requested(job_id):
+                _mark_run_cancelled(job_id)
+                return
             attempts: list[dict[str, Any]] = []
             df = load_candles(
                 inst_id=inst,
@@ -650,6 +684,11 @@ def _run_daily_winner_job(
             })
             return
 
+        if _run_cancel_requested(job_id):
+            _mark_run_cancelled(job_id)
+            return
+        # ponytail: the compute itself isn't interruptible; cancel is honored at
+        # the load-loop and pre-compute checkpoints, which covers the slow part.
         _run_jobs[job_id].update({"progress": 65, "message": "Running daily winner backtest"})
         result = run_daily_winner_backtest(
             dfs,
@@ -1747,6 +1786,7 @@ def _run_backtest_job(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        _run_procs[job_id] = proc
 
         def _drain_stderr():
             for line in (proc.stderr or []):
@@ -1771,8 +1811,12 @@ def _run_backtest_job(
         finally:
             proc.wait()
             stderr_thread.join(timeout=5)
+            _run_procs.pop(job_id, None)
 
         output = ("".join(lines) + "\n" + "".join(stderr_lines)).strip()
+        if _run_cancel_requested(job_id):
+            _mark_run_cancelled(job_id, output)
+            return
         if proc.returncode != 0:
             _run_jobs[job_id].update({
                 "status": "error",
@@ -2394,6 +2438,20 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def list_run_jobs():
         """Return all in-memory job states so the frontend can reconnect after page refresh."""
         return list(_run_jobs.values())
+
+    @router.post("/run/cancel/{job_id}")
+    async def cancel_backtest_job(job_id: str):
+        job = _run_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.get("status") in _RUN_TERMINAL_STATUSES:
+            return job
+        job["cancel_requested"] = True
+        proc = _run_procs.get(job_id)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()  # worker sees the dead process and marks "cancelled"
+        job.update({"status": "cancelling", "message": "Cancelling backtest..."})
+        return job
 
     @router.post("/sweep")
     async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
