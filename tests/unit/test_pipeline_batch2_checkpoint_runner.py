@@ -1,4 +1,11 @@
-from scripts.run_pipeline_batch2_checkpoint import _base_summary, _stage2_result_to_summary_fields
+import json
+
+from scripts.run_pipeline_batch2_checkpoint import (
+    _base_summary,
+    _c3_gate_failure_reason,
+    _stage2_data_fail_summary,
+    _stage2_result_to_summary_fields,
+)
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
 
 
@@ -84,3 +91,37 @@ def test_stage2_result_to_summary_fields_carries_check_artifact_status():
         == "fear_greed_btc event_count=0; cost smell test cannot run without the required external feature"
     )
     assert fields["stage2_checks"]["data_availability"]["status"] == "FAIL"
+
+
+def test_stage2_data_fail_summary_writes_feasibility_artifact(tmp_path, monkeypatch):
+    import scripts.run_pipeline_batch2_checkpoint as runner
+
+    monkeypatch.setattr(runner, "OUT", tmp_path)
+
+    summary = _stage2_data_fail_summary(
+        "c2_funding_carry",
+        "c2_funding_carry",
+        "F-FUNDING-CARRY",
+        "data_probe_unavailable: RuntimeError: no db",
+        "H-007",
+        "funding carry is treated as the existing funding-carry family with this run counted as a retry",
+    )
+
+    artifact = tmp_path / "c2_funding_carry" / "stage2_feasibility.json"
+    assert artifact.exists()
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert payload["stage2_status"] == "FAIL"
+    assert checks["data_availability"]["reason"] == "data_probe_unavailable: RuntimeError: no db"
+    assert checks["distinctness"]["status"] == "PASS"
+    assert checks["cost_after_edge"]["reason"] == "cost smell test cannot run without required data"
+    assert summary["stage2_status"] == "FAIL"
+    assert summary["stage2_checks"]["data_availability"]["status"] == "FAIL"
+
+
+def test_c3_gate_failure_reason_preserves_zero_event_reason_and_reports_nonzero_details():
+    assert _c3_gate_failure_reason({"event_count": 0}) == "fear_greed_btc event_count=0"
+
+    reason = _c3_gate_failure_reason({"event_count": 3, "missing_ratio": 0.2, "stale_ratio": 0.4})
+
+    assert reason == "fear_greed_btc external-feature gate failed: event_count=3, missing_ratio=0.2, stale_ratio=0.4"

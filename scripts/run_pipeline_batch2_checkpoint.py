@@ -142,6 +142,17 @@ def _write_stage2_feasibility(candidate_dir: str, result: FeasibilityResult) -> 
     return _stage2_result_to_summary_fields(result)
 
 
+def _c3_gate_failure_reason(gate: dict[str, Any]) -> str:
+    if gate.get("event_count") == 0:
+        return "fear_greed_btc event_count=0"
+    return (
+        "fear_greed_btc external-feature gate failed: "
+        f"event_count={gate.get('event_count')}, "
+        f"missing_ratio={gate.get('missing_ratio')}, "
+        f"stale_ratio={gate.get('stale_ratio')}"
+    )
+
+
 def _shortlist_reason(row: dict[str, Any]) -> str:
     gate = row.get("external_feature_gate") or {}
     if row.get("stage2_status") == "FAIL":
@@ -213,8 +224,8 @@ def _write_shortlist(summaries: list[dict[str, Any]]) -> None:
     print(path)
 
 
-def _stage2_fail_summary(candidate_dir: str, candidate_id: str, family_id: str, reason: str, hypothesis_id: str) -> dict[str, Any]:
-    summary = {
+def _stage2_fail_payload(candidate_dir: str, candidate_id: str, family_id: str, reason: str, hypothesis_id: str) -> dict[str, Any]:
+    return {
         "batch_id": BATCH_ID,
         "candidate_id": candidate_id,
         "candidate_dir": candidate_dir,
@@ -237,6 +248,34 @@ def _stage2_fail_summary(candidate_dir: str, candidate_id: str, family_id: str, 
         "pass_b_status": "not_run",
         "status": "stage2_failed",
     }
+
+
+def _stage2_fail_summary(candidate_dir: str, candidate_id: str, family_id: str, reason: str, hypothesis_id: str) -> dict[str, Any]:
+    return _write_summary(candidate_dir, _stage2_fail_payload(candidate_dir, candidate_id, family_id, reason, hypothesis_id))
+
+
+def _stage2_data_fail_summary(
+    candidate_dir: str,
+    candidate_id: str,
+    family_id: str,
+    reason: str,
+    hypothesis_id: str,
+    distinctness_reason: str,
+) -> dict[str, Any]:
+    stage2 = FeasibilityResult(
+        batch_id=BATCH_ID,
+        candidate_id=candidate_id,
+        candidate_dir=candidate_dir,
+        hypothesis_id=hypothesis_id,
+        family_id=family_id,
+        checks=(
+            FeasibilityCheck("data_availability", "FAIL", reason),
+            FeasibilityCheck("distinctness", "PASS", distinctness_reason),
+            FeasibilityCheck("cost_after_edge", "FAIL", "cost smell test cannot run without required data"),
+        ),
+    )
+    summary = _stage2_fail_payload(candidate_dir, candidate_id, family_id, reason, hypothesis_id)
+    summary.update(_write_stage2_feasibility(candidate_dir, stage2))
     return _write_summary(candidate_dir, summary)
 
 
@@ -296,15 +335,16 @@ def run_c3() -> dict[str, Any]:
     try:
         gate = asyncio.run(_c3_feature_gate())
     except Exception as exc:
-        return _stage2_fail_summary(
+        return _stage2_data_fail_summary(
             "c3_sentiment",
             "c3_sentiment",
             "F-SENTIMENT",
             f"data_probe_unavailable: {type(exc).__name__}: {exc}",
             "H-008",
+            "sentiment family is distinct from currently enabled price-only strategies",
         )
     if not gate["feature_gate_passed"]:
-        summary = _stage2_fail_summary(
+        summary = _stage2_fail_payload(
             "c3_sentiment",
             "c3_sentiment",
             "F-SENTIMENT",
@@ -318,7 +358,7 @@ def run_c3() -> dict[str, Any]:
             hypothesis_id="H-008",
             family_id="F-SENTIMENT",
             checks=(
-                FeasibilityCheck("data_availability", "FAIL", "fear_greed_btc event_count=0", {"dataset_id": "fear_greed_btc", **gate}),
+                FeasibilityCheck("data_availability", "FAIL", _c3_gate_failure_reason(gate), {"dataset_id": "fear_greed_btc", **gate}),
                 FeasibilityCheck("distinctness", "PASS", "sentiment family is distinct from currently enabled price-only strategies"),
                 FeasibilityCheck("cost_after_edge", "FAIL", "cost smell test cannot run without the required external feature"),
             ),
@@ -347,7 +387,14 @@ def run_c2() -> dict[str, Any]:
     try:
         perp_close, spot_close, funding = load_c2_inputs(params.pairs, start=START, end=END, backend="postgres", dsn=DSN, exchange=EXCHANGE)
     except Exception as exc:
-        return _stage2_fail_summary("c2_funding_carry", "c2_funding_carry", "F-FUNDING-CARRY", f"data_probe_unavailable: {type(exc).__name__}: {exc}", "H-007")
+        return _stage2_data_fail_summary(
+            "c2_funding_carry",
+            "c2_funding_carry",
+            "F-FUNDING-CARRY",
+            f"data_probe_unavailable: {type(exc).__name__}: {exc}",
+            "H-007",
+            "funding carry is treated as the existing funding-carry family with this run counted as a retry",
+        )
     records = _precompute_records(
         params,
         grid,
@@ -398,7 +445,14 @@ def run_c1() -> dict[str, Any]:
     try:
         close, funding = load_c1_inputs([params.symbol_x, params.symbol_y], start=START, end=END, backend="postgres", dsn=DSN, exchange=EXCHANGE)
     except Exception as exc:
-        return _stage2_fail_summary("c1_pairs_ou", "c1_pairs_ou", "F-PAIRS-OU", f"data_probe_unavailable: {type(exc).__name__}: {exc}", "H-006")
+        return _stage2_data_fail_summary(
+            "c1_pairs_ou",
+            "c1_pairs_ou",
+            "F-PAIRS-OU",
+            f"data_probe_unavailable: {type(exc).__name__}: {exc}",
+            "H-006",
+            "logged as first proper validation of the existing pairs_trading BTC/ETH OU mechanism",
+        )
     records = _precompute_records(
         params,
         grid,
