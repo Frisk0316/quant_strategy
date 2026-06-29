@@ -579,11 +579,18 @@ BUILDERS: dict[str, Callable[[Path, str], Path]] = {
 
 def _strategy_list(raw: str) -> list[str]:
     if raw == "all":
-        return list(dv.REFERENCE_VALIDATION_CONTRACTS)
+        return list(BUILDERS)
     strategies = [item.strip() for item in raw.split(",") if item.strip()]
     unknown = sorted(set(strategies) - set(dv.REFERENCE_VALIDATION_CONTRACTS))
     if unknown:
         raise ValueError(f"Unknown strategy ids: {', '.join(unknown)}")
+    missing_builders = sorted(set(strategies) - set(BUILDERS))
+    if missing_builders:
+        raise ValueError(
+            "No fixture builder for strategy ids: "
+            f"{', '.join(missing_builders)}; adapter_required contracts are not "
+            "included in strategy-signal-validation fixtures."
+        )
     return strategies
 
 
