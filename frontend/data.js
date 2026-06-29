@@ -409,6 +409,7 @@ window.API = (function () {
     fetchProgress:            ()        => _get("/api/progress"),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
+    cancelBacktestRun:        (jobId)   => _post("/api/backtest/run/cancel/" + jobId, {}),
     fetchBacktestJobs:        ()        => _get("/api/backtest/run/jobs"),
     triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
     fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),

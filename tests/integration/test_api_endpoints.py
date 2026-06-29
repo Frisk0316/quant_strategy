@@ -189,3 +189,41 @@ async def test_backtest_run_passes_execution_profile_to_subprocess(client, monke
     assert payload["run_id"].endswith("_strategy_fill")
     assert "--execution-profile" in seen_cmd["cmd"]
     assert seen_cmd["cmd"][seen_cmd["cmd"].index("--execution-profile") + 1] == "dual_output"
+
+
+@pytest.mark.asyncio
+async def test_cancel_backtest_run_terminates_proc(client):
+    from okx_quant.api import routes_backtest as rb
+
+    job_id = "canceljob"
+
+    class FakeProc:
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None  # still running
+
+        def terminate(self):
+            self.terminated = True
+
+    proc = FakeProc()
+    rb._run_jobs[job_id] = {"job_id": job_id, "status": "running", "progress": 10}
+    rb._run_procs[job_id] = proc
+    try:
+        resp = await client.post(f"/api/backtest/run/cancel/{job_id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "cancelling"
+        assert body["cancel_requested"] is True
+        assert proc.terminated is True
+
+        # Already-terminal jobs are returned unchanged (no re-terminate).
+        rb._run_jobs[job_id]["status"] = "done"
+        resp_done = await client.post(f"/api/backtest/run/cancel/{job_id}")
+        assert resp_done.json()["status"] == "done"
+
+        assert (await client.post("/api/backtest/run/cancel/missing")).status_code == 404
+    finally:
+        rb._run_jobs.pop(job_id, None)
+        rb._run_procs.pop(job_id, None)

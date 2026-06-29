@@ -259,6 +259,11 @@ def _has_low_bar_coverage(
     return (actual / expected) < threshold
 
 
+# Minimum fraction of bars (measured from a symbol's first observed bar to the
+# window end) required before a venue-scoped load is treated as a real gap.
+VENUE_GAP_MIN_COVERAGE = 0.80
+
+
 def _raise_on_venue_gap(
     df: pd.DataFrame,
     *,
@@ -270,11 +275,31 @@ def _raise_on_venue_gap(
 ) -> None:
     if not exchange:
         return
-    expected = _expected_bar_count(start_dt, end_dt, bar)
+    # An empty venue frame means the venue has no data at all for this window — keep
+    # refusing so a venue-scoped load never silently uses another venue's candles
+    # (the whole reason this guard exists).
+    if df.empty:
+        expected = _expected_bar_count(start_dt, end_dt, bar)
+        if expected is None:
+            return
+        raise ValueError(
+            f"Venue-scoped candle gap for {inst_id} {bar} exchange='{exchange}': "
+            f"expected {expected} bars, found 0. No cross-venue fallback is allowed."
+        )
+    # ponytail: a late-listing symbol legitimately has no bars before its first one,
+    # so measure coverage from the first observed bar instead of the requested
+    # start. This lets multi-symbol backtests mix coins with different listing
+    # dates without crashing; an internal hole below VENUE_GAP_MIN_COVERAGE still
+    # raises. Loosen the threshold if even sparser venue data should be tolerated.
+    first_bar = pd.Timestamp(df.index.min())
+    if first_bar.tzinfo is None:
+        first_bar = first_bar.tz_localize("UTC")
+    effective_start = first_bar if start_dt is None else max(pd.Timestamp(start_dt), first_bar)
+    expected = _expected_bar_count(effective_start, end_dt, bar)
     if expected is None:
         return
     actual = int(pd.Index(df.index).nunique())
-    if actual < expected:
+    if actual < expected * VENUE_GAP_MIN_COVERAGE:
         raise ValueError(
             f"Venue-scoped candle gap for {inst_id} {bar} exchange='{exchange}': "
             f"expected {expected} bars, found {actual}. No cross-venue fallback is allowed."

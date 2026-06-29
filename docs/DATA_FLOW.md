@@ -28,7 +28,12 @@ must rely on parquet fallback or skip DB-dependent validation.
 Venue-tagged replay runs are stricter: when a run declares `exchange`, candles
 must come from the canonical Postgres path filtered by `source_primary=<exchange>`.
 If that venue's bar is missing, the run reports a gap/error instead of falling
-back to source-less parquet or another venue.
+back to source-less parquet or another venue. A late-listing symbol is the
+exception: coverage is measured from its first observed bar (not the requested
+start), so multi-symbol backtests can mix coins with different listing dates.
+An empty venue series still errors, and an internal hole below
+`VENUE_GAP_MIN_COVERAGE` (0.80 from the first bar) still raises — no cross-venue
+substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
 
