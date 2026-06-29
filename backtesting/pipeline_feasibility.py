@@ -57,7 +57,7 @@ def result_from_dict(payload: dict[str, Any]) -> FeasibilityResult:
         raise ValueError("Stage 2 field 'checks' must be a list")
     checks = tuple(_check_from_dict(row) for row in checks_payload)
     schema_version = payload.get("schema_version", SCHEMA_VERSION)
-    if schema_version != SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
         raise ValueError(f"unsupported Stage 2 schema_version {schema_version!r}")
     return FeasibilityResult(
         schema_version=schema_version,

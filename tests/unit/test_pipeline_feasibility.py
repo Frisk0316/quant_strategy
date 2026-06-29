@@ -108,6 +108,36 @@ def test_result_from_dict_rejects_string_schema_version() -> None:
         result_from_dict(payload)
 
 
+def test_result_from_dict_rejects_float_schema_version() -> None:
+    payload = {
+        "schema_version": 1.0,
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [],
+    }
+
+    with pytest.raises(ValueError, match="unsupported Stage 2 schema_version"):
+        result_from_dict(payload)
+
+
+def test_result_from_dict_rejects_bool_schema_version() -> None:
+    payload = {
+        "schema_version": True,
+        "batch_id": "pipeline_test",
+        "candidate_id": "c3_sentiment",
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        "family_id": "F-SENTIMENT",
+        "checks": [],
+    }
+
+    with pytest.raises(ValueError, match="unsupported Stage 2 schema_version"):
+        result_from_dict(payload)
+
+
 def test_result_from_dict_rejects_non_object_check() -> None:
     payload = {
         "batch_id": "pipeline_test",
