@@ -22,6 +22,81 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-29 Claude (backtest UX + late-listing fix, user-requested):
+Three user-requested changes. (1) Multi-symbol backtests no longer crash when a
+symbol listed after the requested start: `backtesting/data_loader.py`
+`_raise_on_venue_gap` now measures coverage from a symbol's first observed bar
+(new `VENUE_GAP_MIN_COVERAGE = 0.80`), so late-listing coins (e.g. the reported
+`CC-USDT-SWAP` 1D "expected 898, found 229") pass; empty venue series and
+sub-80% internal gaps still raise and no cross-venue/parquet substitution is
+allowed (I19 preserved). Manifest:
+`docs/change_manifests/2026-06-29-venue-gap-late-listing.md`. (2) Added a Cancel
+backtest button (mirrors the fetch-jobs cancel): new
+`POST /api/backtest/run/cancel/{job_id}` terminates the registered replay/rotation
+subprocess and cooperatively cancels the in-process daily-winner job;
+`_run_procs` registry + `cancel_requested` flag in
+`src/okx_quant/api/routes_backtest.py`; `cancelBacktestRun` in `frontend/data.js`;
+button + "cancelled"/"cancelling" terminal handling in `frontend/view-config.js`.
+(3) Backtest config Validation now defaults to `None` instead of `Both (WF +
+CPCV)` (`frontend/view-config.js`). No strategy, risk, PnL, funding, config gate,
+or deployment behavior changed. Tests: `tests/unit/test_data_loader.py` (10),
+`tests/integration/test_api_endpoints.py` (incl. new
+`test_cancel_backtest_run_terminates_proc`).
+
+2026-06-29 Codex follow-up (C2 funding-carry realism re-cost complete):
+`scripts/run_c2_realism.py` reran C2 under fixed realism costs without touching
+the live `src/okx_quant/strategies/funding_carry.py`, risk/portfolio/execution,
+DSR/CPCV/WF harnesses, config gates, or the old C2 checkpoint artifact. New
+artifact:
+`results/pipeline_batch2_20260625/c2_funding_carry_realism/summary.json`.
+Family-cumulative `n_trials` is now 48 (prior E-024 24 + retry grid 24).
+Realism run result: WF OOS Sharpe -1.5093, CPCV OOS Sharpe -0.2349, DSR
+0.0041, PSR 0.4457, `statistical_gate_passed:false`,
+`promotion_gate_passed:false`. The pre-registered stress set was selected
+mechanically from trailing 7-day funding APR < 0 or abs(basis z) > 3 and
+evaluated as one group: 154 stress days, stress PnL -0.000786, stress max
+drawdown -0.000218, and 4 active/mid-flip days. Realized annualized vol is still
+only 0.247%, below the 2% self-check red flag, so the vectorized hedge model
+remains too calm even after re-costing. H-007 is recorded as refuted/shelved in
+the ledgers; no C2 adapter, publish, demo, shadow, or live work is justified
+without a new Claude/user-approved realism path.
+
+2026-06-29 Codex follow-up (pipeline batch 2 checkpoint 1 ready):
+Batch 2 [C3, C2, C1] ran in the requested order after DB access became
+available, then stopped at Claude evidence checkpoint 1. Summaries are under
+`results/pipeline_batch2_20260625/{c3_sentiment,c2_funding_carry,c1_pairs_ou}/summary.json`;
+shortlist is `results/pipeline_batch2_20260625/shortlist.md`. C3 Stage-2 FAIL:
+`external_observations.dataset_id='fear_greed_btc'` has event_count 0 over
+2024-01-01 through 2026-06-17, so no sentiment proxy was fabricated. C2 Stage-2
+PASS and Stage-3 fold-refit completed with family-cumulative n_trials 24, WF OOS
+Sharpe 3.5596, CPCV OOS Sharpe 6.8913, DSR/PSR ~1.0, leak test passed, CPCV
+`path_returns` retained, but `promotion_gate_passed:false` because portable
+validation remains adapter-required/absent. C1 Stage-2 PASS and Stage-3
+fold-refit completed with family-cumulative n_trials 24, WF OOS Sharpe -1.2584,
+CPCV OOS Sharpe -0.9097, DSR 0.0079, PSR 0.0994, leak test passed, CPCV
+`path_returns` retained, and `promotion_gate_passed:false`. Ledgers now append
+E-023/E-024/E-025 after the initial blocked-attempt rows E-020/E-021/E-022, and
+H-006/H-007/H-008 carry the actual Stage-2 PASS/FAIL and trial counts. Live
+`funding_carry.py`, config gates, risk, demo/shadow/live settings, DSR code,
+research files, and existing result payloads were not changed. Limitation:
+Stage-3 Pass A parquet pre-screen was skipped for C2/C1 because required BTC
+perp candle/funding parquet inputs are missing or incomplete; summaries mark
+`pass_a_status:"skipped_missing_required_parquet_cache"` and Pass B DB
+fold-refit completed.
+
+2026-06-29 Codex follow-up (Stage 2 feasibility automation implemented):
+Stage 2 feasibility records now have a machine-readable artifact contract:
+`stage2_feasibility.json` with `data_availability`, `distinctness`, and
+`cost_after_edge` checks. New helper code lives in
+`backtesting/pipeline_feasibility.py`; the validator CLI is
+`scripts/run_pipeline_stage2_check.py`; the batch-2 runner writes the artifact
+for C1/C2/C3 PASS, FAIL, and data-probe exception paths. This did not rerun the
+DB-backed batch runner and did not migrate existing `results/**` artifacts. No
+research assumptions, live strategy behavior, risk/config gates, demo/shadow/live
+settings, or deployment readiness changed. Claude should review the reason text
+for economic distinctness and cost-after-edge sufficiency before relying on it
+as a durable research-review convention.
+
 2026-06-29 Codex follow-up (T2 CPCV retention/provenance mechanism):
 `backtesting.cpcv.CPCV.evaluate()` now emits retained `path_returns` (or
 `combined_returns` when path assembly is unavailable), return lengths, periods,
@@ -45,7 +120,8 @@ artifact; S7 (E-016) WF -0.4359 / CPCV -1.1124, shelved. H-003 shelved,
 H-004/H-005 inconclusive. **Do not tune S5/S6/S7 to chase the gate** (mirrors the
 H-002 shelve decision); the total refutation is the gate working, and it is
 research signal that price-momentum/mean-reversion alpha on BTC/ETH net of cost
-is weak in 2024-2026. **Batch 2 pre-registered** (not yet run): C1 BTC/ETH
+is weak in 2024-2026. **Batch 2 pre-registered** (now superseded by the
+2026-06-29 Codex checkpoint above): C1 BTC/ETH
 OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2 funding carry +
 basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed long/flat
 (H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data-availability Stage-2 check

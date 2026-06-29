@@ -13,28 +13,28 @@ workstreams:
     updated: 2026-06-25
 
   - name: Strategy research pipeline (batch 2 C1/C2/C3)
-    status: active
+    status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, review]
-    current: spec
-    state: "batch 1 [S5/S6/S7] CLOSED — all refuted under fold-refit harness; batch 2 [C3,C2,C1] pre-registered (H-006/007/008, E-017/018/019)"
-    next: "Claude writes Stage-1 specs; then Codex Stage 2->3; T2 CPCV raw-path retention still open"
-    links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, tasks/2026-06-25-pipeline-batch1-followup-tasks.md]
-    updated: 2026-06-25
+    current: review
+    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 data-blocked/untested; Stage 2 artifact/validator implemented"
+    next: "No adapter/publish/demo/shadow/live for C2; only revisit C3 if fear_greed_btc is ingested"
+    links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, docs/superpowers/plans/2026-06-29-strategy-research-pipeline-stage2.md, tasks/2026-06-29-c2-funding-carry-realism-task.md]
+    updated: 2026-06-29
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
-    status: active
+    status: done
     milestones: [spec, impl, validation, consolidated_pr, merge]
-    current: consolidated_pr
-    state: "DB-parity PASS evidence committed; waiting on one consolidated P1 PR to main"
-    next: "open the consolidated P1 PR"
+    current: merge
+    state: "Already merged into main (origin branch is 0 ahead / 19 behind origin/main); merged branch can be deleted"
+    next: "none - ADR-0007 P1 closed; delete the merged branch"
     links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
-    updated: 2026-06-23
+    updated: 2026-06-29
 
   - name: User manual
-    status: active
+    status: done
     milestones: [draft, write, verify]
     current: verify
-    state: "Core chapters written; 90-research-pipeline chapter in flight (uncommitted)"
-    next: "finish + commit the research-pipeline manual chapter"
+    state: "All chapters incl. 90-research-pipeline written, verified, and committed (fac6386)"
+    next: "none - manual complete; rerun scripts/generate_research_pipeline_doc.py if content changes"
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
-    updated: 2026-06-26
+    updated: 2026-06-29

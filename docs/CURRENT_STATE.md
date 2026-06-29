@@ -20,6 +20,64 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Backtest UX + late-listing fix (2026-06-29, Claude, user-requested):**
+  (1) `backtesting/data_loader.py::_raise_on_venue_gap` now measures venue
+  coverage from a symbol's first observed bar (`VENUE_GAP_MIN_COVERAGE = 0.80`),
+  so multi-symbol backtests no longer crash on late-listing coins; empty series
+  and sub-80% internal gaps still raise, no cross-venue substitution (I19 kept).
+  Manifest `docs/change_manifests/2026-06-29-venue-gap-late-listing.md`.
+  (2) New `POST /api/backtest/run/cancel/{job_id}` + a Cancel backtest button
+  (mirrors fetch-jobs cancel) in `frontend/view-config.js`. (3) Backtest config
+  Validation defaults to `None` instead of `Both (WF + CPCV)`. No strategy,
+  risk, PnL, funding, config-gate, or deployment behavior changed.
+
+- **C2 funding-carry realism re-cost complete (2026-06-29, Codex):** the C2
+  funding-carry family is now refuted/shelved under the realism gate. New
+  artifact:
+  `results/pipeline_batch2_20260625/c2_funding_carry_realism/summary.json`.
+  The rerun kept the original 24-combo grid, added fixed realism costs
+  (`fee_bps=2`, two-leg `slippage_bps=3`, `basis_execution_slippage_bps=2`,
+  `carry_cost_bps=1` daily), and counted the run as a retry:
+  family-cumulative `n_trials=48` (prior 24 + retry 24). Results: WF OOS Sharpe
+  -1.5093, CPCV OOS Sharpe -0.2349, DSR 0.0041, PSR 0.4457,
+  `statistical_gate_passed:false`, `promotion_gate_passed:false`. Stress windows
+  were selected mechanically from trailing 7-day funding APR < 0 or abs(basis z)
+  > 3: 154 stress days, stress PnL -0.000786, stress max drawdown -0.000218, and
+  4 active/mid-flip days. Realized annualized vol is still only 0.247%, below the
+  2% self-check red flag, so the vectorized hedge model remains too calm. No
+  live `funding_carry.py`, risk/portfolio/execution, DSR/CPCV/WF harness,
+  config gate, demo/shadow/live, research, or old result artifact changed.
+
+- **Pipeline batch 2 checkpoint 1 ready (2026-06-29, Codex):** the requested
+  batch order [C3, C2, C1] ran after DB access became available, then stopped
+  for Claude evidence review. Artifacts:
+  `results/pipeline_batch2_20260625/{c3_sentiment,c2_funding_carry,c1_pairs_ou}/summary.json`
+  and `results/pipeline_batch2_20260625/shortlist.md`. C3 Stage-2 FAIL because
+  `external_observations.dataset_id='fear_greed_btc'` has event_count 0 over
+  2024-01-01 through 2026-06-17; no proxy series was fabricated. C2 Stage-2 PASS
+  and Stage-3 fold-refit completed with family n_trials 24, WF OOS Sharpe
+  3.5596, CPCV OOS Sharpe 6.8913, DSR/PSR ~1.0, but
+  `promotion_gate_passed:false` because portable validation is adapter-required
+  and absent. C1 Stage-2 PASS and Stage-3 fold-refit completed with family
+  n_trials 24, WF OOS Sharpe -1.2584, CPCV OOS Sharpe -0.9097, DSR 0.0079, PSR
+  0.0994, and `promotion_gate_passed:false`. Ledgers append E-023/E-024/E-025
+  after the initial blocked-attempt rows; H-006/H-007/H-008 now carry actual
+  Stage-2 PASS/FAIL and trial counts. No live strategy behavior, risk/config
+  gate, research file, DSR code, or existing result artifact was changed.
+  Limitation: C2/C1 skipped Pass A parquet pre-screen because required BTC perp
+  candle/funding parquet inputs are missing or incomplete; Pass B DB fold-refit
+  completed and is the checkpoint evidence.
+
+- **Strategy research pipeline Stage 2 feasibility automation (2026-06-29,
+  Codex):** Stage 2 now has a machine-readable artifact contract and validator.
+  New code: `backtesting/pipeline_feasibility.py` and
+  `scripts/run_pipeline_stage2_check.py`. The batch-2 runner now writes
+  `stage2_feasibility.json` beside each candidate output for PASS, FAIL, and
+  data-probe exception paths. Current/target/gap: future Stage 2 runs are
+  auditable by JSON before Stage 3; existing on-disk batch artifacts were not
+  migrated or regenerated; literature ingestion and background orchestration
+  remain outside this patch.
+
 - **CPCV path-return retention + n_trials provenance (2026-06-29, Codex):**
   future `backtesting.cpcv.CPCV.evaluate()` outputs retain raw `path_returns`
   (or `combined_returns` when no path assembly exists), lengths, periods,
@@ -60,11 +118,12 @@ handoff between sessions; this is the one-screen "where are we" that
   is `shelved_pending_research_review` (WF -0.4359, CPCV -1.1124, DSR/PSR ~0),
   not refuted from the prior all-zero no-trade artifact. No strategy is
   promotion-ready or live/demo/shadow ready.
-- **Pipeline batch 1 CLOSED + batch 2 pre-registered (2026-06-25, Claude):**
+- **Pipeline batch 1 CLOSED + batch 2 pre-registration history (2026-06-25, Claude):**
   Batch 1 [S7, S5, S6] is closed — all three fail the statistical gate under the
   fold-refit harness (see above); none has edge, the gate worked. Do **not** tune
-  S5/S6/S7 to chase the gate (mirrors H-002). Batch 2 is pre-registered, not yet
-  run: C1 BTC/ETH OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2
+  S5/S6/S7 to chase the gate (mirrors H-002). Batch 2 is pre-registered in this
+  historical note and is now superseded by the 2026-06-29 Codex checkpoint above:
+  C1 BTC/ETH OU-gated pairs RV (H-006/E-017, F-PAIRS-OU, n_trials=24); C2
   funding carry + basis-z filter (H-007/E-018, F-FUNDING-CARRY, 24); C3 Fear&Greed
   long/flat (H-008/E-019, F-SENTIMENT, 9, `fear_greed_btc` data Stage-2 check
   pending). Run order [C3, C2, C1]; batch id `pipeline_batch2_20260625`. Claude
@@ -80,8 +139,9 @@ handoff between sessions; this is the one-screen "where are we" that
   family-cumulative `n_trials`; the ledgers define family trial accounting and
   I23. The autonomous driver has **not** been run end-to-end; batch 1
   [S7, S5, S6] was run via `scripts/run_pipeline_batch1_checkpoint.py` and is now
-  closed (all refuted); batch 2 = [C3, C2, C1] is pre-registered. No strategy
-  promotion, config, result artifact values, or demo/shadow/live gates changed.
+  closed (all refuted); batch 2 = [C3, C2, C1] is now at checkpoint 1 per the
+  2026-06-29 Codex entry above. No strategy promotion, config, result artifact
+  values, or demo/shadow/live gates changed.
 - **Results cleanup (2026-06-24, user-approved):** all pre-6/18 `results/`
   artifacts were deleted (scratch runs + cited evidence: `cme_gap_research*`,
   `codex_2026061{2,6}_signal_*`, `results/strategy_validation/`,
