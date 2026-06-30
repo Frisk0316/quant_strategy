@@ -1,3 +1,13 @@
+---
+status: current
+type: reference
+owner: human
+created: 2026-04-27
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 回測系統擬真化改善企劃書
 
 ## 1. 執行摘要

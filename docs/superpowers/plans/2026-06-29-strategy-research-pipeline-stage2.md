@@ -1,3 +1,13 @@
+---
+status: current
+type: plan
+owner: human
+created: 2026-06-29
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # Strategy Research Pipeline Stage 2 Feasibility Automation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

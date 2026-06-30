@@ -1,3 +1,13 @@
+---
+status: current
+type: reference
+owner: human
+created: 2026-05-04
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # Codex 與 Claude 協作手冊
 
 本文件定義本專案同時使用 Codex 與 Claude 時的分工、交接、驗證與部署規範。目標是提高研究與實作速度，同時避免檔案互相覆蓋、策略假設漂移、回測結果不可重現，或把未驗證策略推上 demo/live。

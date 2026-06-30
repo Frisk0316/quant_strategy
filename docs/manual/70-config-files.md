@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 設定檔對照
 
 `config/` 是 runtime 設定來源之一。任何會改變 live、shadow、demo、risk、sizing、execution gate 的設定，都需要明確使用者批准。

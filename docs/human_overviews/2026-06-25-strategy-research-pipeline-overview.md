@@ -21,6 +21,7 @@ human_must_read:
   - docs/ai_collaboration.md
   - docs/change_manifests/2026-06-25-family-cumulative-n-trials.md
 superseded_by: null
+expires: none
 ---
 
 # Human Review Overview: Strategy Research Pipeline Stage 1

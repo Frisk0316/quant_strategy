@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 部署 Gate
 
 部署 Gate 的主來源是 `docs/ai_collaboration.md`。本專案不得只因為某次回測績效漂亮，就宣稱策略可以 demo、shadow 或 live。

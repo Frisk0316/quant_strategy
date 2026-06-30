@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 風控限制
 
 風控設定主要在 `config/risk.yaml`。這些限制保護實盤、demo、shadow 與 replay 設定，不應為了讓回測更漂亮而任意放寬。

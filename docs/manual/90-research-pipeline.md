@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-29
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 策略研究管線
 
 策略研究管線（Strategy Research Pipeline）把「找文獻 → 評估可行性 → 做進回測系統 → 正式回測篩 Gate → 發布」接成有界自動化：使用者啟動一個預先登記的批次，按一次就跑到「通過 Gate 的短名單」，中間不用逐步下 prompt。重點是省人工，不是放寬標準。設計來源是 `docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md`（目前 `status: draft`）。

@@ -1,3 +1,13 @@
+---
+status: accepted
+type: adr
+owner: human
+created: 2026-05-19
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # ADR-0006: Reduce-Only Risk Semantics
 
 ## Status

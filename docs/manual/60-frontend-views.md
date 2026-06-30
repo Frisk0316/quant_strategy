@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 前端頁面導覽
 
 前端導覽與 API ownership 以 `docs/UI_MAP.md` 為主。Dashboard 是檢視與操作介面，不是部署 Gate 本身。

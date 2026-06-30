@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 資料管線
 
 本專案的資料流以 `docs/DATA_FLOW.md` 為主。任何回測、驗證或前端顯示，都應該能追到「來源、寫入位置、消費者、產物、UI/API」。

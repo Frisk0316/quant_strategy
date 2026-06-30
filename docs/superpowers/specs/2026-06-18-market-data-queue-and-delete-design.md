@@ -1,3 +1,13 @@
+---
+status: current
+type: design
+owner: human
+created: 2026-06-22
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # Design: Market Data Coverage — fetch queue + delete pair
 
 Date: 2026-06-18
