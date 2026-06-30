@@ -32,6 +32,12 @@ over time.
 - Frontend backtest-chart behavior is still mostly covered by syntax/static
   checks plus API artifact tests. Known gap: add a browser-level interaction test
   before treating progressive multi-symbol chart loading as fully guarded.
+- The crypto-alpha-lab (`research/crypto-alpha-lab/`) is a **separate Python
+  package**; its tests must run as their own step (`cd research/crypto-alpha-lab &&
+  python -m pytest`, or `pip install -e research/crypto-alpha-lab`). Collecting them
+  in the same `pytest` invocation as `tests/unit/` fails with
+  `ImportError: crypto_alpha_lab`. Verify/CI must run the parent and lab suites as
+  two separate steps.
 
 ## Validation
 
