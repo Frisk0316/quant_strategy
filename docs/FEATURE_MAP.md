@@ -304,21 +304,23 @@ implementation exists.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/c1_pairs_ou_backtest.py`,
-  `backtesting/c2_funding_carry_backtest.py`, `backtesting/pipeline_refit.py`,
+  `backtesting/c2_funding_carry_backtest.py`,
+  `backtesting/c3_sentiment_backtest.py`, `backtesting/pipeline_refit.py`,
   `backtesting/differential_validation.py` contract entries,
   `scripts/run_pipeline_batch2_checkpoint.py`.
 - Data / DB / artifact files: consumes venue-scoped Binance canonical
   `canonical_candles`, `funding_rates`, and for C3 `external_observations`;
   generated checkpoint records live under `results/pipeline_batch2_20260625/`.
-  Current checkpoint has C3 failed at Stage 2 because `fear_greed_btc` has
-  event_count 0; C2/C1 have DB-backed fold-refit summaries with CPCV
-  `path_returns` retained.
+  Current checkpoint has C3, C2, and C1 DB-backed fold-refit summaries with
+  CPCV `path_returns` retained; C3 is refuted after Stage-2 PASS and Stage-3
+  statistical failure.
 - Config files: none changed. The `fear_greed_sentiment` entry in
   `config/strategies.yaml` remains `enabled:false`; live funding-carry strategy
   behavior was not changed.
 - Strategy / portfolio files: none changed.
 - Tests: `tests/unit/test_c1_pairs_ou_backtest.py`,
   `tests/unit/test_c2_funding_carry_backtest.py`,
+  `tests/unit/test_c3_sentiment_backtest.py`,
   `tests/unit/test_pipeline_batch2_contracts.py`,
   `tests/unit/test_pipeline_batch2_checkpoint_runner.py`.
 - Docs to update: `docs/EXPERIMENT_REGISTRY.md`,

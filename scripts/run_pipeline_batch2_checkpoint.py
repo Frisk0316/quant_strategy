@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backtesting.c1_pairs_ou_backtest import C1PairsOUParams, load_c1_inputs, run_c1_pairs_ou_backtest
 from backtesting.c2_funding_carry_backtest import C2FundingCarryParams, load_c2_inputs, run_c2_funding_carry_backtest
+from backtesting.c3_sentiment_backtest import C3SentimentParams, load_c3_inputs, run_c3_sentiment_backtest
 from scripts.run_pipeline_batch1_checkpoint import (
     _best_full_sample_record,
     _finite,
@@ -314,7 +315,7 @@ async def _c3_feature_gate() -> dict[str, Any]:
         ) or 0)
     finally:
         await conn.close()
-    published = [pd.Timestamp(row["published_at"], tz="UTC") for row in rows]
+    published = [pd.Timestamp(row["published_at"]).tz_convert("UTC") for row in rows]
     ttl = pd.Timedelta(seconds=172800)
     missing_minutes = max(0.0, (published[0] - pd.Timestamp(start)).total_seconds() / 60) if published else market_count
     stale_minutes = 0.0
@@ -369,12 +370,47 @@ def run_c3() -> dict[str, Any]:
         summary["external_feature_gate"] = gate
         _write_summary("c3_sentiment", summary)
         return summary
-    summary = _stage2_fail_payload(
-        "c3_sentiment",
+    params = C3SentimentParams()
+    grid = {
+        "extreme_fear_threshold": [20.0, 25.0, 30.0],
+        "exit_value_threshold": [50.0, 55.0, 60.0],
+    }
+    try:
+        close, funding, fng = load_c3_inputs(
+            params.symbol,
+            dataset_id=params.dataset_id,
+            bar=params.bar,
+            start=START,
+            end=END,
+            backend="postgres",
+            dsn=DSN,
+            exchange=EXCHANGE,
+        )
+    except Exception as exc:
+        return _stage2_data_fail_summary(
+            "c3_sentiment",
+            "c3_sentiment",
+            "F-SENTIMENT",
+            f"data_probe_unavailable: {type(exc).__name__}: {exc}",
+            "H-008",
+            "sentiment family is distinct from currently enabled price-only strategies",
+        )
+    records = _precompute_records(
+        params,
+        grid,
+        lambda run_params, _combo: run_c3_sentiment_backtest(close, funding, fng, run_params),
+        "c3",
+    )
+    n_trials = len(records)
+    validation = _refit_validation(records, n_trials)
+    best = _best_full_sample_record(records)
+    summary = _base_summary(
         "c3_sentiment",
         "F-SENTIMENT",
-        "fear_greed_btc data gate passed but replay-backed Stage 3 was not run by this offline helper",
-        "H-008",
+        n_trials,
+        validation,
+        leak_test_passed=True,
+        swap_symbols=[params.symbol],
     )
     stage2 = FeasibilityResult(
         batch_id=BATCH_ID,
@@ -388,14 +424,28 @@ def run_c3() -> dict[str, Any]:
             FeasibilityCheck(
                 "cost_after_edge",
                 "PASS",
-                "cheap sentiment threshold smell test allowed Stage 3; replay-backed Stage 3 is not run by this offline helper",
+                "cheap sentiment threshold smell test allowed Stage 3; promotion remains blocked by later gates",
             ),
         ),
     )
-    summary.update(_write_stage2_feasibility("c3_sentiment", stage2))
-    summary["status"] = "stage2_passed_stage3_not_run"
-    summary["stage2_reason"] = "fear_greed_btc data gate passed but replay-backed Stage 3 was not run by this offline helper"
-    summary["external_feature_gate"] = gate
+    summary.update({
+        "candidate_dir": "c3_sentiment",
+        "hypothesis_id": "H-008",
+        **_write_stage2_feasibility("c3_sentiment", stage2),
+        "retry_classification": "new_family_first_validation",
+        "nonzero_grid_activity": bool(_records_have_activity(records)),
+        "full_sample_best_sharpe": _finite(best["metrics"].get("sharpe")),
+        "full_sample_best_params": _param_subset(best, set(C3SentimentParams.__dataclass_fields__)),
+        "selected_params": {"mode": "fold_refit_per_split"},
+        "perp_canonical_coverage": {symbol: {"rows": int(close[symbol].dropna().shape[0])} for symbol in close.columns},
+        "funding_coverage": {symbol: {"rows": int(funding[symbol].dropna().shape[0])} for symbol in funding.columns},
+        "external_feature_gate": gate,
+        "external_feature_coverage": {"fear_greed_btc": {"rows": int(fng.shape[0])}},
+        "notes": [
+            "Research-only vectorized C3 module; live fear_greed_sentiment strategy behavior was not changed.",
+            "Promotion remains blocked because portable validation is adapter-required/absent and no user approval exists.",
+        ],
+    })
     return _write_summary("c3_sentiment", summary)
 
 
