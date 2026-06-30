@@ -28,6 +28,9 @@ Role: Codex, trading-core implementation.
 - Attach ct_val provenance and require `ct_val_all_authoritative` for
   promotion-grade evidence.
 - Feed CPCV the family-cumulative `n_trials`, not a per-run grid count.
+- After writing `summary.json`, run `scripts/run_pipeline_checkpoint1_check.py`
+  to emit `checkpoint1_auto.json`; a `PASS` is still only a machine pre-check
+  and does not replace the human checkpoint review.
 
 ## Two-Pass Backtest
 
@@ -72,3 +75,19 @@ Otherwise set `status = review_required` or `refuted`.
 
 The driver checkpoint still reviews this independently. A true value here is a
 candidate for review, not an auto-publish decision.
+
+Emit `results/<batch_id>/<candidate>/checkpoint1_auto.json` with:
+
+```text
+schema_version
+batch_id
+candidate_id
+family_id
+checks
+checkpoint1_auto_status
+human_review_items
+```
+
+`checkpoint1_auto_status == FAIL` blocks checkpoint advancement. `PASS` only
+means the machine-checkable pieces reconciled; the listed human review items
+still decide publish, retry, new-family, or shelve status.
