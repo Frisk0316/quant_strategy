@@ -25,8 +25,8 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, first_batch_review]
     current: first_batch_review
-    state: "Checkpoint automation, family-minting checker, and B/A idea-generator front end implemented as advisory sidecars: checkpoint1_auto.json, family_minting.json, idea_batch.json, and hypothesis_ledger_draft.md. Human review remains required before durable ledger edits."
-    next: "Run the first real idea-batch sidecar from taxonomy/lab corpus, then Claude/human review the ledger draft before appending to docs/HYPOTHESIS_LEDGER.md."
+    state: "Checkpoint automation, family-minting checker with real K-budget fields, XS family n_trials inheritance, and B/A idea-generator front end with Stage-2 data-probe fallback implemented as advisory sidecars. First taxonomy-only sidecar generated at results/idea_batch_20260630_taxonomy_001/."
+    next: "Claude/human review results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md before any durable ledger append, Stage 2/3 run, or backtest."
     links: [docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-06-30-idea-generator-frontend-design.md]
     updated: 2026-06-30
 

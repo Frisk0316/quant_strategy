@@ -330,6 +330,38 @@ implementation exists.
   live/shadow/demo gates, change live funding-carry strategy behavior, edit
   `src/okx_quant/analytics/dsr.py`, or mutate existing result artifacts.
 
+## Strategy Research Pipeline Automation
+
+- User-facing behavior: generate and review advisory research-pipeline sidecars
+  before any candidate enters durable ledgers or backtests. Current sidecars are
+  stage2 feasibility JSON, checkpoint1 auto JSON, family-minting JSON, idea-batch
+  JSON, and hypothesis-ledger draft Markdown. Idea-batch B-half enumeration uses
+  supplied Stage-2 data-availability probe results before falling back to
+  taxonomy text.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/pipeline_feasibility.py`,
+  `backtesting/pipeline_checkpoint1.py`, `backtesting/pipeline_family_minting.py`,
+  `backtesting/pipeline_idea_generator.py`.
+- Script files: `scripts/run_pipeline_stage2_check.py`,
+  `scripts/run_pipeline_checkpoint1_check.py`,
+  `scripts/run_pipeline_family_minting_check.py`,
+  `scripts/run_pipeline_idea_generator.py`.
+- Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
+  `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
+  `results/<batch_id>/` directories without mutating existing artifacts.
+- Config files: none.
+- Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_pipeline_family_minting.py`,
+  `tests/unit/test_pipeline_idea_generator.py`.
+- Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
+  `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
+  relevant Change Manifest.
+- Do-not-touch notes: automation sidecars are advisory research controls only.
+  They must not append durable ledger rows, change `research/strategy_synthesis.md`,
+  enable strategies, run backtests, change CPCV/DSR/gate semantics, alter
+  config gates, or touch demo/shadow/live behavior without explicit approval.
+
 ## Strategy Registry / Strategy Selection
 
 - User-facing behavior: expose active strategies to the Run Backtest UI and API

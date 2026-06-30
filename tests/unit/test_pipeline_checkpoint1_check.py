@@ -1,6 +1,6 @@
 import json
 
-from backtesting.pipeline_checkpoint1 import evaluate_summary, result_to_dict
+from backtesting.pipeline_checkpoint1 import evaluate_summary, family_registry_from_text, result_to_dict
 from scripts.run_pipeline_checkpoint1_check import main
 
 
@@ -10,6 +10,25 @@ def _registry(artifact: str = "results/batch/candidate/summary.json", trials: in
             "| ID | Date | Hypothesis | Family ID | Setup | Trials | Artifact / run_id | Outcome | Notes |",
             "|---|---|---|---|---|---|---|---|---|",
             f"| E-101 | 2026-06-30 | H-101 | F-CHECK | setup | {trials} | `{artifact}` | checkpoint | current row |",
+        ]
+    )
+
+
+def _xs_registry() -> str:
+    return "\n".join(
+        [
+            "| Family ID | K_used | K_limit | Basis (rows counted as retries) |",
+            "|---|---:|---:|---|",
+            "| F-XS-MOMENTUM | 2 | 2 | E-003 original -> E-004 leak-fix -> E-005 sizing-fix |",
+            "| F-FUNDING-CARRY | 1 | 2 | E-024 original -> E-026 realism re-cost |",
+            "",
+            "| ID | Date | Hypothesis | Family ID | Setup | Trials | Artifact / run_id | Outcome | Notes |",
+            "|---|---|---|---|---|---|---|---|---|",
+            "| E-003 | 2026-06-23 | H-002 | F-XS-MOMENTUM | original grid | 8 | `results/xs/original/summary.json` | invalid / superseded | superseded |",
+            "| E-004 | 2026-06-24 | H-002 | F-XS-MOMENTUM | leak fix grid | 8 | `results/xs/leakfix/summary.json` | refuted | supersedes E-003 |",
+            "| E-005 | 2026-06-24 | H-002 | F-XS-MOMENTUM | sizing fix grid; per-run recorded `n_trials=8` under old convention | 8 | `results/xs/portfoliovol/summary.json` | refuted | Under the family-cumulative rule, F-XS-MOMENTUM has at least 24 trials from E-003/E-004/E-005 before any future retry. |",
+            "| E-024 | 2026-06-29 | H-007 | F-FUNDING-CARRY | first carry grid; family-cumulative `n_trials=24` passed as caller-declared | 24 | `results/carry/original/summary.json` | checkpoint / statistical-pass / promotion-blocked | first real run |",
+            "| E-026 | 2026-06-29 | H-007 | F-FUNDING-CARRY | realism re-cost. Family-cumulative `n_trials=48` = prior 24 + retry grid 24. | 48 | `results/carry/realism/summary.json` | refuted / realism-recost-fail | recost retry |",
         ]
     )
 
@@ -38,6 +57,31 @@ def _summary(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def test_family_registry_uses_family_cumulative_trials_without_double_counting_overrides():
+    registry = family_registry_from_text(_xs_registry())
+
+    assert registry["F-XS-MOMENTUM"].cumulative_n_trials == 24
+    assert registry["F-XS-MOMENTUM"].k_used == 2
+    assert registry["F-XS-MOMENTUM"].k_limit == 2
+    assert registry["F-FUNDING-CARRY"].cumulative_n_trials == 48
+
+
+def test_checkpoint1_reconciles_xs_artifact_to_family_cumulative_trials():
+    result = evaluate_summary(
+        _summary(
+            family_id="F-XS-MOMENTUM",
+            family_cumulative_n_trials=24,
+            cpcv={"n_trials": 24, "n_trials_provenance": "caller_declared"},
+        ),
+        _xs_registry(),
+        summary_path="results/xs/portfoliovol/summary.json",
+    )
+    payload = result_to_dict(result)
+    checks = {row["name"]: row for row in payload["checks"]}
+
+    assert checks["n_trials_reconcile"]["status"] == "PASS"
 
 
 def test_checkpoint1_passes_machine_checks_and_keeps_human_review_items():

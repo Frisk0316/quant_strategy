@@ -20,29 +20,38 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
-- **Pipeline full-automation roadmap - checkpoint, family-minting, and idea-generator automation implemented
+- **Pipeline full-automation roadmap - checkpoint, family-minting, K-budget,
+  XS trial accounting, B-half probe, and first idea sidecar implemented
   (2026-06-30, Codex):** Claude's checkpoint contract §4 is implemented for
   future Stage-3 summaries. New code:
   `backtesting/pipeline_checkpoint1.py` and
   `scripts/run_pipeline_checkpoint1_check.py`; tests:
   `tests/unit/test_pipeline_checkpoint1_check.py`. The checker writes
   `checkpoint1_auto.json` with `PASS`/`FAIL`/`NEEDS_HUMAN`, reconciles family
-  trial counts against `docs/EXPERIMENT_REGISTRY.md`, records invariant **I26**,
-  and keeps human review for lag spot-checks, diff-block honesty, cost realism,
-  retry-vs-new-family, and publish decisions. Mechanism-taxonomy §7 is also
+  trial counts against `docs/EXPERIMENT_REGISTRY.md`, honors explicit
+  family-cumulative registry notes/overrides, reads F-XS-MOMENTUM as 24 trials
+  before future retry, records invariant **I26**, and keeps human review for lag
+  spot-checks, diff-block honesty, cost realism, retry-vs-new-family, and
+  publish decisions. Mechanism-taxonomy §7 is also
   implemented: `backtesting/pipeline_family_minting.py` +
   `scripts/run_pipeline_family_minting_check.py` write `family_minting.json`,
-  enforce high-correlation ASSIGN/SKIP instead of fresh MINT, and record
+  enforce high-correlation ASSIGN/SKIP instead of fresh MINT, report real
+  `k_used`/`k_limit`/`at_k_limit` from the Family K-budget table, and record
   invariant **I27**. The B §6/A §6b idea-generator front end is also
   implemented: `backtesting/pipeline_idea_generator.py`,
   `scripts/run_pipeline_idea_generator.py`, and the crypto-alpha-lab
   `pipeline`/`adapters` helpers produce advisory `idea_batch.json` and
   `hypothesis_ledger_draft.md` sidecars from mechanism-taxonomy or literature
-  drafts. The A-half prompt firewall rejects market series and fold boundaries;
-  lab candidates remain `allow_live_trading=false`. No strategy, research truth
-  file, ledger value, config gate, deployment gate, or existing `results/**`
-  artifact changed. Next: run a first real idea-batch sidecar and send the
-  ledger draft to Claude/human review before appending anything durable.
+  drafts. B-half taxonomy enumeration now uses supplied Stage-2
+  `data_availability` probe results before falling back to taxonomy text. The
+  A-half prompt firewall rejects market series and fold boundaries; lab
+  candidates remain `allow_live_trading=false`. First taxonomy-only sidecar
+  now exists at `results/idea_batch_20260630_taxonomy_001/` with 4 pending-LLM
+  candidates and skipped refuted/data-blocked families. No strategy, research
+  truth file, ledger value, config gate, deployment gate, or existing
+  `results/**` artifact changed. Next: Claude/human review
+  `results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md` before
+  appending anything durable or running Stage 2/3.
 
 - **C3 sentiment Stage-3 checkpoint complete (2026-06-29, Codex):**
   Alternative.me Fear & Greed history is ingested and C3 is no longer

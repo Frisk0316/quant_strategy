@@ -22,6 +22,51 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-06-30 Codex follow-up (XS family n_trials + B-half data probe):
+Closed the two user-flagged post-§7a gaps. First,
+`backtesting/pipeline_checkpoint1.py::family_registry_from_text()` now honors
+explicit family-cumulative registry notes/overrides, so F-XS-MOMENTUM inherits
+24 trials from E-003/E-004/E-005 (with K=2/2 at limit) instead of the stale
+per-run grid value 8, while newer cumulative rows such as C2 E-026 remain 48
+and are not double-counted. The same value is used by checkpoint①
+`n_trials_reconcile` and `backtesting/pipeline_family_minting.py` inheritance.
+Second, `backtesting/pipeline_idea_generator.py::enumerate_gaps()` now consumes
+supplied Stage-2 `pipeline_feasibility.py` data-availability results before
+falling back to taxonomy text, so the old "taxonomy text only" behavior is now
+only a fallback. Regression coverage is in
+`tests/unit/test_pipeline_checkpoint1_check.py`,
+`tests/unit/test_pipeline_family_minting.py`, and
+`tests/unit/test_pipeline_idea_generator.py`. New manifest:
+`docs/change_manifests/2026-06-30-xs-trials-and-idea-probe.md`; the resolved
+gaps are recorded in `docs/KNOWN_ISSUES.md`. No durable ledger rows, research
+truth files, config gates, deployment gates, strategy/risk/portfolio/execution
+files, or existing result artifacts were changed. Next remains Claude/human
+review of `results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md`
+before any durable ledger append, Stage 2/3 run, or backtest.
+
+2026-06-30 Codex follow-up (family-minting K-budget wiring + first idea sidecar):
+Completed the §7a K-budget follow-up before running the first taxonomy-only idea
+batch. `backtesting/pipeline_checkpoint1.py::family_registry_from_text()` now
+parses `docs/EXPERIMENT_REGISTRY.md` Family K-budget rows (`| F-... | K_used |
+K_limit | ... |`) and `backtesting/pipeline_family_minting.py` reports real
+`k_used`, `k_limit`, and `at_k_limit` instead of the stale
+`inherited_K = inherited_n_trials` proxy. Regression coverage is in
+`tests/unit/test_pipeline_family_minting.py`; direct execution of
+`scripts/run_pipeline_idea_generator.py` is now covered by
+`tests/unit/test_pipeline_idea_generator.py`. New manifest:
+`docs/change_manifests/2026-06-30-family-minting-k-budget.md`; `docs/KNOWN_ISSUES.md`
+marks the K-vs-n_trials issue resolved; `docs/FEATURE_MAP.md` now maps research
+pipeline automation ownership. Generated first taxonomy-only advisory sidecar:
+`results/idea_batch_20260630_taxonomy_001/idea_batch.json` plus
+`results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md`. It selected
+4 pending-LLM candidates (`F-VOL-REGIME`, `F-FUNDING-XS-DISPERSION`,
+`F-S6-TS-MOMENTUM`, `F-XVENUE-LEADLAG`) and skipped refuted/no-twist or
+data-blocked families. No durable ledger rows, research truth files, config
+gates, deployment gates, strategy/risk/portfolio/execution files, or existing
+result artifacts were changed. Next: Claude/human review the generated
+`hypothesis_ledger_draft.md`; do not append it to `docs/HYPOTHESIS_LEDGER.md`,
+run Stage 2/3, or backtest until reviewed.
+
 2026-06-30 Codex follow-up (idea generator B §6 + A §6b implemented):
 Implemented the full-auto idea-generator front end without changing trading
 logic, research truth files, durable ledger values, config gates, deployment

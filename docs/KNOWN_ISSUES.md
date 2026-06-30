@@ -98,17 +98,31 @@ over time.
   `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
   artifact rather than a strategy verdict.
 
-- **Family-minting checker K vs n_trials (2026-06-30):** the initial
+- **Family-minting checker K vs n_trials (resolved 2026-06-30):** the initial
   `backtesting/pipeline_family_minting.py` set `inherited_K = inherited_n_trials`
-  (flagged with a ponytail comment) because no retry-count source existed. The
-  **source is now added** — the `docs/EXPERIMENT_REGISTRY.md` *Family K-budget*
-  table (per-family `K_used` / `K_limit=2`, backfilled from row notes; a human
-  checkpoint①#9 judgment, correctable). Remaining wiring (Codex, one step):
-  extend `pipeline_checkpoint1.family_registry_from_text` to parse the K-budget
-  table and make `pipeline_family_minting` report real `k_used` / `k_limit` /
-  `at_k_limit` instead of conflating with `n_trials`. Until wired, do **not** rely
-  on the checker's `inherited_K`; the K=2 retry stop-condition is not yet
-  enforced. Task block: `docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md` §7a.
+  because no retry-count source existed. The checker now reads the
+  `docs/EXPERIMENT_REGISTRY.md` *Family K-budget* table and reports real
+  `k_used`, `k_limit`, and `at_k_limit`; `n_trials` and K are no longer
+  conflated. Remaining operational caveat: the K-budget table is human-maintained
+  checkpoint①#9 state, so stale table values still need human review.
+
+- **XS family-cumulative n_trials inheritance (resolved 2026-06-30):** the
+  shared `family_registry_from_text()` parser previously took the largest raw
+  `Trials` cell, so F-XS-MOMENTUM inherited 8 from E-003/E-004/E-005 even though
+  the ledger/registry notes state the family has 24 trials before future retry.
+  The parser now honors explicit family-cumulative row text/overrides (including
+  the XS "at least 24 trials" note and newer `family-cumulative n_trials=...`
+  rows), so checkpoint① and family-minting inherit XS as 24 while C2 remains 48.
+  Remaining operational caveat: future registry rows should continue to state
+  the family-cumulative value clearly; otherwise the parser falls back to the
+  historical max-row interpretation.
+
+- **B-half data availability probe stub (resolved 2026-06-30):** the initial
+  idea-generator B-half accepted `data_availability_probe` but discarded it and
+  filtered only by taxonomy text. `enumerate_gaps()` now consumes supplied
+  Stage-2 `pipeline_feasibility.py` data-availability results and uses taxonomy
+  text only when the probe has no answer. This remains an advisory pre-backtest
+  filter; Stage 2 is still the authoritative fail-closed gate before Stage 3.
 
 ## Operations
 

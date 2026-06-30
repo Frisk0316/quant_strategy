@@ -1,5 +1,9 @@
 import json
+import subprocess
+import sys
+from pathlib import Path
 
+from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
 from backtesting.pipeline_idea_generator import (
     enumerate_gaps,
     rank_and_cap,
@@ -31,6 +35,21 @@ def _registry() -> str:
     )
 
 
+def _stage2_data(family_id: str, status: str) -> FeasibilityResult:
+    return FeasibilityResult(
+        batch_id="probe_batch",
+        candidate_id=f"probe-{family_id.lower()}",
+        candidate_dir=family_id.lower(),
+        hypothesis_id="H-PROBE",
+        family_id=family_id,
+        checks=(
+            FeasibilityCheck("data_availability", status, "probe result"),
+            FeasibilityCheck("distinctness", "PASS", "not used by B-half data probe"),
+            FeasibilityCheck("cost_after_edge", "PASS", "not used by B-half data probe"),
+        ),
+    )
+
+
 def test_enumerate_gaps_filters_refuted_and_data_blocked_families():
     result = enumerate_gaps(_taxonomy(), _registry())
 
@@ -39,6 +58,43 @@ def test_enumerate_gaps_filters_refuted_and_data_blocked_families():
 
     assert {"F-FUNDING-XS-DISPERSION", "F-XVENUE-LEADLAG"} <= eligible
     assert skipped["F-FUNDING-CARRY"] == "refuted_no_twist"
+    assert skipped["F-OI-POSITIONING"] == "data_blocked"
+
+
+def test_enumerate_gaps_uses_stage2_probe_before_taxonomy_fallback():
+    def probe(row):
+        if row.get("Family ID") == "F-OI-POSITIONING":
+            return _stage2_data("F-OI-POSITIONING", "PASS")
+        return None
+
+    result = enumerate_gaps(_taxonomy(), _registry(), data_availability_probe=probe)
+
+    eligible = {row["family_id"] for row in result["eligible"]}
+    skipped = {row["family_id"]: row["reason"] for row in result["skipped"]}
+
+    assert "F-OI-POSITIONING" in eligible
+    assert "F-OI-POSITIONING" not in skipped
+
+
+def test_enumerate_gaps_blocks_when_stage2_probe_fails_even_if_taxonomy_says_available():
+    def probe(row):
+        if row.get("Family ID") == "F-FUNDING-XS-DISPERSION":
+            return _stage2_data("F-FUNDING-XS-DISPERSION", "FAIL")
+        return None
+
+    result = enumerate_gaps(_taxonomy(), _registry(), data_availability_probe=probe)
+
+    eligible = {row["family_id"] for row in result["eligible"]}
+    skipped = {row["family_id"]: row["reason"] for row in result["skipped"]}
+
+    assert "F-FUNDING-XS-DISPERSION" not in eligible
+    assert skipped["F-FUNDING-XS-DISPERSION"] == "data_blocked"
+
+
+def test_enumerate_gaps_falls_back_to_taxonomy_when_probe_has_no_answer():
+    result = enumerate_gaps(_taxonomy(), _registry(), data_availability_probe=lambda row: None)
+    skipped = {row["family_id"]: row["reason"] for row in result["skipped"]}
+
     assert skipped["F-OI-POSITIONING"] == "data_blocked"
 
 
@@ -141,4 +197,35 @@ def test_idea_generator_cli_writes_batch(tmp_path):
 
     assert exit_code == 0
     payload = json.loads((tmp_path / "cli_batch" / "idea_batch.json").read_text(encoding="utf-8"))
+    assert payload["n_eligible_before_cap"] == 2
+
+
+def test_idea_generator_script_runs_from_repo_root(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    taxonomy_path = tmp_path / "taxonomy.md"
+    registry_path = tmp_path / "EXPERIMENT_REGISTRY.md"
+    taxonomy_path.write_text(_taxonomy(), encoding="utf-8")
+    registry_path.write_text(_registry(), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_pipeline_idea_generator.py",
+            "--taxonomy",
+            str(taxonomy_path),
+            "--ledger",
+            str(registry_path),
+            "--batch-id",
+            "script_batch",
+            "--output-root",
+            str(tmp_path),
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads((tmp_path / "script_batch" / "idea_batch.json").read_text(encoding="utf-8"))
     assert payload["n_eligible_before_cap"] == 2

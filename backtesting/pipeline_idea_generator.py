@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
+from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_from_dict
 from backtesting.pipeline_family_minting import decide_family_minting
 
 SCHEMA_VERSION = 1
@@ -57,6 +58,51 @@ def _is_data_blocked(row: Mapping[str, str]) -> bool:
     return "blocked" in text or "無 options" in text or "on-chain" in text
 
 
+def _probe_answer(row: Mapping[str, str], data_availability_probe: Any | None) -> Any | None:
+    if data_availability_probe is None:
+        return None
+    if callable(data_availability_probe):
+        return data_availability_probe(row)
+    if isinstance(data_availability_probe, Mapping):
+        family_id = row.get("Family ID", "").strip()
+        return data_availability_probe.get(family_id)
+    return None
+
+
+def _check_data_feasible(check: FeasibilityCheck) -> bool | None:
+    if check.name != "data_availability":
+        return None
+    return check.status == "PASS"
+
+
+def _stage2_data_feasible(result: FeasibilityResult) -> bool | None:
+    for check in result.checks:
+        feasible = _check_data_feasible(check)
+        if feasible is not None:
+            return feasible
+    return None
+
+
+def _probe_data_feasible(row: Mapping[str, str], data_availability_probe: Any | None) -> bool | None:
+    answer = _probe_answer(row, data_availability_probe)
+    if answer is None:
+        return None
+    if isinstance(answer, bool):
+        return answer
+    if isinstance(answer, FeasibilityResult):
+        return _stage2_data_feasible(answer)
+    if isinstance(answer, FeasibilityCheck):
+        return _check_data_feasible(answer)
+    if isinstance(answer, Mapping):
+        if "checks" in answer:
+            return _stage2_data_feasible(result_from_dict(dict(answer)))
+        status = str(answer.get("status") or "").upper()
+        name = str(answer.get("name") or "data_availability")
+        if status in {"PASS", "FAIL"}:
+            return _check_data_feasible(FeasibilityCheck(name=name, status=status, reason=str(answer.get("reason") or "")))
+    return None
+
+
 def enumerate_gaps(
     taxonomy_text: str,
     ledger_text: str,
@@ -65,7 +111,6 @@ def enumerate_gaps(
     """Return taxonomy families that are feasible enough to draft."""
 
     registry = family_registry_from_text(ledger_text)
-    del data_availability_probe
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in _rows(taxonomy_text):
@@ -75,7 +120,9 @@ def enumerate_gaps(
         if "refuted" in text or "shelved" in text or "refuted" in ledger_status or "shelved" in ledger_status:
             skipped.append({"family_id": family_id, "reason": "refuted_no_twist"})
             continue
-        if _is_data_blocked(row):
+        probe_feasible = _probe_data_feasible(row, data_availability_probe)
+        data_feasible = not _is_data_blocked(row) if probe_feasible is None else probe_feasible
+        if not data_feasible:
             skipped.append({"family_id": family_id, "reason": "data_blocked"})
             continue
         mechanism = row.get("機制") or row.get("mechanism") or row.get("col1") or family_id
@@ -88,7 +135,7 @@ def enumerate_gaps(
                 "family_id_or_NEW": family_id,
                 "mechanism": mechanism,
                 "data_feasible": True,
-                "data_rank": _rank_from_text(data_text),
+                "data_rank": 0 if probe_feasible is True else _rank_from_text(data_text),
                 "crowding_rank": 1 if "高" in text else 0,
                 "planned_grid_size": 4,
                 "draft_status": "pending_llm",
@@ -209,10 +256,11 @@ def generate_batch(
     *,
     output_root: str | Path = "results",
     cap: int = DEFAULT_CAP,
+    data_availability_probe: Any | None = None,
 ) -> dict[str, Any]:
     taxonomy_text = Path(taxonomy_path).read_text(encoding="utf-8")
     ledger_text = Path(ledger_path).read_text(encoding="utf-8")
-    enumerated = enumerate_gaps(taxonomy_text, ledger_text)
+    enumerated = enumerate_gaps(taxonomy_text, ledger_text, data_availability_probe=data_availability_probe)
     selected, overflow = rank_and_cap(enumerated["eligible"], cap=cap)
     return register_batch(
         selected,
