@@ -296,6 +296,40 @@ implementation exists.
   source parity, portable validation, ct_val provenance, WF/CPCV gates, and
   human approval are complete.
 
+## Pipeline Batch 2 Research Candidates
+
+- User-facing behavior: checkpoint-only research candidates for C3 sentiment,
+  C2 funding carry + basis-z filter, and C1 BTC/ETH OU-gated pairs RV. These are
+  evidence-review artifacts only, not UI/API promotion surfaces.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/c1_pairs_ou_backtest.py`,
+  `backtesting/c2_funding_carry_backtest.py`,
+  `backtesting/c3_sentiment_backtest.py`, `backtesting/pipeline_refit.py`,
+  `backtesting/differential_validation.py` contract entries,
+  `scripts/run_pipeline_batch2_checkpoint.py`.
+- Data / DB / artifact files: consumes venue-scoped Binance canonical
+  `canonical_candles`, `funding_rates`, and for C3 `external_observations`;
+  generated checkpoint records live under `results/pipeline_batch2_20260625/`.
+  Current checkpoint has C3, C2, and C1 DB-backed fold-refit summaries with
+  CPCV `path_returns` retained; C3 is refuted after Stage-2 PASS and Stage-3
+  statistical failure.
+- Config files: none changed. The `fear_greed_sentiment` entry in
+  `config/strategies.yaml` remains `enabled:false`; live funding-carry strategy
+  behavior was not changed.
+- Strategy / portfolio files: none changed.
+- Tests: `tests/unit/test_c1_pairs_ou_backtest.py`,
+  `tests/unit/test_c2_funding_carry_backtest.py`,
+  `tests/unit/test_c3_sentiment_backtest.py`,
+  `tests/unit/test_pipeline_batch2_contracts.py`,
+  `tests/unit/test_pipeline_batch2_checkpoint_runner.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, relevant Change Manifest.
+- Do-not-touch notes: do not enable candidates, touch `config/risk.yaml`, alter
+  live/shadow/demo gates, change live funding-carry strategy behavior, edit
+  `src/okx_quant/analytics/dsr.py`, or mutate existing result artifacts.
+
 ## Strategy Registry / Strategy Selection
 
 - User-facing behavior: expose active strategies to the Run Backtest UI and API

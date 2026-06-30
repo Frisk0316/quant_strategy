@@ -1,0 +1,166 @@
+[
+  {
+    "candidate_id": "lob_explainable_feature_library",
+    "title": "Explainable LOB Feature Library for Short-Horizon Crypto Perps",
+    "paper_ids": [
+      "barzykin-2026-explainable-crypto-microstructure",
+      "pinto-2025-high-frequency-bitcoin-futures"
+    ],
+    "hypothesis": "Stable order-book and trade features can forecast short-horizon perp returns well enough to improve maker quote skew or avoid adverse-selection windows.",
+    "signal_definition": "Compute normalized LOB imbalance, OFI-style pressure, spread, trade intensity, and volatility-state features at event or 1-second cadence; convert the model score into a signed short-horizon alpha.",
+    "entry_rule": "For research, enter or skew quotes only when signed score exceeds a pre-registered quantile threshold and spread/liquidity filters pass.",
+    "exit_rule": "Exit after the forecast horizon, score decay, inventory cap breach, or adverse volatility-state transition.",
+    "sizing_rule": "Map absolute score to a capped target weight; reduce size during high spread, high VPIN, or low depth states.",
+    "required_data": ["l2_order_book", "trades", "top_of_book", "fees", "maker_fill_model"],
+    "target_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "expected_horizon": "tick",
+    "backtest_path": "event_replay",
+    "validation_plan": [
+      "Purged time-series split by day or week",
+      "Compare maker-only and conservative taker sensitivity",
+      "Report fill rate, adverse-selection loss, fees, and spread capture",
+      "Run crash-window stress tests separately"
+    ],
+    "risk_controls": [
+      "max inventory",
+      "stale book guard",
+      "spread floor",
+      "volatility halt",
+      "queue/fill conservatism"
+    ],
+    "expected_failure_modes": [
+      "Feature importance transfers poorly from Binance to OKX",
+      "Maker fill assumptions overstate edge",
+      "High turnover loses to fees and missed fills"
+    ],
+    "parent_framework_touchpoints": [
+      "backtesting/replay.py",
+      "src/okx_quant/signals/obi_ofi.py",
+      "src/okx_quant/strategies/obi_market_maker.py"
+    ],
+    "status": "ready_for_backtest",
+    "allow_live_trading": false
+  },
+  {
+    "candidate_id": "funding_basis_stability_carry",
+    "title": "Funding/Basis Stability-Gated Carry",
+    "paper_ids": [
+      "he-2024-fundamentals-perpetual-futures",
+      "inan-2025-funding-rate-predictability"
+    ],
+    "hypothesis": "Funding carry is more robust when entered only during stable basis regimes and when one-step funding forecasts do not indicate imminent reversal.",
+    "signal_definition": "Estimate expected funding, spot-perp basis z-score, time to funding, and recent funding persistence; produce a carry score net of estimated fees and hedge drift.",
+    "entry_rule": "Enter long spot/short perp or perp-neutral proxy when expected net funding exceeds cost threshold and basis volatility is below a pre-registered cap.",
+    "exit_rule": "Exit on forecast funding reversal, basis blowout, max holding time, liquidation-buffer compression, or negative net carry after costs.",
+    "sizing_rule": "Target notional by inverse volatility and liquidation buffer; cap per-symbol and total funding exposure.",
+    "required_data": ["spot_price", "perp_price", "funding_rate_history", "fees", "contract_value"],
+    "target_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "expected_horizon": "multi_day",
+    "backtest_path": "walk_forward",
+    "validation_plan": [
+      "Walk-forward funding forecast calibration",
+      "Cost-aware PnL with explicit funding cashflows",
+      "Stress funding reversal and basis crash windows",
+      "Check ct_val provenance before any parent gate discussion"
+    ],
+    "risk_controls": [
+      "basis blowout stop",
+      "funding reversal stop",
+      "liquidation distance floor",
+      "max capital allocation"
+    ],
+    "expected_failure_modes": [
+      "Funding alpha crowded out",
+      "Borrow/collateral assumptions missing",
+      "Forecast timing leaks next funding print"
+    ],
+    "parent_framework_touchpoints": [
+      "src/okx_quant/strategies/funding_carry.py",
+      "backtesting/walk_forward.py",
+      "backtesting/replay.py"
+    ],
+    "status": "ready_for_backtest",
+    "allow_live_trading": false
+  },
+  {
+    "candidate_id": "funding_window_adverse_selection_filter",
+    "title": "Funding-Window Adverse-Selection Filter",
+    "paper_ids": [
+      "ruan-streltsov-2025-perp-market-quality",
+      "pinto-2025-high-frequency-bitcoin-futures"
+    ],
+    "hypothesis": "Perp funding windows and high funding-fee magnitudes identify periods when maker quotes should widen, reduce size, or pause because informed trading risk is higher.",
+    "signal_definition": "Create a funding-cycle phase feature, funding magnitude percentile, spread percentile, and trade-intensity state; output a risk multiplier for market-making strategies.",
+    "entry_rule": "This is a risk filter: apply to existing maker quoting when funding phase and toxicity features exceed thresholds.",
+    "exit_rule": "Return to normal quoting after the funding-risk window ends and spread/trade-intensity conditions normalize.",
+    "sizing_rule": "Multiply base size by a risk-state factor from 0 to 1; widen spread in warning states.",
+    "required_data": ["funding_timestamp", "funding_rate", "order_book", "trades", "spread"],
+    "target_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "expected_horizon": "intraday",
+    "backtest_path": "event_replay",
+    "validation_plan": [
+      "Replay market maker with and without funding-window filter",
+      "Measure adverse selection, fill rate, spread capture, and opportunity cost",
+      "Pre-register funding window lengths to avoid threshold mining"
+    ],
+    "risk_controls": [
+      "maker-only quoting",
+      "minimum depth",
+      "spread multiplier cap",
+      "inventory-aware one-sided quoting"
+    ],
+    "expected_failure_modes": [
+      "Filter removes profitable inventory mean reversion",
+      "Venue-specific funding calendar effects are weak on OKX",
+      "Threshold mining overfits funding windows"
+    ],
+    "parent_framework_touchpoints": [
+      "src/okx_quant/risk/risk_guard.py",
+      "src/okx_quant/strategies/as_market_maker.py",
+      "backtesting/replay.py"
+    ],
+    "status": "screened",
+    "allow_live_trading": false
+  },
+  {
+    "candidate_id": "crypto_pairs_cpcv_baseline",
+    "title": "Conservative Cointegration Pairs Baseline",
+    "paper_ids": [
+      "danilo-2024-optimized-crypto-pairs",
+      "junior-2026-cross-sectional-alpha-failure"
+    ],
+    "hypothesis": "Cointegration pairs can be tested as a conservative baseline, but promotion should require CPCV and must beat naive OHLCV/funding screens after costs.",
+    "signal_definition": "Select pairs from a liquid perp universe using rolling cointegration quality and half-life filters; trade z-score deviations only during stable regimes.",
+    "entry_rule": "Enter dollar-neutral pair when z-score exceeds a pre-registered threshold and half-life/liquidity gates pass.",
+    "exit_rule": "Exit near zero z-score, on half-life break, max holding time, or hard z-stop.",
+    "sizing_rule": "Dollar-neutral or beta-neutral sizing with inverse volatility caps.",
+    "required_data": ["ohlcv", "funding_rate", "liquidity", "contract_value"],
+    "target_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "expected_horizon": "daily",
+    "backtest_path": "cpcv",
+    "validation_plan": [
+      "Use purged pair selection and trading windows",
+      "Report n_trials honestly for threshold and universe search",
+      "Compare against negative-evidence OHLCV/funding baseline",
+      "Require DSR/PSR review before any parent integration"
+    ],
+    "risk_controls": [
+      "cointegration break stop",
+      "max holding time",
+      "liquidity floor",
+      "per-symbol exposure cap"
+    ],
+    "expected_failure_modes": [
+      "Multiple-testing overfit",
+      "High drawdown from regime breaks",
+      "Short borrow/funding and fee drag overwhelms spread convergence"
+    ],
+    "parent_framework_touchpoints": [
+      "src/okx_quant/strategies/pairs_trading.py",
+      "backtesting/cpcv.py",
+      "backtesting/walk_forward.py"
+    ],
+    "status": "watchlist",
+    "allow_live_trading": false
+  }
+]

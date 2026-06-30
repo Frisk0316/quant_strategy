@@ -30,5 +30,7 @@ results/calibration/
 logs/
 *.log.gz
 
-# Local research workspaces and alpha labs are not shared via GitHub.
-research/
+# Local research workspaces and scratch are not shared via GitHub, EXCEPT the
+# crypto-alpha-lab (the shared literature ingestion / idea-generator A-half).
+research/*
+!research/crypto-alpha-lab/
