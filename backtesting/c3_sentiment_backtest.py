@@ -43,15 +43,16 @@ def _normalize_fng(fng: pd.DataFrame) -> pd.DataFrame:
 
 def _target_weights(close_daily: pd.DataFrame, fng: pd.DataFrame, params: C3SentimentParams) -> pd.DataFrame:
     out = pd.DataFrame(0.0, index=close_daily.index, columns=[params.symbol])
-    events = _normalize_fng(fng).drop_duplicates("published_day", keep="last").set_index("published_day")
+    events = _normalize_fng(fng).sort_values("published_at")
     active = False
     exit_labels = {_canonical_fng_label(label) for label in params.exit_labels}
     entry_label = _canonical_fng_label(params.extreme_fear_label)
     for ts in out.index:
         day = pd.Timestamp(ts).normalize()
-        if day in events.index:
-            row = events.loc[day]
-            age = (pd.Timestamp(ts) - pd.Timestamp(row["published_at"])).total_seconds()
+        prior_events = events[events["published_at"] < day + pd.Timedelta(days=1)]
+        if not prior_events.empty:
+            row = prior_events.iloc[-1]
+            age = (day + pd.Timedelta(days=1) - pd.Timestamp(row["published_at"])).total_seconds()
             if 0 <= age <= params.max_age_seconds:
                 label = _canonical_fng_label(row.get("value_text", ""))
                 value_num = _optional_float(row.get("value_num"))

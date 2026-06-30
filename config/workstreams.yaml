@@ -16,10 +16,10 @@ workstreams:
     status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, review]
     current: review
-    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581)"
+    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581) after 2026-06-30 F&G published_at as-of hardening"
     next: "No adapter/publish/demo/shadow/live for C1/C2/C3 without a new Claude/user-approved research path"
     links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, docs/superpowers/plans/2026-06-29-strategy-research-pipeline-stage2.md, tasks/2026-06-29-c2-funding-carry-realism-task.md]
-    updated: 2026-06-29
+    updated: 2026-06-30
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active

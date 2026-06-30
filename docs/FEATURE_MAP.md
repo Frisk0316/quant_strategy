@@ -313,7 +313,8 @@ implementation exists.
   generated checkpoint records live under `results/pipeline_batch2_20260625/`.
   Current checkpoint has C3, C2, and C1 DB-backed fold-refit summaries with
   CPCV `path_returns` retained; C3 is refuted after Stage-2 PASS and Stage-3
-  statistical failure.
+  statistical failure. C3 sentiment decisions use the last `published_at` before
+  each UTC decision day closes, then apply the existing one-day target lag.
 - Config files: none changed. The `fear_greed_sentiment` entry in
   `config/strategies.yaml` remains `enabled:false`; live funding-carry strategy
   behavior was not changed.

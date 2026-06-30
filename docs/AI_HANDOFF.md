@@ -183,6 +183,22 @@ spot-check, diff-block honesty, cost realism like C2's 0.247% vol, retry-vs-new-
 publish) are kept as per-batch/per-policy gates, not removed. No trading-core,
 config gate, risk, deployment, research-truth file, or result artifact changed.
 
+2026-06-30 Codex follow-up (C3 sentiment Stage-3 verification + as-of hardening):
+Verified the existing C3 Stage-3 task instead of duplicating implementation.
+Code-quality review found one real edge: the vectorized C3 F&G lookup keyed
+events by normalized `published_day`, so a non-midnight `published_at` could be
+skipped and never reconsidered for the next trading day. Fixed
+`backtesting/c3_sentiment_backtest.py` to use the latest observation published
+before each UTC decision day closes, then keep the existing one-day target lag.
+Regression:
+`tests/unit/test_c3_sentiment_backtest.py::test_c3_sentiment_midday_publish_trades_next_day`
+failed before the fix and passes after. Full narrow verification now has 11
+tests passing; rerunning `run_c3()` still writes Stage-2 PASS, family
+`n_trials=9`, retained CPCV `path_returns`, DSR 0.4532, PSR 0.5806,
+`promotion_gate_passed:false`, and status `refuted`. No live strategy, config
+gate, risk, portfolio, execution, demo/shadow/live, research truth, or C1/C2
+artifact behavior changed.
+
 2026-06-29 Codex follow-up (C3 sentiment Stage-3 checkpoint complete):
 C3 is no longer data-blocked after Alternative.me Fear & Greed ingestion.
 `backtesting/c3_sentiment_backtest.py` adds a research-only vectorized

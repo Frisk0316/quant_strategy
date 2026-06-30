@@ -49,6 +49,22 @@ def test_c3_sentiment_trades_next_day_not_same_day_feature():
     assert result.positions.loc["2024-01-04"].iloc[1]["BTC-USDT-SWAP"] > 0.0
 
 
+def test_c3_sentiment_midday_publish_trades_next_day():
+    from backtesting.c3_sentiment_backtest import C3SentimentParams, run_c3_sentiment_backtest
+
+    close = _close()
+    fng = _fng([("2024-01-03 12:00", 10.0, "Extreme Fear")])
+    result = run_c3_sentiment_backtest(
+        close,
+        _funding(close.index),
+        fng,
+        C3SentimentParams(fee_bps=0.0, slippage_bps=0.0),
+    )
+
+    assert result.positions.loc["2024-01-03"].abs().sum(axis=1).max() == 0.0
+    assert result.positions.loc["2024-01-04"].iloc[1]["BTC-USDT-SWAP"] > 0.0
+
+
 def test_c3_sentiment_vectorized_logic_matches_event_strategy_entry_hold_exit():
     from backtesting.c3_sentiment_backtest import C3SentimentParams, run_c3_sentiment_backtest
 

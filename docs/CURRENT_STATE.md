@@ -62,8 +62,10 @@ handoff between sessions; this is the one-screen "where are we" that
   9 caller-declared family trials, CPCV `path_returns` retained, WF OOS Sharpe
   -0.2556, CPCV OOS Sharpe 0.1315, DSR 0.4532, PSR 0.5806,
   `statistical_gate_passed:false`, `promotion_gate_passed:false`, status
-  `refuted`. No live `fear_greed_sentiment` strategy, risk, portfolio,
-  execution, config gate, demo, shadow, or live behavior changed.
+  `refuted`. A 2026-06-30 verification follow-up fixed a non-midnight
+  `published_at` as-of edge in the vectorized runner; the rerun verdict is
+  unchanged. No live `fear_greed_sentiment` strategy, risk, portfolio, execution,
+  config gate, demo, shadow, or live behavior changed.
 
 - **Backtest UX + late-listing fix (2026-06-29, Claude, user-requested):**
   (1) `backtesting/data_loader.py::_raise_on_venue_gap` now measures venue
