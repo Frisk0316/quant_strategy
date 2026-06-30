@@ -98,6 +98,18 @@ over time.
   `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
   artifact rather than a strategy verdict.
 
+- **Family-minting checker K vs n_trials (2026-06-30):** the initial
+  `backtesting/pipeline_family_minting.py` set `inherited_K = inherited_n_trials`
+  (flagged with a ponytail comment) because no retry-count source existed. The
+  **source is now added** — the `docs/EXPERIMENT_REGISTRY.md` *Family K-budget*
+  table (per-family `K_used` / `K_limit=2`, backfilled from row notes; a human
+  checkpoint①#9 judgment, correctable). Remaining wiring (Codex, one step):
+  extend `pipeline_checkpoint1.family_registry_from_text` to parse the K-budget
+  table and make `pipeline_family_minting` report real `k_used` / `k_limit` /
+  `at_k_limit` instead of conflating with `n_trials`. Until wired, do **not** rely
+  on the checker's `inherited_K`; the K=2 retry stop-condition is not yet
+  enforced. Task block: `docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md` §7a.
+
 ## Operations
 
 - Monitoring modules exist, but this map does not prove production alert coverage.

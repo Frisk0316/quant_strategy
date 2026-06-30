@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-29
+last_reviewed: 2026-06-30
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,141 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-06-30 Codex follow-up (idea generator B §6 + A §6b implemented):
+Implemented the full-auto idea-generator front end without changing trading
+logic, research truth files, durable ledger values, config gates, deployment
+gates, or existing `results/**` artifacts. B-half code:
+`backtesting/pipeline_idea_generator.py` and
+`scripts/run_pipeline_idea_generator.py`; test:
+`tests/unit/test_pipeline_idea_generator.py`. It parses the mechanism taxonomy,
+skips refuted/shelved or data-blocked families, ranks feasible gaps
+deterministically, caps the batch at 15, and writes
+`idea_batch.json` plus `hypothesis_ledger_draft.md`. Drafted candidates run
+through the existing advisory family-minting checker, including A-half drafts in
+mixed batches. A-half lab code:
+`research/crypto-alpha-lab/src/crypto_alpha_lab/pipeline/paper_ingestion.py`
+and `research/crypto-alpha-lab/src/crypto_alpha_lab/adapters/parent_stage1.py`;
+test: `research/crypto-alpha-lab/tests/test_pipeline_adapters.py`. It supports
+keyless arXiv metadata parsing, validated `PaperScoring`, promotion to
+research-only `AlphaCandidate`, dated weekly screen output, a prompt data
+firewall that rejects market series/fold boundaries, and conversion into parent
+Stage 1 drafts. Stage 1 now documents the autonomous-mode/data-firewall
+boundary. Change manifests:
+`docs/change_manifests/2026-06-30-idea-generator-frontend.md` and
+`docs/change_manifests/2026-06-30-idea-generator-a-half.md`. Verification:
+parent idea-generator tests 5 passed; lab adapter tests 4 passed and lab full
+suite 12 passed with `-p no:cacheprovider`; docs metadata passed with 32 pre-existing warnings;
+doc-impact strict passed with process-local `safe.directory` across 43 changed files. `make docs-check`
+is not available in this Windows shell. Next lane: run a first real
+`idea_batch.json` sidecar from the taxonomy/lab corpus, then ask Claude/human to
+review the ledger draft before anything enters `docs/HYPOTHESIS_LEDGER.md`.
+
+2026-06-30 Codex follow-up (family-minting checker §7 implemented):
+Implemented `docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md` §7 as an
+advisory, pre-backtest family-minting distinctness checker. New code:
+`backtesting/pipeline_family_minting.py` and
+`scripts/run_pipeline_family_minting_check.py`; new tests:
+`tests/unit/test_pipeline_family_minting.py`. The checker takes a candidate
+signal, caller-supplied reference family signals, and
+`docs/EXPERIMENT_REGISTRY.md`, computes pairwise-complete absolute correlation,
+and returns `ASSIGN`, `MINT`, `NEEDS_HUMAN`, or `SKIP_RECOMMENDED` in
+`family_minting.json`. High-correlation relabels inherit the nearest family
+trial/K budget instead of minting a fresh family; high correlation to a
+refuted/shelved family is `SKIP_RECOMMENDED`; MINT remains provisional and always
+keeps human mechanism-novelty review. I27 is recorded in `docs/INVARIANTS.md`;
+change manifest
+`docs/change_manifests/2026-06-30-family-minting-checker.md` records the R6.3/R7.4
+doc-impact review. No strategy, research-truth file, ledger value, config gate,
+deployment gate, or existing `results/**` artifact changed. Next implementation
+lane is the idea-generator front-end / literature corpus side, not another
+family-minting parser.
+
+2026-06-30 Codex follow-up (checkpoint① automation contract §4 implemented):
+Implemented the Stage-3 checkpoint① machine pre-check without changing any
+strategy, research truth file, config gate, deployment gate, or existing
+`results/**` artifact. New checker code:
+`backtesting/pipeline_checkpoint1.py` and
+`scripts/run_pipeline_checkpoint1_check.py`; new tests:
+`tests/unit/test_pipeline_checkpoint1_check.py`. The CLI reads a Stage-3
+`summary.json`, reconciles family/CPCV `n_trials` against
+`docs/EXPERIMENT_REGISTRY.md`, checks leak test presence, DSR<=PSR, idealized
+fill exclusion, portable-validation/promotion honesty, CT venue/label
+consistency, and DSR/PSR gate thresholds, then writes `checkpoint1_auto.json`.
+`checkpoint1_auto_status` is `PASS`, `FAIL`, or `NEEDS_HUMAN`; `PASS` is
+advisory only and does not publish or promote anything. I26 is now recorded in
+`docs/INVARIANTS.md`, Stage-3 run instructions require the sidecar for future
+summaries, and change manifest
+`docs/change_manifests/2026-06-30-checkpoint1-automation.md` records the R6.3/R7.4
+doc-impact review. Other Claude plans reviewed: batch-2/C2/C3 execution plans
+are closed/refuted/shelved; `2026-06-30-stage3-idea-ingestion-design.md` and
+`2026-06-30-mechanism-taxonomy.md` are the next implementation lane after
+Claude/user review of the new checker contract, literature corpus choice, and
+family-minting audit cadence.
+
+2026-06-30 Claude (strategy-research-pipeline full-automation diagnosis + 2 draft
+specs, docs-only): Diagnosed why the 策略發想器 is still semi-auto ("known
+candidates → backtest evidence") and what blocks "from-0 fully autonomous". Key
+findings: (1) Stage 1 is "expand a backlog entry into a spec", **not** literature
+search (design spec line 119); candidates are human-seeded. (2) The autonomous
+driver is a prompt template, never run end-to-end — batches were hand-run via
+`scripts/run_pipeline_batch2_checkpoint.py`. (3) Checkpoint① still needs Claude
+each candidate. Produced two **draft** design docs (no code, no gate change, no
+experiment): `docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md`
+(Stage-2 unlock: splits checkpoint①'s 9 items into machine-decidable vs
+human-judgment, defines aggregator `run_pipeline_checkpoint1_check.py` +
+`checkpoint1_auto.json` + **invariant I26** + ledger reconciliation, with a
+ready-to-hand Codex task block) and
+`docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md` (Stage-3
+"from-0" ingestion: the 便宜發想×誠實 n_trials tension and its defenses —
+family-before-backtest, family-minting distinctness gate to stop K-evasion,
+"anything reaching Pass-A counts toward family n_trials", prior-plausibility gate;
+lists open decisions for the user). The ingestion spec also folds in a web prior-art
+survey (§7): RD-Agent / R&D-Agent-Quant, AlphaAgent, vectorbt, OpenBB — verdict
+"borrow patterns, not frameworks". Concrete adopted mechanisms: RD-Agent's IC≥0.99
+dedup (→ quantitative family-distinctness backstop) and its "LLM never sees raw
+data/splits" firewall (→ anti-leakage at idea generation); AlphaAgent's
+parameter-count→n_trials parsimony and originality/decay regularizers. RD-Agent
+landing verdict: Linux/Docker/Qlib-coupled with looser gates than ours, so use its
+Synthesis (idea-gen) half only as a candidate source, never as a validator. **User
+locked 4 decisions 2026-06-30:** (1) checkpoint① automation first; (2) idea sources
+= literature + mechanism taxonomy, free data-mining (Option C) rejected, RD-Agent
+borrowed for mechanisms only (IC-dedup, data firewall), not as an idea source; (3)
+≤15 candidates/round hard cap; (4) cross-round knowledge feedback **ADOPTED** —
+hard condition: every feedback-spawned idea reaching Pass-A counts toward family
+n_trials, so I26 reconciliation must cover them (ingestion spec §4.7/§8;
+checkpoint contract §3 note). Deferred defaults: family-minting audit every batch;
+literature corpus TBD. The checkpoint① checker + I26 implementation is now
+covered by the Codex entry above. The mechanism-taxonomy initial list is now
+**drafted** (`2026-06-30-mechanism-taxonomy.md`: 17 families — 7 occupied/mostly
+refuted, 4 untested-documented [S1/S2/S8/S10], 6 frontier; only
+F-FUNDING-XS-DISPERSION and F-XVENUE-LEADLAG are currently data-feasible frontier,
+the rest are occupied-refuted or data-blocked [OI/liquidation/on-chain/options]).
+The remaining ingestion sub-pieces are the family-minting distinctness checker and
+the literature corpus front-end. Both `status: draft`, design locked; recommended order remains checkpoint① automation first (now done) before
+ingestion. The irreducibly-human review items (leak lag
+spot-check, diff-block honesty, cost realism like C2's 0.247% vol, retry-vs-new-family,
+publish) are kept as per-batch/per-policy gates, not removed. No trading-core,
+config gate, risk, deployment, research-truth file, or result artifact changed.
+
+2026-06-29 Codex follow-up (C3 sentiment Stage-3 checkpoint complete):
+C3 is no longer data-blocked after Alternative.me Fear & Greed ingestion.
+`backtesting/c3_sentiment_backtest.py` adds a research-only vectorized
+long/flat runner that mirrors `FearGreedSentimentStrategy` entry/hold/exit
+logic, uses one-day target lag, applies R3.1 funding sign for the BTC perp leg,
+and stays outside live strategy/risk/portfolio/execution code. The populated
+external-feature gate tz bug in `scripts/run_pipeline_batch2_checkpoint.py` is
+fixed by converting asyncpg tz-aware `published_at` values to UTC instead of
+re-localizing them. `run_c3()` now runs the pre-registered 9-combo grid through
+the existing fold-refit WF/CPCV helpers after Stage-2 PASS. New artifact:
+`results/pipeline_batch2_20260625/c3_sentiment/summary.json`. Result:
+Stage-2 PASS (`event_count=897`, `missing_ratio=0.0`, `stale_ratio=0.0`),
+nonzero grid activity, family `n_trials=9`, retained CPCV `path_returns`, WF OOS
+Sharpe -0.2556, CPCV OOS Sharpe 0.1315, DSR 0.4532, PSR 0.5806,
+`statistical_gate_passed:false`, `promotion_gate_passed:false`, status
+`refuted`. H-008 and E-027 are updated. No live `fear_greed_sentiment` strategy,
+config gate, risk, portfolio, execution, demo/shadow/live, or C1/C2 artifact
+behavior changed.
 
 2026-06-29 Claude (backtest UX + late-listing fix, user-requested):
 Three user-requested changes. (1) Multi-symbol backtests no longer crash when a

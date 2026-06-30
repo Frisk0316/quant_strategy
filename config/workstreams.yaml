@@ -16,10 +16,19 @@ workstreams:
     status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, review]
     current: review
-    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 data-blocked/untested; Stage 2 artifact/validator implemented"
-    next: "No adapter/publish/demo/shadow/live for C2; only revisit C3 if fear_greed_btc is ingested"
+    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581)"
+    next: "No adapter/publish/demo/shadow/live for C1/C2/C3 without a new Claude/user-approved research path"
     links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, docs/superpowers/plans/2026-06-29-strategy-research-pipeline-stage2.md, tasks/2026-06-29-c2-funding-carry-realism-task.md]
     updated: 2026-06-29
+
+  - name: Strategy research pipeline — full-auto roadmap
+    status: active
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, first_batch_review]
+    current: first_batch_review
+    state: "Checkpoint automation, family-minting checker, and B/A idea-generator front end implemented as advisory sidecars: checkpoint1_auto.json, family_minting.json, idea_batch.json, and hypothesis_ledger_draft.md. Human review remains required before durable ledger edits."
+    next: "Run the first real idea-batch sidecar from taxonomy/lab corpus, then Claude/human review the ledger draft before appending to docs/HYPOTHESIS_LEDGER.md."
+    links: [docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-06-30-idea-generator-frontend-design.md]
+    updated: 2026-06-30
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

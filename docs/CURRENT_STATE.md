@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-29
+last_reviewed: 2026-06-30
 expires: none
 superseded_by: null
 ---
@@ -19,6 +19,42 @@ handoff between sessions; this is the one-screen "where are we" that
 [[CONTEXT_BUDGET]] marks must-load.
 
 ## Snapshot
+
+- **Pipeline full-automation roadmap - checkpoint, family-minting, and idea-generator automation implemented
+  (2026-06-30, Codex):** Claude's checkpoint contract §4 is implemented for
+  future Stage-3 summaries. New code:
+  `backtesting/pipeline_checkpoint1.py` and
+  `scripts/run_pipeline_checkpoint1_check.py`; tests:
+  `tests/unit/test_pipeline_checkpoint1_check.py`. The checker writes
+  `checkpoint1_auto.json` with `PASS`/`FAIL`/`NEEDS_HUMAN`, reconciles family
+  trial counts against `docs/EXPERIMENT_REGISTRY.md`, records invariant **I26**,
+  and keeps human review for lag spot-checks, diff-block honesty, cost realism,
+  retry-vs-new-family, and publish decisions. Mechanism-taxonomy §7 is also
+  implemented: `backtesting/pipeline_family_minting.py` +
+  `scripts/run_pipeline_family_minting_check.py` write `family_minting.json`,
+  enforce high-correlation ASSIGN/SKIP instead of fresh MINT, and record
+  invariant **I27**. The B §6/A §6b idea-generator front end is also
+  implemented: `backtesting/pipeline_idea_generator.py`,
+  `scripts/run_pipeline_idea_generator.py`, and the crypto-alpha-lab
+  `pipeline`/`adapters` helpers produce advisory `idea_batch.json` and
+  `hypothesis_ledger_draft.md` sidecars from mechanism-taxonomy or literature
+  drafts. The A-half prompt firewall rejects market series and fold boundaries;
+  lab candidates remain `allow_live_trading=false`. No strategy, research truth
+  file, ledger value, config gate, deployment gate, or existing `results/**`
+  artifact changed. Next: run a first real idea-batch sidecar and send the
+  ledger draft to Claude/human review before appending anything durable.
+
+- **C3 sentiment Stage-3 checkpoint complete (2026-06-29, Codex):**
+  Alternative.me Fear & Greed history is ingested and C3 is no longer
+  data-blocked. `scripts/run_pipeline_batch2_checkpoint.py::run_c3()` now runs a
+  research-only vectorized C3 Stage-3 path after Stage-2 PASS. Artifact:
+  `results/pipeline_batch2_20260625/c3_sentiment/summary.json`. Result:
+  Stage-2 PASS (`event_count=897`, `missing_ratio=0.0`, `stale_ratio=0.0`),
+  9 caller-declared family trials, CPCV `path_returns` retained, WF OOS Sharpe
+  -0.2556, CPCV OOS Sharpe 0.1315, DSR 0.4532, PSR 0.5806,
+  `statistical_gate_passed:false`, `promotion_gate_passed:false`, status
+  `refuted`. No live `fear_greed_sentiment` strategy, risk, portfolio,
+  execution, config gate, demo, shadow, or live behavior changed.
 
 - **Backtest UX + late-listing fix (2026-06-29, Claude, user-requested):**
   (1) `backtesting/data_loader.py::_raise_on_venue_gap` now measures venue
