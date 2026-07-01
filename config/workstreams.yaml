@@ -25,10 +25,10 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, first_batch_review]
     current: first_batch_review
-    state: "Checkpoint automation, family-minting checker with real K-budget fields, XS family n_trials inheritance, and B/A idea-generator front end with Stage-2 data-probe fallback implemented as advisory sidecars. First taxonomy-only sidecar generated at results/idea_batch_20260630_taxonomy_001/."
-    next: "Claude/human review results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md before any durable ledger append, Stage 2/3 run, or backtest."
+    state: "Checkpoint automation, family-minting checker with real K-budget fields, XS family n_trials inheritance, and B/A idea-generator front end implemented as advisory sidecars. B-taxonomy now uses HYPOTHESIS_LEDGER Status for occupied-family verdicts. Current taxonomy sidecar results/idea_batch_20260701_taxonomy_002/ selected 2 candidates: F-FUNDING-XS-DISPERSION and F-XVENUE-LEADLAG."
+    next: "Claude/human review results/idea_batch_20260701_taxonomy_002/hypothesis_ledger_draft.md before any durable ledger append, Stage 2/3 run, or backtest. Keep results/idea_batch_20260630_taxonomy_001/ as historical advisory output only."
     links: [docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-06-30-idea-generator-frontend-design.md]
-    updated: 2026-06-30
+    updated: 2026-07-01
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

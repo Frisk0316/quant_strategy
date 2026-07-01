@@ -37,6 +37,34 @@ def _rows(markdown: str) -> list[dict[str, str]]:
     return rows
 
 
+def _family_verdicts(hypothesis_ledger_text: str) -> dict[str, str]:
+    return {
+        row["Family ID"].strip(): (row.get("Status") or "").strip().lower()
+        for row in _rows(hypothesis_ledger_text)
+        if row.get("Family ID")
+    }
+
+
+def _has_twist(text: str) -> bool:
+    return "twist" in text or "轉折" in text
+
+
+def _fallback_verdict(text: str, ledger_status: str) -> str:
+    if "inconclusive" in text:
+        return "inconclusive"
+    if "refuted" in text or "shelved" in text:
+        return text
+    return ledger_status
+
+
+def _skip_reason_for_verdict(verdict: str) -> str | None:
+    if "inconclusive" in verdict:
+        return "inconclusive_no_twist"
+    if "refuted" in verdict or "shelved" in verdict:
+        return "refuted_no_twist"
+    return None
+
+
 def _slug(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "idea"
@@ -107,18 +135,26 @@ def enumerate_gaps(
     taxonomy_text: str,
     ledger_text: str,
     data_availability_probe: Any | None = None,
+    *,
+    hypothesis_ledger_text: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Return taxonomy families that are feasible enough to draft."""
 
     registry = family_registry_from_text(ledger_text)
+    verdicts = _family_verdicts(hypothesis_ledger_text or "")
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in _rows(taxonomy_text):
         family_id = row.get("Family ID", "").strip()
         text = " ".join(row.values()).lower()
         ledger_status = (registry.get(family_id).status if registry.get(family_id) else "").lower()
-        if "refuted" in text or "shelved" in text or "refuted" in ledger_status or "shelved" in ledger_status:
-            skipped.append({"family_id": family_id, "reason": "refuted_no_twist"})
+        verdict = verdicts.get(family_id) or _fallback_verdict(text, ledger_status)
+        skip_reason = None if _has_twist(text) else _skip_reason_for_verdict(verdict)
+        if skip_reason:
+            skipped.append({"family_id": family_id, "reason": skip_reason})
+            continue
+        if "overlay" in text:
+            skipped.append({"family_id": family_id, "reason": "overlay_needs_base"})
             continue
         probe_feasible = _probe_data_feasible(row, data_availability_probe)
         data_feasible = not _is_data_blocked(row) if probe_feasible is None else probe_feasible
@@ -254,13 +290,20 @@ def generate_batch(
     ledger_path: str | Path,
     batch_id: str,
     *,
+    hypothesis_ledger_path: str | Path = "docs/HYPOTHESIS_LEDGER.md",
     output_root: str | Path = "results",
     cap: int = DEFAULT_CAP,
     data_availability_probe: Any | None = None,
 ) -> dict[str, Any]:
     taxonomy_text = Path(taxonomy_path).read_text(encoding="utf-8")
     ledger_text = Path(ledger_path).read_text(encoding="utf-8")
-    enumerated = enumerate_gaps(taxonomy_text, ledger_text, data_availability_probe=data_availability_probe)
+    hypothesis_ledger_text = Path(hypothesis_ledger_path).read_text(encoding="utf-8")
+    enumerated = enumerate_gaps(
+        taxonomy_text,
+        ledger_text,
+        data_availability_probe=data_availability_probe,
+        hypothesis_ledger_text=hypothesis_ledger_text,
+    )
     selected, overflow = rank_and_cap(enumerated["eligible"], cap=cap)
     return register_batch(
         selected,

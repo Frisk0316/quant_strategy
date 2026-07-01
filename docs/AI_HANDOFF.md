@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-01
 expires: none
 superseded_by: null
 ---
@@ -21,6 +21,30 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 ---
 
 ## Current Goal
+
+2026-07-01 Codex follow-up (B-taxonomy verdict source + taxonomy_002 sidecar):
+Closed the Claude-confirmed idea-generator selection gaps without changing
+trading logic or durable ledgers. `backtesting/pipeline_idea_generator.py`
+now reads occupied-family verdicts from `docs/HYPOTHESIS_LEDGER.md` `Status`
+via the new CLI `--hypothesis-ledger`; `docs/EXPERIMENT_REGISTRY.md` remains
+the source for trial/K-budget plumbing into batch registration and
+family-minting. No-twist `inconclusive` families now skip as
+`inconclusive_no_twist`, refuted/shelved no-twist families still skip as
+`refuted_no_twist`, and taxonomy rows containing `overlay` skip as
+`overlay_needs_base` before data fallback. New invariant/failure docs:
+I28 in `docs/INVARIANTS.md`, F23 in `docs/FAILURE_MODES.md`, and manifest
+`docs/change_manifests/2026-07-01-idea-generator-verdict-source.md`. New
+advisory sidecar only:
+`results/idea_batch_20260701_taxonomy_002/idea_batch.json` plus
+`hypothesis_ledger_draft.md`; it selected 2 pending-LLM candidates
+(`F-FUNDING-XS-DISPERSION`, `F-XVENUE-LEADLAG`), skipped `F-VOL-REGIME` as
+`overlay_needs_base`, and skipped `F-S5-RESIDUAL-MEANREV` /
+`F-S6-TS-MOMENTUM` as `inconclusive_no_twist`. The prior
+`results/idea_batch_20260630_taxonomy_001/` artifact was not modified. No
+research truth files, config gates, deployment gates, strategy/risk/portfolio/
+execution files, durable ledger rows, or existing result artifacts changed.
+Next: Claude/human review the new taxonomy_002 draft before any durable ledger
+append, Stage 2/3 run, or backtest.
 
 2026-06-30 Codex follow-up (XS family n_trials + B-half data probe):
 Closed the two user-flagged post-§7a gaps. First,

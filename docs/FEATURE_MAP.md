@@ -338,7 +338,11 @@ implementation exists.
   stage2 feasibility JSON, checkpoint1 auto JSON, family-minting JSON, idea-batch
   JSON, and hypothesis-ledger draft Markdown. Idea-batch B-half enumeration uses
   supplied Stage-2 data-availability probe results before falling back to
-  taxonomy text.
+  taxonomy text; occupied-family verdicts come from `docs/HYPOTHESIS_LEDGER.md`
+  `Status`, while `docs/EXPERIMENT_REGISTRY.md` remains the trial/K-budget
+  source. Inconclusive/refuted/shelved occupied families require an explicit
+  twist marker to be drafted, and overlay-only taxonomy rows are skipped until a
+  deterministic base-family contract exists.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,

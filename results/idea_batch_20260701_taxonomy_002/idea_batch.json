@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260701_taxonomy_002",
+  "generated_at": "2026-07-01T13:08:02.619296+00:00",
+  "source": "B_taxonomy",
+  "n_eligible_before_cap": 2,
+  "n_selected": 2,
+  "skipped": [
+    {
+      "family_id": "F-FUNDING-CARRY",
+      "reason": "refuted_no_twist"
+    },
+    {
+      "family_id": "F-S7-BASIS-MEANREV",
+      "reason": "refuted_no_twist"
+    },
+    {
+      "family_id": "F-PAIRS-OU",
+      "reason": "refuted_no_twist"
+    },
+    {
+      "family_id": "F-S5-RESIDUAL-MEANREV",
+      "reason": "inconclusive_no_twist"
+    },
+    {
+      "family_id": "F-S6-TS-MOMENTUM",
+      "reason": "inconclusive_no_twist"
+    },
+    {
+      "family_id": "F-XS-MOMENTUM",
+      "reason": "refuted_no_twist"
+    },
+    {
+      "family_id": "F-SENTIMENT",
+      "reason": "refuted_no_twist"
+    },
+    {
+      "family_id": "F-OFI-MAKER-SKEW",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-VPIN-MM",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-VOL-REGIME",
+      "reason": "overlay_needs_base"
+    },
+    {
+      "family_id": "F-CME-GAP",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-OI-POSITIONING",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-LIQUIDATION-CASCADE",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-ONCHAIN-FLOW",
+      "reason": "data_blocked"
+    },
+    {
+      "family_id": "F-VOL-RISK-PREMIUM",
+      "reason": "data_blocked"
+    }
+  ],
+  "candidates": [
+    {
+      "source": "B_taxonomy",
+      "provisional_candidate_id": "B-f-funding-xs-dispersion",
+      "family_id": "F-FUNDING-XS-DISPERSION",
+      "family_id_or_NEW": "F-FUNDING-XS-DISPERSION",
+      "mechanism": "橫斷 funding 排序(做多低/做空高 funding 永續)",
+      "data_feasible": true,
+      "data_rank": 0,
+      "crowding_rank": 1,
+      "planned_grid_size": 4,
+      "draft_status": "pending_llm",
+      "feedback_spawned": false,
+      "prior_rank": 1
+    },
+    {
+      "source": "B_taxonomy",
+      "provisional_candidate_id": "B-f-xvenue-leadlag",
+      "family_id": "F-XVENUE-LEADLAG",
+      "family_id_or_NEW": "F-XVENUE-LEADLAG",
+      "mechanism": "跨所價格領先落後(Binance↔OKX)",
+      "data_feasible": true,
+      "data_rank": 1,
+      "crowding_rank": 0,
+      "planned_grid_size": 4,
+      "draft_status": "pending_llm",
+      "feedback_spawned": false,
+      "prior_rank": 2
+    }
+  ]
+}
