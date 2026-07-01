@@ -64,9 +64,10 @@ only a fallback. Regression coverage is in
 `docs/change_manifests/2026-06-30-xs-trials-and-idea-probe.md`; the resolved
 gaps are recorded in `docs/KNOWN_ISSUES.md`. No durable ledger rows, research
 truth files, config gates, deployment gates, strategy/risk/portfolio/execution
-files, or existing result artifacts were changed. Next remains Claude/human
-review of `results/idea_batch_20260630_taxonomy_001/hypothesis_ledger_draft.md`
-before any durable ledger append, Stage 2/3 run, or backtest.
+files, or existing result artifacts were changed. That draft is now superseded;
+next remains Claude/human review of
+`results/idea_batch_20260701_taxonomy_002/hypothesis_ledger_draft.md` before any
+durable ledger append, Stage 2/3 run, or backtest.
 
 2026-06-30 Codex follow-up (family-minting K-budget wiring + first idea sidecar):
 Completed the §7a K-budget follow-up before running the first taxonomy-only idea
@@ -87,9 +88,10 @@ pipeline automation ownership. Generated first taxonomy-only advisory sidecar:
 `F-S6-TS-MOMENTUM`, `F-XVENUE-LEADLAG`) and skipped refuted/no-twist or
 data-blocked families. No durable ledger rows, research truth files, config
 gates, deployment gates, strategy/risk/portfolio/execution files, or existing
-result artifacts were changed. Next: Claude/human review the generated
-`hypothesis_ledger_draft.md`; do not append it to `docs/HYPOTHESIS_LEDGER.md`,
-run Stage 2/3, or backtest until reviewed.
+result artifacts were changed. That first sidecar is now superseded by
+`results/idea_batch_20260701_taxonomy_002/`; next: Claude/human review the
+taxonomy_002 `hypothesis_ledger_draft.md`, and do not append it to
+`docs/HYPOTHESIS_LEDGER.md`, run Stage 2/3, or backtest until reviewed.
 
 2026-06-30 Codex follow-up (idea generator B §6 + A §6b implemented):
 Implemented the full-auto idea-generator front end without changing trading
