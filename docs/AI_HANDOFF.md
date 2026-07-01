@@ -22,6 +22,116 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-07-01 Claude (Task A review + first real orchestrator run, docs+run only):
+Reviewed Codex's Task A implementation (below) against
+`docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+line by line, then independently re-verified rather than trusting the
+self-report: reran the full pytest set myself (45 passed), confirmed
+`docs/HYPOTHESIS_LEDGER.md`/`docs/EXPERIMENT_REGISTRY.md` carry only the
+pre-existing H-009/H-010/E-028/E-029 rows (unchanged before/after, `git diff
+--stat` identical), confirmed no forbidden trading-core/gate/legacy-runner file
+was touched, and reran `scripts/run_pipeline_stage2_data_probe.py` into a
+scratch `--output-root` to diff its output byte-for-byte against the existing
+`results/idea_batch_20260701_taxonomy_002/**/stage2_feasibility.json`
+artifacts (identical, confirming the regression requirement independent of
+Codex's claim). Implementation matches the hardened spec's exact contracts
+(`Stage2Probe`/`Stage3Runner` signatures, `derive_candidate_dir`, fail-closed
+`hypothesis_ids`, legacy-runner `batch_id` guard, append-only/idempotent
+state). One non-blocking deviation: the spec's illustrative Chinese
+shortlist text (`待 Codex 補 Stage2 探測函式`) was implemented as equivalent
+English text — functionally fine, field is never blank, not worth a rework.
+Then ran the orchestrator for real on `idea_batch_20260701_taxonomy_002` with
+a `--hypothesis-ids` mapping `{"B-f-funding-xs-dispersion": "H-009",
+"B-f-xvenue-leadlag": "H-010"}` (the same IDs already on record in
+`docs/HYPOTHESIS_LEDGER.md`). First real
+`results/idea_batch_20260701_taxonomy_002/orchestrator_state.json` and
+`shortlist.md` now exist: both candidates advance `idea_registered ->
+stage2_fail` (funding breadth 5/10 good symbols, 0/10 min rebalance breadth;
+xvenue OKX leg 0 coverage/no Binance substitution per I19) — the same known
+data-availability failure, now produced by the automated driver instead of
+by hand. Reran the CLI a second time to confirm real idempotency: state file
+byte-identical, `status_history` timestamps unchanged, no re-invocation of
+either Stage2 probe. No strategy, gate, ledger, or trading-core file changed.
+Next: Task B (literature keyword scorer + a real literature batch run)
+remains unimplemented; taxonomy_002 stays at `stage2_fail` until new data
+closes the funding-breadth/OKX-coverage gaps or a Claude/human decision
+changes the candidates.
+
+2026-07-01 Codex follow-up (pipeline orchestration driver Task A):
+Implemented the advisory pipeline orchestrator from
+`docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+Task A. New code: `backtesting/pipeline_orchestrator.py`,
+`backtesting/pipeline_stage2_registry.py`,
+`backtesting/pipeline_stage3_registry.py`, and
+`scripts/run_pipeline_orchestrator.py`; updated
+`scripts/run_pipeline_stage2_data_probe.py` into a thin registry wrapper.
+New tests: `tests/unit/test_pipeline_orchestrator.py`,
+`tests/unit/test_pipeline_stage2_registry.py`, and
+`tests/unit/test_pipeline_stage3_registry.py`. The driver pre-registers
+`idea_batch.json` candidates into append-only `orchestrator_state.json`,
+derives candidate dirs, requires explicit hypothesis IDs, runs family-keyed
+Stage2 probes, stops missing family implementation as
+`awaiting_stage2_implementation` / `awaiting_stage3_implementation`, guards
+legacy batch-2 Stage3 runners against non-`pipeline_batch2_20260625` batches,
+and renders `shortlist.md`. I29 and manifest
+`docs/change_manifests/2026-07-01-pipeline-orchestrator.md` record the rule.
+No `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`, strategy,
+research truth file, config gate, deployment gate, or existing result artifact
+was changed. Next: use the orchestrator only with an explicit reviewed
+`--hypothesis-ids` JSON and DB access; Task B literature keyword scoring remains
+unimplemented.
+
+2026-07-01 Claude (pipeline orchestration driver spec hardened for one-pass Codex
+handoff, docs-only): Reviewed the draft
+`docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+against Codex's own gap report (no `pipeline_orchestrator.py`, no Stage2/3
+family registries, no append-only state file, literature scorer missing) and
+found the draft's Task A/B blocks under-specified in ways that would have
+blocked or misled a one-pass Codex implementation. Rewrote §1.2/§1.3/§1.5 and
+added §1.6/§1.7 to close four concrete gaps: (1) `idea_batch.json` candidates
+carry no `candidate_dir` or `hypothesis_id` field, so `pre_register_batch` now
+has an exact deterministic `candidate_dir` derivation and a **required**
+`hypothesis_ids` mapping input (fails closed if any candidate is missing one,
+mirroring the existing `--max-runtime-seconds` no-silent-default rule); (2)
+`probe_funding`/`probe_xvenue` have different signatures, so
+`STAGE2_PROBES` is now specified as a uniform `Callable[[conn, context],
+Awaitable[FeasibilityResult]]` keyed by `family_id`; (3) the existing
+`run_c1`/`run_c2`/`run_c3` Stage-3 functions are 0-arg and hardcode
+`results/pipeline_batch2_20260625/...`, so registering them directly would
+have let the orchestrator silently overwrite that old batch's artifacts for
+any other `batch_id` — `pipeline_stage3_registry.py` now specifies a
+`batch_id`-guarded adapter that raises instead; (4) Task B's literature scorer
+would have double-fetched papers (once for scoring, once inside the real CLI
+via `--source`), risking a `paper_id` mismatch — the scorer now fetches once,
+snapshots the papers, and the main CLI is fed via `--papers`, not `--source`.
+Also added `derive_candidate_dir`/legacy-runner-guard/missing-hypothesis-id/
+`family_id_or_NEW=="NEW"` acceptance criteria, added
+`tests/unit/test_pipeline_stage3_registry.py` to permitted files, and marked
+`scripts/run_pipeline_batch2_checkpoint.py` explicitly import-only/forbidden.
+No code, strategy, gate, or `results/**` artifact changed; this is a design
+doc revision only. Next: user/Codex decide whether to start Task A
+(orchestrator + registries) or Task B (literature batch) first; both are now
+specified precisely enough for one-pass implementation.
+
+2026-07-01 Codex follow-up (Tier-1 external data unlock):
+Added keyless external adapters for Binance futures open interest and Deribit
+DVOL without creating strategies, families, gates, backtests, or durable ledger
+rows. New clients live in the existing `okx_quant.data.external_clients`
+package and are dispatched by `scripts/market_data/ingest_external.py`.
+Registered datasets: `oi_binance_btc`, `oi_binance_eth`,
+`dvol_deribit_btc`, and `dvol_deribit_eth`. `--dry-run` now validates selected
+external dataset config/adapter dispatch without a DB or network fetch.
+`fail_on_empty_fetch` stays fail-closed: empty fetch raises and does not advance
+the external-ingestion checkpoint. OI values are `sumOpenInterestValue` in
+`USDT_notional`; Binance's public OI endpoint only exposes roughly the recent
+~30-day window, so this is forward accumulation only. True 2024 OI backfill
+requires a paid provider such as Coinglass/Coinalyze and remains out of scope.
+Deribit DVOL uses public historical windows, but Deribit execution/venue fit is
+research-layer review only. Next: run real ingest only in a DB+network
+environment and then have Claude confirm whether `F-OI-POSITIONING` and
+`F-VOL-RISK-PREMIUM` should update their taxonomy data status after observed
+coverage is present.
+
 2026-07-01 Codex follow-up (A-literature driver):
 Added the parent literature idea driver without touching the concurrent
 taxonomy_002 work. New code: `scripts/run_pipeline_literature_ideas.py`; new

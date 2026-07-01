@@ -20,6 +20,68 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Pipeline orchestrator Task A reviewed + first real run
+  (2026-07-01, Claude):** Independently re-verified Codex's Task A
+  implementation (reran the 45-test suite, diffed a scratch-output rerun of
+  `run_pipeline_stage2_data_probe.py` byte-for-byte against the existing
+  `results/idea_batch_20260701_taxonomy_002/**/stage2_feasibility.json`
+  artifacts, confirmed no forbidden file changed) rather than trusting the
+  self-report. Then ran `scripts/run_pipeline_orchestrator.py` for real
+  against `idea_batch_20260701_taxonomy_002` with a reviewed
+  `--hypothesis-ids` mapping (H-009/H-010, already on record). Result: both
+  candidates advance `idea_registered -> stage2_fail` (funding breadth 5/10
+  good symbols; xvenue OKX leg 0 coverage, no Binance substitution per I19) —
+  same known data gap, now produced by the driver instead of by hand.
+  Rerunning the CLI a second time reproduced byte-identical state with
+  unchanged timestamps (real idempotency, not just unit-tested). No ledger,
+  strategy, gate, or trading-core file changed. Next: Task B (literature
+  keyword scorer + a real literature batch) remains unimplemented; taxonomy_002
+  stays at `stage2_fail` pending new data or a human/Claude decision.
+
+- **Pipeline orchestration driver Task A implemented
+  (2026-07-01, Codex):**
+  `docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+  Task A now has code: `backtesting/pipeline_orchestrator.py`,
+  `backtesting/pipeline_stage2_registry.py`,
+  `backtesting/pipeline_stage3_registry.py`, and
+  `scripts/run_pipeline_orchestrator.py`. The driver creates/resumes
+  `orchestrator_state.json`, derives `candidate_dir`, requires caller-supplied
+  hypothesis IDs, runs family-keyed Stage2 probes, stops unimplemented families
+  at explicit awaiting statuses, guards legacy Stage3 batch-2 runners from
+  non-legacy `batch_id` values, and renders `shortlist.md`. I29 records the
+  append-only/no-ledger-write invariant. No durable ledger rows, strategy,
+  research truth file, config gate, deployment gate, or existing result artifact
+  changed. Next: run the orchestrator only when DB access and a reviewed
+  `hypothesis_ids` mapping are available; Task B literature scoring remains
+  separate.
+
+- **Pipeline orchestration driver spec hardened for one-pass Codex handoff
+  (2026-07-01, Claude, docs-only):**
+  `docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+  §1.2/§1.3/§1.5 rewritten and §1.6/§1.7 added to close four implementation
+  gaps found on review: exact `candidate_dir` derivation and a required
+  `hypothesis_ids` mapping (since `idea_batch.json` candidates carry neither
+  field), a uniform `STAGE2_PROBES` callable signature despite
+  `probe_funding`/`probe_xvenue` differing, a `batch_id`-guarded adapter so the
+  0-arg `run_c1`/`run_c2`/`run_c3` legacy Stage-3 functions cannot silently
+  overwrite `results/pipeline_batch2_20260625/**` for a new batch, and a
+  fetch-once/`--papers`-snapshot fix for Task B's literature scorer so
+  `--scores` can't drift from a second live fetch's `paper_id` set. Status is
+  was a docs-only hardening pass and is now followed by the Codex Task A
+  implementation entry above. Task B literature scoring remains separate.
+
+- **Tier-1 external data unlock for OI + DVOL (2026-07-01, Codex):**
+  `scripts/market_data/ingest_external.py` now dispatches keyless Binance OI
+  and Deribit DVOL adapters into `external_observations`. Registered datasets:
+  `oi_binance_btc`, `oi_binance_eth`, `dvol_deribit_btc`, and
+  `dvol_deribit_eth`. This only makes `F-OI-POSITIONING` and
+  `F-VOL-RISK-PREMIUM` Stage-2 data-availability probes possible; no strategy,
+  family, gate, backtest, ledger row, or result artifact was created. Known gap:
+  Binance public OI history is only the recent ~30-day window, so OI is
+  forward-accumulated from first successful ingest; paid historical OI backfill
+  is out of scope. DVOL can be fetched historically from Deribit, but its venue
+  fit remains research-layer review.
+
 - **Pipeline full-automation roadmap - checkpoint, family-minting, K-budget,
   XS trial accounting, B-half probe, literature driver, and corrected taxonomy_002 sidecar implemented
   (2026-07-01, Codex):** Claude's checkpoint contract §4 is implemented for

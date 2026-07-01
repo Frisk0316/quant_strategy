@@ -31,6 +31,9 @@ Role: Codex, trading-core implementation.
 - After writing `summary.json`, run `scripts/run_pipeline_checkpoint1_check.py`
   to emit `checkpoint1_auto.json`; a `PASS` is still only a machine pre-check
   and does not replace the human checkpoint review.
+- To let the orchestrator run a new family, register its Stage3 callable in
+  `backtesting/pipeline_stage3_registry.py` with a `batch_id`-aware context;
+  do not reuse the legacy batch-2 0-arg runners for new batches.
 
 ## Two-Pass Backtest
 
