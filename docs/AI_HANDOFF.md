@@ -22,6 +22,28 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-07-02 Codex follow-up (pipeline orchestration driver Task B):
+Implemented the mechanical literature keyword scorer requested in
+`docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`
+Task B. New code: `scripts/literature_keyword_scorer.py`; new tests:
+`tests/unit/test_literature_keyword_scorer.py`. The scorer calls the existing
+crypto-alpha-lab `fetch_papers` once, writes the exact fetched paper snapshot
+to `raw_papers_snapshot.json`, writes `_score_map`-compatible `scores.json`
+records validated by `PaperScoring`, and stamps every score with
+`scoring_method=mechanical_keyword_placeholder`. A real Crossref-only keyless
+run produced `results/idea_batch_20260702_literature_001/` with 32 fetched
+papers, 1 selected `A_literature` draft
+(`alpha-doi-10-2139-ssrn-6609698`), `draft_status="pending_llm"`, and
+`allow_live_trading=false`; it used `scripts/run_pipeline_literature_ideas.py`
+with `--papers` and `--scores`, not `--source`, so the score paper IDs cannot
+drift from a second fetch. No durable ledger rows, Stage2/3 runs, backtests,
+research truth files, trading-core files, config gates, or deployment gates
+changed. Network note: arXiv timed out and Semantic Scholar returned HTTP 429,
+so the real batch used the targeted Crossref query
+`funding premia cryptocurrency perpetual futures`. Next: Claude/human Stage-1
+review of the selected literature draft before any family decision, durable
+ledger append, Stage2, Stage3, or backtest.
+
 2026-07-01 Claude (Task A review + first real orchestrator run, docs+run only):
 Reviewed Codex's Task A implementation (below) against
 `docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`

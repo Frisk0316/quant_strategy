@@ -1,0 +1,1058 @@
+{
+  "doi-10-1002-fut-22373": {
+    "alpha_category": "carry",
+    "authors": [
+      "Shimeng Shi"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-1002-fut-22373",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Bitcoin futures risk premia",
+    "url": "https://doi.org/10.1002/fut.22373",
+    "venue": null,
+    "year": 2022
+  },
+  "doi-10-1002-fut-22507": {
+    "alpha_category": "carry",
+    "authors": [
+      "John Hua Fan",
+      "Tingxi Zhang"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-1002-fut-22507",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Commodity premia and risk management",
+    "url": "https://doi.org/10.1002/fut.22507",
+    "venue": null,
+    "year": 2024
+  },
+  "doi-10-1016-j-jfds-2026-100197": {
+    "alpha_category": "carry",
+    "authors": [
+      "Edson Pindza",
+      "Claude Rodrigue Bambe Moutsinga"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-1016-j-jfds-2026-100197",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Reinforcement learning for automated market making in cryptocurrency perpetual futures: Integrating funding rate dynamics with historical BTCUSDT evidence",
+    "url": "https://doi.org/10.1016/j.jfds.2026.100197",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-14711-thesis-991013340459803412": {
+    "alpha_category": "carry",
+    "authors": [
+      "Van Thuat Do"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-14711-thesis-991013340459803412",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Novel reputation ranking system in Web3 and perpetual futures market models in DeFi",
+    "url": "https://doi.org/10.14711/thesis-991013340459803412",
+    "venue": null,
+    "year": 1900
+  },
+  "doi-10-2139-ssrn-3589165": {
+    "alpha_category": "carry",
+    "authors": [
+      "Kerstin Bernoth",
+      "Jürgen von Hagen",
+      "Casper de Vries"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-3589165",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Currency Futures' Risk Premia and Risk Factors",
+    "url": "https://doi.org/10.2139/ssrn.3589165",
+    "venue": null,
+    "year": 2020
+  },
+  "doi-10-2139-ssrn-4097789": {
+    "alpha_category": "carry",
+    "authors": [
+      "B Kachnowski"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4097789",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Futures As Prelude: Bitcoin Price Forecasting From Perpetual Futures Data",
+    "url": "https://doi.org/10.2139/ssrn.4097789",
+    "venue": null,
+    "year": 2022
+  },
+  "doi-10-2139-ssrn-4359883": {
+    "alpha_category": "carry",
+    "authors": [
+      "Colin Carter",
+      "Cesar Revoredo-Giha"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4359883",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Financialization and Speculators Risk Premia in Commodity Futures Markets",
+    "url": "https://doi.org/10.2139/ssrn.4359883",
+    "venue": null,
+    "year": 2023
+  },
+  "doi-10-2139-ssrn-4402365": {
+    "alpha_category": "carry",
+    "authors": [
+      "Ilias Filippou",
+      "My T. Nguyen",
+      "Ganesh Viswanath-Natraj"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4402365",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Fundamental Sentiment and Cryptocurrency Risk Premia",
+    "url": "https://doi.org/10.2139/ssrn.4402365",
+    "venue": null,
+    "year": 2023
+  },
+  "doi-10-2139-ssrn-4405082": {
+    "alpha_category": "carry",
+    "authors": [
+      "Colin Carter",
+      "Cesar Revoredo-Giha"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4405082",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Financialization and Speculators Risk Premia in Commodity Futures Markets",
+    "url": "https://doi.org/10.2139/ssrn.4405082",
+    "venue": null,
+    "year": 2023
+  },
+  "doi-10-2139-ssrn-4573912": {
+    "alpha_category": "carry",
+    "authors": [
+      "Urban J. Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4573912",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Pricing Perpetual Futures",
+    "url": "https://doi.org/10.2139/ssrn.4573912",
+    "venue": null,
+    "year": 2023
+  },
+  "doi-10-2139-ssrn-4603820": {
+    "alpha_category": "carry",
+    "authors": [
+      "Damien Ackerer",
+      "Julien Hugonnier",
+      "Urban J. Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4603820",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Pricing",
+    "url": "https://doi.org/10.2139/ssrn.4603820",
+    "venue": null,
+    "year": 2023
+  },
+  "doi-10-2139-ssrn-4957390": {
+    "alpha_category": "carry",
+    "authors": [
+      "Damien Ackerer",
+      "Julien Hugonnier",
+      "Urban J. Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-4957390",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Pricing",
+    "url": "https://doi.org/10.2139/ssrn.4957390",
+    "venue": null,
+    "year": 2024
+  },
+  "doi-10-2139-ssrn-5036933": {
+    "alpha_category": "carry",
+    "authors": [
+      "Will Gornall",
+      "Juan Martin Rinaldi",
+      "Yizhou Xiao"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5036933",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Funding Payments Crisis-Proofed Bitcoin's Perpetual Futures",
+    "url": "https://doi.org/10.2139/ssrn.5036933",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5125326": {
+    "alpha_category": "carry",
+    "authors": [
+      "Shirui Wang",
+      "Tianyang Zhang"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5125326",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Spot-Futures Manipulations in Cryptocurrency Markets",
+    "url": "https://doi.org/10.2139/ssrn.5125326",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5201061": {
+    "alpha_category": "carry",
+    "authors": [
+      "Marie Widengård",
+      "Sara Holmgren"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5201061",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Forest Futures? The Temporal Work of Climate-Forestry Scenarios",
+    "url": "https://doi.org/10.2139/ssrn.5201061",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5283850": {
+    "alpha_category": "carry",
+    "authors": [
+      "Yirong Wang"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5283850",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Deviations of Covered Interest Parity, Dollar Funding Pressure, and Currency Risk Premia",
+    "url": "https://doi.org/10.2139/ssrn.5283850",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5323703": {
+    "alpha_category": "carry",
+    "authors": [
+      "Qihong Ruan"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5323703",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Contracts and Cryptocurrency Market Quality",
+    "url": "https://doi.org/10.2139/ssrn.5323703",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5481866": {
+    "alpha_category": "carry",
+    "authors": [
+      "Julien Hugonnier",
+      "Urban J. Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5481866",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Pricing with Stochastic Rates and Clamp",
+    "url": "https://doi.org/10.2139/ssrn.5481866",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-5610430": {
+    "alpha_category": "carry",
+    "authors": [
+      "Julien Hugonnier",
+      "Urban J. Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-5610430",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Pricing with Stochastic Rates and Clamp",
+    "url": "https://doi.org/10.2139/ssrn.5610430",
+    "venue": null,
+    "year": 2025
+  },
+  "doi-10-2139-ssrn-6185958": {
+    "alpha_category": "carry",
+    "authors": [
+      "Tianyang Zhang"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6185958",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Funding Rate Mechanism in Perpetual Futures",
+    "url": "https://doi.org/10.2139/ssrn.6185958",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6365329": {
+    "alpha_category": "carry",
+    "authors": [
+      "Yi Cao",
+      "Pengfei Luo",
+      "Yuhan Cheng",
+      "Yizhe Dong"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6365329",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Anatomy of Cryptocurrency Perpetual Futures Returns",
+    "url": "https://doi.org/10.2139/ssrn.6365329",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6558841": {
+    "alpha_category": "carry",
+    "authors": [
+      "Michael Neubert",
+      "Wolfgang Rams",
+      "Patrick Gruhn"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6558841",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "&lt;span&gt;&lt;span&gt;Fundamentals of Cryptocurrency Perpetual Futures and Swaps&lt;/span&gt;&lt;/span&gt;",
+    "url": "https://doi.org/10.2139/ssrn.6558841",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6609698": {
+    "alpha_category": "carry",
+    "authors": [
+      "Vibhun Naredla"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 5,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual,basis",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6609698",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Path Signatures for Regime Detection in Cryptocurrency Markets: A Rough-Path Framework Using Spot, Perpetual Basis, and Funding Rates",
+    "url": "https://doi.org/10.2139/ssrn.6609698",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6639558": {
+    "alpha_category": "carry",
+    "authors": [
+      "Michael Neubert",
+      "Wolfgang Rams",
+      "Patrick Gruhn"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6639558",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Cryptocurrency Perpetual Futures and Swaps: A Systematic Literature Review",
+    "url": "https://doi.org/10.2139/ssrn.6639558",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6644361": {
+    "alpha_category": "carry",
+    "authors": [
+      "Nihar Shah"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6644361",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Hyperbolic Funding Rate Mechanisms for Open Interest Balancing in Perpetual Futures Markets",
+    "url": "https://doi.org/10.2139/ssrn.6644361",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6658879": {
+    "alpha_category": "carry",
+    "authors": [
+      "Michael Neubert",
+      "Wolfgang Rams",
+      "Patrick Gruhn"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6658879",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Behavioral Finance in Cryptocurrency Perpetual Futures and Swaps: A Systematic Literature Review",
+    "url": "https://doi.org/10.2139/ssrn.6658879",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6693260": {
+    "alpha_category": "carry",
+    "authors": [
+      "Lawrence Chang"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6693260",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Do Order-Book States Predict Passive-Buy Toxicity? Evidence from BTC Perpetual Futures",
+    "url": "https://doi.org/10.2139/ssrn.6693260",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6748298": {
+    "alpha_category": "carry",
+    "authors": [
+      "Maksym Nechepurenko"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6748298",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "A Taxonomy of Event-Linked Perpetual Futures: Variant Designs Beyond the Single-Market Binary Case",
+    "url": "https://doi.org/10.2139/ssrn.6748298",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6751742": {
+    "alpha_category": "carry",
+    "authors": [
+      "Ramil Amirov"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6751742",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "The misplaced anchor: interest rate components in perpetual futures funding mechanisms",
+    "url": "https://doi.org/10.2139/ssrn.6751742",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-2139-ssrn-6795783": {
+    "alpha_category": "carry",
+    "authors": [
+      "Yi Cao",
+      "Pengfei Luo",
+      "Yuhan Cheng",
+      "Yizhe Dong"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-2139-ssrn-6795783",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Anatomy of Cryptocurrency Perpetual Futures Returns",
+    "url": "https://doi.org/10.2139/ssrn.6795783",
+    "venue": null,
+    "year": 2026
+  },
+  "doi-10-3386-w32936": {
+    "alpha_category": "carry",
+    "authors": [
+      "Damien Ackerer",
+      "Julien Hugonnier",
+      "Urban Jermann"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-3386-w32936",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "Perpetual Futures Pricing",
+    "url": "https://doi.org/10.3386/w32936",
+    "venue": null,
+    "year": 2024
+  },
+  "doi-10-34925-eip-2024-170-9-128": {
+    "alpha_category": "carry",
+    "authors": [
+      "Д.А. ЛОМШАКОВ"
+    ],
+    "cost_awareness": 3,
+    "crypto_relevance": 5,
+    "data_availability": 4,
+    "doi": null,
+    "evidence_quality": 4,
+    "expected_horizon": "multi_day",
+    "implementation_fit": 4,
+    "known_failure_modes": [
+      "mechanical keyword score requires Claude Stage-1 review",
+      "not promotion evidence"
+    ],
+    "leakage_risk": 1,
+    "notes": "scoring_method=mechanical_keyword_placeholder; matched_keywords=funding,perpetual",
+    "novelty": 3,
+    "overfit_risk": 1,
+    "paper_id": "doi-10-34925-eip-2024-170-9-128",
+    "required_data": [
+      "spot_price",
+      "perp_price",
+      "funding_rate"
+    ],
+    "source_type": "journal_article",
+    "title": "РОЛЬ ФОНДИРОВАНИЯ В БЕССРОЧНЫХ ФЬЮЧЕРСНЫХ КОНТРАКТАХ",
+    "url": "https://doi.org/10.34925/eip.2024.170.9.128",
+    "venue": null,
+    "year": 2024
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260702_literature_001",
+  "generated_at": "2026-07-01T16:22:47.898361+00:00",
+  "source": "mixed",
+  "n_eligible_before_cap": 1,
+  "n_selected": 1,
+  "skipped": [
+    {
+      "paper_id": "doi-10-2139-ssrn-5323703",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6795783",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6365329",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6185958",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6639558",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6658879",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6751742",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5036933",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6558841",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-1016-j-jfds-2026-100197",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6644361",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-34925-eip-2024-170-9-128",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-3386-w32936",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-1002-fut-22373",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4359883",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4402365",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4097789",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4573912",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4405082",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5125326",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5481866",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5610430",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5283850",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-14711-thesis-991013340459803412",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-5201061",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6693260",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-1002-fut-22507",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4603820",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-3589165",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-4957390",
+      "reason": "below_threshold"
+    },
+    {
+      "paper_id": "doi-10-2139-ssrn-6748298",
+      "reason": "below_threshold"
+    }
+  ],
+  "candidates": [
+    {
+      "source": "A_literature",
+      "provisional_candidate_id": "alpha-doi-10-2139-ssrn-6609698",
+      "family_id_or_NEW": "F-FUNDING-CARRY",
+      "mechanism": "Path Signatures for Regime Detection in Cryptocurrency Markets: A Rough-Path Framework Using Spot, Perpetual Basis, and Funding Rates may define a testable crypto alpha after costs.",
+      "signal_definition": "paper-derived signal; requires human Stage 1 tightening",
+      "data_feasible": true,
+      "prior_rank": 1,
+      "planned_grid_size": 4,
+      "draft_status": "pending_llm",
+      "feedback_spawned": false,
+      "required_data": [
+        "spot_price",
+        "perp_price",
+        "funding_rate"
+      ],
+      "expected_horizon": "multi_day",
+      "backtest_path": "walk_forward",
+      "paper_ids": [
+        "doi-10-2139-ssrn-6609698"
+      ],
+      "allow_live_trading": false,
+      "priority_score": 3.82
+    }
+  ]
+}

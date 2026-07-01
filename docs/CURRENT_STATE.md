@@ -20,6 +20,23 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Pipeline orchestration driver Task B literature scorer implemented
+  (2026-07-02, Codex):** `scripts/literature_keyword_scorer.py` now performs the
+  one-shot fetch-once/snapshot-once mechanical scoring pass for literature
+  batches. It writes `raw_papers_snapshot.json` and `_score_map`-compatible
+  `scores.json` records with
+  `scoring_method=mechanical_keyword_placeholder`, then the existing literature
+  driver consumes those files via `--papers` / `--scores` without a second
+  source fetch. Real artifact:
+  `results/idea_batch_20260702_literature_001/` from a Crossref keyless query
+  (`funding premia cryptocurrency perpetual futures`): 32 fetched papers, 1
+  selected A-literature draft, `draft_status="pending_llm"`,
+  `allow_live_trading=false`. arXiv timed out and Semantic Scholar returned
+  HTTP 429 during this run. No ledger rows, Stage2/3 runs, backtests, research
+  truth files, trading-core files, config gates, or deployment gates changed.
+  Next: Claude/human Stage-1 review before any family decision, ledger append,
+  Stage2, Stage3, or backtest.
+
 - **Pipeline orchestrator Task A reviewed + first real run
   (2026-07-01, Claude):** Independently re-verified Codex's Task A
   implementation (reran the 45-test suite, diffed a scratch-output rerun of

@@ -355,7 +355,8 @@ implementation exists.
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
   `scripts/run_pipeline_idea_generator.py`,
-  `scripts/run_pipeline_literature_ideas.py`.
+  `scripts/run_pipeline_literature_ideas.py`,
+  `scripts/literature_keyword_scorer.py`.
 - Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
   `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
   `results/<batch_id>/` directories without mutating existing artifacts.
@@ -363,7 +364,8 @@ implementation exists.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
-  `tests/unit/test_pipeline_literature_ideas.py`.
+  `tests/unit/test_pipeline_literature_ideas.py`,
+  `tests/unit/test_literature_keyword_scorer.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.
