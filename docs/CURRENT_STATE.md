@@ -21,7 +21,7 @@ handoff between sessions; this is the one-screen "where are we" that
 ## Snapshot
 
 - **Pipeline full-automation roadmap - checkpoint, family-minting, K-budget,
-  XS trial accounting, B-half probe, and corrected taxonomy_002 sidecar implemented
+  XS trial accounting, B-half probe, literature driver, and corrected taxonomy_002 sidecar implemented
   (2026-07-01, Codex):** Claude's checkpoint contract §4 is implemented for
   future Stage-3 summaries. New code:
   `backtesting/pipeline_checkpoint1.py` and
@@ -50,7 +50,11 @@ handoff between sessions; this is the one-screen "where are we" that
   rows skip as `overlay_needs_base` before data fallback. Invariant **I28**
   records this guard. The
   A-half prompt firewall rejects market series and fold boundaries; lab
-  candidates remain `allow_live_trading=false`. Current taxonomy-only sidecar
+  candidates remain `allow_live_trading=false`. The parent literature driver
+  `scripts/run_pipeline_literature_ideas.py` now runs existing lab fetch/score/
+  promote helpers into a weekly screen plus parent `idea_batch.json` sidecar,
+  forcing literature drafts to `pending_llm` so family minting waits for Stage-1
+  signal/distinctness review. Current taxonomy-only sidecar
   now exists at `results/idea_batch_20260701_taxonomy_002/` with 2 pending-LLM
   candidates (`F-FUNDING-XS-DISPERSION`, `F-XVENUE-LEADLAG`) and skipped
   refuted/inconclusive/overlay/data-blocked families; the prior

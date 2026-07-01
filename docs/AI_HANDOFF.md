@@ -22,6 +22,50 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-07-01 Codex follow-up (A-literature driver):
+Added the parent literature idea driver without touching the concurrent
+taxonomy_002 work. New code: `scripts/run_pipeline_literature_ideas.py`; new
+tests: `tests/unit/test_pipeline_literature_ideas.py`; manifest:
+`docs/change_manifests/2026-07-01-literature-idea-driver.md`. The driver imports
+the existing crypto-alpha-lab helpers, supports keyless source fetch or fixture
+`--papers`, requires static `--scores` or an injected scorer, runs
+`build_scoring_prompt` before scoring so market series / fold boundaries fail
+closed, promotes only scores above threshold, caps A-half drafts at 15, writes
+`weekly_screen/search_log_*.md` and `screen_*.json`, then registers A-half
+drafts through `register_batch(a_half_drafts=...)`. Literature drafts are forced
+to `draft_status="pending_llm"` and `allow_live_trading=false`, so
+`register_batch` does not run family minting before Stage-1 signal/distinctness
+review. No `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`,
+taxonomy files, taxonomy_002 artifacts, strategy/risk/portfolio/execution files,
+config gates, deployment gates, Stage 2/3 runs, WF/CPCV/backtests, or existing
+`results/**` artifacts were changed. Next: run a human/Claude-reviewed
+literature batch separately from taxonomy_002; do not append durable ledger rows
+or backtest any literature draft until Stage-1 review supplies the signal and
+family decision path.
+
+2026-07-01 Codex follow-up (taxonomy_002 Stage-2 data probe):
+Ran the requested read-only Stage-2 data-availability probe for the 2
+taxonomy_002 frontier candidates only. New code:
+`scripts/run_pipeline_stage2_data_probe.py`; test:
+`tests/unit/test_pipeline_stage2_data_probe.py`; artifacts:
+`results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/stage2_feasibility.json`
+and
+`results/idea_batch_20260701_taxonomy_002/f_xvenue_leadlag/stage2_feasibility.json`.
+Funding dispersion data availability FAILS: the point-in-time universe has 8
+eligible symbols, 5 meet the per-symbol funding coverage/stale threshold, and
+daily ready breadth is min 0 / median 0.0 / max 2 versus threshold 10. Xvenue
+lead-lag data availability FAILS by I19: Binance BTC/ETH canonical 1m legs each
+have 1,293,120 rows and 1.0 coverage, but OKX has 0 rows / 0.0 coverage for
+both legs and 0 aligned rows; Binance was not used to fill OKX. Each
+`stage2_feasibility.json` contains only `data_availability`; `stage2_status`
+is FAIL because `distinctness` and `cost_after_edge` have not run, so neither
+candidate is released to Stage 3. Appended only proposed placeholders H-009 /
+H-010 and data-probe rows E-028 / E-029; no existing ledger verdict, n_trials,
+K-budget, strategy, gate, WF/CPCV/backtest, or existing result artifact was
+changed. Next: Claude Stage-1 review/spec decision for taxonomy_002 candidates;
+do not run Stage 3/backtest or append any draft verdict until Claude/human
+review says so.
+
 2026-07-01 Codex follow-up (B-taxonomy verdict source + taxonomy_002 sidecar):
 Closed the Claude-confirmed idea-generator selection gaps without changing
 trading logic or durable ledgers. `backtesting/pipeline_idea_generator.py`

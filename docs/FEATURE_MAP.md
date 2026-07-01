@@ -342,7 +342,10 @@ implementation exists.
   `Status`, while `docs/EXPERIMENT_REGISTRY.md` remains the trial/K-budget
   source. Inconclusive/refuted/shelved occupied families require an explicit
   twist marker to be drafted, and overlay-only taxonomy rows are skipped until a
-  deterministic base-family contract exists.
+  deterministic base-family contract exists. The A-half literature driver runs
+  paper fetch/scoring through the crypto-alpha-lab prompt firewall, writes a
+  weekly screen, and registers literature drafts as `pending_llm` sidecars
+  without automatic family minting.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
@@ -351,14 +354,16 @@ implementation exists.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
-  `scripts/run_pipeline_idea_generator.py`.
+  `scripts/run_pipeline_idea_generator.py`,
+  `scripts/run_pipeline_literature_ideas.py`.
 - Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
   `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
   `results/<batch_id>/` directories without mutating existing artifacts.
 - Config files: none.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
   `tests/unit/test_pipeline_family_minting.py`,
-  `tests/unit/test_pipeline_idea_generator.py`.
+  `tests/unit/test_pipeline_idea_generator.py`,
+  `tests/unit/test_pipeline_literature_ideas.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.
