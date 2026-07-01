@@ -92,6 +92,35 @@ DB parity must be verified per strategy before deployment evidence is accepted.
 The coverage API labels funding provider/exchange from `funding_rates.source`
 instead of a hard-coded venue label.
 
+## External Observations Ingestion Flow
+
+```text
+keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders -> research artifacts / data export
+```
+
+Current: `config/external_data.yaml` registers keyless adapters for
+Alternative.me Fear & Greed, Binance futures open interest, and Deribit DVOL,
+plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
+yfinance. `BinanceOIClient` writes `oi_binance_btc` / `oi_binance_eth` as hourly
+USDT-notional open-interest observations (`value_num =
+sumOpenInterestValue`, `fields.unit = "USDT_notional"`). `DeribitDVOLClient`
+writes `dvol_deribit_btc` / `dvol_deribit_eth` as daily DVOL close observations
+(`fields.unit = "dvol_index_points"`). Empty fetches for datasets marked
+`fail_on_empty_fetch` fail closed and do not advance the external-ingestion
+checkpoint.
+
+Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
+recent ~30-day window, so OI ingestion is forward accumulation from the first
+successful run plus whatever window the endpoint currently returns. Historical
+OI backfill to 2024 requires a paid provider such as Coinglass or Coinalyze and
+is out of scope; no proxy series may be used to fabricate OI history. Deribit
+DVOL has historical windows available through its public endpoint, but whether a
+Deribit options-volatility signal is tradable on this repo's perp execution
+track remains a research-layer question, not an ingestion-layer gate change.
+Adding these datasets makes `F-OI-POSITIONING` and `F-VOL-RISK-PREMIUM`
+Stage-2 data-availability probes possible; it does not create strategies,
+families, or promotion evidence.
+
 ## Point-In-Time Universe Membership Flow
 
 ```text
