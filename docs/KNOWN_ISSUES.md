@@ -19,8 +19,8 @@ over time.
 - `docs/AI_HANDOFF.md` still contains substantial historical session detail. Known
   gap: migrate completed history to `docs/CHANGELOG_AI.md` in a dedicated cleanup
   task.
-- Some older Markdown files do not yet include lifecycle metadata. Current
-  docs-check warns for older files and hard-fails only for new durable docs.
+- Markdown lifecycle metadata currently passes `check_doc_metadata.py` with no
+  warnings; keep new durable docs on the metadata template.
 
 ## Harness
 
@@ -33,11 +33,12 @@ over time.
   checks plus API artifact tests. Known gap: add a browser-level interaction test
   before treating progressive multi-symbol chart loading as fully guarded.
 - The crypto-alpha-lab (`research/crypto-alpha-lab/`) is a **separate Python
-  package**; its tests must run as their own step (`cd research/crypto-alpha-lab &&
-  python -m pytest`, or `pip install -e research/crypto-alpha-lab`). Collecting them
-  in the same `pytest` invocation as `tests/unit/` fails with
-  `ImportError: crypto_alpha_lab`. Verify/CI must run the parent and lab suites as
-  two separate steps.
+  package**; its tests must run as their own step (`pip install -e
+  research/crypto-alpha-lab` then `python -m pytest
+  research/crypto-alpha-lab/tests -p no:cacheprovider`). Collecting them in the
+  same `pytest` invocation as `tests/unit/` fails with
+  `ImportError: crypto_alpha_lab`. CI now runs the parent and lab suites as
+  separate steps.
 
 ## Validation
 

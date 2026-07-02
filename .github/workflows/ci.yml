@@ -25,10 +25,19 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Run ruff
-        run: ruff check src tests
+        run: ruff check src tests backtesting scripts
+
+      - name: Install crypto-alpha-lab
+        run: python -m pip install -e research/crypto-alpha-lab
 
       - name: Run unit tests
         run: pytest tests/unit -v
+
+      - name: Run root-level synthetic backtest tests
+        run: pytest tests/test_daily_winner_backtest.py tests/test_ohlcv_rotation.py -v
+
+      - name: Run crypto-alpha-lab tests
+        run: python -m pytest research/crypto-alpha-lab/tests -p no:cacheprovider -q
 
   docs:
     name: Documentation checks
