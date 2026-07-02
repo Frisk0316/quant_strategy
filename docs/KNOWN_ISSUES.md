@@ -18,8 +18,9 @@ over time.
 
 - `make api-smoke` is a real smoke only when `API_BASE_URL` points at a running
   server; otherwise it exits with an explicit SKIP.
-- `make backtest-smoke` verifies entrypoints only. Known gap: add a tiny frozen
-  no-DB fixture before treating it as replay execution coverage.
+- `make backtest-smoke` uses a tiny frozen no-DB replay fixture. It is smoke
+  coverage only; full replay/data-provenance coverage and promotion evidence
+  still require the normal validation gates.
 - `make verify-full` may require TimescaleDB and seeded data.
 - Frontend backtest-chart behavior is still mostly covered by syntax/static
   checks plus API artifact tests. Known gap: add a browser-level interaction test

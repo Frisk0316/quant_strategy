@@ -147,8 +147,10 @@ the smoke check.
 make backtest-smoke
 ```
 
-Current behavior: verifies entrypoints and reports that a tiny no-DB replay fixture
-is still a known gap. It is not full execution coverage.
+Runs a tiny frozen OHLCV fixture through the replay backtest path without a DB,
+writes artifacts to a temporary directory, and verifies `result.json`,
+`metrics.json`, and `fills.csv`. The fixture uses `strategy_fill` /
+`idealized_fill`; it is smoke coverage only and is not promotion evidence.
 
 Strategy Fill replay:
 
