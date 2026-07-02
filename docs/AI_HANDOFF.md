@@ -29,6 +29,25 @@ Current status:
 - M4 monitoring unit tests and M5 stocks Option A mapping are committed in
   `5eb71f8`.
 
+2026-07-03 Claude review of M1–M5: **M1/M3/M4/M5 ACCEPTED, M2 PARTIAL —
+remediation task M2-R1 added** to
+`tasks/2026-07-03-project-maintenance-tasks.md`. Verification was independent,
+not self-report: ruff full scope passed; unit suite 576 passed; root synthetic
+tests 32 passed; lab suite 18 passed; every `frontend/*.js` passed
+`node --check`; docs checks passed; `scripts/smoke/backtest_smoke.py` ran in
+11.6s with 2 fills, and the reviewer reproduced the broken-fixture probe
+(corrupt close → exit 1, restore → exit 0); aggregate diff `a688de1..4c7afd9`
+touched no forbidden file. M2 finding: `0191c1d` slimmed AI_HANDOFF but did
+NOT migrate the deleted 2026-06-24→07-01 history into CHANGELOG_AI (entries
+jump 06-23 → 07-02; spot-check numbers C2 DSR 0.0041 / WF -1.5093 absent) and
+dropped two still-valid KNOWN_ISSUES operational caveats (K-budget table
+human-maintained staleness; family-cumulative registry row wording / max-row
+parser fallback). Nothing is irrecoverable — source text is at
+`git show 0191c1d^:docs/AI_HANDOFF.md` — but CHANGELOG_AI as durable readable
+history has a hole until M2-R1 lands. Minor non-blocking notes: the metrics
+test is call-only smoke (no value read-back); Makefile `FRONTEND_JS` and the
+`frontend-check` lines remain two hand-maintained lists that can drift again.
+
 Pipeline improvement work P1-P8 is separate from the maintenance stream. Codex
 implemented P1-P8 in the working tree: funding backfill tooling, literature
 abstract/session-scoring gates, refuted-family twist gating, feedback ranking
@@ -57,12 +76,43 @@ run yet). Claude answers to Codex's open questions: OKX-only REST is
 accepted for P5 (Binance WS daemon stays deferred as the task specified);
 `stage2_pass_on_reprobe` stays as-is (it is NOOP — promotion to Stage-3
 remains a human decision); `twist_evidence` stays in `notes` for now (a
-`PaperScoring` schema change was out of task scope). Open acceptance items
-(environment-blocked, honestly reported): real universe funding backfill +
-Stage-2 reprobe artifact (P1), real Binance Vision BTC/ETH ingest coverage
-report (P8), first OKX liquidation ingest + retention-window note (P5), and
-a staged rerun of `check_doc_impact.py --strict` before commit (unstaged
-changes were invisible to it).
+`PaperScoring` schema change was out of task scope).
+
+2026-07-03 Claude (user-authorized execution): the required fix and all
+real-data acceptance items are now DONE. ETH ct_val fixed 0.01→0.1 with a
+seed-SQL-pinned regression test; P1-P8 committed as `dfc7af8` (35 files,
+separate from maintenance); `check_doc_impact.py --strict` passed on 35
+staged files. Real runs against DB+network: **P1** funding backfill wrote
+66,041 rows for all 22 point-in-time union symbols, 8H coverage 0 gaps
+2024-01-01→2026-07-02 (`results/stage2_reprobe_20260703_funding/
+funding_coverage.json`); **P8** Binance Vision OI history ingested
+262,814 rows each for BTC/ETH (5m, 2024-01-01→2026-07-02, only the
+unpublished latest day missing) — F-OI-POSITIONING is no longer
+data-blocked; **P5** first OKX liquidation ingest landed 1,600 rows each
+for BTC/ETH, and the measured REST retention window is only **hours**
+(BTC ≈13.9h, ETH ≈5.3h at the 1,600-row cap), so lossless forward
+accumulation needs a 2-4h ingest cadence — scheduling that is a pending
+user decision. **P6 reprobe** ran for real on taxonomy_002: funding
+candidate FAIL→FAIL with improved metrics (good_symbols 5→7) appended
+append-only; xvenue unchanged (OKX 1m still ~5,220 rows vs 1.29M/leg).
+**New root cause found:** the funding-breadth FAIL is no longer a funding
+data problem — `build_universe_membership.py` reads only the thin local
+parquet mirror, so `eligible` is an artifact (median 2 eligible/day;
+BTC/ETH eligible 61 days vs MEME 657). A DB-rebuilt diagnostic universe
+(scratch, non-destructive) gives median 29 eligible/day and the probe then
+reads good_symbols 28/10 ✓, median_daily_ready 27/10 ✓, failing only
+min-breadth on the 2024-01 warmup edge
+(`results/stage2_reprobe_20260703_funding_dbuniverse/`). This same
+artifact underlies E-028's universe=8 and H-004/S5's no-grid-activity.
+Follow-ups: **P9** (membership builder DB source + shared parquet rebuild)
+added to `tasks/2026-07-03-pipeline-improvement-tasks.md`; the
+warmup-window edge (first ~30 days can never reach breadth 10) is a
+Stage-2 window spec decision needing user approval + manifest — thresholds
+were NOT touched. Taxonomy data statuses updated for F-OI-POSITIONING
+(available), F-LIQUIDATION-CASCADE (partial), F-FUNDING-XS-DISPERSION
+(available-pending-universe-fix). One tooling fix: backfill script sys.path
+lacked repo root, so its Stage-2 reprobe step failed on first real run;
+fixed one-line, probe rerun via the registry CLI.
 
 ## Current Branch
 
