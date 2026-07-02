@@ -13,6 +13,9 @@ from typing import Any, Callable, Mapping, Sequence
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# repo root first so the Stage-2 reprobe can import backtesting.* when this
+# script runs directly (mock tests inject stage2_runner and skip this path).
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from okx_quant.core.config import load_config  # noqa: E402

@@ -56,10 +56,10 @@ liquidation feed、on-chain)。
 | F-VPIN-MM | VPIN 毒性節流做市(S2) | 依 flow 毒性擇時做市 | **partial/blocked**(需 trade tape/VPIN) | untested-documented | F-OFI-MAKER-SKEW | 中 |
 | F-VOL-REGIME | 波動體制濾網(S8) | 條件化 sizing/擇時 | available | untested-documented(**overlay,非獨立 alpha**——必須掛在某 base family 上,共用其額度) | (全部) | 低(meta) |
 | F-CME-GAP | CME BTC 週末跳空(S10) | 日曆微結構失效 | **blocked**(需 CME 日線;舊 artifact 已刪) | untested-documented(research baseline,資料受限) | (calendar) | 中 |
-| F-FUNDING-XS-DISPERSION | 橫斷 funding 排序(做多低/做空高 funding 永續) | funding 當全 universe 的擁擠/持倉溢酬 | **available**(30 標的 funding 齊) | frontier-unvetted | ⚠ F-FUNDING-CARRY(**須證明與單名 carry 機制不同**,否則歸 F-FUNDING-CARRY) | 高 |
+| F-FUNDING-XS-DISPERSION | 橫斷 funding 排序(做多低/做空高 funding 永續) | funding 當全 universe 的擁擠/持倉溢酬 | **available-pending-universe-fix**(2026-07-03 回補後 22 universe 標的 8H funding 0 缺口;Stage-2 廣度 FAIL 根因=membership builder 讀薄 parquet 的假 eligible + warmup 窗緣,見 `results/stage2_reprobe_20260703_funding*/`;等 P9 membership 重建 + 窗緣 spec 決策) | frontier-unvetted | ⚠ F-FUNDING-CARRY(**須證明與單名 carry 機制不同**,否則歸 F-FUNDING-CARRY) | 高 |
 | F-XVENUE-LEADLAG | 跨所價格領先落後(Binance↔OKX) | 資訊傳遞延遲 | **backfilling**(OKX BTC/ETH-USDT-SWAP 1m 2026-07-01 前為 0 列;已用既有 keyless `scripts/market_data/ingest.py --exchange okx` 啟動回補,完成後重跑 `run_pipeline_stage2_data_probe.py` 重新判定) | frontier-unvetted | F-XS-MOMENTUM | 中(容量受限) |
-| F-OI-POSITIONING | 未平倉量 × 價格背離 | 持倉解單 / 逼倉 | **blocked**(OI 史未 ingest) | frontier-unvetted | F-FUNDING-XS-DISPERSION | 中 |
-| F-LIQUIDATION-CASCADE | 順/逆清算驅動的位移 | 強制流動性回歸 | **blocked**(無清算 feed) | frontier-unvetted | F-OI-POSITIONING | 高 |
+| F-OI-POSITIONING | 未平倉量 × 價格背離 | 持倉解單 / 逼倉 | **available**(BTC/ETH:2026-07-03 Binance Vision 5m OI 史已 ingest,`oi_binance_hist_{btc,eth}` 各 262,814 列 2024-01-01→今,0 缺日;其他標的可用同來源擴充) | frontier-unvetted | F-FUNDING-XS-DISPERSION | 中 |
+| F-LIQUIDATION-CASCADE | 順/逆清算驅動的位移 | 強制流動性回歸 | **partial**(前向累積 2026-07-03 起:OKX liquidation-orders REST keyless,`liq_okx_{btc,eth}`;⚠ 保留窗僅數小時[BTC≈14h/ETH≈5h @1600列],不排程每2-4h ingest 就漏事件;無歷史深度) | frontier-unvetted | F-OI-POSITIONING | 高 |
 | F-ONCHAIN-FLOW | 交易所淨流 / 穩定幣供給 | 鏈上持倉訊號 | **blocked**(無 on-chain) | frontier-unvetted | F-SENTIMENT | 高 decay |
 | F-VOL-RISK-PREMIUM | 系統性賣波(realized < implied) | 變異數風險溢酬 | **blocked**(無 options/IV) | frontier-unvetted | F-VOL-REGIME | 中 |
 
