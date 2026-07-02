@@ -40,11 +40,11 @@ workstreams:
     updated: 2026-06-29
 
   - name: Repo maintenance (M1-M5, non-pipeline)
-    status: active
+    status: done
     milestones: [audit, m1_ci_consistency, m2_doc_slimming, m3_smoke_fixture, m4_monitoring_tests, m5_stocks_decision]
-    current: m3_smoke_fixture
-    state: "M1 CI consistency is committed (df96682): CI/local ruff scope aligned, crypto-alpha-lab runs as a separate CI step, root synthetic backtest tests are CI-wired, and frontend-check includes the modules loaded by index.html. M2 slimmed AI_HANDOFF/CURRENT_STATE/STATUS and moved July 3 history to CHANGELOG_AI."
-    next: "Implement M3 frozen no-DB backtest-smoke fixture and M4 monitoring tests, then apply M5 stocks Option A unless the user explicitly chooses deletion."
+    current: m5_stocks_decision
+    state: "M1-M5 complete: CI/local checks aligned (df96682), 7/3 handoff preserved (79c1ddc), hot docs slimmed (0191c1d), no-DB replay smoke fixture added (2dea608), monitoring tests plus stocks Option A mapping committed (5eb71f8)."
+    next: "Claude/human review maintenance commits and handoffs; run make verify/full only in an environment with make, TimescaleDB, and required data."
     links: [tasks/2026-07-03-project-maintenance-tasks.md]
     updated: 2026-07-03
 

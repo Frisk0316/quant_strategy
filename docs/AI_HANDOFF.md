@@ -16,7 +16,7 @@ move completed session history to `docs/CHANGELOG_AI.md` and durable gaps to
 
 ## Current Goal
 
-Codex is executing `tasks/2026-07-03-project-maintenance-tasks.md` in the user
+Codex completed `tasks/2026-07-03-project-maintenance-tasks.md` in the user
 requested order: M1 -> M2 -> M3/M4 -> M5.
 
 Current status:
@@ -24,9 +24,10 @@ Current status:
 - M1 CI consistency is implemented and committed in `df96682`.
 - The 2026-07-03 Claude handoff/task docs are preserved in `79c1ddc`, satisfying
   the M2 precondition before this slimming pass.
-- M2 docs/governance slimming is implemented in the working tree.
-- M3 and M4 are next and have disjoint write scopes.
-- M5 defaults to docs-only Option A unless the user explicitly chooses deletion.
+- M2 docs/governance slimming is committed in `0191c1d`.
+- M3 no-DB backtest smoke fixture is committed in `2dea608`.
+- M4 monitoring unit tests and M5 stocks Option A mapping are committed in
+  `5eb71f8`.
 
 Pipeline improvement work P1-P8 is separate. Its handoff/task files are committed,
 but pipeline code/research/result changes that remain dirty in the working tree
@@ -35,7 +36,8 @@ are not owned by this maintenance task.
 ## Current Branch
 
 - Branch: `codex/pipeline-batch1-stage3`.
-- Recent commits: `df96682` (M1), `79c1ddc` (7/3 handoff preservation).
+- Recent commits: `df96682` (M1), `79c1ddc` (7/3 handoff preservation),
+  `0191c1d` (M2), `2dea608` (M3), `5eb71f8` (M4/M5).
 - Working tree also contains unrelated pre-existing pipeline changes; do not
   overwrite or sweep-commit them.
 
@@ -51,7 +53,7 @@ Without explicit user approval, do not modify:
 - `config/risk.yaml`, deployment/shadow/demo/live gates, or strategy assumptions.
 - Differential-validation implementation unless a current task explicitly lists it.
 
-## Active Scope
+## Completed Scope
 
 M1 changed only CI/static-check docs surface:
 `.github/workflows/ci.yml`, `Makefile`, `docs/KNOWN_ISSUES.md`.
@@ -83,23 +85,36 @@ M1 local evidence:
 - `make frontend-check` could not run because `make` is unavailable in this
   Windows sandbox; each `node --check` command from the target passed manually.
 
-For M2, run the docs-check equivalents if `make` is unavailable:
+M2 local evidence:
 
 - `python scripts/docs/check_doc_metadata.py`
 - `python scripts/docs/check_feature_map_links.py`
 
+M3-M5 local evidence:
+
+- `python scripts/smoke/backtest_smoke.py` passed: replay smoke emitted 2 fills
+  and verified `result.json`, `metrics.json`, and `fills.csv` in a temp dir.
+- Temporary broken-fixture probe made `scripts/smoke/backtest_smoke.py` fail with
+  exit 1, then the fixture was restored and the smoke passed again.
+- `pytest tests/unit/test_monitoring.py -v` passed: 4 tests.
+- `pytest tests/unit -q` passed: 575 tests.
+- `ruff check scripts/smoke/backtest_smoke.py tests/unit/test_monitoring.py src/okx_quant/stocks/__init__.py`
+  passed.
+- `python scripts/docs/check_doc_metadata.py` passed.
+- `python scripts/docs/check_feature_map_links.py` passed.
+- `pytest tests/unit/test_stock_system.py -q` passed: 5 tests.
+- `make backtest-smoke` and `make docs-check` could not run because `make` is
+  unavailable in this Windows sandbox; equivalent Python commands passed.
+
 ## Next Steps
 
-1. Commit M2 after review.
-2. Implement M3 frozen no-DB backtest smoke fixture without touching replay/data
-   loader semantics or weakening venue-scoped/I19 behavior.
-3. Implement M4 monitoring unit tests without changing monitoring source code.
-4. Apply M5 Option A docs-only ownership registration for `stocks/` unless the
-   user gives an explicit delete decision.
+1. Claude/human review the M1-M5 maintenance commits and the two handoff files.
+2. Review the separate pipeline P1-P8 dirty worktree; do not sweep-commit it
+   with maintenance changes.
+3. Run full `make verify` / `make verify-full` only in an environment where
+   `make`, TimescaleDB, and required data are available.
 
 ## Open Questions
 
-- For M5, should `src/okx_quant/stocks/` be kept as research-only docs-mapped
-  code (Option A, default) or deleted with its script/test (Option B)?
 - Which dirty pipeline changes are intended for a later P1-P8 commit versus
   already superseded scratch work?

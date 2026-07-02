@@ -13,6 +13,21 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-03 - Project Maintenance M2-M5 Completion
+
+- M2 slimmed hot-state governance docs, moved July 3 history into this changelog,
+  refreshed `STATUS.md`, and kept active backlog items in `docs/KNOWN_ISSUES.md`.
+- M3 replaced the entrypoint-only backtest smoke with a tiny frozen no-DB replay
+  fixture that writes artifacts to a temp directory and verifies `result.json`,
+  `metrics.json`, and `fills.csv`.
+- M4 added dedicated monitoring unit tests for Telegram alert hooks, metrics
+  handles, and calibration JSONL/summary roundtrip without network or DB access.
+- M5 kept `src/okx_quant/stocks/` as a docs-mapped research-only sandbox (Option
+  A) and did not wire it into crypto replay, UI, API, or deployment gates.
+- Local evidence: backtest smoke passed and failed under a temporary broken
+  fixture probe; monitoring tests passed; full unit suite passed (575); docs-check
+  equivalents passed; stock-system tests passed.
+
 ## 2026-07-03 - Project Maintenance Audit And M1 CI Alignment
 
 - Claude completed a whole-project maintenance audit outside the in-flight
