@@ -22,6 +22,96 @@ Cross-session memory for Claude and Codex. **Read this before starting any task.
 
 ## Current Goal
 
+2026-07-03 Claude (whole-project maintenance audit, non-pipeline scope, docs-only):
+Audited every project area EXCLUDING the in-flight pipeline automation plan
+(P1–P8). Confirmed findings, each verified against files not chat memory:
+(1) CI/local verify drift — `ci.yml` lints only `src tests` while `make lint`
+covers `backtesting/ scripts/` too; crypto-alpha-lab's 16 tests are absent from
+CI despite the KNOWN_ISSUES two-step rule; root-level
+`tests/test_daily_winner_backtest.py` / `test_ohlcv_rotation.py` never run in
+CI; Makefile `frontend-check` misses `view-manual.js` and `tweaks-panel.js`
+(both loaded by index.html). (2) Governance doc debt — AI_HANDOFF.md 1,138
+lines vs CHANGELOG_AI.md 174 (migration overdue), CURRENT_STATE.md 573 lines
+with stale facts (wrong current-branch line), KNOWN_ISSUES has a
+resolved-but-still-listed docs-metadata entry (checker now passes 0 warnings),
+STATUS.md branch board stale since 2026-06-25. (3) `make backtest-smoke` is
+still entrypoint-only (KNOWN_ISSUES commitment unmet). (4) monitoring modules
+(telegram_alert/metrics/calibration_log) wired into engine.py but zero test
+coverage. (5) `src/okx_quant/stocks/` + `scripts/run_stock_backtest.py` is an
+orphan feature: absent from FEATURE_MAP/AGENTS ownership — needs a user
+keep-vs-delete decision. Deliverable:
+`tasks/2026-07-03-project-maintenance-tasks.md` (Codex task blocks M1 CI
+consistency, M2 governance-doc slimming [precondition: commit this session's
+handoff edits first], M3 frozen no-DB backtest-smoke fixture with an explicit
+do-not-weaken-I19 stop rule, M4 monitoring unit tests, M5 stocks disposition
+[default docs-only option A]). Deliberately NOT tasked: ruff rule expansion
+(after M1), Playwright frontend tests (defer until a real chart regression),
+integration-tests-in-CI (DB-bound, stays local), branch pruning (user-manual).
+No code, gate, ledger, trading-core, or artifact changed. Next: user hands
+M-tasks to Codex (suggested order M1 → M2 → M3/M4 → M5-after-decision);
+Claude reviews each against its binary acceptance criteria.
+
+2026-07-03 Claude (pipeline auto-ideation review + improvement plan, docs-only):
+Reviewed the whole auto-ideation pipeline across ideation efficiency, review
+rigor, data sources, iteration, and expected payoff. Verdict: the defensive
+side (n_trials/K accounting, DSR/PSR gates, checkpoint①, append-only state) is
+sufficient and working — three auto batches (taxonomy_001/002,
+literature_001) plus 7 human-seeded families produced 0 gate-passing
+candidates, and every rejection was correct. The binding constraints are all
+inlet-side: (1) the literature scorer scores titles only with hardcoded
+optimistic sub-scores (its single selected paper was a mechanism mismatch to
+a refuted family, correctly SKIPped at Stage-1); (2) nearly the whole
+taxonomy frontier is data-blocked (OI/liquidation/on-chain/options), funding
+XS breadth fails 0/10, OKX 1m still backfilling; (3) locked decision 4
+(cross-round feedback) is designed but unimplemented. User decisions
+2026-07-03: LLM abstract scoring via Claude/Codex session (NO API); no paid
+OI — use public Binance Vision dumps; Claude writes the power analysis.
+Deliverables: `tasks/2026-07-03-pipeline-improvement-tasks.md` (Codex task
+blocks P1–P8: P1 universe funding backfill + re-probe, P2 literature
+precision package + session-scoring handoff, P3 literature
+prior-plausibility gate, P4 feedback tags + honest feedback_spawned
+accounting, P5 keyless liquidation accumulation, P6 orchestrator --reprobe,
+P7 funnel metrics, P8 Binance Vision OI history) and
+`docs/superpowers/specs/2026-07-03-statistical-power-gates.md` (at 2.5y
+history and N=24 trials, clearing DSR≥0.95 needs observed annualized Sharpe
+≈2.3 / true ≈2.8 at 80% power — the statistical case for small grids, no
+re-skinning retries, and prioritizing data unlock of high-Sharpe-ceiling
+microstructure families; NO gate change). Recommended wave order: P1/P2/P8
+first; do not wire the orchestrator to a schedule before P1–P3 land. No
+code, gate, ledger, trading-core, or existing artifact changed. Next: user
+hands P-tasks to Codex; Claude reviews each per its acceptance criteria.
+
+2026-07-02 Claude (Task B review, docs+cleanup only): Reviewed Codex's Task B
+commit (`a688de1`) against spec §4. Codex's own commit note flagged that its
+"final full pytest/docs rerun" was blocked by a sandbox usage limit, so I ran
+it myself rather than accept the partial self-report: full pipeline pytest
+(56 passed, including the new `test_literature_keyword_scorer.py`), the
+existing `research/crypto-alpha-lab` suite (16 passed), `check_doc_metadata.py`
+(0 warnings), and `check_doc_impact.py --strict` (no violations). Confirmed
+`score_literature` fetches papers exactly once and every score's `notes`
+carries `scoring_method=mechanical_keyword_placeholder`; confirmed via the
+task handoffs that the real run fed the literature driver through
+`--papers`/`--scores` snapshots, never `--source` (the fetch-once fix from the
+hardened spec held). Confirmed no forbidden file changed (`research/`,
+`scripts/run_pipeline_literature_ideas.py`,
+`docs/HYPOTHESIS_LEDGER.md`/`EXPERIMENT_REGISTRY.md`, trading-core, gates —
+diff empty for all). Minor non-blocking notes: `docs/FEATURE_MAP.md` was
+edited to list the new files, which was outside Task B's explicit permitted
+list but matches `AGENTS.md`'s general doc-sync duty and is harmless; removed
+the leftover untracked `.tmp_literature_keyword_20260702/` scratch copy that
+Codex could not clean up itself (duplicated the committed
+`results/idea_batch_20260702_literature_001/**` files, so deleting it lost
+nothing). Substantive flag for the next step: the one selected draft
+(`alpha-doi-10-2139-ssrn-6609698`, priority_score 3.82, just above the 3.8
+threshold) mechanically maps to `F-FUNDING-CARRY`, a family already refuted
+under H-007 — worth extra scrutiny at Stage-1 review on whether this is a
+genuine twist or a weak mechanical match. arXiv timed out and Semantic
+Scholar returned HTTP 429 during the real run, so the batch only reflects a
+Crossref query; this was honestly reported, not silently dropped. Next:
+Claude/human Stage-1 review of
+`results/idea_batch_20260702_literature_001/idea_batch.json` before any
+family decision, ledger append, Stage2, Stage3, or backtest.
+
 2026-07-02 Codex follow-up (pipeline orchestration driver Task B):
 Implemented the mechanical literature keyword scorer requested in
 `docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md`

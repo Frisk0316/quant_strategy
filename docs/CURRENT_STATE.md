@@ -20,6 +20,37 @@ handoff between sessions; this is the one-screen "where are we" that
 
 ## Snapshot
 
+- **Whole-project maintenance audit complete; M1–M5 tasks ready for Codex
+  (2026-07-03, Claude, docs-only):** Audit of all non-pipeline areas found five
+  verified gaps: CI/`make verify` drift (CI misses `backtesting/`+`scripts/`
+  lint, the crypto-alpha-lab suite, two root-level test files, and
+  frontend-check misses `view-manual.js`/`tweaks-panel.js`); governance doc
+  bloat/staleness (AI_HANDOFF 1,138 lines, CURRENT_STATE stale facts,
+  STATUS.md board stale, one resolved KNOWN_ISSUES entry still listed);
+  `backtest-smoke` still entrypoint-only; monitoring modules with zero tests;
+  orphan `src/okx_quant/stocks/` module absent from FEATURE_MAP/ownership.
+  Deliverable: `tasks/2026-07-03-project-maintenance-tasks.md` (M1 CI
+  consistency, M2 doc slimming, M3 smoke fixture, M4 monitoring tests, M5
+  stocks disposition — M5 needs a user keep-vs-delete decision). Suggested
+  order M1 → M2 → M3/M4 → M5. Not tasked: ruff expansion, Playwright,
+  integration-in-CI, branch pruning (reasons recorded in the task file).
+
+- **Pipeline auto-ideation reviewed; improvement plan P1–P8 ready for Codex
+  (2026-07-03, Claude, docs-only):** Full review of the auto-ideation pipeline
+  concluded the defensive side (n_trials/K, DSR/PSR gates, checkpoint①,
+  append-only state) is sufficient; all constraints are inlet-side (title-only
+  literature scoring, data-blocked taxonomy frontier, unimplemented cross-round
+  feedback). User decisions: session-based LLM scoring (no API), public
+  Binance Vision OI history (no paid provider), power-analysis doc approved.
+  Deliverables: `tasks/2026-07-03-pipeline-improvement-tasks.md` (P1 funding
+  backfill + re-probe, P2 literature precision + session scoring, P3
+  literature prior-plausibility gate, P4 feedback tags, P5 liquidation
+  accumulation, P6 orchestrator --reprobe, P7 funnel metrics, P8 Vision OI
+  history) and `docs/superpowers/specs/2026-07-03-statistical-power-gates.md`
+  (2.5y + N=24 trials ⇒ observed Sharpe ≈2.3 needed for DSR≥0.95; no gate
+  change). Wave order P1/P2/P8 first; no orchestrator scheduling before
+  P1–P3. Next: hand P-tasks to Codex.
+
 - **Pipeline orchestration driver Task B literature scorer implemented
   (2026-07-02, Codex):** `scripts/literature_keyword_scorer.py` now performs the
   one-shot fetch-once/snapshot-once mechanical scoring pass for literature

@@ -23,12 +23,12 @@ workstreams:
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review]
-    current: first_batch_review
-    state: "Checkpoint automation, family-minting checker with real K-budget fields, XS family n_trials inheritance, B/A idea-generator front end, A-literature parent driver, advisory pipeline orchestrator driver, and Task B literature_keyword_scorer.py are implemented as sidecars. Claude independently re-verified Task A and ran the orchestrator for real against idea_batch_20260701_taxonomy_002 with H-009/H-010; both candidates advance idea_registered -> stage2_fail (funding breadth 5/10 good symbols; xvenue OKX leg 0 coverage, no Binance substitution per I19). Task B ran a real Crossref keyless literature batch at results/idea_batch_20260702_literature_001/: 32 papers fetched, 1 A_literature draft selected, draft_status=pending_llm, allow_live_trading=false."
-    next: "taxonomy_002 stays at stage2_fail pending new data (funding breadth, OKX coverage) or a human/Claude decision. Literature batch idea_batch_20260702_literature_001 needs Claude/human Stage-1 review before any family decision, durable verdict, ledger append, Stage 2/3, distinctness/cost check, or backtest."
-    links: [docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-06-30-idea-generator-frontend-design.md, docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md]
-    updated: 2026-07-02
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8]
+    current: improvement_p1_p8
+    state: "2026-07-03 Claude pipeline review complete: defenses (n_trials/K, DSR/PSR, checkpoint①, append-only state) sufficient and proven; all binding constraints are inlet-side (title-only literature scoring, data-blocked taxonomy frontier, unimplemented cross-round feedback). Literature batch idea_batch_20260702_literature_001 Stage-1 reviewed: single candidate SKIPped (mechanism mismatch to refuted F-FUNDING-CARRY). User decisions: session-based LLM scoring (no API); public Binance Vision OI history (no paid provider); power analysis written (2.5y + N=24 trials needs observed Sharpe ~2.3 for DSR>=0.95; no gate change)."
+    next: "Hand tasks/2026-07-03-pipeline-improvement-tasks.md P1-P8 to Codex; wave 1 = P1 (funding backfill + re-probe), P2 (literature precision + session scoring), P8 (Vision OI history). No orchestrator scheduling before P1-P3 land. Claude reviews each task against its binary acceptance criteria."
+    links: [tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md]
+    updated: 2026-07-03
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done
@@ -38,6 +38,15 @@ workstreams:
     next: "none - ADR-0007 P1 closed; delete the merged branch"
     links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
     updated: 2026-06-29
+
+  - name: Repo maintenance (M1-M5, non-pipeline)
+    status: active
+    milestones: [audit, m1_ci_consistency, m2_doc_slimming, m3_smoke_fixture, m4_monitoring_tests, m5_stocks_decision]
+    current: m1_ci_consistency
+    state: "2026-07-03 Claude whole-project audit (non-pipeline scope) complete. Verified gaps: CI misses backtesting/scripts lint + crypto-alpha-lab suite + 2 root-level test files; frontend-check misses view-manual.js/tweaks-panel.js; AI_HANDOFF/CURRENT_STATE/STATUS.md bloated or stale; backtest-smoke still entrypoint-only; monitoring untested; src/okx_quant/stocks is an orphan feature."
+    next: "Hand tasks/2026-07-03-project-maintenance-tasks.md M1-M5 to Codex; order M1 -> M2 (after committing 2026-07-03 handoff edits) -> M3/M4 -> M5 after user keep-vs-delete decision on stocks/."
+    links: [tasks/2026-07-03-project-maintenance-tasks.md]
+    updated: 2026-07-03
 
   - name: User manual
     status: done
