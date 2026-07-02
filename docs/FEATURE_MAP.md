@@ -470,8 +470,26 @@ implementation exists.
   `src/okx_quant/monitoring/telegram_alert.py`,
   `src/okx_quant/monitoring/calibration_log.py`.
 - Config files: `config/settings.yaml`, `docker/prometheus.yml`.
-- Tests: no dedicated monitoring test is mapped here yet.
+- Tests: `tests/unit/test_monitoring.py`.
 - Docs to update: `docs/RUNBOOK.md`, `docs/DEBUGGING_RUNBOOK.md`,
   `docs/KNOWN_ISSUES.md`.
 - Do-not-touch notes: monitoring gaps should be recorded as operational gaps; do not
   infer alerting is production-ready from module presence alone.
+
+## Stocks Research Sandbox
+
+- User-facing behavior: local TW/US stock minute-bar research sandbox for
+  CSV/parquet experiments only; it is not wired into crypto replay, UI, API, or
+  deployment gates.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `src/okx_quant/stocks/`, `scripts/run_stock_backtest.py`.
+- Data / DB / artifact files: user-supplied stock minute-bar CSV/parquet files;
+  no managed DB/artifact pipeline is registered for this sandbox.
+- Config files: none.
+- Tests: `tests/unit/test_stock_system.py`.
+- Docs to update: `docs/FEATURE_MAP.md`; add broader docs only if an explicit
+  task promotes this sandbox into a supported workflow.
+- Do-not-touch notes: do not treat stocks results as crypto strategy evidence;
+  do not connect stocks code to live/shadow/demo gates, shared backtest artifacts,
+  or frontend/API surfaces without explicit human approval.
