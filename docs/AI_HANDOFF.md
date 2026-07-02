@@ -29,9 +29,40 @@ Current status:
 - M4 monitoring unit tests and M5 stocks Option A mapping are committed in
   `5eb71f8`.
 
-Pipeline improvement work P1-P8 is separate. Its handoff/task files are committed,
-but pipeline code/research/result changes that remain dirty in the working tree
-are not owned by this maintenance task.
+Pipeline improvement work P1-P8 is separate from the maintenance stream. Codex
+implemented P1-P8 in the working tree: funding backfill tooling, literature
+abstract/session-scoring gates, refuted-family twist gating, feedback ranking
+tags with I30 accounting, OKX liquidation forward accumulation, advisory
+`--reprobe`, funnel metrics, and Binance Vision OI parsing. These pipeline
+edits are not owned by the maintenance task.
+
+2026-07-03 Claude review of P1-P8: **APPROVED with one required fix.**
+Independently reran the test battery (88 pipeline unit tests + 18 lab tests
+passed, a superset of Codex's reported 76; docs metadata 0 warnings),
+confirmed no forbidden file changed (trading-core, durable ledgers, gates,
+Stage-2 thresholds, existing `results/**` — the only results diff is
+Claude's own pre-existing Stage-1 SKIP note), and verified
+acceptance-mapped tests exist (ssrn-6609698 refuted-family regression,
+byte-identical reprobe idempotency, fail-closed missing-hypothesis-id,
+placeholder-score rejection, review-bundle firewall, feedback-spawned
+n_trials reconciliation). **Required fix before commit / first real
+liquidation ingest:** `liq_okx_eth` in
+`scripts/market_data/ingest_external.py` hardcodes `contract_value: 0.01`,
+but OKX `ETH-USDT-SWAP` ct_val is **0.1** (ADR-0007,
+`sql/seed_venue_instrument_specs.sql`); OKX liquidation details carry only
+`sz`/`bkPx`, so the computed-notional path always applies → ETH liquidation
+notional would be understated 10x. Fix 0.01→0.1 (or read from the seed/spec
+source) plus a regression test. No real data was poisoned (no DB ingest has
+run yet). Claude answers to Codex's open questions: OKX-only REST is
+accepted for P5 (Binance WS daemon stays deferred as the task specified);
+`stage2_pass_on_reprobe` stays as-is (it is NOOP — promotion to Stage-3
+remains a human decision); `twist_evidence` stays in `notes` for now (a
+`PaperScoring` schema change was out of task scope). Open acceptance items
+(environment-blocked, honestly reported): real universe funding backfill +
+Stage-2 reprobe artifact (P1), real Binance Vision BTC/ETH ingest coverage
+report (P8), first OKX liquidation ingest + retention-window note (P5), and
+a staged rerun of `check_doc_impact.py --strict` before commit (unstaged
+changes were invisible to it).
 
 ## Current Branch
 

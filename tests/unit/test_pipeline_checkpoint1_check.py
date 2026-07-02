@@ -84,6 +84,23 @@ def test_checkpoint1_reconciles_xs_artifact_to_family_cumulative_trials():
     assert checks["n_trials_reconcile"]["status"] == "PASS"
 
 
+def test_checkpoint1_counts_feedback_spawned_candidate_in_family_trials():
+    result = evaluate_summary(
+        _summary(
+            feedback_spawned=True,
+            family_id="F-CHECK",
+            family_cumulative_n_trials=72,
+            cpcv={"n_trials": 72, "n_trials_provenance": "caller_declared"},
+        ),
+        _registry(trials=72),
+        summary_path="results/batch/candidate/summary.json",
+    )
+    payload = result_to_dict(result)
+    checks = {row["name"]: row for row in payload["checks"]}
+
+    assert checks["n_trials_reconcile"]["status"] == "PASS"
+
+
 def test_checkpoint1_passes_machine_checks_and_keeps_human_review_items():
     result = evaluate_summary(
         _summary(),

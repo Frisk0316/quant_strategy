@@ -85,12 +85,16 @@ created automatically for Binance symbols that pass through the fetch flow.
 
 ```text
 OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market_data/import_parquet_funding.py -> funding_rates -> backtesting.data_loader.load_funding -> ReplayBacktestEngine funding cashflow path -> funding artifacts and validation fields -> backtest API and review docs
+Binance funding history + PIT universe -> scripts/market_data/backfill_universe_funding.py -> funding_rates plus local coverage report -> advisory Stage2 data reprobe
 ```
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
 The coverage API labels funding provider/exchange from `funding_rates.source`
-instead of a hard-coded venue label.
+instead of a hard-coded venue label. `backfill_universe_funding.py` is a
+research-pipeline utility for Binance universe-wide funding coverage and writes
+local parquet/coverage JSON before attempting DB upsert and advisory Stage2
+reprobe; it does not alter funding cashflow math or strategy gates.
 
 ## External Observations Ingestion Flow
 
@@ -101,25 +105,33 @@ keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter
 Current: `config/external_data.yaml` registers keyless adapters for
 Alternative.me Fear & Greed, Binance futures open interest, and Deribit DVOL,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
-yfinance. `BinanceOIClient` writes `oi_binance_btc` / `oi_binance_eth` as hourly
-USDT-notional open-interest observations (`value_num =
-sumOpenInterestValue`, `fields.unit = "USDT_notional"`). `DeribitDVOLClient`
-writes `dvol_deribit_btc` / `dvol_deribit_eth` as daily DVOL close observations
-(`fields.unit = "dvol_index_points"`). Empty fetches for datasets marked
-`fail_on_empty_fetch` fail closed and do not advance the external-ingestion
-checkpoint.
+yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
+liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
+the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
+`oi_binance_btc` / `oi_binance_eth` as hourly USDT-notional open-interest
+observations (`value_num = sumOpenInterestValue`, `fields.unit =
+"USDT_notional"`). `download_binance_vision_metrics.py` is the public historical
+OI path for Binance Vision UM daily metrics; it validates the BTCUSDT schema
+fail-closed before ingesting BTC/ETH 5m `sum_open_interest_value` observations
+with `provenance = binance_vision_metrics`. `OKXLiquidationClient` writes raw
+long/short liquidation event observations from OKX public REST when available;
+notional is source-provided or computed from `sz * bkPx * contract_value` and
+raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /
+`dvol_deribit_eth` as daily DVOL close observations (`fields.unit =
+"dvol_index_points"`). Empty fetches for datasets marked `fail_on_empty_fetch`
+fail closed and do not advance the external-ingestion checkpoint.
 
 Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
-recent ~30-day window, so OI ingestion is forward accumulation from the first
-successful run plus whatever window the endpoint currently returns. Historical
-OI backfill to 2024 requires a paid provider such as Coinglass or Coinalyze and
-is out of scope; no proxy series may be used to fabricate OI history. Deribit
-DVOL has historical windows available through its public endpoint, but whether a
-Deribit options-volatility signal is tradable on this repo's perp execution
-track remains a research-layer question, not an ingestion-layer gate change.
-Adding these datasets makes `F-OI-POSITIONING` and `F-VOL-RISK-PREMIUM`
-Stage-2 data-availability probes possible; it does not create strategies,
-families, or promotion evidence.
+recent ~30-day window, so that adapter remains forward accumulation; historical
+OI should come from Binance Vision public dumps rather than a paid provider or
+proxy series. OKX liquidation REST also appears to be a recent-window source, so
+liquidation datasets are forward-accumulated from the first successful run; no
+daemon or Binance websocket collector exists yet. Deribit DVOL has historical
+windows available through its public endpoint, but whether a Deribit
+options-volatility signal is tradable on this repo's perp execution track
+remains a research-layer question, not an ingestion-layer gate change. Adding
+these datasets makes future Stage-2 data-availability probes possible; it does
+not create strategies, families, or promotion evidence.
 
 ## Point-In-Time Universe Membership Flow
 

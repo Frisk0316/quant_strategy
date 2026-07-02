@@ -24,11 +24,20 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 - M3 no-DB backtest smoke fixture is committed in `2dea608`.
 - M4 monitoring unit tests and M5 stocks Option A mapping are committed in
   `5eb71f8`.
+- Parallel pipeline task `tasks/2026-07-03-pipeline-improvement-tasks.md`
+  P1-P8 is implemented in the working tree and Claude-reviewed 2026-07-03:
+  **approved with one required fix** — `liq_okx_eth` `contract_value` must be
+  0.1, not 0.01, per ADR-0007 / `sql/seed_venue_instrument_specs.sql`, else
+  ETH liquidation notional is understated 10x. Real DB/network artifacts
+  (P1 funding backfill, P8 Vision OI ingest, P5 liquidation ingest) remain
+  environment-blocked; no live/demo/shadow readiness is claimed.
 
 ## Active Warnings
 
 - The working tree has unrelated dirty pipeline/research/result files. Do not
   revert, overwrite, or sweep-commit them during maintenance follow-up.
+- Existing result artifact `results/idea_batch_20260702_literature_001/` was
+  dirty before this Codex run and remains outside P1-P8 ownership.
 - No strategy, risk, portfolio, execution, deployment gate, or existing result
   artifact is in scope for the maintenance tasks.
 - `research/strategy_synthesis.md`, `docs/backtest_live_parity_plan.md`, and

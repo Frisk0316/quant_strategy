@@ -21,6 +21,7 @@ from okx_quant.data.external_clients import (
     FREDClient,
     FearGreedClient,
     NasdaqDataLinkClient,
+    OKXLiquidationClient,
     YFinanceClient,
 )
 from okx_quant.data.external_store import ExternalDataStore
@@ -28,6 +29,54 @@ from okx_quant.data.external_store import ExternalDataStore
 
 class _EmptyFetchError(click.ClickException):
     pass
+
+
+_OKX_LIQUIDATION_NOTES = (
+    "Value is liquidation notional in USDT, computed from OKX sz*bkPx*contract_value "
+    "when the source does not provide a notional field. OKX public REST exposes only "
+    "a recent window; this dataset is forward-accumulated by repeated checkpointed ingests."
+)
+
+BUILT_IN_DATASETS: dict[str, dict[str, Any]] = {
+    "liq_okx_btc": {
+        "provider": "okx",
+        "frequency": "event",
+        "value_kind": "event",
+        "max_age_seconds": 86400,
+        "source_url": "https://www.okx.com/api/v5/public/liquidation-orders",
+        "attribution": "Data source: OKX public liquidation-orders",
+        "adapter": "okx_liquidation",
+        "inst_type": "SWAP",
+        "uly": "BTC-USDT",
+        "inst_id": "BTC-USDT-SWAP",
+        "state": "filled",
+        # ct_val per ADR-0007 / sql/seed_venue_instrument_specs.sql; guarded by
+        # tests/unit/test_ingest_external_liquidation.py::test_builtin_liquidation_contract_values_match_seed_specs
+        "contract_value": 0.01,
+        "fail_on_empty_fetch": True,
+        "required": True,
+        "notes": _OKX_LIQUIDATION_NOTES,
+    },
+    "liq_okx_eth": {
+        "provider": "okx",
+        "frequency": "event",
+        "value_kind": "event",
+        "max_age_seconds": 86400,
+        "source_url": "https://www.okx.com/api/v5/public/liquidation-orders",
+        "attribution": "Data source: OKX public liquidation-orders",
+        "adapter": "okx_liquidation",
+        "inst_type": "SWAP",
+        "uly": "ETH-USDT",
+        "inst_id": "ETH-USDT-SWAP",
+        "state": "filled",
+        # ct_val 0.1, NOT 0.01: OKX ETH-USDT-SWAP contract value per ADR-0007 /
+        # sql/seed_venue_instrument_specs.sql (2026-07-03 Claude review fix).
+        "contract_value": 0.1,
+        "fail_on_empty_fetch": True,
+        "required": True,
+        "notes": _OKX_LIQUIDATION_NOTES,
+    },
+}
 
 
 def _parse_dt(value: Optional[str]) -> Optional[datetime]:
@@ -45,6 +94,7 @@ def _load_external_config(path: str) -> dict[str, dict[str, Any]]:
     datasets = payload.get("datasets") or {}
     if not isinstance(datasets, dict):
         raise click.ClickException("external_data.yaml must contain a datasets mapping")
+    datasets = {**BUILT_IN_DATASETS, **datasets}
     for dataset_id, cfg in datasets.items():
         if str(cfg.get("adapter") or "") == "fred" and int(cfg.get("publish_lag_days", 1)) < 1:
             raise click.ClickException(f"{dataset_id}: publish_lag_days must be >= 1")
@@ -71,6 +121,8 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
         return DeribitDVOLClient()
     if adapter == "fear_greed":
         return FearGreedClient()
+    if adapter == "okx_liquidation":
+        return OKXLiquidationClient()
     if adapter == "fred":
         env_name = str(cfg.get("api_key_env") or "FRED_API_KEY")
         api_key = os.environ.get(env_name)
@@ -107,6 +159,17 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
         )
     if adapter == "fear_greed":
         return client.fetch(start=start, end=end)
+    if adapter == "okx_liquidation":
+        return client.fetch(
+            inst_type=str(cfg.get("inst_type") or "SWAP"),
+            uly=str(cfg["uly"]) if cfg.get("uly") else None,
+            inst_family=str(cfg["inst_family"]) if cfg.get("inst_family") else None,
+            inst_id=str(cfg["inst_id"]) if cfg.get("inst_id") else None,
+            state=str(cfg.get("state") or "filled"),
+            contract_value=float(cfg["contract_value"]) if cfg.get("contract_value") is not None else None,
+            start=start,
+            end=end,
+        )
     if adapter == "fred":
         return client.fetch(series_id=str(cfg.get("series_id") or "DGS10"), start=start, end=end)
     if adapter == "nasdaq_data_link":

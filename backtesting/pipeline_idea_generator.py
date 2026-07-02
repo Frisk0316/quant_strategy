@@ -7,12 +7,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import yaml
+
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_from_dict
 from backtesting.pipeline_family_minting import decide_family_minting
 
 SCHEMA_VERSION = 1
 DEFAULT_CAP = 15
+DEFAULT_FEEDBACK_TAGS_PATH = Path("config/pipeline_feedback_tags.yaml")
+_VALID_FEEDBACK_GUIDANCE = {"avoid", "needs_data", "retry_with_twist"}
 
 
 def _cells(line: str) -> list[str]:
@@ -37,12 +41,44 @@ def _rows(markdown: str) -> list[dict[str, str]]:
     return rows
 
 
-def _family_verdicts(hypothesis_ledger_text: str) -> dict[str, str]:
+def family_verdicts(hypothesis_ledger_text: str) -> dict[str, str]:
     return {
         row["Family ID"].strip(): (row.get("Status") or "").strip().lower()
         for row in _rows(hypothesis_ledger_text)
         if row.get("Family ID")
     }
+
+
+def load_feedback_tags(path: str | Path | None = DEFAULT_FEEDBACK_TAGS_PATH) -> dict[str, dict[str, Any]]:
+    if path is None:
+        return {}
+    tags_path = Path(path)
+    if not tags_path.exists():
+        return {}
+    payload = yaml.safe_load(tags_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("families"), Mapping):
+        raise ValueError("feedback tags must contain a families mapping")
+    tags: dict[str, dict[str, Any]] = {}
+    for family_id, raw in payload["families"].items():
+        if not isinstance(family_id, str) or not family_id.strip():
+            raise ValueError("feedback tag family ids must be non-empty strings")
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"feedback tag for {family_id!r} must be a mapping")
+        guidance = raw.get("guidance")
+        if guidance not in _VALID_FEEDBACK_GUIDANCE:
+            raise ValueError(f"feedback tag for {family_id!r} has invalid guidance {guidance!r}")
+        reasons = raw.get("reasons", [])
+        if not isinstance(reasons, list) or not all(isinstance(reason, str) for reason in reasons):
+            raise ValueError(f"feedback tag for {family_id!r} reasons must be a list of strings")
+        verdict = raw.get("verdict", "")
+        if not isinstance(verdict, str):
+            raise ValueError(f"feedback tag for {family_id!r} verdict must be a string")
+        tags[family_id.strip()] = {
+            "verdict": verdict,
+            "reasons": reasons,
+            "guidance": guidance,
+        }
+    return tags
 
 
 def _has_twist(text: str) -> bool:
@@ -131,17 +167,29 @@ def _probe_data_feasible(row: Mapping[str, str], data_availability_probe: Any | 
     return None
 
 
+def _feedback_penalty(tag: Mapping[str, Any] | None, probe_feasible: bool | None) -> int:
+    if not tag:
+        return 0
+    guidance = tag.get("guidance")
+    if guidance == "avoid":
+        return 20
+    if guidance == "needs_data" and probe_feasible is not True:
+        return 10
+    return 0
+
+
 def enumerate_gaps(
     taxonomy_text: str,
     ledger_text: str,
     data_availability_probe: Any | None = None,
     *,
     hypothesis_ledger_text: str | None = None,
+    feedback_tags: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Return taxonomy families that are feasible enough to draft."""
 
     registry = family_registry_from_text(ledger_text)
-    verdicts = _family_verdicts(hypothesis_ledger_text or "")
+    verdicts = family_verdicts(hypothesis_ledger_text or "")
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in _rows(taxonomy_text):
@@ -161,6 +209,8 @@ def enumerate_gaps(
         if not data_feasible:
             skipped.append({"family_id": family_id, "reason": "data_blocked"})
             continue
+        tag = (feedback_tags or {}).get(family_id)
+        feedback_rank_penalty = _feedback_penalty(tag, probe_feasible)
         mechanism = row.get("機制") or row.get("mechanism") or row.get("col1") or family_id
         data_text = row.get("資料") or text
         eligible.append(
@@ -175,7 +225,16 @@ def enumerate_gaps(
                 "crowding_rank": 1 if "高" in text else 0,
                 "planned_grid_size": 4,
                 "draft_status": "pending_llm",
-                "feedback_spawned": False,
+                "feedback_spawned": feedback_rank_penalty > 0,
+                **(
+                    {
+                        "feedback_rank_penalty": feedback_rank_penalty,
+                        "feedback_guidance": str(tag.get("guidance")),
+                        "feedback_reasons": list(tag.get("reasons", [])),
+                    }
+                    if feedback_rank_penalty
+                    else {}
+                ),
             }
         )
     return {"eligible": eligible, "skipped": skipped}
@@ -188,7 +247,7 @@ def rank_and_cap(gaps: Sequence[Mapping[str, Any]], cap: int = DEFAULT_CAP) -> t
     ranked = sorted(
         (dict(gap) for gap in gaps),
         key=lambda row: (
-            int(row.get("data_rank", 1)),
+            int(row.get("data_rank", 1)) + int(row.get("feedback_rank_penalty", 0)),
             int(row.get("crowding_rank", 1)),
             int(row.get("planned_grid_size", 999)),
             str(row.get("family_id") or row.get("family_id_or_NEW") or ""),
@@ -291,6 +350,7 @@ def generate_batch(
     batch_id: str,
     *,
     hypothesis_ledger_path: str | Path = "docs/HYPOTHESIS_LEDGER.md",
+    feedback_tags_path: str | Path | None = DEFAULT_FEEDBACK_TAGS_PATH,
     output_root: str | Path = "results",
     cap: int = DEFAULT_CAP,
     data_availability_probe: Any | None = None,
@@ -303,6 +363,7 @@ def generate_batch(
         ledger_text,
         data_availability_probe=data_availability_probe,
         hypothesis_ledger_text=hypothesis_ledger_text,
+        feedback_tags=load_feedback_tags(feedback_tags_path),
     )
     selected, overflow = rank_and_cap(enumerated["eligible"], cap=cap)
     return register_batch(

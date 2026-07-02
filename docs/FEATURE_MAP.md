@@ -156,6 +156,8 @@ implementation exists.
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
+  `scripts/market_data/ingest_external.py`,
+  `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
@@ -199,6 +201,7 @@ implementation exists.
   `backtesting/artifacts.py`.
 - Data / DB / artifact files: `src/okx_quant/data/candle_store.py`,
   `scripts/market_data/backfill_funding.py`,
+  `scripts/market_data/backfill_universe_funding.py`,
   `scripts/market_data/import_parquet_funding.py`,
   `scripts/market_data/validate_funding.py`.
 - Config files: `config/settings.yaml`, `config/strategies.yaml`.
@@ -345,7 +348,9 @@ implementation exists.
   deterministic base-family contract exists. The A-half literature driver runs
   paper fetch/scoring through the crypto-alpha-lab prompt firewall, writes a
   weekly screen, and registers literature drafts as `pending_llm` sidecars
-  without automatic family minting.
+  without automatic family minting. Pipeline improvement P1-P8 adds
+  session-scoring handoff files, feedback ranking tags, advisory Stage2
+  reprobe, and per-batch funnel metrics; all remain research-only sidecars.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
@@ -356,16 +361,22 @@ implementation exists.
   `scripts/run_pipeline_family_minting_check.py`,
   `scripts/run_pipeline_idea_generator.py`,
   `scripts/run_pipeline_literature_ideas.py`,
+  `scripts/run_pipeline_orchestrator.py`,
+  `scripts/run_pipeline_funnel_report.py`,
   `scripts/literature_keyword_scorer.py`.
 - Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
   `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
   `results/<batch_id>/` directories without mutating existing artifacts.
-- Config files: none.
+- Config files: `config/pipeline_feedback_tags.yaml` for Claude/human-owned
+  feedback ranking tags. This is not a strategy, risk, settings, or deployment
+  gate config.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
   `tests/unit/test_pipeline_literature_ideas.py`,
-  `tests/unit/test_literature_keyword_scorer.py`.
+  `tests/unit/test_literature_keyword_scorer.py`,
+  `tests/unit/test_pipeline_orchestrator.py`,
+  `tests/unit/test_pipeline_funnel_report.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.

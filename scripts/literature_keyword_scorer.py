@@ -13,7 +13,7 @@ for path in (ROOT, LAB_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from crypto_alpha_lab.pipeline import fetch_papers
+from crypto_alpha_lab.pipeline import build_scoring_prompt, fetch_papers
 from crypto_alpha_lab.schemas import PaperScoring
 
 DEFAULT_SOURCES = (
@@ -81,6 +81,10 @@ def _text(paper: Mapping[str, Any]) -> str:
     ).lower()
 
 
+def _abstract(paper: Mapping[str, Any]) -> str:
+    return " ".join(str(paper.get("abstract") or paper.get("summary") or "").split())
+
+
 def _authors(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value,) if value else ()
@@ -120,7 +124,10 @@ def keyword_score_paper(paper: Mapping[str, Any]) -> PaperScoring:
         raise ValueError("paper missing paper_id")
     category, horizon, required_data, hits = _profile(paper)
     known = bool(hits)
+    has_abstract = bool(_abstract(paper))
     hit_score = min(5, len(hits) + 2) if known else 1
+    data_fit = 3 if has_abstract and known else 1
+    implementation_fit = 3 if has_abstract and known else 1
     return PaperScoring(
         paper_id=paper_id,
         title=str(paper.get("title") or paper_id),
@@ -133,20 +140,21 @@ def keyword_score_paper(paper: Mapping[str, Any]) -> PaperScoring:
         alpha_category=category,  # type: ignore[arg-type]
         expected_horizon=horizon,  # type: ignore[arg-type]
         required_data=required_data,
-        evidence_quality=hit_score if known else 1,
+        evidence_quality=hit_score if has_abstract and known else min(hit_score, 2),
         crypto_relevance=5 if ("crypto" in _text(paper) or "perpetual" in _text(paper)) else (3 if known else 1),
-        data_availability=4 if known else 1,
-        implementation_fit=4 if known else 1,
-        cost_awareness=3 if category in {"carry", "microstructure", "execution"} else (2 if known else 0),
-        novelty=3 if known else 1,
-        leakage_risk=1 if known else 2,
-        overfit_risk=1 if known else 2,
+        data_availability=data_fit,
+        implementation_fit=implementation_fit,
+        cost_awareness=3 if has_abstract and category in {"carry", "microstructure", "execution"} else (1 if known else 0),
+        novelty=3 if has_abstract and known else 1,
+        leakage_risk=1 if has_abstract and known else 2,
+        overfit_risk=1 if has_abstract and known else 2,
         known_failure_modes=(
             "mechanical keyword score requires Claude Stage-1 review",
             "not promotion evidence",
         ),
         notes=(
             "scoring_method=mechanical_keyword_placeholder; "
+            f"metadata_only={str(not has_abstract).lower()}; "
             f"matched_keywords={','.join(hits) if hits else 'none'}"
         ),
     )
@@ -160,29 +168,64 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def _review_bundle(papers: Sequence[Mapping[str, Any]], scores: Mapping[str, PaperScoring], top_n: int) -> list[dict[str, Any]]:
+    ranked = sorted(
+        (paper for paper in papers if _abstract(paper)),
+        key=lambda paper: (-scores[str(paper.get("paper_id"))].priority_score(), str(paper.get("paper_id") or "")),
+    )
+    return [
+        {
+            "paper_id": str(paper.get("paper_id") or ""),
+            "title": str(paper.get("title") or paper.get("paper_id") or ""),
+            "abstract": _abstract(paper),
+            "venue": paper.get("venue"),
+            "year": _year(paper.get("year")),
+            "url": paper.get("url"),
+        }
+        for paper in ranked[:top_n]
+    ]
+
+
 def score_literature(
     *,
     sources: Sequence[str] = DEFAULT_SOURCES,
     date_window: tuple[str, str] = DEFAULT_DATE_WINDOW,
     papers_out: str | Path,
     scores_out: str | Path,
+    review_bundle_out: str | Path | None = None,
+    top_n: int = 15,
     opener: Any | None = None,
 ) -> dict[str, Any]:
     papers = list(fetch_papers(tuple(sources), date_window, opener=opener))
+    for paper in papers:
+        build_scoring_prompt(paper, taxonomy_metadata={}, ledger_metadata={})
+
+    score_models: dict[str, PaperScoring] = {}
     scores: dict[str, dict[str, Any]] = {}
     for paper in papers:
         score = keyword_score_paper(paper)
         if score.paper_id in scores:
             raise ValueError(f"duplicate paper_id: {score.paper_id}")
+        score_models[score.paper_id] = score
         scores[score.paper_id] = score.model_dump(mode="json")
 
     papers_path = Path(papers_out)
     scores_path = Path(scores_out)
+    review_path = Path(review_bundle_out) if review_bundle_out is not None else scores_path.with_name("review_bundle.json")
     papers_path.parent.mkdir(parents=True, exist_ok=True)
     scores_path.parent.mkdir(parents=True, exist_ok=True)
+    review_path.parent.mkdir(parents=True, exist_ok=True)
     papers_path.write_text(json.dumps(_jsonable(papers), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     scores_path.write_text(json.dumps(scores, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return {"paper_count": len(papers), "paper_ids": [str(paper.get("paper_id") or "") for paper in papers]}
+    review_path.write_text(
+        json.dumps(_review_bundle(papers, score_models, top_n), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "paper_count": len(papers),
+        "paper_ids": [str(paper.get("paper_id") or "") for paper in papers],
+        "review_bundle": str(review_path),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -192,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--date-window-end", default=DEFAULT_DATE_WINDOW[1])
     parser.add_argument("--papers-out", required=True, type=Path)
     parser.add_argument("--scores-out", required=True, type=Path)
+    parser.add_argument("--review-bundle-out", type=Path)
+    parser.add_argument("--top-n", type=int, default=15)
     args = parser.parse_args(argv)
 
     payload = score_literature(
@@ -199,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         date_window=(args.date_window_start, args.date_window_end),
         papers_out=args.papers_out,
         scores_out=args.scores_out,
+        review_bundle_out=args.review_bundle_out,
+        top_n=args.top_n,
     )
     print(f"wrote {payload['paper_count']} papers to {args.papers_out} and scores to {args.scores_out}")
     return 0

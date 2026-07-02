@@ -14,7 +14,7 @@ for path in (ROOT, LAB_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from backtesting.pipeline_idea_generator import DEFAULT_CAP, register_batch
+from backtesting.pipeline_idea_generator import DEFAULT_CAP, family_verdicts, register_batch
 from crypto_alpha_lab.adapters import to_parent_stage1_draft
 from crypto_alpha_lab.pipeline import (
     build_scoring_prompt,
@@ -24,6 +24,7 @@ from crypto_alpha_lab.pipeline import (
     write_weekly_screen,
 )
 from crypto_alpha_lab.schemas import PaperScoring
+from scripts.run_pipeline_funnel_report import idea_batch_funnel_metrics, write_funnel_metrics
 
 DEFAULT_SOURCES = (
     "arxiv:q-fin.TR",
@@ -33,6 +34,31 @@ DEFAULT_SOURCES = (
 )
 DEFAULT_DATE_WINDOW = ("2018", "2026")
 DEFAULT_THRESHOLD = 3.8
+DEFAULT_HYPOTHESIS_LEDGER = "docs/HYPOTHESIS_LEDGER.md"
+
+
+def _source_log_rows(
+    sources: Sequence[str],
+    *,
+    status: str,
+    count: int,
+    cache: str,
+    retries: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for source in sources:
+        scheme, _, query = source.partition(":")
+        rows.append(
+            {
+                "source": scheme,
+                "query": query,
+                "status": status,
+                "count": count,
+                "cache": cache,
+                "retries": retries,
+            }
+        )
+    return rows
 
 
 def default_batch_id(now: datetime | None = None) -> str:
@@ -97,32 +123,98 @@ def _score_with_firewall(
     return score_papers(papers, scorer=score_one)
 
 
-def _drafts_from_scores(scored: Sequence[PaperScoring], *, threshold: float, cap: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+def _note_value(score: PaperScoring, key: str) -> str:
+    for part in score.notes.split(";"):
+        found, _, value = part.strip().partition("=")
+        if found == key:
+            return value.strip()
+    return ""
+
+
+def _scoring_method(score: PaperScoring) -> str:
+    return _note_value(score, "scoring_method")
+
+
+def _twist_evidence(score: PaperScoring) -> str:
+    if not _scoring_method(score).startswith("llm_session_"):
+        return ""
+    return _note_value(score, "twist_evidence")
+
+
+def _refuted_or_shelved(verdict: str) -> bool:
+    return "refuted" in verdict or "shelved" in verdict
+
+
+def _has_abstract(paper: Mapping[str, Any] | None, score: PaperScoring) -> bool:
+    if "metadata_only=true" in score.notes:
+        return False
+    if paper is None:
+        return True
+    return bool(str(paper.get("abstract") or paper.get("summary") or "").strip())
+
+
+def _drafts_from_scores(
+    scored: Sequence[PaperScoring],
+    *,
+    threshold: float,
+    cap: int,
+    papers: Sequence[Mapping[str, Any]] | None = None,
+    family_statuses: Mapping[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    paper_by_id = {str(paper.get("paper_id") or ""): paper for paper in (papers or [])}
+    selectable: list[PaperScoring] = []
+    skipped: list[dict[str, Any]] = []
+    for score in scored:
+        if not _has_abstract(paper_by_id.get(score.paper_id), score):
+            skipped.append({"paper_id": score.paper_id, "reason": "metadata_only"})
+            continue
+        method = _scoring_method(score)
+        if not method.startswith("llm_session_"):
+            reason = "placeholder_score" if method == "mechanical_keyword_placeholder" else "missing_session_score"
+            skipped.append({"paper_id": score.paper_id, "reason": reason})
+            continue
+        if score.priority_score() < threshold:
+            skipped.append({"paper_id": score.paper_id, "reason": "below_threshold"})
+            continue
+        selectable.append(score)
+
     eligible = sorted(
-        (score for score in scored if score.priority_score() >= threshold),
+        selectable,
         key=lambda score: (-score.priority_score(), score.paper_id),
     )
-    below = [
-        {
-            "paper_id": score.paper_id,
-            "reason": "below_threshold",
-        }
-        for score in scored
-        if score.priority_score() < threshold
-    ]
     promoted = promote(eligible, threshold=threshold)
-    selected = promoted[:cap]
-    overflow = promoted[cap:]
-
     scores_by_paper = {score.paper_id: score for score in eligible}
-    drafts: list[dict[str, Any]] = []
-    for rank, candidate in enumerate(selected, start=1):
+    allowed: list[tuple[Any, dict[str, Any]]] = []
+    statuses = family_statuses or {}
+    for candidate in promoted:
         score = scores_by_paper[candidate.paper_ids[0]]
         draft = to_parent_stage1_draft(candidate, alpha_category=score.alpha_category)
+        family_id = str(draft.get("family_id_or_NEW") or "")
+        twist = _twist_evidence(score)
+        if _refuted_or_shelved(statuses.get(family_id, "")) and not twist:
+            skipped.append(
+                {
+                    "paper_id": candidate.paper_ids[0],
+                    "family_id": family_id,
+                    "reason": "refuted_family_no_twist",
+                }
+            )
+            continue
+        if twist:
+            draft["twist_evidence"] = twist
+        allowed.append((candidate, draft))
+
+    selected = allowed[:cap]
+    overflow = allowed[cap:]
+
+    drafts: list[dict[str, Any]] = []
+    for rank, (candidate, draft) in enumerate(selected, start=1):
+        score = scores_by_paper[candidate.paper_ids[0]]
         draft["draft_status"] = "pending_llm"
         draft["allow_live_trading"] = False
         draft["priority_score"] = score.priority_score()
         draft["prior_rank"] = rank
+        draft["scoring_method"] = {"prefilter": "mechanical", "final": _scoring_method(score)}
         drafts.append(draft)
 
     capped = [
@@ -130,9 +222,9 @@ def _drafts_from_scores(scored: Sequence[PaperScoring], *, threshold: float, cap
             "paper_id": candidate.paper_ids[0],
             "reason": "cap_overflow",
         }
-        for candidate in overflow
+        for candidate, _draft in overflow
     ]
-    return drafts, [*below, *capped], len(promoted)
+    return drafts, [*skipped, *capped], len(promoted)
 
 
 def generate_literature_batch(
@@ -149,13 +241,26 @@ def generate_literature_batch(
     opener: Callable[..., Any] | None = None,
     papers: Sequence[Mapping[str, Any]] | None = None,
     weekly_date: str | None = None,
+    hypothesis_ledger_path: str | Path = DEFAULT_HYPOTHESIS_LEDGER,
 ) -> dict[str, Any]:
     batch = batch_id or default_batch_id()
     batch_dir = Path(output_root) / batch
     if batch_dir.exists():
         raise FileExistsError(f"refusing to overwrite existing batch: {batch_dir}")
 
-    raw_papers = list(papers) if papers is not None else fetch_papers(sources, date_window, opener=opener)
+    search_log: list[dict[str, Any]] = []
+    if papers is not None:
+        raw_papers = list(papers)
+        search_log = _source_log_rows(sources, status="fixture", count=len(raw_papers), cache="n/a", retries=0)
+    else:
+        try:
+            raw_papers = list(fetch_papers(sources, date_window, opener=opener, log_out=search_log))
+        except TypeError as exc:
+            if "log_out" not in str(exc):
+                raise
+            raw_papers = list(fetch_papers(sources, date_window, opener=opener))
+        if not search_log:
+            search_log = _source_log_rows(sources, status="ok", count=len(raw_papers), cache="n/a", retries=0)
     scored = _score_with_firewall(
         raw_papers,
         sources=sources,
@@ -164,7 +269,13 @@ def generate_literature_batch(
         scores=scores,
         scorer=scorer,
     )
-    drafts, skipped, n_eligible_before_cap = _drafts_from_scores(scored, threshold=threshold, cap=cap)
+    drafts, skipped, n_eligible_before_cap = _drafts_from_scores(
+        scored,
+        threshold=threshold,
+        cap=cap,
+        papers=raw_papers,
+        family_statuses=family_verdicts(Path(hypothesis_ledger_path).read_text(encoding="utf-8")),
+    )
     payload = register_batch(
         [],
         batch,
@@ -174,7 +285,22 @@ def generate_literature_batch(
         skipped=skipped,
         n_eligible_before_cap=n_eligible_before_cap,
     )
-    write_weekly_screen(batch_dir / "weekly_screen", weekly_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"), scored)
+    write_weekly_screen(
+        batch_dir / "weekly_screen",
+        weekly_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        scored,
+        search_log=search_log,
+    )
+    write_funnel_metrics(
+        batch_dir,
+        idea_batch_funnel_metrics(
+            payload,
+            fetched=len(raw_papers),
+            scored=len(scored),
+            above_threshold=n_eligible_before_cap,
+            driver="literature",
+        ),
+    )
     return payload
 
 
@@ -186,6 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scores")
     parser.add_argument("--papers")
     parser.add_argument("--ledger", default="docs/EXPERIMENT_REGISTRY.md")
+    parser.add_argument("--hypothesis-ledger", default=DEFAULT_HYPOTHESIS_LEDGER)
     parser.add_argument("--batch-id")
     parser.add_argument("--output-root", default="results")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
@@ -204,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         scores=_read_json(args.scores) if args.scores else None,
         papers=_read_json(args.papers) if args.papers else None,
         weekly_date=args.weekly_date,
+        hypothesis_ledger_path=args.hypothesis_ledger,
     )
     print(f"wrote {args.output_root}/{payload['batch_id']}/idea_batch.json")
     return 0

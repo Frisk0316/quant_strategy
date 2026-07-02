@@ -3,9 +3,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
 from backtesting.pipeline_idea_generator import (
     enumerate_gaps,
+    load_feedback_tags,
     rank_and_cap,
     register_batch,
 )
@@ -213,6 +216,47 @@ def test_rank_and_cap_is_deterministic_and_marks_overflow():
     assert all(row["reason"] == "cap_overflow" for row in skipped)
 
 
+def test_feedback_tags_only_change_rank_and_mark_feedback_spawned():
+    plain = enumerate_gaps(_taxonomy(), _registry())
+    tagged = enumerate_gaps(
+        _taxonomy(),
+        _registry(),
+        feedback_tags={
+            "F-FUNDING-XS-DISPERSION": {
+                "verdict": "proposed",
+                "reasons": ["breadth_fail"],
+                "guidance": "avoid",
+            }
+        },
+    )
+
+    plain_selected, plain_skipped = rank_and_cap(plain["eligible"])
+    tagged_selected, tagged_skipped = rank_and_cap(tagged["eligible"])
+
+    assert {row["family_id"] for row in plain_selected} == {row["family_id"] for row in tagged_selected}
+    assert [row["family_id"] for row in plain_selected] != [row["family_id"] for row in tagged_selected]
+    assert {row["family_id"]: row["reason"] for row in plain["skipped"]} == {
+        row["family_id"]: row["reason"] for row in tagged["skipped"]
+    }
+    feedback_row = next(row for row in tagged_selected if row["family_id"] == "F-FUNDING-XS-DISPERSION")
+    assert feedback_row["feedback_spawned"] is True
+    assert feedback_row["feedback_rank_penalty"] == 20
+    assert feedback_row["feedback_reasons"] == ["breadth_fail"]
+    assert all(row["reason"] == "cap_overflow" for row in plain_skipped + tagged_skipped)
+
+
+def test_feedback_tags_loader_missing_file_is_no_bias(tmp_path):
+    assert load_feedback_tags(tmp_path / "missing.yaml") == {}
+
+
+def test_feedback_tags_loader_rejects_bad_schema(tmp_path):
+    path = tmp_path / "bad_tags.yaml"
+    path.write_text("families:\n  F-BAD: {verdict: proposed, reasons: [x], guidance: boost}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid guidance"):
+        load_feedback_tags(path)
+
+
 def test_register_batch_writes_sidecar_and_ledger_draft_after_family_minting(tmp_path):
     registry_path = tmp_path / "EXPERIMENT_REGISTRY.md"
     registry_path.write_text(_registry(), encoding="utf-8")
@@ -296,7 +340,10 @@ def test_idea_generator_cli_writes_batch(tmp_path):
 
     assert exit_code == 0
     payload = json.loads((tmp_path / "cli_batch" / "idea_batch.json").read_text(encoding="utf-8"))
+    metrics = json.loads((tmp_path / "cli_batch" / "funnel_metrics.json").read_text(encoding="utf-8"))
     assert payload["n_eligible_before_cap"] == 2
+    assert metrics["selected"] == payload["n_selected"]
+    assert metrics["skipped"] == {row["reason"]: 1 for row in payload["skipped"]}
 
 
 def test_idea_generator_cli_uses_hypothesis_ledger_for_taxonomy_batch(tmp_path):

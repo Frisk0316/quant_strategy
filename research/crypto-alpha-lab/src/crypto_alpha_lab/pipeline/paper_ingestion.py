@@ -3,8 +3,16 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from hashlib import sha256
+from html import unescape
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 from xml.etree import ElementTree
@@ -15,11 +23,19 @@ ARXIV_API = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper/search"
 CROSSREF_API = "https://api.crossref.org/works"
 FORBIDDEN_FIREWALL_KEYS = ("oos_price", "price_series", "fold_boundary")
+LITERATURE_CACHE_DIR = Path("data/literature_cache")
 
 # Keyless, free sources only. SSRN / RePEc / NBER have no clean keyless API, but
 # their DOI'd works are reachable through Crossref and Semantic Scholar, so those
 # two aggregators cover the long tail without bespoke scrapers or paywall access.
 # ponytail: add a new scheme = one _fetch_* helper + one row in _FETCHERS.
+
+
+class _FetchFailure(RuntimeError):
+    def __init__(self, cause: BaseException, event: Mapping[str, Any]) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.event = dict(event)
 
 
 def _arxiv_id(url: str) -> str:
@@ -30,6 +46,86 @@ def _arxiv_id(url: str) -> str:
 
 def _slug_id(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "unknown"
+
+
+def _compact_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _clean_jats(value: Any) -> str:
+    return _compact_text(unescape(re.sub(r"<[^>]+>", " ", str(value or ""))))
+
+
+def _cache_path(url: str, cache_dir: Path) -> Path:
+    return cache_dir / f"{sha256(url.encode('utf-8')).hexdigest()}.bin"
+
+
+def _retry_after_seconds(headers: Any, default: float) -> float:
+    value = headers.get("Retry-After") if headers else None
+    if value is None:
+        return default
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            target = parsedate_to_datetime(str(value))
+            if target.tzinfo is None:
+                target = target.replace(tzinfo=timezone.utc)
+            return max(0.0, (target - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError):
+            return default
+
+
+def _fetch_bytes(
+    fetch: Callable[..., Any],
+    url: str,
+    *,
+    timeout: int,
+    cache_dir: Path | None,
+    sleeper: Callable[[float], Any],
+) -> tuple[bytes, dict[str, Any]]:
+    if cache_dir is not None:
+        path = _cache_path(url, cache_dir)
+        if path.exists():
+            return path.read_bytes(), {"cache": "hit", "retries": 0}
+    else:
+        path = None
+
+    retries = 0
+    cache_label = "miss" if path is not None else "disabled"
+    for attempt in range(3):
+        try:
+            response = fetch(url, timeout=timeout)
+            status = getattr(response, "status", None)
+            if status is None and hasattr(response, "getcode"):
+                status = response.getcode()
+            if int(status or 200) == 429:
+                raise HTTPError(url, 429, "Too Many Requests", getattr(response, "headers", None), None)
+            data = response.read()
+            if path is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            return data, {"cache": cache_label, "retries": retries}
+        except HTTPError as exc:
+            if exc.code != 429 or attempt == 2:
+                raise _FetchFailure(exc, {"cache": cache_label, "retries": retries}) from exc
+            retries += 1
+            sleeper(_retry_after_seconds(exc.headers, float(attempt + 1)))
+        except (TimeoutError, socket.timeout, URLError) as exc:
+            if attempt == 2:
+                raise _FetchFailure(exc, {"cache": cache_label, "retries": retries}) from exc
+            retries += 1
+            sleeper(float(attempt + 1))
+    raise RuntimeError("unreachable fetch retry state")
+
+
+def _cache_summary(events: Sequence[Mapping[str, Any]]) -> str:
+    values = {str(event.get("cache") or "n/a") for event in events}
+    if not values:
+        return "n/a"
+    if len(values) == 1:
+        return values.pop()
+    return "mixed"
 
 
 def _window_years(date_window: tuple[str, str]) -> tuple[int, int]:
@@ -46,44 +142,48 @@ def _fetch_arxiv(fetch: Callable[..., Any], category: str, source: str) -> list[
     papers: list[dict[str, Any]] = []
     for entry in root.findall("atom:entry", ns):
         paper_url = (entry.findtext("atom:id", default="", namespaces=ns) or "").strip()
-        title = " ".join((entry.findtext("atom:title", default="", namespaces=ns) or "").split())
+        title = _compact_text(entry.findtext("atom:title", default="", namespaces=ns))
+        abstract = _compact_text(entry.findtext("atom:summary", default="", namespaces=ns))
         published = entry.findtext("atom:published", default="", namespaces=ns) or ""
         authors = tuple(
             (author.findtext("atom:name", default="", namespaces=ns) or "").strip()
             for author in entry.findall("atom:author", ns)
         )
-        papers.append(
-            {
-                "paper_id": _arxiv_id(paper_url),
-                "title": title,
-                "authors": authors,
-                "year": int(published[:4]) if published[:4].isdigit() else 0,
-                "source_type": "preprint",
-                "url": paper_url,
-                "source": source,
-            }
-        )
+        row = {
+            "paper_id": _arxiv_id(paper_url),
+            "title": title,
+            "authors": authors,
+            "year": int(published[:4]) if published[:4].isdigit() else 0,
+            "source_type": "preprint",
+            "url": paper_url,
+            "source": source,
+        }
+        if abstract:
+            row["abstract"] = abstract
+        papers.append(row)
     return papers
 
 
 def _fetch_semantic_scholar(fetch: Callable[..., Any], query: str, source: str) -> list[dict[str, Any]]:
-    params = {"query": query, "limit": 50, "fields": "title,authors,year,externalIds,url"}
+    params = {"query": query, "limit": 50, "fields": "title,abstract,authors,year,externalIds,url"}
     data = json.loads(fetch(f"{SEMANTIC_SCHOLAR_API}?{urlencode(params)}", timeout=10).read())
     papers: list[dict[str, Any]] = []
     for item in data.get("data") or []:
         ext = item.get("externalIds") or {}
         ident = ext.get("DOI") or ext.get("ArXiv") or item.get("paperId") or item.get("title", "")
-        papers.append(
-            {
-                "paper_id": f"s2-{_slug_id(str(ident))}",
-                "title": " ".join((item.get("title") or "").split()),
-                "authors": tuple((a.get("name") or "").strip() for a in item.get("authors") or []),
-                "year": int(item.get("year") or 0),
-                "source_type": "journal_article" if ext.get("DOI") else "preprint",
-                "url": item.get("url") or "",
-                "source": source,
-            }
-        )
+        row = {
+            "paper_id": f"s2-{_slug_id(str(ident))}",
+            "title": _compact_text(item.get("title")),
+            "authors": tuple((a.get("name") or "").strip() for a in item.get("authors") or []),
+            "year": int(item.get("year") or 0),
+            "source_type": "journal_article" if ext.get("DOI") else "preprint",
+            "url": item.get("url") or "",
+            "source": source,
+        }
+        abstract = _compact_text(item.get("abstract"))
+        if abstract:
+            row["abstract"] = abstract
+        papers.append(row)
     return papers
 
 
@@ -97,17 +197,19 @@ def _fetch_crossref(fetch: Callable[..., Any], query: str, source: str) -> list[
         authors = tuple(
             f"{a.get('given', '')} {a.get('family', '')}".strip() for a in item.get("author") or []
         )
-        papers.append(
-            {
-                "paper_id": f"doi-{_slug_id(item.get('DOI') or '')}",
-                "title": " ".join((titles[0] or "").split()),
-                "authors": authors,
-                "year": int(year or 0),
-                "source_type": "journal_article",
-                "url": item.get("URL") or "",
-                "source": source,
-            }
-        )
+        row = {
+            "paper_id": f"doi-{_slug_id(item.get('DOI') or '')}",
+            "title": _compact_text(titles[0]),
+            "authors": authors,
+            "year": int(year or 0),
+            "source_type": "journal_article",
+            "url": item.get("URL") or "",
+            "source": source,
+        }
+        abstract = _clean_jats(item.get("abstract"))
+        if abstract:
+            row["abstract"] = abstract
+        papers.append(row)
     return papers
 
 
@@ -123,6 +225,9 @@ def fetch_papers(
     date_window: tuple[str, str],
     *,
     opener: Callable[..., Any] | None = None,
+    cache_dir: str | Path | None = None,
+    sleeper: Callable[[float], Any] | None = None,
+    log_out: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch keyless public paper metadata from arXiv, Semantic Scholar, or Crossref.
 
@@ -132,6 +237,7 @@ def fetch_papers(
     """
 
     fetch = opener or urlopen
+    cache_base = Path(cache_dir) if cache_dir is not None else (LITERATURE_CACHE_DIR if opener is None else None)
     start_year, end_year = _window_years(date_window)
     papers: list[dict[str, Any]] = []
     for source in sources:
@@ -139,11 +245,59 @@ def fetch_papers(
         handler = _FETCHERS.get(scheme)
         if handler is None or not arg:
             raise ValueError(f"unsupported source: {source}")
-        for paper in handler(fetch, arg, source):
+        events: list[dict[str, Any]] = []
+
+        def cached_fetch(url: str, timeout: int = 10) -> BytesIO:
+            data, event = _fetch_bytes(
+                fetch,
+                url,
+                timeout=timeout,
+                cache_dir=cache_base,
+                sleeper=sleeper or time.sleep,
+            )
+            events.append(event)
+            return BytesIO(data)
+
+        try:
+            rows = handler(cached_fetch, arg, source)
+        except Exception as exc:
+            if log_out is None:
+                raise (exc.cause if isinstance(exc, _FetchFailure) else exc)
+            if isinstance(exc, _FetchFailure):
+                events.append(exc.event)
+                status = f"error:{type(exc.cause).__name__}"
+            else:
+                status = f"error:{type(exc).__name__}"
+            log_out.append(
+                {
+                    "source": scheme,
+                    "query": arg,
+                    "status": status,
+                    "count": 0,
+                    "cache": _cache_summary(events),
+                    "retries": sum(int(event.get("retries") or 0) for event in events),
+                }
+            )
+            continue
+
+        kept = 0
+        for paper in rows:
             year = paper.get("year") or 0
             if year and not (start_year <= year <= end_year):
                 continue
             papers.append(paper)
+            kept += 1
+        if log_out is not None:
+            log_out.append(
+                {
+                    "source": scheme,
+                    "query": arg,
+                    "status": "ok",
+                    "count": kept,
+                    "cache": _cache_summary(events),
+                    "retries": sum(int(event.get("retries") or 0) for event in events),
+                }
+            )
     return papers
 
 
@@ -241,11 +395,36 @@ def promote(scored: Sequence[PaperScoring], *, threshold: float = 3.8) -> list[A
     return promoted
 
 
-def write_weekly_screen(papers_dir: str | Path, date: str, scored: Sequence[PaperScoring]) -> None:
+def write_weekly_screen(
+    papers_dir: str | Path,
+    date: str,
+    scored: Sequence[PaperScoring],
+    *,
+    search_log: Sequence[Mapping[str, Any]] | None = None,
+) -> None:
     out = Path(papers_dir)
     out.mkdir(parents=True, exist_ok=True)
+    log_lines = [
+        f"# Search Log {date}",
+        "",
+        f"Scored papers: {len(scored)}",
+        "",
+        "| source | query | status | count | cache | retries |",
+        "|---|---|---|---:|---|---:|",
+    ]
+    for row in search_log or []:
+        log_lines.append(
+            "| {source} | {query} | {status} | {count} | {cache} | {retries} |".format(
+                source=row.get("source", ""),
+                query=row.get("query", ""),
+                status=row.get("status", ""),
+                count=row.get("count", 0),
+                cache=row.get("cache", ""),
+                retries=row.get("retries", 0),
+            )
+        )
     (out / f"search_log_{date}.md").write_text(
-        f"# Search Log {date}\n\nScored papers: {len(scored)}\n",
+        "\n".join(log_lines) + "\n",
         encoding="utf-8",
     )
     (out / f"screen_{date}.json").write_text(

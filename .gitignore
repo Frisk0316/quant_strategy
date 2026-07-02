@@ -10,6 +10,7 @@ venv/
 data/ticks/
 data/universe/
 data/parquet/
+data/literature_cache/
 *.db
 *.sqlite
 .DS_Store
