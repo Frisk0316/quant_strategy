@@ -13,6 +13,44 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-03 - Project Maintenance Audit And M1 CI Alignment
+
+- Claude completed a whole-project maintenance audit outside the in-flight
+  pipeline P1-P8 scope and wrote
+  `tasks/2026-07-03-project-maintenance-tasks.md`.
+- Verified gaps: CI/local verify drift, bloated/stale governance docs,
+  entrypoint-only `backtest-smoke`, monitoring modules without dedicated tests,
+  and orphan `src/okx_quant/stocks/` ownership.
+- Codex M1 aligned CI with local lint/test intent: ruff now checks
+  `src tests backtesting scripts`; CI installs and tests `crypto-alpha-lab`
+  separately; CI runs the root-level synthetic Daily Winner/OHLCV Rotation tests;
+  `frontend-check` includes `tweaks-panel.js` and `view-manual.js`.
+- Local evidence: ruff passed; unit tests passed (555); root synthetic tests
+  passed (32); lab tests passed (18); each frontend `node --check` command passed.
+
+## 2026-07-03 - Pipeline Auto-Ideation Review And Improvement Plan
+
+- Claude reviewed the auto-ideation pipeline and concluded the defensive side is
+  sufficient: n_trials/K accounting, DSR/PSR gates, checkpoint1 review, and
+  append-only state worked across three auto batches plus seven human-seeded
+  families, with zero gate-passing candidates.
+- Binding constraints are inlet-side: title-only literature scoring, data-blocked
+  taxonomy frontier, and unimplemented cross-round feedback.
+- User decisions: session-based LLM scoring (no API), public Binance Vision OI
+  history (no paid provider), and a power-analysis note with no gate change.
+- Deliverables committed before M2: `tasks/2026-07-03-pipeline-improvement-tasks.md`
+  and `docs/superpowers/specs/2026-07-03-statistical-power-gates.md`.
+
+## 2026-07-02 - Literature Scorer Review
+
+- Claude reviewed Codex Task B commit `a688de1`, reran the relevant pipeline and
+  lab suites, and confirmed the fetch-once/snapshot-once literature scorer path.
+- The real Crossref-only batch selected one A-literature draft just above
+  threshold; Claude flagged it for Stage-1 scrutiny because it mechanically maps
+  to refuted family `F-FUNDING-CARRY`.
+- arXiv timed out and Semantic Scholar returned HTTP 429 during the real run; the
+  batch honestly reflects only the Crossref query.
+
 ## 2026-06-23 - Engine Consistency Smoke And Binance 1H DB Parity Follow-Up
 
 - Added `scripts/run_engine_consistency_smoke.py`, `make engine-consistency-smoke`,

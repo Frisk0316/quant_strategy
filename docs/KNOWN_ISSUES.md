@@ -14,14 +14,6 @@ Durable backlog for bugs, gaps, and open operational risks. `docs/AI_HANDOFF.md`
 may still reference active issues, but long-lived backlog items should move here
 over time.
 
-## Governance / Documentation
-
-- `docs/AI_HANDOFF.md` still contains substantial historical session detail. Known
-  gap: migrate completed history to `docs/CHANGELOG_AI.md` in a dedicated cleanup
-  task.
-- Markdown lifecycle metadata currently passes `check_doc_metadata.py` with no
-  warnings; keep new durable docs on the metadata template.
-
 ## Harness
 
 - `make api-smoke` is a real smoke only when `API_BASE_URL` points at a running
@@ -66,13 +58,10 @@ over time.
   returns, or combined returns when path assembly is unavailable, so
   `scripts/recheck_dsr.py` can recompute DSR from saved artifacts; historical
   artifacts were not backfilled and remain summary-only.
-- ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
-  adding venue-aware specs, provenance exchange tags, and frontend/API exchange
-  selection; Known Issue 20's root cause is closed. Remaining environment gap:
-  a fresh DB-backed artifact PASS still needs a reachable seeded DSN. On
+- A fresh DB-backed artifact PASS still needs a reachable seeded DSN. On
   2026-06-18, `DATABASE_URL` was unset, the configured `.env` DSN on port 5432
   refused connections, local PostgreSQL on port 5433 rejected the repo `quant`
-  credentials, and Docker Desktop could not be started from this session.
+  credentials, and Docker Desktop could not be started from that session.
 - Source-scoped canonical reads are now a validation boundary: DB parity for
   exchange `<x>` must query `canonical_candles.source_primary = <x>` and emit
   `checks.db_parity.canonical_source_primary == <x>`. If a Binance validation
@@ -93,43 +82,14 @@ over time.
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact still
   records the pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as
   PASS.
-- Pipeline batch 1's `ETH-USDT-SWAP` data blocker was resolved on 2026-06-25:
-  Binance `ETH-USDT-SWAP` canonical 1m OHLCV now covers 2024-01-01 through
-  2026-06-16 23:59 UTC with 1,293,120 rows and 0 gaps, and Binance funding has
-  2,694 rows. The remaining gap is validation quality, not data availability:
-  S6 did not re-earn the statistical gate on the fold-refit harness, so portable
-  validation adapters and authoritative ct_val evidence must not start for S6.
-  S7 is shelved after a non-degenerate half-life rerun. S5 has a separate
-  point-in-time universe/canonical coverage mismatch: the current membership
-  artifact plus strict venue-scoped complete-window candle coverage produces
-  `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
-  artifact rather than a strategy verdict.
-
-- **Family-minting checker K vs n_trials (resolved 2026-06-30):** the initial
-  `backtesting/pipeline_family_minting.py` set `inherited_K = inherited_n_trials`
-  because no retry-count source existed. The checker now reads the
-  `docs/EXPERIMENT_REGISTRY.md` *Family K-budget* table and reports real
-  `k_used`, `k_limit`, and `at_k_limit`; `n_trials` and K are no longer
-  conflated. Remaining operational caveat: the K-budget table is human-maintained
-  checkpoint①#9 state, so stale table values still need human review.
-
-- **XS family-cumulative n_trials inheritance (resolved 2026-06-30):** the
-  shared `family_registry_from_text()` parser previously took the largest raw
-  `Trials` cell, so F-XS-MOMENTUM inherited 8 from E-003/E-004/E-005 even though
-  the ledger/registry notes state the family has 24 trials before future retry.
-  The parser now honors explicit family-cumulative row text/overrides (including
-  the XS "at least 24 trials" note and newer `family-cumulative n_trials=...`
-  rows), so checkpoint① and family-minting inherit XS as 24 while C2 remains 48.
-  Remaining operational caveat: future registry rows should continue to state
-  the family-cumulative value clearly; otherwise the parser falls back to the
-  historical max-row interpretation.
-
-- **B-half data availability probe stub (resolved 2026-06-30):** the initial
-  idea-generator B-half accepted `data_availability_probe` but discarded it and
-  filtered only by taxonomy text. `enumerate_gaps()` now consumes supplied
-  Stage-2 `pipeline_feasibility.py` data-availability results and uses taxonomy
-  text only when the probe has no answer. This remains an advisory pre-backtest
-  filter; Stage 2 is still the authoritative fail-closed gate before Stage 3.
+- Pipeline batch 1's remaining gap is validation quality, not ETH data
+  availability: S6 did not re-earn the statistical gate on the fold-refit
+  harness, so portable validation adapters and authoritative ct_val evidence
+  must not start for S6. S7 is shelved after a non-degenerate half-life rerun.
+  S5 has a separate point-in-time universe/canonical coverage mismatch: the
+  current membership artifact plus strict venue-scoped complete-window candle
+  coverage produces `nonzero_grid_activity:false`, so the S5 refit summary is a
+  data-universe artifact rather than a strategy verdict.
 
 ## Operations
 
