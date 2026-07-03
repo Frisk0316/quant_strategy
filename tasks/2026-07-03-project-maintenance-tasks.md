@@ -244,6 +244,52 @@ ACCEPTANCE CRITERIA:
 
 ---
 
+## M2-R1 — 補齊 M2 遺漏的逐字歷史遷移(2026-07-03 Claude 審核後新增)
+
+Task: M2(commit `0191c1d`)完成了瘦身但**沒有**完成遷移:AI_HANDOFF 刪除的
+2026-06-24 → 2026-07-01 session 歷史(DSR 修復、XS 洩漏事件、批次一關閉、
+C2 realism 再定價、pipeline 全自動 roadmap 各條)未逐字進入
+`docs/CHANGELOG_AI.md`(該檔條目從 06-23 直接跳到 07-02),抽查數值
+(C2 DSR 0.0041、WF -1.5093)在 CHANGELOG 找不到。歷史目前只存在 git
+(`git show 0191c1d^:docs/AI_HANDOFF.md`),違反 M2 驗收條件 2。
+Strategy/spec source: 本檔 M2;`docs/COMPRESSION_RULES.md`(規則/決策/數值無損)。
+Required behavior:
+
+1. 以 `git show 0191c1d^:docs/AI_HANDOFF.md` 為來源,把被刪除的各 dated session
+   條目**逐字**(允許僅加日期標題與最小格式調整)搬入 `docs/CHANGELOG_AI.md`,
+   按日期倒序插入既有條目之間;同時刪除或改寫檔尾 "Pending Migration" 段落
+   (本任務即該 dedicated cleanup task)。
+2. 恢復 M2 從 `docs/KNOWN_ISSUES.md` 刪掉但仍有效的兩條操作性警語(可併入
+   既有條目):(a) EXPERIMENT_REGISTRY 的 Family K-budget 表是人工維護的
+   checkpoint①#9 狀態,過期值仍需人工覆核(I27 只記了不可混淆,沒記人工維護
+   staleness);(b) registry 新列應明寫 family-cumulative n_trials,否則
+   `family_registry_from_text()` 回退為歷史 max-row 解讀。
+3. 順手修正已過期的 handoff 陳述:AI_HANDOFF/CURRENT_STATE 中「P1–P8 為
+   working tree 髒檔、勿掃入」的警告已被 `dfc7af8`(P1–P8 已單獨提交)取代。
+
+PERMITTED FILES (only edit these):
+- docs/CHANGELOG_AI.md、docs/KNOWN_ISSUES.md、docs/AI_HANDOFF.md、
+  docs/CURRENT_STATE.md
+
+FORBIDDEN (do not touch):
+- 共通禁區;不得改動任何規則/決策/數值語意 — 只搬移與除舊
+
+REQUIRED ON COMPLETION:
+- Run: `python scripts/docs/check_doc_metadata.py` 與
+  `python scripts/docs/check_feature_map_links.py`
+- Commit with AI-Origin: Codex trailer when committing is requested
+
+ACCEPTANCE CRITERIA:
+- [ ] CHANGELOG_AI 含 2026-06-24→07-01 各條;抽查三條逐字可找到:批次一關閉
+      (含「do not tune S5/S6/S7 to chase the gate」語意)、C2 realism
+      (DSR 0.0041、WF OOS Sharpe -1.5093、n_trials=48)、DSR 修復
+      (`DSR <= PSR(0)` 不變量與兩個 untrusted artifact 名)
+- [ ] KNOWN_ISSUES 恢復上述兩條操作性警語
+- [ ] AI_HANDOFF 仍 ≤ 400 行;docs 檢查通過
+- [ ] 無「dirty pipeline worktree」過期警告殘留
+
+---
+
 ## 觀察但暫不排任務(記錄理由)
 
 - **ruff 規則擴大**:pyproject 註解自承「先清 lint debt 再擴大」。等 M1 讓 CI

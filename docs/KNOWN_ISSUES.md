@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-03
 expires: none
 superseded_by: null
 ---
@@ -91,6 +91,14 @@ over time.
   current membership artifact plus strict venue-scoped complete-window candle
   coverage produces `nonzero_grid_activity:false`, so the S5 refit summary is a
   data-universe artifact rather than a strategy verdict.
+- The `docs/EXPERIMENT_REGISTRY.md` Family K-budget table is hand-maintained
+  checkpoint state. Even though the family-minting checker now reads `k_used`,
+  `k_limit`, and `at_k_limit`, stale table values still need human review before
+  they are relied on for K-budget decisions.
+- Future experiment-registry rows should continue to state
+  `family-cumulative n_trials=...` clearly. If they do not, the shared
+  `family_registry_from_text()` parser falls back to the historical max-row
+  interpretation.
 
 ## Operations
 

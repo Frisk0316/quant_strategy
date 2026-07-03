@@ -28,6 +28,22 @@ Current status:
 - M3 no-DB backtest smoke fixture is committed in `2dea608`.
 - M4 monitoring unit tests and M5 stocks Option A mapping are committed in
   `5eb71f8`.
+- M2-R1 remediation is implemented in the current working tree: the deleted
+  2026-06-24..07-01 history is restored into `docs/CHANGELOG_AI.md`, the two
+  operational `docs/KNOWN_ISSUES.md` caveats are restored, and current-state
+  docs no longer describe the old dirty P1-P8 worktree.
+- 2026-07-03 Claude reviewed M2-R1 and **ACCEPTED** it on independent checks:
+  all three verbatim spot-checks hit (batch-1 "do not tune S5/S6/S7 to chase
+  the gate", C2 realism DSR 0.0041 / WF -1.5093 / family-cumulative
+  n_trials=48, DSR<=PSR(0) plus both untrusted artifact names), 8/8
+  source-unique strings from `git show 0191c1d^:docs/AI_HANDOFF.md` are present
+  in CHANGELOG_AI (0.247% vol, 1,293,120 rows, C3 event_count 897, I29, H-009,
+  SUPERSEDED, S7 shelved status, S5 nonzero_grid_activity), both KNOWN_ISSUES
+  caveats restored with correct substance, the "Pending Migration" stub is
+  gone, AI_HANDOFF is 205 lines (<= 400), no stale dirty-worktree claim
+  remains, and both docs checks pass. **The whole M1-M5 maintenance stream is
+  now accepted.** The M2-R1 docs remediation is still uncommitted; commit it
+  (AI-Origin trailer) when the user asks.
 
 2026-07-03 Claude review of M1–M5: **M1/M3/M4/M5 ACCEPTED, M2 PARTIAL —
 remediation task M2-R1 added** to
@@ -39,21 +55,23 @@ tests 32 passed; lab suite 18 passed; every `frontend/*.js` passed
 (corrupt close → exit 1, restore → exit 0); aggregate diff `a688de1..4c7afd9`
 touched no forbidden file. M2 finding: `0191c1d` slimmed AI_HANDOFF but did
 NOT migrate the deleted 2026-06-24→07-01 history into CHANGELOG_AI (entries
-jump 06-23 → 07-02; spot-check numbers C2 DSR 0.0041 / WF -1.5093 absent) and
+jump 06-23 → 07-02; spot-check numbers C2 DSR 0.0041 / WF -1.5093 were
+absent before M2-R1) and
 dropped two still-valid KNOWN_ISSUES operational caveats (K-budget table
 human-maintained staleness; family-cumulative registry row wording / max-row
 parser fallback). Nothing is irrecoverable — source text is at
 `git show 0191c1d^:docs/AI_HANDOFF.md` — but CHANGELOG_AI as durable readable
-history has a hole until M2-R1 lands. Minor non-blocking notes: the metrics
-test is call-only smoke (no value read-back); Makefile `FRONTEND_JS` and the
-`frontend-check` lines remain two hand-maintained lists that can drift again.
+history had a hole until this M2-R1 working-tree fix. Minor non-blocking notes:
+the metrics test is call-only smoke (no value read-back); Makefile
+`FRONTEND_JS` and the `frontend-check` lines remain two hand-maintained lists
+that can drift again.
 
-Pipeline improvement work P1-P8 is separate from the maintenance stream. Codex
-implemented P1-P8 in the working tree: funding backfill tooling, literature
+Pipeline improvement work P1-P8 is separate from the maintenance stream and is
+committed in `dfc7af8`: funding backfill tooling, literature
 abstract/session-scoring gates, refuted-family twist gating, feedback ranking
 tags with I30 accounting, OKX liquidation forward accumulation, advisory
-`--reprobe`, funnel metrics, and Binance Vision OI parsing. These pipeline
-edits are not owned by the maintenance task.
+`--reprobe`, funnel metrics, Binance Vision OI parsing, and the ETH
+liquidation ct_val fix. These pipeline edits are not owned by M2-R1.
 
 2026-07-03 Claude review of P1-P8: **APPROVED with one required fix.**
 Independently reran the test battery (88 pipeline unit tests + 18 lab tests
@@ -114,19 +132,46 @@ were NOT touched. Taxonomy data statuses updated for F-OI-POSITIONING
 lacked repo root, so its Stage-2 reprobe step failed on first real run;
 fixed one-line, probe rerun via the registry CLI.
 
+2026-07-03 user decisions executed (Claude): (1) **P9 handed to Codex** —
+task block ready in `tasks/2026-07-03-pipeline-improvement-tasks.md`;
+warmup note there updated so P9 does not re-touch the window. (2)
+**Liquidation ingest scheduled**: Windows task `quant_liq_okx_ingest`
+(schtasks, every 2h, Interactive-only — runs while logged on) via
+`scripts/market_data/run_liq_ingest_task.cmd`, logs to
+`logs/liq_okx_ingest.log`; smoke-ran end-to-end (BTC 464 new/1,099
+updated, ETH 1,253 new — idempotent upsert confirmed); documented in
+`docs/RUNBOOK.md`. (3) **Stage-2 breadth warmup window changed with user
+approval**: `FundingThresholds.breadth_warmup_days=30`
+(`FUNDING_BREADTH_WARMUP_DAYS`, mirrors `config/universe.yaml`), breadth
+min now evaluated from START+30d, warmup days stay recorded in details,
+empty evaluation fails closed; threshold **values** unchanged. Manifest:
+`docs/change_manifests/2026-07-03-stage2-breadth-warmup.md`; regression
+test `test_funding_breadth_excludes_warmup_edge_days_from_min` (23 probe/
+orchestrator tests pass). Post-change probes: current membership still
+honestly FAILs (good 7/10 — blocked on P9;
+`results/stage2_reprobe_20260703b_funding_warmupwin/`); DB-universe
+diagnostic now reads **data_availability=PASS** (good 28/10, min 24/10,
+median 27;
+`results/stage2_reprobe_20260703b_funding_warmupwin_dbuniverse/`), so
+F-FUNDING-XS-DISPERSION is expected to pass data-availability once P9
+rebuilds the shared membership. `stage2_status` stays FAIL until
+distinctness + cost_after_edge run (by design). Next: Codex P9; then
+Claude Stage-1 spec for F-FUNDING-XS-DISPERSION if the official probe
+passes.
+
 ## Current Branch
 
 - Branch: `codex/pipeline-batch1-stage3`.
 - Recent commits: `df96682` (M1), `79c1ddc` (7/3 handoff preservation),
   `0191c1d` (M2), `2dea608` (M3), `5eb71f8` (M4/M5).
-- Working tree also contains unrelated pre-existing pipeline changes; do not
-  overwrite or sweep-commit them.
+- Working tree contains this M2-R1 docs remediation plus a pre-existing task-file
+  edit. P1-P8 pipeline work is committed separately as `dfc7af8`.
 
 ## Do Not Touch
 
 Without explicit user approval, do not modify:
 
-- `research/` except already-existing uncommitted pipeline work owned elsewhere.
+- `research/` except explicit user-approved research tasks.
 - `results/**` existing artifacts.
 - `src/okx_quant/strategies/`, `src/okx_quant/signals/`.
 - `src/okx_quant/risk/`, `src/okx_quant/portfolio/`,
@@ -189,13 +234,11 @@ M3-M5 local evidence:
 
 ## Next Steps
 
-1. Claude/human review the M1-M5 maintenance commits and the two handoff files.
-2. Review the separate pipeline P1-P8 dirty worktree; do not sweep-commit it
-   with maintenance changes.
+1. Claude/human review and commit the M2-R1 docs remediation.
+2. Review the already committed pipeline P1-P8 work separately from maintenance.
 3. Run full `make verify` / `make verify-full` only in an environment where
    `make`, TimescaleDB, and required data are available.
 
 ## Open Questions
 
-- Which dirty pipeline changes are intended for a later P1-P8 commit versus
-  already superseded scratch work?
+- None for M2-R1.
