@@ -74,6 +74,13 @@ needed; the 4 point-in-time-eligible symbols with zero funding history
 (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) can be backfilled the same way as the
 other 28 if a later grid needs them.
 
+**P9 PR merge blocker fixed in the working tree (2026-07-03):**
+`scripts/build_universe_membership.py` now normalizes candle timestamps to
+`datetime64[ns]` before daily membership math, so DB and parquet inputs cannot
+fail source-parity checks solely because one path stores dates as seconds and
+another as microseconds. Regression coverage:
+`tests/unit/test_universe_membership.py::test_build_membership_ignores_timestamp_storage_precision`.
+
 ## Current Branch
 
 - Branch: `codex/pipeline-batch1-stage3`.

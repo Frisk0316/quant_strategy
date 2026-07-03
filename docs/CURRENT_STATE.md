@@ -24,6 +24,9 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
   `dfc7af8`/`6997aba`/`14976d4` plus an in-progress commit for P9 (DB-sourced
   universe membership) and the first Stage-1 spec produced from the
   taxonomy path.
+- P9 merge-blocker fix is in the working tree: universe membership candle
+  timestamps are normalized before daily membership math, with regression
+  coverage for `datetime64[us]` vs `datetime64[s]` source parity.
 - **`F-FUNDING-XS-DISPERSION` (`H-009`) first full pipeline cycle complete
   (E-031):** distinctness MINT (corr 0.138 vs the real C2 reference),
   pre-registered 4-combo fold-refit WF/CPCV — WF 1.1812 / CPCV 0.9553 /

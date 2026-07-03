@@ -42,6 +42,7 @@ def _daily_dollar_volume(candles: pd.DataFrame) -> pd.Series:
         frame = frame.dropna(subset=["ts"]).set_index("ts")
     if frame.index.tz is not None:
         frame.index = frame.index.tz_convert("UTC").tz_localize(None)
+    frame.index = pd.DatetimeIndex(frame.index).astype("datetime64[ns]")
     frame = frame.sort_index()
     dollar_volume = pd.to_numeric(frame["close"], errors="coerce") * pd.to_numeric(
         frame["vol"], errors="coerce"

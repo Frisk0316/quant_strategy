@@ -94,6 +94,19 @@ def test_db_and_parquet_sources_feed_the_same_build_membership():
     )
 
 
+def test_build_membership_ignores_timestamp_storage_precision():
+    cfg = {"top_n": 10, "min_adv_usd": 0.0, "warmup_days": 30}
+    us_candles = _ramp("2024-01-01", 60)
+    s_candles = us_candles.copy()
+    us_candles.index = us_candles.index.astype("datetime64[us]")
+    s_candles.index = s_candles.index.astype("datetime64[s]")
+
+    from_us = build_membership({"BTC-USDT-SWAP": us_candles}, cfg)
+    from_s = build_membership({"BTC-USDT-SWAP": s_candles}, cfg)
+
+    pd.testing.assert_frame_equal(from_us, from_s)
+
+
 def test_daily_dollar_volume_rows_to_candles_ignores_zero_bar_count_rows():
     rows = [
         {"inst_id": "ETH-USDT-SWAP", "day": date(2024, 1, 1), "dollar_volume": 0.0, "bar_count": 0},
