@@ -231,19 +231,19 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
         "validation_only": True,
         "engines": {
             "vectorbt": {
-                "status": "implemented",
+                "status": "not_targeted",
                 "role": "advisory",
                 "required_artifacts": ["result.json", "price_series.csv"],
                 "limitation": "Research-only standalone Turtle reference port; portable external-engine validation is not targeted.",
             },
             "backtrader": {
-                "status": "implemented",
+                "status": "not_targeted",
                 "role": "advisory",
                 "required_artifacts": ["result.json", "price_series.csv"],
                 "limitation": "Research-only standalone Turtle reference port; Backtrader parity validation is not targeted.",
             },
             "nautilus": {
-                "status": "implemented",
+                "status": "not_targeted",
                 "role": "advisory",
                 "required_artifacts": ["result.json", "price_series.csv"],
                 "limitation": "Research-only standalone Turtle reference port; Nautilus execution validation is not targeted.",

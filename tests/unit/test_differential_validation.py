@@ -700,7 +700,10 @@ def test_reference_validation_contract_covers_all_declared_strategies():
             str(capability.get("status"))
             for capability in (contract.get("engines") or {}).values()
         }
-        assert statuses == {"implemented"}, strategy
+        if contract.get("portable_validation_required") is False:
+            assert statuses <= {"not_targeted"}, strategy
+        else:
+            assert statuses == {"implemented"}, strategy
 
 
 def test_reference_validation_contract_declares_all_engine_portability_paths():

@@ -24,7 +24,8 @@ Implemented Claude's RF1-RF3 fixes for the research-only Turtle platform integra
 - `pytest tests/unit/test_differential_validation.py::test_reference_validation_contract_covers_all_declared_strategies -q` -> red before RF1, green after RF1.
 - `pytest tests/unit/test_turtle_backtest.py -q` -> 10 passed.
 - `pytest tests/unit/test_turtle_backtest.py tests/unit/test_routes_backtest_turtle.py tests/unit/test_differential_validation.py::test_reference_validation_contract_covers_all_declared_strategies tests/unit/test_differential_validation.py::test_reference_validation_contract_declares_all_engine_portability_paths -q` -> 16 passed.
-- `pytest tests/unit -q` -> 598 passed, 1209 warnings.
+- `pytest tests/unit/test_turtle_backtest.py tests/unit/test_differential_validation.py -q` -> 58 passed, 1215 warnings after review fixes.
+- `pytest tests/unit -q` -> 599 passed, 1221 warnings.
 - Full frontend syntax loop for the 12 Makefile frontend files -> passed.
 - `C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\docs\check_doc_metadata.py` -> passed, 0 warnings.
 - `C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\docs\check_feature_map_links.py` -> passed, 192 concrete paths checked.
@@ -53,4 +54,4 @@ Implemented Claude's RF1-RF3 fixes for the research-only Turtle platform integra
 - Stage only turtle/RF files and commit with AI-Origin metadata, excluding all funding-xs-dispersion files/hunks.
 
 ## Human Learning Notes (required)
-When a DB/API smoke failure contradicts the current working tree, verify the serving process before debugging code. This session's first sweep smoke hit a stale 8080 process; a fresh 8081 server proved the current Turtle sweep artifact path was clean.
+When a DB/API smoke failure contradicts the current working tree, verify the serving process before debugging code. This session's first sweep smoke hit a stale 8080 process; a fresh 8081 server proved the current Turtle sweep artifact path was clean. Review also showed that advisory engine role is not enough to keep a validation contract nonportable; the engine status itself must be `not_targeted`.

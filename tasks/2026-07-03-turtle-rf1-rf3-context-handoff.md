@@ -33,7 +33,8 @@ Finish Claude's RF1-RF3 remediation for the research-only Turtle platform integr
 - `pytest tests/unit/test_differential_validation.py::test_reference_validation_contract_covers_all_declared_strategies -q` -> failed before RF1, then passed after RF1.
 - `pytest tests/unit/test_turtle_backtest.py -q` -> 10 passed.
 - `pytest tests/unit/test_turtle_backtest.py tests/unit/test_routes_backtest_turtle.py tests/unit/test_differential_validation.py::test_reference_validation_contract_covers_all_declared_strategies tests/unit/test_differential_validation.py::test_reference_validation_contract_declares_all_engine_portability_paths -q` -> 16 passed.
-- `pytest tests/unit -q` -> 598 passed, 1209 warnings.
+- `pytest tests/unit/test_turtle_backtest.py tests/unit/test_differential_validation.py -q` -> 58 passed, 1215 warnings after review fixes.
+- `pytest tests/unit -q` -> 599 passed, 1221 warnings.
 - Full frontend syntax loop for the 12 Makefile frontend files -> passed.
 - `C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\docs\check_doc_metadata.py` -> passed, 0 warnings.
 - `C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\docs\check_feature_map_links.py` -> passed, 192 concrete paths checked.
@@ -48,4 +49,4 @@ Finish Claude's RF1-RF3 remediation for the research-only Turtle platform integr
 - Stage only turtle/RF files and commit with required AI metadata, excluding funding-xs-dispersion files and hunks.
 
 ## Human Learning Notes
-The 8080 smoke initially exposed a `Timestamp` serialization error, but current working-tree code already had ISO conversion; the cause was a stale pre-existing 8080 server. For API smoke after frontend/backend edits, prefer a fresh temporary port or restart the target server before treating failures as current-diff evidence.
+The 8080 smoke initially exposed a `Timestamp` serialization error, but current working-tree code already had ISO conversion; the cause was a stale pre-existing 8080 server. For API smoke after frontend/backend edits, prefer a fresh temporary port or restart the target server before treating failures as current-diff evidence. Review also showed that advisory engine role is not enough to keep a validation contract nonportable; the engine status itself must be `not_targeted`.

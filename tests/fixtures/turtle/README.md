@@ -1,8 +1,7 @@
 # Turtle golden parity fixtures
 
-Provenance (regenerated 2026-07-04, user-directed manual pass; supersedes the
-2026-07-03 synthetic GBM fixture which was deleted — the spec requires real
-exchange data):
+Provenance (golden fixture set supplied before RF3 wiring; RF3 only connects
+these files to the unit test and does not regenerate or hand-edit them):
 
 - `daily_ohlc.csv` — **898 real BTC-USDT-SWAP UTC daily bars** exported once
   from `canonical_candles` (`bar='1m'`, `source_primary='binance'`,
