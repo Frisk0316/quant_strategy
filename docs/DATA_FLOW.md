@@ -94,7 +94,12 @@ The coverage API labels funding provider/exchange from `funding_rates.source`
 instead of a hard-coded venue label. `backfill_universe_funding.py` is a
 research-pipeline utility for Binance universe-wide funding coverage and writes
 local parquet/coverage JSON before attempting DB upsert and advisory Stage2
-reprobe; it does not alter funding cashflow math or strategy gates.
+reprobe; it does not alter funding cashflow math or strategy gates. The Stage-2
+funding breadth probe (`backtesting/pipeline_stage2_registry.py`) evaluates its
+breadth minimum from `START + breadth_warmup_days` (30, mirroring
+`config/universe.yaml` warmup) because PIT eligibility cannot exist during
+warmup; warmup days stay recorded in probe details for audit (user-approved
+2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
 
 ## External Observations Ingestion Flow
 

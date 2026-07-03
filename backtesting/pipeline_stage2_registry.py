@@ -27,6 +27,11 @@ FUNDING_MIN_GOOD_SYMBOLS = 10
 FUNDING_MIN_SYMBOL_COVERAGE = 0.80
 FUNDING_MIN_REBALANCE_BREADTH = 10
 FUNDING_MAX_STALE_RATIO = 0.10
+# Breadth min is evaluated from START + this warmup only: universe eligibility
+# needs warmup_days of history (config/universe.yaml), so the first month can
+# never mathematically reach min_rebalance_breadth. User-approved window change
+# 2026-07-03; manifest docs/change_manifests/2026-07-03-stage2-breadth-warmup.md.
+FUNDING_BREADTH_WARMUP_DAYS = 30
 XVENUE_MIN_COVERAGE = 0.95
 XVENUE_MIN_ALIGNMENT = 0.95
 
@@ -46,6 +51,7 @@ class FundingThresholds:
     min_symbol_coverage: float = FUNDING_MIN_SYMBOL_COVERAGE
     min_rebalance_breadth: int = FUNDING_MIN_REBALANCE_BREADTH
     max_stale_ratio: float = FUNDING_MAX_STALE_RATIO
+    breadth_warmup_days: int = FUNDING_BREADTH_WARMUP_DAYS
 
 
 @dataclass(frozen=True)
@@ -166,7 +172,13 @@ def build_funding_data_check(
         if float(row.get("coverage_ratio") or 0.0) >= thresholds.min_symbol_coverage
         and float(row.get("stale_ratio") or 0.0) <= thresholds.max_stale_ratio
     ]
-    breadth_values = [int(row.get("ready_symbols") or 0) for row in rebalance_breadth]
+    breadth_warmup_cutoff = (
+        date.fromisoformat(START) + timedelta(days=thresholds.breadth_warmup_days)
+    ).isoformat()
+    evaluated_breadth = [
+        row for row in rebalance_breadth if str(row.get("day") or "") >= breadth_warmup_cutoff
+    ]
+    breadth_values = [int(row.get("ready_symbols") or 0) for row in evaluated_breadth]
     breadth_stats = _quantiles(breadth_values)
     min_breadth = int(breadth_stats["min"])
     status = "PASS" if (
@@ -187,6 +199,9 @@ def build_funding_data_check(
                 "start": f"{START}T00:00:00+00:00",
                 "end_exclusive": f"{END_EXCLUSIVE}T00:00:00+00:00",
                 "expected_8h_rows_full_window": expected_8h_rows,
+                "breadth_warmup_cutoff": breadth_warmup_cutoff,
+                "breadth_days_evaluated": len(evaluated_breadth),
+                "breadth_days_total": len(rebalance_breadth),
             },
             "source": FUNDING_SOURCE,
             "thresholds": asdict(thresholds),

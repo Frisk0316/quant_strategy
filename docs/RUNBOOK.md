@@ -181,6 +181,25 @@ make validate-data
 This may require local data files or DB-backed data, depending on configuration and
 environment.
 
+## Scheduled External Ingest (OKX liquidation)
+
+OKX's public liquidation-orders REST endpoint only retains a few hours of
+events (measured 2026-07-03: BTC ~14h, ETH ~5h at the 1,600-row cap), so
+`liq_okx_btc` / `liq_okx_eth` forward accumulation runs as a Windows scheduled
+task every 2 hours (user-approved 2026-07-03):
+
+```text
+Task name : quant_liq_okx_ingest  (schtasks, Interactive only — runs while logged on)
+Wrapper   : scripts/market_data/run_liq_ingest_task.cmd
+Log       : logs/liq_okx_ingest.log (gitignored)
+Manual run: schtasks /Run /TN quant_liq_okx_ingest
+Remove    : schtasks /Delete /TN quant_liq_okx_ingest /F
+```
+
+The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if
+the machine or DB is off for longer than the retention window — check the log
+and `external_observations` first/last timestamps when auditing coverage.
+
 ## Strategy Signal Validation
 
 First-stage portable validation builds deterministic signal-point fixtures for

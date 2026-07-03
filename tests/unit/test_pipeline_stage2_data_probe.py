@@ -21,7 +21,7 @@ def test_funding_breadth_requires_minimum_good_symbols():
 
     check = build_funding_data_check(
         symbol_coverage=rows,
-        rebalance_breadth=[{"day": "2024-01-01", "ready_symbols": 9}],
+        rebalance_breadth=[{"day": "2024-03-01", "ready_symbols": 9}],
         thresholds=FundingThresholds(min_good_symbols=10, min_symbol_coverage=0.8, min_rebalance_breadth=10),
         universe_symbol_count=12,
         expected_8h_rows=100,
@@ -32,6 +32,43 @@ def test_funding_breadth_requires_minimum_good_symbols():
     assert "min_rebalance_breadth=9/10" in check.reason
     assert check.details["good_symbol_count"] == 9
     assert check.details["thresholds"]["min_good_symbols"] == 10
+
+
+def test_funding_breadth_excludes_warmup_edge_days_from_min():
+    """User-approved 2026-07-03 window change: universe eligibility needs 30
+    warmup days, so breadth-min is evaluated from START+30d; earlier days stay
+    recorded in details but cannot fail the check. An all-warmup window stays
+    fail-closed (empty evaluation -> min 0)."""
+    rows = [
+        {"inst_id": f"SYM{i:02d}-USDT-SWAP", "row_count": 100, "coverage_ratio": 1.0}
+        for i in range(12)
+    ]
+    warmup_edge = [{"day": "2024-01-05", "ready_symbols": 2}]
+    post_warmup = [{"day": "2024-02-05", "ready_symbols": 12}, {"day": "2024-02-06", "ready_symbols": 11}]
+
+    check = build_funding_data_check(
+        symbol_coverage=rows,
+        rebalance_breadth=warmup_edge + post_warmup,
+        thresholds=FundingThresholds(),
+        universe_symbol_count=12,
+        expected_8h_rows=100,
+    )
+    assert check.status == "PASS"
+    assert check.details["rebalance_breadth_stats"]["min"] == 11
+    assert check.details["window"]["breadth_warmup_cutoff"] == "2024-01-31"
+    assert check.details["window"]["breadth_days_evaluated"] == 2
+    assert check.details["window"]["breadth_days_total"] == 3
+    assert len(check.details["rebalance_breadth"]) == 3  # warmup days stay auditable
+
+    all_warmup = build_funding_data_check(
+        symbol_coverage=rows,
+        rebalance_breadth=warmup_edge,
+        thresholds=FundingThresholds(),
+        universe_symbol_count=12,
+        expected_8h_rows=100,
+    )
+    assert all_warmup.status == "FAIL"  # fail-closed: nothing evaluable
+    assert all_warmup.details["window"]["breadth_days_evaluated"] == 0
 
 
 def test_xvenue_probe_does_not_substitute_binance_for_missing_okx_leg():

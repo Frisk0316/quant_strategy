@@ -437,8 +437,13 @@ Required behavior:
    輸出前後 eligible/day 統計對照。
 4. 重跑 `run_pipeline_stage2_data_probe.py --candidate funding` 進
    `results/stage2_reprobe_<date>_funding_rebuilt/`,誠實記錄 PASS/FAIL。
-5. **不改** FundingThresholds/探測窗——warmup 窗緣(2024 年 1 月廣度必然
-   低於 10)是否應從探測窗扣除,是獨立的 spec 決策,需使用者批准 + manifest。
+5. warmup 窗緣已於 2026-07-03 經使用者批准並由 Claude 實作:廣度 min 只評估
+   `START+30d` 之後(`FundingThresholds.breadth_warmup_days`,manifest
+   `docs/change_manifests/2026-07-03-stage2-breadth-warmup.md`)。P9 **不需**
+   再動窗口;門檻值仍一字不改。DB-universe 診斷 + 新窗口的預覽 =
+   `data_availability=PASS`(good 28/10、min 24/10,
+   `results/stage2_reprobe_20260703b_funding_warmupwin_dbuniverse/`),
+   所以 P9 重建 membership 後預期正式 PASS。
 
 PERMITTED FILES:
 - `scripts/build_universe_membership.py`
