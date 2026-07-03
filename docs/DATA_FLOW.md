@@ -141,16 +141,25 @@ not create strategies, families, or promotion evidence.
 ## Point-In-Time Universe Membership Flow
 
 ```text
-1m candle parquet by symbol -> scripts/build_universe_membership.py -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+1m candle parquet by symbol -> scripts/build_universe_membership.py --source parquet -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+canonical_candles daily dollar volume (DB) -> scripts/build_universe_membership.py --source db -> data/universe/universe_membership.parquet -> Stage-2 funding/xvenue probes and xs_momentum consumers
 venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
 rules, including top-N, rolling ADV threshold, warmup, rebalance cadence, and
 deny-list patterns. `scripts/build_universe_membership.py` derives daily dollar
-volume from candle history and uses only prior history for ADV and warmup
-eligibility. It does not forward-fill symbols across missing or ended candle
-history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
+volume either from local 1m candle parquet (`--source parquet`, default) or
+from `canonical_candles` daily aggregates (`--source db`), feeding the exact
+same `build_membership()` eligibility formula either way; it uses only prior
+history for ADV and warmup eligibility and does not forward-fill symbols
+across missing or ended candle history. Known gap fixed 2026-07-04: the
+parquet source is only a thin local mirror, so it silently understated PIT
+eligibility (median 2 eligible/day) versus the DB source (median 28); the
+shared `data/universe/universe_membership.parquet` was rebuilt with
+`--source db` and Stage-2 funding breadth now passes data availability
+(`docs/HYPOTHESIS_LEDGER.md` H-009, `docs/EXPERIMENT_REGISTRY.md` E-030).
+`backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
 convention, shifts daily target weights one full day before intraday expansion to
 avoid same-day-close lookahead, sizes XS momentum gross from estimated portfolio

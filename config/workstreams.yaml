@@ -23,12 +23,12 @@ workstreams:
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs]
-    current: real_data_runs
-    state: "Real-data acceptance DONE and all three 2026-07-03 user decisions executed: P1 funding 66,041 rows/22 symbols/0 gaps; P8 Vision OI 262,814 rows each BTC/ETH (F-OI-POSITIONING unblocked); P5 liquidation ingest scheduled every 2h (quant_liq_okx_ingest schtasks, Interactive-only, RUNBOOK); Stage-2 breadth warmup window changed with user approval (breadth_warmup_days=30, manifest 2026-07-03-stage2-breadth-warmup.md, threshold values unchanged). Post-change probes: official membership still honestly FAILs (good 7/10, blocked on membership artifact); DB-universe diagnostic reads data_availability=PASS (good 28/10, min 24/10)."
-    next: "Codex: P9 membership-builder DB source + shared parquet rebuild (task file; window already fixed, do not re-touch). After P9: rerun official funding probe; if PASS, Claude writes the F-FUNDING-XS-DISPERSION Stage-1 spec. Do not schedule the orchestrator or claim promotion/live readiness."
-    links: [tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md]
-    updated: 2026-07-03
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec]
+    current: first_stage1_spec
+    state: "P9 executed 2026-07-04 (user-authorized): build_universe_membership.py gained a --source db path; shared universe_membership.parquet rebuilt from canonical_candles (eligible/day median 2 -> 28). Official Stage-2 re-probe (E-030): F-FUNDING-XS-DISPERSION data_availability now PASSES (32 eligible symbols, 28 good, breadth min 24/median 27 vs threshold 10) -- the first taxonomy-sourced Stage-2 pass in this pipeline. stage2_status stays FAIL by design (distinctness + cost_after_edge not run). Claude wrote the Stage-1 hypothesis spec with a mechanism-level distinctness argument vs F-FUNDING-CARRY (H-007, refuted); H-009/E-030 ledger rows updated; family n_trials stays 0, H-009 status stays proposed."
+    next: "Codex: run the family-minting distinctness checker (F-FUNDING-XS-DISPERSION vs F-FUNDING-CARRY reference signal) first; then implement Stage 3 reusing xs_momentum_backtest.py's PIT-universe/vol-target/leak-fix machinery with the ranking signal swapped to trailing funding APR (grid: L in [7,14], Q in [0.20,0.30] = 4 combos). Stop at checkpoint (1). Do not schedule the orchestrator or claim promotion/live readiness."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-01-pipeline-orchestration-driver-design.md]
+    updated: 2026-07-04
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done
@@ -43,10 +43,10 @@ workstreams:
     status: done
     milestones: [audit, m1_ci_consistency, m2_doc_slimming, m3_smoke_fixture, m4_monitoring_tests, m5_stocks_decision, claude_review, m2_r1_history_migration]
     current: m2_r1_history_migration
-    state: "M1-M5 ACCEPTED. M2-R1 Claude-reviewed 2026-07-03 and ACCEPTED on independent checks: all three verbatim spot-checks hit (batch-1 'do not tune to chase the gate', C2 DSR 0.0041 / WF -1.5093 / n_trials=48, DSR<=PSR(0) + both untrusted artifact names), 8/8 source-unique strings present in CHANGELOG_AI, both KNOWN_ISSUES caveats restored, AI_HANDOFF 205 lines <= 400, no stale dirty-worktree claims, docs checks pass."
-    next: "Commit the M2-R1 docs remediation (uncommitted working-tree docs) when the user asks; run make verify/full only in an environment with make, TimescaleDB, and required data."
+    state: "M1-M5 + M2-R1 all ACCEPTED and committed (df96682/79c1ddc/0191c1d/2dea608/5eb71f8/21cc3c9). Stream closed."
+    next: "none - run make verify/full only in an environment with make, TimescaleDB, and required data."
     links: [tasks/2026-07-03-project-maintenance-tasks.md]
-    updated: 2026-07-03
+    updated: 2026-07-04
 
   - name: User manual
     status: done

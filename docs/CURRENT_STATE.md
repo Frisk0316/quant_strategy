@@ -16,67 +16,47 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 
 ## Snapshot
 
-- Current branch: `codex/pipeline-batch1-stage3` (working tree has M2-R1 docs
-  remediation plus a pre-existing task-file edit; P1-P8 is committed as
-  `dfc7af8`, including the ETH liquidation contract_value fix pinned by a
-  seed-spec regression test).
-- Current task: `tasks/2026-07-03-project-maintenance-tasks.md` M1-M5 complete
-  and Claude-reviewed 2026-07-03 on independent re-run evidence: M1/M3/M4/M5
-  accepted; M2 was remediated by M2-R1 (history migration + caveat restore)
-  and the remediation is **Claude-reviewed and ACCEPTED** (verbatim
-  spot-checks, 8/8 coverage strings, docs checks green). The whole M1-M5
-  stream is closed; the M2-R1 docs remediation awaits a commit on user
-  request.
-- M1 CI consistency is committed in `df96682`.
-- The 2026-07-03 handoff/task docs are preserved in `79c1ddc` before M2.
-- M2 hot-state docs and branch/status board slimming is committed in `0191c1d`.
-- M3 no-DB backtest smoke fixture is committed in `2dea608`.
-- M4 monitoring unit tests and M5 stocks Option A mapping are committed in
-  `5eb71f8`.
-- Parallel pipeline task `tasks/2026-07-03-pipeline-improvement-tasks.md`
-  P1-P8 is committed (`dfc7af8`, incl. the ETH ct_val 0.1 fix) and the
-  real-data acceptance runs are DONE (2026-07-03, Claude, user-authorized):
-  P1 funding backfill 66,041 rows / 22 symbols / 0 gaps; P8 Vision OI history
-  262,814 rows each BTC/ETH (2024-01->now); P5 first liquidation ingest with a
-  measured **hours-scale** OKX REST window (BTC ~14h, ETH ~5h; lossless
-  accumulation needs a 2-4h cadence, scheduling = pending user decision);
-  advisory reprobe appended improved-but-FAIL funding metrics to taxonomy_002.
-  **New root cause:** `build_universe_membership.py` builds `eligible` from
-  the thin local parquet mirror (median 2 eligible/day; DB-rebuilt diagnostic
-  gives 29) - this underlies E-028 universe=8 and H-004/S5 no-grid-activity.
-  All three 2026-07-03 user decisions are executed: P9 handed to Codex (task
-  file); liquidation ingest scheduled every 2h (`quant_liq_okx_ingest`
-  schtasks task, Interactive-only, see RUNBOOK; smoke-ran end-to-end); and
-  the Stage-2 breadth warmup window changed with approval
-  (`breadth_warmup_days=30`, manifest
-  `2026-07-03-stage2-breadth-warmup.md`, threshold values unchanged).
-  Post-change: official probe still honestly FAILs on the broken membership
-  (blocked on P9); the DB-universe diagnostic reads data_availability=PASS
-  (good 28/10, min 24/10), so F-FUNDING-XS-DISPERSION should pass once P9
-  rebuilds the shared membership. No gate or ledger changed; no
-  live/demo/shadow readiness claimed.
+- Current branch: `codex/pipeline-batch1-stage3`, working tree clean.
+- Repo maintenance (M1-M5 + M2-R1) is fully committed and closed:
+  `df96682`/`79c1ddc`/`0191c1d`/`2dea608`/`5eb71f8`/`21cc3c9`.
+- Strategy research pipeline P1-P9 is fully committed:
+  `dfc7af8`/`6997aba`/`14976d4` plus an in-progress commit for P9 (DB-sourced
+  universe membership) and the first Stage-1 spec produced from the
+  taxonomy path.
+- **`F-FUNDING-XS-DISPERSION` (`H-009`) Stage-2 `data_availability` now
+  PASSES** (E-030) — the first taxonomy-sourced candidate to clear this gate.
+  Root cause of the earlier FAIL: `build_universe_membership.py` derived PIT
+  eligibility from a thin local-parquet mirror (median 2 eligible/day);
+  rebuilt from `canonical_candles` via a new `--source db` path, median is
+  now 28. `stage2_status` stays FAIL — `distinctness` (vs `F-FUNDING-CARRY`)
+  and `cost_after_edge` are the explicit next Codex step, per
+  `docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`.
+- OKX liquidation forward-accumulation runs every 2h via Windows Task
+  Scheduler (`quant_liq_okx_ingest`, Interactive-only).
 
 ## Active Warnings
 
-- The earlier pipeline-dirty warning is superseded: P1-P8 was committed
-  separately as `dfc7af8`; the remaining uncommitted files are M2-R1 docs plus
-  the pre-existing task-file edit. Maintenance commits did not sweep pipeline
-  files (verified in the 2026-07-03 Claude review).
-- No strategy, risk, portfolio, execution, deployment gate, or existing result
-  artifact is in scope for the maintenance tasks.
+- No strategy, risk, portfolio, execution, deployment gate, or existing
+  result artifact was changed by any of the above; no live/demo/shadow
+  readiness is claimed.
 - `research/strategy_synthesis.md`, `docs/backtest_live_parity_plan.md`, and
   `config/` remain truth sources for strategy/config behavior.
 
 ## Current Gaps
 
-- `make` is unavailable in the current Windows sandbox. The equivalent Python
-  commands for docs-check and backtest-smoke passed.
-- `make backtest-smoke` now runs a tiny no-DB replay fixture, but it is
-  `strategy_fill` / `idealized_fill` smoke coverage only, not promotion evidence.
-- Monitoring modules now have unit coverage, but production alert readiness still
-  requires separate operational validation.
+- `make` is unavailable in the current Windows sandbox; use the Python
+  equivalents (`scripts/docs/check_doc_metadata.py`,
+  `scripts/docs/check_feature_map_links.py`,
+  `scripts/docs/check_doc_impact.py --strict`) or `pytest` directly.
+- `quant_liq_okx_ingest` is Interactive-only (runs only while logged on); the
+  measured OKX public REST retention window is hours-scale (BTC ~14h, ETH
+  ~5h), so extended logout gaps will drop liquidation events.
+- 4 point-in-time-eligible symbols under the rebuilt universe
+  (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) have no funding history backfilled yet;
+  not required for the current Stage-2 pass, only if a later grid needs them.
 - `src/okx_quant/stocks/` is kept as a docs-mapped research-only sandbox
-  (M5 Option A); it is not wired into crypto replay, UI, API, or deployment gates.
+  (M5 Option A); it is not wired into crypto replay, UI, API, or deployment
+  gates.
 
 ## How to Update
 

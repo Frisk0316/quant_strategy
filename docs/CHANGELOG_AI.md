@@ -13,6 +13,119 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-03/04 - Pipeline P1-P9 Full Cycle + First Stage-1 Spec From Taxonomy
+
+Full-cycle Claude review + user-authorized execution of the pipeline
+improvement plan (`tasks/2026-07-03-pipeline-improvement-tasks.md`), ending in
+the first taxonomy-sourced candidate to clear Stage-2 data availability.
+
+- **P1-P8 review (Claude):** approved with one required fix — `liq_okx_eth`
+  in `scripts/market_data/ingest_external.py` hardcoded `contract_value:
+  0.01`, but OKX `ETH-USDT-SWAP` ct_val is 0.1 (ADR-0007,
+  `sql/seed_venue_instrument_specs.sql`); OKX liquidation details carry only
+  `sz`/`bkPx`, so the computed-notional path always applies and would have
+  understated ETH liquidation notional 10x. Fixed 0.01->0.1 with a
+  seed-SQL-pinned regression test. Independently reran 88 pipeline + 18 lab
+  tests (superset of Codex's reported 76), confirmed no forbidden file/gate/
+  threshold changed, verified acceptance-mapped tests (ssrn-6609698
+  refuted-family regression, byte-identical reprobe idempotency, fail-closed
+  missing-hypothesis-id, placeholder-score rejection, review-bundle firewall,
+  feedback-spawned n_trials reconciliation). Committed `dfc7af8` (35 files),
+  separate from the M1-M5 maintenance stream.
+- **Real-data acceptance runs (user-authorized):** P1 funding backfill wrote
+  66,041 rows for the (then) 22-symbol point-in-time union, 0 gaps
+  2024-01-01->2026-07-02. P8 ingested Binance Vision historical OI, 262,814
+  rows each for BTC/ETH (5m, 2024-01-01->2026-07-02) - F-OI-POSITIONING no
+  longer data-blocked. P5 landed the first OKX liquidation ingest (1,600 rows
+  each BTC/ETH) and measured the public REST retention window at only
+  **hours** (BTC ~14h, ETH ~5h at the cap). P6 `--reprobe` ran for real on
+  `idea_batch_20260701_taxonomy_002`: funding candidate stayed FAIL with
+  improved metrics (good_symbols 5->7), appended append-only; xvenue
+  unchanged (OKX 1m still ~5,220 rows vs 1.29M/leg on Binance). Committed
+  `6997aba`.
+- **Root cause found:** the funding-breadth FAIL was not a funding-data gap —
+  `scripts/build_universe_membership.py` derived PIT `eligible` from a thin
+  local parquet mirror (`data/ticks/*/candles_1m.parquet`), producing an
+  eligible/day median of 2 (BTC/ETH eligible only 61 days vs MEME 657 —
+  economically impossible). This artifact was also the root cause behind
+  `E-028`'s `universe=8` and `H-004`/S5's "no grid activity".
+- **Three user decisions executed (2026-07-03):** (1) P9 (membership-builder
+  DB source) task-blocked for Codex; (2) OKX liquidation ingest scheduled
+  every 2h via Windows Task Scheduler (`quant_liq_okx_ingest`,
+  Interactive-only — runs only while logged on;
+  `scripts/market_data/run_liq_ingest_task.cmd`, documented in
+  `docs/RUNBOOK.md`); (3) Stage-2 funding breadth-min changed to evaluate
+  from `START + breadth_warmup_days` (30, mirrors `config/universe.yaml`
+  warmup) instead of the full window, since PIT eligibility cannot exist
+  during warmup — threshold **values** unchanged, warmup days stay recorded
+  for audit, empty evaluation still fails closed. Manifest:
+  `docs/change_manifests/2026-07-03-stage2-breadth-warmup.md`. Committed
+  `14976d4`.
+- **P9 executed (2026-07-04, user-authorized after an initial scope
+  correction):** `build_universe_membership.py` gained a `--source db` path
+  (`daily_dollar_volume_rows_to_candles`, `load_candles_from_db`) that
+  aggregates `canonical_candles` daily dollar volume instead of reading the
+  parquet mirror, feeding the exact same `build_membership()` eligibility
+  formula either way (tested: `test_db_and_parquet_sources_feed_the_same_
+  build_membership`). Rebuilt the shared `data/universe/universe_membership.
+  parquet` from DB: eligible/day median 2 -> 28 (min 3, max 30, 101,910
+  rows). Note: the classifier initially and correctly blocked the rebuild
+  because "P9 交 Codex" had been the prior explicit decision and overwriting
+  the shared parquet is an irreversible cross-pipeline change; the user then
+  explicitly authorized Claude to proceed.
+- **Official Stage-2 re-probe (E-030): data_availability now PASSES** — the
+  first taxonomy-sourced Stage-2 pass in this pipeline's history. 32
+  point-in-time eligible symbols, 28 meet the funding coverage/stale
+  threshold (the 4 with zero funding rows -
+  `CC`/`FIL`/`M`/`SHIB`-USDT-SWAP - only became eligible under the rebuilt
+  universe and are outside the original 22-symbol funding backfill), breadth
+  min 24 / median 27 / max 28 vs threshold 10 over the post-warmup-evaluated
+  window (868/898 days). `stage2_status` stays FAIL by design pending
+  `distinctness` and `cost_after_edge`. Advisory `orchestrator --reprobe`
+  re-ran against the rebuilt universe and correctly appended another
+  `stage2_fail` status entry (overall verdict unchanged; the per-check
+  `data_availability` PASS is visible only in `reprobe_advisory.json`'s
+  metrics, not the top-line state — confirmed this is intentional, tested
+  behavior, not a bug, before touching anything).
+- **Stage 1 hypothesis spec written (Claude, docs-only):**
+  `docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`
+  — testable signal/entry/sizing spec (cross-sectional long-low/short-high
+  trailing-funding-APR book, perp-only, dollar-neutral, reusing
+  `xs_momentum_backtest.py`'s corrected vol-targeting and leak-fixed
+  daily-shift as the implementation skeleton), a small pre-registered grid
+  (`{L in [7,14], Q in [0.20,0.30]}` = 4 combos, deliberately small per the
+  2026-07-03 statistical-power analysis), and a mechanism-level distinctness
+  table against `F-FUNDING-CARRY` (H-007, refuted) explaining why the E-026
+  refutation mechanism — realistic spot/perp basis-execution and financing
+  cost crushing a thin absolute single-name funding-level edge — does not
+  mechanically transfer to a perp-only cross-sectional dispersion book. The
+  spec explicitly marks this as a provisional MINT pending the quantitative
+  family-minting distinctness checker, which is Stage-2(b)/Stage-3 (Codex)
+  work, not something a docs-only spec can compute.
+- **Ledger updates:** `H-009`'s hypothesis text replaced the "has enough
+  breadth to justify a spec" meta-claim with the real testable claim; new
+  `E-030` row added to `docs/EXPERIMENT_REGISTRY.md`; mechanism-taxonomy row
+  for `F-FUNDING-XS-DISPERSION` updated to "available — Stage-2
+  data_availability PASS". Family `n_trials` stays 0 (no Stage-3 run yet);
+  `H-009` status stays `proposed`.
+- No strategy, risk, portfolio, execution, config gate, deployment gate, or
+  existing durable ledger verdict was changed by any of this; the two Stage-2
+  checks that gate Stage 3 (`distinctness`, `cost_after_edge`) are explicit
+  Codex hand-off items, not yet run.
+
+## 2026-07-03 - M2-R1 Reviewed, Accepted, And Committed
+
+Claude independently reran the M1-M5 verification evidence (ruff full scope,
+576 unit + 32 root + 18 lab tests, `node --check` on every `frontend/*.js`,
+backtest smoke incl. a reproduced broken-fixture probe, no forbidden file in
+`a688de1..4c7afd9`) and reviewed the M2-R1 docs remediation: all three
+verbatim spot-checks were present in `docs/CHANGELOG_AI.md` (batch-1 "do not
+tune to chase the gate", C2 realism DSR 0.0041/WF -1.5093/n_trials=48,
+`DSR<=PSR(0)` + both untrusted artifact names), both restored
+`docs/KNOWN_ISSUES.md` caveats were substantively correct, `docs/AI_HANDOFF.md`
+was 244 lines (<=400), and no stale "dirty pipeline worktree" language
+remained. **M1-M5 + M2-R1 accepted and committed as `21cc3c9`.**
+
 ## 2026-07-03 - Project Maintenance M2-M5 Completion
 
 - M2 slimmed hot-state governance docs, moved July 3 history into this changelog,
