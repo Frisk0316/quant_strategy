@@ -13,6 +13,65 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-04 - Turtle Manual Pass + F-FUNDING-XS-DISPERSION Checkpoint Verdict
+
+User directives executed: keep F-FUNDING-XS-DISPERSION, and put the turtle
+through a real manual pass (it is a usable strategy, not a rejected one).
+
+- **F-FUNDING-XS-DISPERSION (H-009/E-031) reviewed and verdict recorded:**
+  Codex's Stage-3 checkpoint ran the family-minting distinctness checker
+  FIRST against the real C2 funding-carry reference signal (max abs corr
+  0.138 -> provisional MINT, quantitatively confirming the Stage-1 spec's
+  mechanism argument), then the pre-registered 4-combo grid through
+  fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV OOS Sharpe 0.9553,
+  DSR = PSR = 0.9346 - a genuinely marginal miss of the 0.95 gate, unlike
+  the clean refutations of H-006/007/008. Claude verdict (user-ratified
+  2026-07-04): **KEEP as `testing`, MINT accepted, do not refute** - and do
+  not tune to chase the gate (H-002 lesson); any retry needs an ex-ante
+  rationale, burns K (0/2 used), and accumulates n_trials. DSR==PSR is
+  explained by all 5 CPCV paths selecting the same combo (small-grid
+  stability), not a computation defect.
+- **Turtle golden parity now passes on REAL data:** the earlier 600-day
+  synthetic fixture was replaced per spec with 898 real BTC-USDT-SWAP UTC
+  daily bars exported from canonical DB (all days have the full 1440
+  minute-bars). The verbatim reference `turtle_trading_system_full` was
+  re-run in a polars scratch venv on the real fixture (default + cash-gate
+  stress param sets; the stress run emitted hundreds of reference cash-skip
+  prints, exercising exactly the intended path). The pandas port matches
+  both expected CSVs exactly - 17 columns, ints exact, floats rtol 1e-9,
+  898 rows (final equities 50578.081905 / 12307.892184). Fixture provenance
+  and regeneration steps: `tests/fixtures/turtle/README.md`.
+- **DB-backed end-to-end API smoke (no mocks, in-process TestClient against
+  the real router + real DB):** single run with a manually adjusted
+  `invest_pct=0.05` completed (75 orders, full ADR-0002 artifact set incl.
+  `equity_curve.csv`); 2-free-window-param sweep (6 combos) produced
+  rows.csv + surface.html + working result/artifact endpoints; the
+  invest_pct-axis sweep produced equity_curves.csv for the slider scrub UI.
+  The smoke caught one real bug - `run_turtle_sweep` equity-curve rows
+  carried pandas Timestamps and crashed the sweep job's `summary.json`
+  serialization - fixed at source (ISO date strings) with a regression test.
+- Full unit suite: **599 passed** (includes the RF1 contract regression and
+  the real-data parity tests). Turtle is accepted as a usable,
+  manually-tunable frontend strategy; research-only, no live/demo/shadow
+  claim.
+
+## 2026-07-03 Codex (Turtle research runner platform integration)
+
+Implemented the user-requested Turtle S1/S2 platform integration from
+`tasks/2026-07-03-turtle-strategy-platform-tasks.md`: a research-only pandas
+reference port in `backtesting/turtle_backtest.py`, FastAPI single-run and
+sweep branches in `routes_backtest.py`, frontend 1D controls with `invest_pct`
+percent slider, Turtle sweep heatmaps, and vendored Plotly 2.35.2 for
+`surface.html`. Added focused unit tests for reference quirks, grid constraints,
+API artifacts, and sweep artifact readers. Follow-up RF1-RF3 fixed the
+full-suite contract regression with one declarative `turtle` validation
+contract entry, added the `invest_pct` sweep scrub UI and 5-metric heatmaps,
+and wired the checked-in 600-day golden fixture into parity tests. No replay
+strategy, config strategy, strategy/risk/live/deployment gate,
+differential-validation implementation, or existing result artifact was changed.
+DB-backed manual run/sweep smoke passed on a temporary current-code 8081 server
+with local 1D candles.
+
 ## 2026-07-03/04 - Pipeline P1-P9 Full Cycle + First Stage-1 Spec From Taxonomy
 
 Full-cycle Claude review + user-authorized execution of the pipeline

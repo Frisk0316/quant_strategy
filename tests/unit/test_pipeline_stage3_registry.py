@@ -18,6 +18,9 @@ def test_legacy_stage3_runner_calls_wrapped_function_only_for_legacy_batch():
     assert called == ["ran"]
 
 
+def test_funding_xs_dispersion_frontier_family_is_registered():
+    assert "F-FUNDING-XS-DISPERSION" in STAGE3_RUNNERS
+
+
 def test_unimplemented_frontier_families_are_not_registered_as_stage3_runners():
-    assert "F-FUNDING-XS-DISPERSION" not in STAGE3_RUNNERS
     assert "F-XVENUE-LEADLAG" not in STAGE3_RUNNERS

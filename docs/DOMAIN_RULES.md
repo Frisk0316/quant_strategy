@@ -95,6 +95,12 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   `realistic_execution` keeps maker queue, cancel latency, lot/min rounding,
   post-only behavior, and terminal liquidation. `dual_output` runs both against
   the same data/params and writes a comparison artifact.
+- **R5.5** Turtle S1/S2 reference semantics are scoped to the research-only
+  `backtesting/turtle_backtest.py` runner: same-day ATR, close fills, strict
+  `cost < cash` buy gate, static sizing capital, S1 skip-after-win, and no
+  forced end liquidation are preserved for parity with `new_startegy_海龜/`.
+  These semantics must not be generalized to replay, live, demo, shadow, or
+  promotion evidence without a new approved rule change.
 
 ## R6. Data Provenance and Leakage
 

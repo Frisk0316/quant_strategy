@@ -1296,4 +1296,70 @@ function IndicatorChart({
   `;
 }
 
-window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart, adaptiveDateLabel, MAX_Y_ZOOM };
+function HeatmapChart({ rows = [], xKey, yKey, valueKey, title = "", height = 220 }) {
+  const clean = (rows || [])
+    .map((row) => ({
+      x: Number(row?.[xKey]),
+      y: Number(row?.[yKey]),
+      value: Number(row?.[valueKey]),
+    }))
+    .filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y) && Number.isFinite(row.value));
+  const xs = [...new Set(clean.map((row) => row.x))].sort((a, b) => a - b);
+  const ys = [...new Set(clean.map((row) => row.y))].sort((a, b) => a - b);
+  const byKey = new Map(clean.map((row) => [`${row.x}|${row.y}`, row.value]));
+  const values = clean.map((row) => row.value);
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
+  const w = 560;
+  const h = Math.max(180, height);
+  const padL = 48, padR = 14, padT = title ? 34 : 16, padB = 36;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const cellW = xs.length ? innerW / xs.length : innerW;
+  const cellH = ys.length ? innerH / ys.length : innerH;
+  function fill(value) {
+    if (!Number.isFinite(value)) return "var(--surface-2)";
+    const t = max === min ? 0.5 : (value - min) / (max - min);
+    const r = Math.round(44 + t * 18);
+    const g = Math.round(109 + t * 94);
+    const b = Math.round(142 - t * 62);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  if (!clean.length || xs.length < 1 || ys.length < 1) {
+    return html`<div class="field-hint" style=${{ padding: 12 }}>No heatmap rows.</div>`;
+  }
+  return html`
+    <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} role="img" aria-label=${title || valueKey}>
+      ${title && html`<text x=${padL} y="18" fill="var(--text)" font-size="12" font-family="var(--font-mono)">${title}</text>`}
+      ${ys.map((y, yi) => xs.map((x, xi) => {
+        const value = byKey.get(`${x}|${y}`);
+        return html`
+          <rect
+            key=${`${x}|${y}`}
+            x=${padL + xi * cellW}
+            y=${padT + yi * cellH}
+            width=${Math.max(cellW - 1, 1)}
+            height=${Math.max(cellH - 1, 1)}
+            fill=${fill(value)}
+          />
+          ${cellW > 42 && cellH > 22 && Number.isFinite(value) && html`
+            <text x=${padL + xi * cellW + cellW / 2} y=${padT + yi * cellH + cellH / 2 + 4}
+              text-anchor="middle" font-size="10" fill="#fff" font-family="var(--font-mono)">
+              ${defaultTooltipValue(value)}
+            </text>
+          `}
+        `;
+      }))}
+      ${xs.map((x, xi) => html`
+        <text x=${padL + xi * cellW + cellW / 2} y=${h - 14} text-anchor="middle" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)">${x}</text>
+      `)}
+      ${ys.map((y, yi) => html`
+        <text x=${padL - 8} y=${padT + yi * cellH + cellH / 2 + 4} text-anchor="end" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)">${y}</text>
+      `)}
+      <text x=${padL + innerW / 2} y=${h - 2} text-anchor="middle" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)">${xKey}</text>
+      <text x="12" y=${padT + innerH / 2} text-anchor="middle" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)" transform=${`rotate(-90 12 ${padT + innerH / 2})`}>${yKey}</text>
+    </svg>
+  `;
+}
+
+window.Charts = { LineChart, Sparkline, BarChart, HistogramChart, TradePriceChart, IndicatorChart, HeatmapChart, adaptiveDateLabel, MAX_Y_ZOOM };

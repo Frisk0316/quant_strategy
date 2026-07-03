@@ -16,7 +16,8 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 
 ## Snapshot
 
-- Current branch: `codex/pipeline-batch1-stage3`, working tree clean.
+- Current branch: `codex/pipeline-batch1-stage3`, working tree has uncommitted
+  turtle implementation/docs changes plus pre-existing planning/state edits.
 - Repo maintenance (M1-M5 + M2-R1) is fully committed and closed:
   `df96682`/`79c1ddc`/`0191c1d`/`2dea608`/`5eb71f8`/`21cc3c9`.
 - Strategy research pipeline P1-P9 is fully committed:
@@ -33,6 +34,25 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
   `docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`.
 - OKX liquidation forward-accumulation runs every 2h via Windows Task
   Scheduler (`quant_liq_okx_ingest`, Interactive-only).
+- **NEW: Turtle (海龜) platform integration is planned** (2026-07-03 Claude):
+  spec `docs/superpowers/specs/2026-07-03-turtle-platform-design.md`, Codex
+  tasks `tasks/2026-07-03-turtle-strategy-platform-tasks.md` (T1–T5,
+  daily_winner-precedent standalone runner + UI sweep + heatmap/plotly-surface
+  visualization; parity fixture gates implementation). Planning docs are
+  uncommitted in the working tree; build not started.
+
+2026-07-03 Codex update: turtle implementation is now present in the working
+tree (`backtesting/turtle_backtest.py`, `routes_backtest.py`, frontend controls,
+heatmaps, vendored Plotly, and focused tests).
+
+2026-07-03 Claude review: turtle **APPROVED WITH REQUIRED FIXES**; Codex has
+now implemented RF1-RF3 in the working tree. RF1 fixes the contract regression
+with the approved declarative `turtle` entry, RF2 adds the `invest_pct` scrub
+UI and 5-metric heatmaps, and RF3 wires the checked-in golden fixture into
+parity tests without regenerating it. Remaining closure: full unit suite,
+DB-backed run/sweep smoke where available, and docs checks are now complete;
+next closure is the turtle-scoped commit excluding the parallel
+funding-xs-dispersion stream.
 
 ## Active Warnings
 

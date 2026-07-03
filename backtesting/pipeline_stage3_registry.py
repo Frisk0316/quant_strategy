@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
+from scripts.run_funding_xs_dispersion_checkpoint import run_funding_xs_dispersion_checkpoint
 from scripts.run_pipeline_batch2_checkpoint import run_c1, run_c2, run_c3
 
 Stage3Context = Mapping[str, Any]
@@ -29,4 +30,5 @@ STAGE3_RUNNERS: dict[str, Stage3Runner] = {
     "F-PAIRS-OU": _legacy_runner(run_c1, "F-PAIRS-OU"),
     "F-FUNDING-CARRY": _legacy_runner(run_c2, "F-FUNDING-CARRY"),
     "F-SENTIMENT": _legacy_runner(run_c3, "F-SENTIMENT"),
+    "F-FUNDING-XS-DISPERSION": run_funding_xs_dispersion_checkpoint,
 }

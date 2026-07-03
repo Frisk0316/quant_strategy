@@ -269,6 +269,26 @@ price_series plus strategy params -> backtesting.artifacts indicator recomputati
 Current: indicator charts are visual review aids. Indicator recomputation must not
 silently change strategy signal logic.
 
+## Turtle Research Runner Flow
+
+```text
+DB 1D candles -> routes_backtest.py turtle job -> backtesting.turtle_backtest.run_turtle_backtest -> result.json + price/indicator/trades/equity/returns/drawdown CSVs -> frontend result review
+```
+
+Turtle is a research-only standalone port of `new_startegy_海龜`; it does not
+enter replay, `config/strategies.yaml`, strategy/risk/live gates, or
+differential-validation contracts. Sweep requests branch before the technical
+`parameter_sweep` harness:
+
+```text
+POST /api/backtest/sweep strategy=turtle -> run_turtle_sweep -> results/turtle_sweeps/<sweep_id>/{summary.json,rows.csv,equity_curves.csv?,surface.html?} -> TurtleSweepPanel heatmaps / invest_pct scrub / Plotly surface link
+```
+
+Current: the API serves only allow-listed Turtle sweep artifacts. The Plotly
+surface HTML loads the vendored static frontend bundle from
+`/vendor/plotly.min.js`; `equity_curves.csv` powers the `invest_pct` scrub UI
+when the sweep includes that axis.
+
 ## Frontend Result Display Flow
 
 ```text

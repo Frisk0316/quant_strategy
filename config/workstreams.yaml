@@ -56,3 +56,12 @@ workstreams:
     next: "none - manual complete; rerun scripts/generate_research_pipeline_doc.py if content changes"
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
     updated: 2026-06-29
+
+  - name: Turtle strategy platform integration
+    status: active
+    milestones: [spec, t1_core_port_parity, t2_run_api, t3_sweep_api, t4_frontend, t5_docs, claude_review]
+    current: claude_review
+    state: "Claude review 2026-07-03: APPROVED WITH REQUIRED FIXES; RF1-RF3 now implemented and verified. RF1 fixed the full-suite contract regression with the approved declarative turtle contract entry; RF2 added final_equity-vs-invest_pct line chart, slider scrub, selected equity curve, and 5-metric heatmaps; RF3 wired tests/fixtures/turtle/ golden default/stress parity into tests/unit/test_turtle_backtest.py without regenerating fixtures. Full unit, frontend syntax, docs metadata/link checks, config-only validation, and DB-backed turtle run/sweep smoke passed."
+    next: "Commit with AI-Origin: Codex, excluding the parallel funding-xs-dispersion stream files."
+    links: [docs/superpowers/specs/2026-07-03-turtle-platform-design.md, tasks/2026-07-03-turtle-strategy-platform-tasks.md]
+    updated: 2026-07-03

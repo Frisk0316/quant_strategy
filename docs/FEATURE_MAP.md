@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-03
 expires: none
 superseded_by: null
 ---
@@ -25,7 +25,8 @@ implementation exists.
   `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `scripts/run_replay_backtest.py`, `scripts/backtest_ohlcv_rotation.py`,
   `backtesting/replay.py`, `backtesting/parameter_sweep.py`,
-  `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`.
+  `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`,
+  `backtesting/turtle_backtest.py`.
   Execution-profile controls live in `backtesting/research_controls.py` and are
   exposed by `scripts/run_replay_backtest.py`, `src/okx_quant/api/routes_backtest.py`,
   and `frontend/view-config.js`.
@@ -38,11 +39,34 @@ implementation exists.
 - Tests: `tests/unit/test_backtesting.py`, `tests/unit/test_parameter_sweep.py`,
   `tests/unit/test_backtest_request_exchange.py`,
   `tests/unit/test_multi_venue_convergence.py`,
+  `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py`,
   `tests/integration/test_replay_engine.py`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
   `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: do not change strategy, risk, portfolio, execution, DB schema,
   or deployment gates for UI-only fixes.
+
+## Turtle Research Runner
+
+- User-facing behavior: run the standalone Turtle S1/S2 reference port on one
+  DB-backed 1D symbol; sweep window params and optional `invest_pct`; review
+  standard run artifacts plus native SVG heatmaps and a Plotly surface HTML
+  sweep artifact.
+- Frontend files: `frontend/data.js`, `frontend/view-config.js`,
+  `frontend/charts.js`, `frontend/vendor/plotly.min.js`.
+- Backend/API files: `src/okx_quant/api/routes_backtest.py`.
+- Backtesting files: `backtesting/turtle_backtest.py`.
+- Data / DB / artifact files: DB/canonical or market 1D OHLCV via
+  `backtesting/data_loader.py`; run artifacts under `results/<run_id>/`;
+  sweep artifacts under `results/turtle_sweeps/<sweep_id>/`.
+- Tests: `tests/unit/test_turtle_backtest.py`,
+  `tests/unit/test_routes_backtest_turtle.py`.
+- Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
+  `docs/GOLDEN_CASES.md`, `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`.
+- Do-not-touch notes: research-only; no replay strategy, no
+  `config/strategies.yaml`, no strategy/risk/live/deployment gate changes, no
+  changes to `new_startegy_海龜/`, and no differential-validation contract entry
+  without explicit approval.
 
 ## Backtest Result Charts
 

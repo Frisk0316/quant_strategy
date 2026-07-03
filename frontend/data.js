@@ -73,6 +73,7 @@
     { id: "cme_gap_fill", name: "CME Daily Gap Baseline", tag: "External", desc: "Research-only delayed daily CME BTC gap baseline, not real-time gap-fill" },
     { id: "ohlcv_rotation", name: "OHLCV Rotation", tag: "Momentum", desc: "Cross-sectional momentum ranking on 1m OHLCV — no order book or funding required" },
     { id: "daily_winner", name: "Daily Winner", tag: "Validation", desc: "Every day buys yesterday's strongest symbol and exits at the daily close" },
+    { id: "turtle", name: "Turtle S1/S2", tag: "Research", desc: "Research-only long breakout port of the standalone Turtle S1/S2 script on 1D candles" },
   ];
 
   const SYMBOLS = [
@@ -414,6 +415,8 @@ window.API = (function () {
     triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
     fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),
     fetchBacktestSweepJobs:   ()        => _get("/api/backtest/sweep/jobs"),
+    fetchBacktestSweepResult: (sweepId) => _getLarge("/api/backtest/sweep/result/" + encodeURIComponent(sweepId)),
+    backtestSweepArtifactUrl: (sweepId, name) => "/api/backtest/sweep/artifact/" + encodeURIComponent(sweepId) + "/" + encodeURIComponent(name),
     triggerDifferentialValidation: (id, body) => _post("/api/backtest/" + id + "/differential-validation/run", body),
     triggerStrategyValidation: (body) => _post("/api/backtest/strategy-validation/run", body),
     fetchDifferentialValidationStatus: (jobId) => _get("/api/backtest/differential-validation/status/" + jobId),

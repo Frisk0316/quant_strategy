@@ -164,6 +164,34 @@ Dual Output replay:
 python scripts/run_replay_backtest.py --strategy macd_crossover --symbol BTC-USDT-SWAP --exchange binance --bar 1H --strategy-params "{\"fast_span\":12,\"slow_span\":26,\"signal_span\":9}" --execution-profile dual_output --save-artifacts --run-id manual_macd_dual
 ```
 
+## Turtle Research Runner Checks
+
+Turtle is DB-backed and 1D-only. It is a research-only standalone runner, not a
+replay strategy and not live-readiness evidence.
+
+Core parity/unit check:
+
+```powershell
+python -m pytest tests/unit/test_turtle_backtest.py tests/unit/test_routes_backtest_turtle.py -q
+```
+
+Manual API single run (requires a running server and DB 1D candles for the
+symbol):
+
+```powershell
+$body = @{
+  strategy = "turtle"; symbols = @("BTC-USDT-SWAP"); bar = "1D";
+  start = "2024-01-01"; end = "2024-03-01"; initial_equity = 50000;
+  strategy_params = @{ enter_term_sys1 = 20; enter_term_sys2 = 55; leave_term_sys1 = 10; leave_term_sys2 = 20; single_sys_unit_limit = 4; both_sys_unit_limit = 4; invest_pct = 0.01; min_position = 0.0001; fee = 0.003; atr_period = 20 }
+} | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/backtest/run -ContentType application/json -Body $body
+```
+
+Manual sweep payload uses the same `/api/backtest/sweep` endpoint with
+`strategy=turtle`; results are written under `results/turtle_sweeps/<sweep_id>/`
+and are available via `/api/backtest/sweep/result/{sweep_id}` and
+`/api/backtest/sweep/artifact/{sweep_id}/{name}`.
+
 ## Config Validation
 
 ```bash
