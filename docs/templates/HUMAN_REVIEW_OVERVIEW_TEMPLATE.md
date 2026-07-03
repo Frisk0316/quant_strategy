@@ -13,6 +13,7 @@ risk_level: low
 human_must_read:
   - path/to/must-read-doc.md
 superseded_by: null
+expires: none
 ---
 
 <!--

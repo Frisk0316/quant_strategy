@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-03
 expires: none
 superseded_by: null
 ---
@@ -14,24 +14,24 @@ Durable backlog for bugs, gaps, and open operational risks. `docs/AI_HANDOFF.md`
 may still reference active issues, but long-lived backlog items should move here
 over time.
 
-## Governance / Documentation
-
-- `docs/AI_HANDOFF.md` still contains substantial historical session detail. Known
-  gap: migrate completed history to `docs/CHANGELOG_AI.md` in a dedicated cleanup
-  task.
-- Some older Markdown files do not yet include lifecycle metadata. Current
-  docs-check warns for older files and hard-fails only for new durable docs.
-
 ## Harness
 
 - `make api-smoke` is a real smoke only when `API_BASE_URL` points at a running
   server; otherwise it exits with an explicit SKIP.
-- `make backtest-smoke` verifies entrypoints only. Known gap: add a tiny frozen
-  no-DB fixture before treating it as replay execution coverage.
+- `make backtest-smoke` uses a tiny frozen no-DB replay fixture. It is smoke
+  coverage only; full replay/data-provenance coverage and promotion evidence
+  still require the normal validation gates.
 - `make verify-full` may require TimescaleDB and seeded data.
 - Frontend backtest-chart behavior is still mostly covered by syntax/static
   checks plus API artifact tests. Known gap: add a browser-level interaction test
   before treating progressive multi-symbol chart loading as fully guarded.
+- The crypto-alpha-lab (`research/crypto-alpha-lab/`) is a **separate Python
+  package**; its tests must run as their own step (`pip install -e
+  research/crypto-alpha-lab` then `python -m pytest
+  research/crypto-alpha-lab/tests -p no:cacheprovider`). Collecting them in the
+  same `pytest` invocation as `tests/unit/` fails with
+  `ImportError: crypto_alpha_lab`. CI now runs the parent and lab suites as
+  separate steps.
 
 ## Validation
 
@@ -59,13 +59,10 @@ over time.
   returns, or combined returns when path assembly is unavailable, so
   `scripts/recheck_dsr.py` can recompute DSR from saved artifacts; historical
   artifacts were not backfilled and remain summary-only.
-- ADR-0007 P1 closed the registry-only `ct_val` resolution gap for replay by
-  adding venue-aware specs, provenance exchange tags, and frontend/API exchange
-  selection; Known Issue 20's root cause is closed. Remaining environment gap:
-  a fresh DB-backed artifact PASS still needs a reachable seeded DSN. On
+- A fresh DB-backed artifact PASS still needs a reachable seeded DSN. On
   2026-06-18, `DATABASE_URL` was unset, the configured `.env` DSN on port 5432
   refused connections, local PostgreSQL on port 5433 rejected the repo `quant`
-  credentials, and Docker Desktop could not be started from this session.
+  credentials, and Docker Desktop could not be started from that session.
 - Source-scoped canonical reads are now a validation boundary: DB parity for
   exchange `<x>` must query `canonical_candles.source_primary = <x>` and emit
   `checks.db_parity.canonical_source_primary == <x>`. If a Binance validation
@@ -86,29 +83,22 @@ over time.
   `adr0007_binance_btc_1h_db_pass_20260618_source_provenance` artifact still
   records the pre-fix FAIL, carries `SUPERSEDED.md`, and should not be cited as
   PASS.
-- Pipeline batch 1's `ETH-USDT-SWAP` data blocker was resolved on 2026-06-25:
-  Binance `ETH-USDT-SWAP` canonical 1m OHLCV now covers 2024-01-01 through
-  2026-06-16 23:59 UTC with 1,293,120 rows and 0 gaps, and Binance funding has
-  2,694 rows. The remaining gap is validation quality, not data availability:
-  S6 did not re-earn the statistical gate on the fold-refit harness, so portable
-  validation adapters and authoritative ct_val evidence must not start for S6.
-  S7 is shelved after a non-degenerate half-life rerun. S5 has a separate
-  point-in-time universe/canonical coverage mismatch: the current membership
-  artifact plus strict venue-scoped complete-window candle coverage produces
-  `nonzero_grid_activity:false`, so the S5 refit summary is a data-universe
-  artifact rather than a strategy verdict.
-
-- **Family-minting checker K vs n_trials (2026-06-30):** the initial
-  `backtesting/pipeline_family_minting.py` set `inherited_K = inherited_n_trials`
-  (flagged with a ponytail comment) because no retry-count source existed. The
-  **source is now added** — the `docs/EXPERIMENT_REGISTRY.md` *Family K-budget*
-  table (per-family `K_used` / `K_limit=2`, backfilled from row notes; a human
-  checkpoint①#9 judgment, correctable). Remaining wiring (Codex, one step):
-  extend `pipeline_checkpoint1.family_registry_from_text` to parse the K-budget
-  table and make `pipeline_family_minting` report real `k_used` / `k_limit` /
-  `at_k_limit` instead of conflating with `n_trials`. Until wired, do **not** rely
-  on the checker's `inherited_K`; the K=2 retry stop-condition is not yet
-  enforced. Task block: `docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md` §7a.
+- Pipeline batch 1's remaining gap is validation quality, not ETH data
+  availability: S6 did not re-earn the statistical gate on the fold-refit
+  harness, so portable validation adapters and authoritative ct_val evidence
+  must not start for S6. S7 is shelved after a non-degenerate half-life rerun.
+  S5 has a separate point-in-time universe/canonical coverage mismatch: the
+  current membership artifact plus strict venue-scoped complete-window candle
+  coverage produces `nonzero_grid_activity:false`, so the S5 refit summary is a
+  data-universe artifact rather than a strategy verdict.
+- The `docs/EXPERIMENT_REGISTRY.md` Family K-budget table is hand-maintained
+  checkpoint state. Even though the family-minting checker now reads `k_used`,
+  `k_limit`, and `at_k_limit`, stale table values still need human review before
+  they are relied on for K-budget decisions.
+- Future experiment-registry rows should continue to state
+  `family-cumulative n_trials=...` clearly. If they do not, the shared
+  `family_registry_from_text()` parser falls back to the historical max-row
+  interpretation.
 
 ## Operations
 

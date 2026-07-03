@@ -103,8 +103,8 @@ def decide_family_minting(
         reason = "low correlation with supplied reference families; provisional new-family candidate"
 
     inherited_n_trials = nearest_trials if decision in {"ASSIGN", "SKIP_RECOMMENDED"} else 0
-    # ponytail: no separate K ledger exists yet; use family cumulative trials until one does.
-    inherited_k = inherited_n_trials
+    k_used = nearest.k_used if nearest else 0
+    k_limit = nearest.k_limit if nearest else 0
     return {
         "schema_version": SCHEMA_VERSION,
         "batch_id": batch_id,
@@ -117,7 +117,9 @@ def decide_family_minting(
         "nearest_family_cumulative_n_trials": nearest_trials,
         "decision": decision,
         "inherited_n_trials": inherited_n_trials,
-        "inherited_K": inherited_k,
+        "k_used": k_used,
+        "k_limit": k_limit,
+        "at_k_limit": bool(k_limit and k_used >= k_limit),
         "provisional_new_family": decision == "MINT",
         "human_review_items": _review_items(decision, nearest_status),
         "reason": reason,

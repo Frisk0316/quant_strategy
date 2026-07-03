@@ -87,6 +87,13 @@ Main app views in `frontend/app.js`:
 - Technical strategies are `ma_crossover`, `ema_crossover`, and `macd_crossover`.
 - External-feature research baselines are `fear_greed_sentiment` and `cme_gap_fill`.
 - `daily_winner` is tagged as validation-only and is not deployment evidence.
+- `turtle` is a research-only standalone runner. `frontend/view-config.js` locks
+  it to 1D, renders the 11 reference params with an `invest_pct` percent slider,
+  and owns the Turtle sweep panel. Sweep results render 5 native SVG heatmaps
+  plus an `invest_pct` final-equity line chart, slider scrub, selected equity
+  curve, and Plotly 3D surface artifact link. `frontend/charts.js` exports the
+  shared `LineChart` and `HeatmapChart`; Plotly artifacts load
+  `frontend/vendor/plotly.min.js`.
 
 ## Metrics Glossary
 
@@ -126,6 +133,9 @@ Main app views in `frontend/app.js`:
 - `triggerBacktestRun`: `POST /api/backtest/run`.
 - `fetchBacktestRunStatus`: `GET /api/backtest/run/status/{job_id}`.
 - `triggerBacktestSweep`: `POST /api/backtest/sweep`.
+- `fetchBacktestSweepResult`: `GET /api/backtest/sweep/result/{sweep_id}`.
+- `backtestSweepArtifactUrl`: URL builder for
+  `GET /api/backtest/sweep/artifact/{sweep_id}/{name}`.
 - `fetchBacktest`: `GET /api/backtest/{run_id}`.
 - `fetchBacktestSummary`: `GET /api/backtest/{run_id}/summary`.
 - `fetchBacktestMetrics`: `GET /api/backtest/{run_id}/metrics`.

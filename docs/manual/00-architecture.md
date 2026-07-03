@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 系統架構
 
 本專案是事件驅動的量化交易與回測系統。使用者操作主要走 dashboard/API；研究、驗證與部署判斷則以 repo 內文件與 artifacts 為準。

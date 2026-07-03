@@ -224,6 +224,32 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "turtle": {
+        "strategy_class": "validation_research_runner",
+        "minimum_reference_engines": 0,
+        "portable_validation_required": False,
+        "validation_only": True,
+        "engines": {
+            "vectorbt": {
+                "status": "not_targeted",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv"],
+                "limitation": "Research-only standalone Turtle reference port; portable external-engine validation is not targeted.",
+            },
+            "backtrader": {
+                "status": "not_targeted",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv"],
+                "limitation": "Research-only standalone Turtle reference port; Backtrader parity validation is not targeted.",
+            },
+            "nautilus": {
+                "status": "not_targeted",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv"],
+                "limitation": "Research-only standalone Turtle reference port; Nautilus execution validation is not targeted.",
+            },
+        },
+    },
     "fear_greed_sentiment": {
         "strategy_class": "external_feature",
         "minimum_reference_engines": 1,

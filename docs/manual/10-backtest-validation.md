@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 回測與驗證 Gate
 
 回測結果要能被引用，必須有可追溯 artifact，並清楚標示驗證狀態。單次漂亮績效不是 edge evidence。

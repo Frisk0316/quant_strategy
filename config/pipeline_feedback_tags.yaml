@@ -1,0 +1,13 @@
+# 跨輪回饋 tags。內容 owner: Claude/human。機器只消費、不自動改寫。
+# reason tags: cost_kill | calm_hedge_artifact | breadth_fail |
+#              crowded_decay | harness_artifact | data_gap
+families:
+  F-XS-MOMENTUM:        {verdict: refuted_shelved, reasons: [crowded_decay], guidance: avoid}
+  F-S7-BASIS-MEANREV:   {verdict: shelved,          reasons: [cost_kill],     guidance: avoid}
+  F-PAIRS-OU:           {verdict: refuted,          reasons: [cost_kill, crowded_decay], guidance: avoid}
+  F-S5-RESIDUAL-MEANREV: {verdict: inconclusive,    reasons: [data_gap],      guidance: needs_data}
+  F-S6-TS-MOMENTUM:     {verdict: inconclusive,     reasons: [crowded_decay], guidance: retry_with_twist}
+  F-FUNDING-CARRY:      {verdict: refuted_shelved,  reasons: [calm_hedge_artifact, cost_kill], guidance: avoid}
+  F-SENTIMENT:          {verdict: refuted,          reasons: [crowded_decay], guidance: avoid}
+  F-FUNDING-XS-DISPERSION: {verdict: proposed,      reasons: [breadth_fail],  guidance: needs_data}
+  F-XVENUE-LEADLAG:     {verdict: proposed,         reasons: [data_gap],      guidance: needs_data}

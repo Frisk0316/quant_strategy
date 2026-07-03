@@ -1,3 +1,13 @@
+---
+status: accepted
+type: adr
+owner: human
+created: 2026-05-11
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # ADR-0002: Backtest Result Schema
 
 ## Status

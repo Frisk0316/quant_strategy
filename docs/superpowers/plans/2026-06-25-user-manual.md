@@ -1,3 +1,13 @@
+---
+status: current
+type: plan
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # In-Dashboard User Manual Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

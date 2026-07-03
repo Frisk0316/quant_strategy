@@ -1,5 +1,6 @@
 import json
 from io import BytesIO
+from urllib.error import HTTPError
 
 import pytest
 
@@ -44,6 +45,9 @@ def test_fetch_papers_parses_keyless_arxiv_feed():
       <entry>
         <id>http://arxiv.org/abs/2401.00001v1</id>
         <title> Funding Premia in Crypto </title>
+        <summary>
+          We study funding premia in crypto perpetual futures.
+        </summary>
         <published>2024-01-02T00:00:00Z</published>
         <author><name>Alice</name></author>
         <author><name>Bob</name></author>
@@ -62,6 +66,7 @@ def test_fetch_papers_parses_keyless_arxiv_feed():
         {
             "paper_id": "arxiv-2401.00001",
             "title": "Funding Premia in Crypto",
+            "abstract": "We study funding premia in crypto perpetual futures.",
             "authors": ("Alice", "Bob"),
             "year": 2024,
             "source_type": "preprint",
@@ -124,6 +129,7 @@ def test_fetch_papers_parses_semantic_scholar_json():
             "data": [
                 {
                     "title": "Crypto  Carry  Premia",
+                    "abstract": "Evidence from perpetual futures.",
                     "year": 2025,
                     "url": "https://www.semanticscholar.org/paper/abc",
                     "externalIds": {"DOI": "10.1111/jofi.12345"},
@@ -135,6 +141,7 @@ def test_fetch_papers_parses_semantic_scholar_json():
 
     def opener(url, timeout=10):
         assert "api.semanticscholar.org" in url
+        assert "abstract" in url
         return BytesIO(payload)
 
     papers = fetch_papers(
@@ -145,6 +152,7 @@ def test_fetch_papers_parses_semantic_scholar_json():
         {
             "paper_id": "s2-10-1111-jofi-12345",
             "title": "Crypto Carry Premia",
+            "abstract": "Evidence from perpetual futures.",
             "authors": ("Alice", "Bob"),
             "year": 2025,
             "source_type": "journal_article",
@@ -162,6 +170,7 @@ def test_fetch_papers_parses_crossref_json():
                     {
                         "DOI": "10.2139/ssrn.999",
                         "title": ["Funding Premia in Perpetuals"],
+                        "abstract": "<jats:p>Funding <jats:i>premia</jats:i> in perpetuals.</jats:p>",
                         "issued": {"date-parts": [[2025, 6]]},
                         "URL": "https://doi.org/10.2139/ssrn.999",
                         "author": [{"given": "Jane", "family": "Doe"}],
@@ -180,9 +189,104 @@ def test_fetch_papers_parses_crossref_json():
     )
 
     assert papers[0]["paper_id"] == "doi-10-2139-ssrn-999"
+    assert papers[0]["abstract"] == "Funding premia in perpetuals."
     assert papers[0]["year"] == 2025
     assert papers[0]["authors"] == ("Jane Doe",)
     assert papers[0]["source_type"] == "journal_article"
+
+
+def test_fetch_papers_retries_429_and_uses_disk_cache(tmp_path):
+    payload = json.dumps(
+        {
+            "data": [
+                {
+                    "title": "Cached Carry",
+                    "abstract": "Cached abstract.",
+                    "year": 2025,
+                    "externalIds": {},
+                    "authors": [],
+                }
+            ]
+        }
+    ).encode()
+    calls: list[str] = []
+    sleeps: list[float] = []
+
+    def opener(url, timeout=10):
+        calls.append(url)
+        if len(calls) == 1:
+            raise HTTPError(url, 429, "Too Many Requests", {"Retry-After": "0"}, None)
+        return BytesIO(payload)
+
+    log: list[dict[str, object]] = []
+    papers = fetch_papers(
+        ["semanticscholar:crypto carry"],
+        ("2024-01-01", "2026-12-31"),
+        opener=opener,
+        cache_dir=tmp_path / "literature_cache",
+        sleeper=sleeps.append,
+        log_out=log,
+    )
+
+    assert papers[0]["abstract"] == "Cached abstract."
+    assert len(calls) == 2
+    assert sleeps == [0.0]
+    assert log == [
+        {
+            "source": "semanticscholar",
+            "query": "crypto carry",
+            "status": "ok",
+            "count": 1,
+            "cache": "miss",
+            "retries": 1,
+        }
+    ]
+
+    calls.clear()
+    cache_log: list[dict[str, object]] = []
+    cached = fetch_papers(
+        ["semanticscholar:crypto carry"],
+        ("2024-01-01", "2026-12-31"),
+        opener=opener,
+        cache_dir=tmp_path / "literature_cache",
+        log_out=cache_log,
+    )
+
+    assert cached == papers
+    assert calls == []
+    assert cache_log[0]["cache"] == "hit"
+    assert cache_log[0]["retries"] == 0
+
+
+def test_fetch_papers_logs_retry_count_when_source_fails(tmp_path):
+    calls: list[str] = []
+
+    def opener(url, timeout=10):
+        calls.append(url)
+        raise HTTPError(url, 429, "Too Many Requests", {"Retry-After": "0"}, None)
+
+    log: list[dict[str, object]] = []
+    papers = fetch_papers(
+        ["semanticscholar:crypto carry"],
+        ("2024-01-01", "2026-12-31"),
+        opener=opener,
+        cache_dir=tmp_path / "literature_cache",
+        sleeper=lambda _delay: None,
+        log_out=log,
+    )
+
+    assert papers == []
+    assert len(calls) == 3
+    assert log == [
+        {
+            "source": "semanticscholar",
+            "query": "crypto carry",
+            "status": "error:HTTPError",
+            "count": 0,
+            "cache": "miss",
+            "retries": 2,
+        }
+    ]
 
 
 def test_fetch_papers_filters_outside_date_window():

@@ -7,7 +7,7 @@ VALIDATION_ENGINES ?= vectorbt,backtrader,nautilus
 VALIDATION_RESULTS_DIR ?= results
 SOURCE_PROVENANCE_ARGS ?= --help
 
-FRONTEND_JS = frontend/data.js frontend/charts.js frontend/view-config.js frontend/view-backtest.js frontend/view-results.js frontend/view-validation.js frontend/view-trades.js frontend/view-glossary.js frontend/view-progress.js frontend/app.js
+FRONTEND_JS = frontend/data.js frontend/tweaks-panel.js frontend/charts.js frontend/view-config.js frontend/view-results.js frontend/view-trades.js frontend/view-backtest.js frontend/view-validation.js frontend/view-glossary.js frontend/view-manual.js frontend/view-progress.js frontend/app.js
 
 .PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check strategy-signal-validation source-provenance-validation engine-consistency-smoke api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
 
@@ -46,6 +46,7 @@ lint:
 
 frontend-check:
 	$(NODE) --check frontend/data.js
+	$(NODE) --check frontend/tweaks-panel.js
 	$(NODE) --check frontend/charts.js
 	$(NODE) --check frontend/view-config.js
 	$(NODE) --check frontend/view-backtest.js
@@ -53,6 +54,7 @@ frontend-check:
 	$(NODE) --check frontend/view-validation.js
 	$(NODE) --check frontend/view-trades.js
 	$(NODE) --check frontend/view-glossary.js
+	$(NODE) --check frontend/view-manual.js
 	$(NODE) --check frontend/view-progress.js
 	$(NODE) --check frontend/app.js
 

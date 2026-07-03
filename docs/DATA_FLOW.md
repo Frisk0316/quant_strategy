@@ -85,26 +85,81 @@ created automatically for Binance symbols that pass through the fetch flow.
 
 ```text
 OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market_data/import_parquet_funding.py -> funding_rates -> backtesting.data_loader.load_funding -> ReplayBacktestEngine funding cashflow path -> funding artifacts and validation fields -> backtest API and review docs
+Binance funding history + PIT universe -> scripts/market_data/backfill_universe_funding.py -> funding_rates plus local coverage report -> advisory Stage2 data reprobe
 ```
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
 The coverage API labels funding provider/exchange from `funding_rates.source`
-instead of a hard-coded venue label.
+instead of a hard-coded venue label. `backfill_universe_funding.py` is a
+research-pipeline utility for Binance universe-wide funding coverage and writes
+local parquet/coverage JSON before attempting DB upsert and advisory Stage2
+reprobe; it does not alter funding cashflow math or strategy gates. The Stage-2
+funding breadth probe (`backtesting/pipeline_stage2_registry.py`) evaluates its
+breadth minimum from `START + breadth_warmup_days` (30, mirroring
+`config/universe.yaml` warmup) because PIT eligibility cannot exist during
+warmup; warmup days stay recorded in probe details for audit (user-approved
+2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
+
+## External Observations Ingestion Flow
+
+```text
+keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders -> research artifacts / data export
+```
+
+Current: `config/external_data.yaml` registers keyless adapters for
+Alternative.me Fear & Greed, Binance futures open interest, and Deribit DVOL,
+plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
+yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
+liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
+the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
+`oi_binance_btc` / `oi_binance_eth` as hourly USDT-notional open-interest
+observations (`value_num = sumOpenInterestValue`, `fields.unit =
+"USDT_notional"`). `download_binance_vision_metrics.py` is the public historical
+OI path for Binance Vision UM daily metrics; it validates the BTCUSDT schema
+fail-closed before ingesting BTC/ETH 5m `sum_open_interest_value` observations
+with `provenance = binance_vision_metrics`. `OKXLiquidationClient` writes raw
+long/short liquidation event observations from OKX public REST when available;
+notional is source-provided or computed from `sz * bkPx * contract_value` and
+raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /
+`dvol_deribit_eth` as daily DVOL close observations (`fields.unit =
+"dvol_index_points"`). Empty fetches for datasets marked `fail_on_empty_fetch`
+fail closed and do not advance the external-ingestion checkpoint.
+
+Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
+recent ~30-day window, so that adapter remains forward accumulation; historical
+OI should come from Binance Vision public dumps rather than a paid provider or
+proxy series. OKX liquidation REST also appears to be a recent-window source, so
+liquidation datasets are forward-accumulated from the first successful run; no
+daemon or Binance websocket collector exists yet. Deribit DVOL has historical
+windows available through its public endpoint, but whether a Deribit
+options-volatility signal is tradable on this repo's perp execution track
+remains a research-layer question, not an ingestion-layer gate change. Adding
+these datasets makes future Stage-2 data-availability probes possible; it does
+not create strategies, families, or promotion evidence.
 
 ## Point-In-Time Universe Membership Flow
 
 ```text
-1m candle parquet by symbol -> scripts/build_universe_membership.py -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+1m candle parquet by symbol -> scripts/build_universe_membership.py --source parquet -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
+canonical_candles daily dollar volume (DB) -> scripts/build_universe_membership.py --source db -> data/universe/universe_membership.parquet -> Stage-2 funding/xvenue probes and xs_momentum consumers
 venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
 rules, including top-N, rolling ADV threshold, warmup, rebalance cadence, and
 deny-list patterns. `scripts/build_universe_membership.py` derives daily dollar
-volume from candle history and uses only prior history for ADV and warmup
-eligibility. It does not forward-fill symbols across missing or ended candle
-history. `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
+volume either from local 1m candle parquet (`--source parquet`, default) or
+from `canonical_candles` daily aggregates (`--source db`), feeding the exact
+same `build_membership()` eligibility formula either way; it uses only prior
+history for ADV and warmup eligibility and does not forward-fill symbols
+across missing or ended candle history. Known gap fixed 2026-07-04: the
+parquet source is only a thin local mirror, so it silently understated PIT
+eligibility (median 2 eligible/day) versus the DB source (median 28); the
+shared `data/universe/universe_membership.parquet` was rebuilt with
+`--source db` and Stage-2 funding breadth now passes data availability
+(`docs/HYPOTHESIS_LEDGER.md` H-009, `docs/EXPERIMENT_REGISTRY.md` E-030).
+`backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
 convention, shifts daily target weights one full day before intraday expansion to
 avoid same-day-close lookahead, sizes XS momentum gross from estimated portfolio
@@ -213,6 +268,26 @@ price_series plus strategy params -> backtesting.artifacts indicator recomputati
 
 Current: indicator charts are visual review aids. Indicator recomputation must not
 silently change strategy signal logic.
+
+## Turtle Research Runner Flow
+
+```text
+DB 1D candles -> routes_backtest.py turtle job -> backtesting.turtle_backtest.run_turtle_backtest -> result.json + price/indicator/trades/equity/returns/drawdown CSVs -> frontend result review
+```
+
+Turtle is a research-only standalone port of `new_startegy_海龜`; it does not
+enter replay, `config/strategies.yaml`, strategy/risk/live gates, or
+differential-validation contracts. Sweep requests branch before the technical
+`parameter_sweep` harness:
+
+```text
+POST /api/backtest/sweep strategy=turtle -> run_turtle_sweep -> results/turtle_sweeps/<sweep_id>/{summary.json,rows.csv,equity_curves.csv?,surface.html?} -> TurtleSweepPanel heatmaps / invest_pct scrub / Plotly surface link
+```
+
+Current: the API serves only allow-listed Turtle sweep artifacts. The Plotly
+surface HTML loads the vendored static frontend bundle from
+`/vendor/plotly.min.js`; `equity_curves.csv` powers the `invest_pct` scrub UI
+when the sweep includes that axis.
 
 ## Frontend Result Display Flow
 

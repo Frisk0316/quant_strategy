@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-03
 expires: none
 superseded_by: null
 ---
@@ -25,7 +25,8 @@ implementation exists.
   `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `scripts/run_replay_backtest.py`, `scripts/backtest_ohlcv_rotation.py`,
   `backtesting/replay.py`, `backtesting/parameter_sweep.py`,
-  `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`.
+  `backtesting/daily_winner_backtest.py`, `backtesting/ohlcv_rotation_backtest.py`,
+  `backtesting/turtle_backtest.py`.
   Execution-profile controls live in `backtesting/research_controls.py` and are
   exposed by `scripts/run_replay_backtest.py`, `src/okx_quant/api/routes_backtest.py`,
   and `frontend/view-config.js`.
@@ -38,11 +39,34 @@ implementation exists.
 - Tests: `tests/unit/test_backtesting.py`, `tests/unit/test_parameter_sweep.py`,
   `tests/unit/test_backtest_request_exchange.py`,
   `tests/unit/test_multi_venue_convergence.py`,
+  `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py`,
   `tests/integration/test_replay_engine.py`.
 - Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
   `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: do not change strategy, risk, portfolio, execution, DB schema,
   or deployment gates for UI-only fixes.
+
+## Turtle Research Runner
+
+- User-facing behavior: run the standalone Turtle S1/S2 reference port on one
+  DB-backed 1D symbol; sweep window params and optional `invest_pct`; review
+  standard run artifacts plus native SVG heatmaps and a Plotly surface HTML
+  sweep artifact.
+- Frontend files: `frontend/data.js`, `frontend/view-config.js`,
+  `frontend/charts.js`, `frontend/vendor/plotly.min.js`.
+- Backend/API files: `src/okx_quant/api/routes_backtest.py`.
+- Backtesting files: `backtesting/turtle_backtest.py`.
+- Data / DB / artifact files: DB/canonical or market 1D OHLCV via
+  `backtesting/data_loader.py`; run artifacts under `results/<run_id>/`;
+  sweep artifacts under `results/turtle_sweeps/<sweep_id>/`.
+- Tests: `tests/unit/test_turtle_backtest.py`,
+  `tests/unit/test_routes_backtest_turtle.py`.
+- Docs to update: `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
+  `docs/GOLDEN_CASES.md`, `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`.
+- Do-not-touch notes: research-only; no replay strategy, no
+  `config/strategies.yaml`, no strategy/risk/live/deployment gate changes, no
+  changes to `new_startegy_海龜/`, and no differential-validation contract entry
+  without explicit approval.
 
 ## Backtest Result Charts
 
@@ -156,6 +180,8 @@ implementation exists.
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
+  `scripts/market_data/ingest_external.py`,
+  `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
@@ -199,6 +225,7 @@ implementation exists.
   `backtesting/artifacts.py`.
 - Data / DB / artifact files: `src/okx_quant/data/candle_store.py`,
   `scripts/market_data/backfill_funding.py`,
+  `scripts/market_data/backfill_universe_funding.py`,
   `scripts/market_data/import_parquet_funding.py`,
   `scripts/market_data/validate_funding.py`.
 - Config files: `config/settings.yaml`, `config/strategies.yaml`.
@@ -313,7 +340,8 @@ implementation exists.
   generated checkpoint records live under `results/pipeline_batch2_20260625/`.
   Current checkpoint has C3, C2, and C1 DB-backed fold-refit summaries with
   CPCV `path_returns` retained; C3 is refuted after Stage-2 PASS and Stage-3
-  statistical failure.
+  statistical failure. C3 sentiment decisions use the last `published_at` before
+  each UTC decision day closes, then apply the existing one-day target lag.
 - Config files: none changed. The `fear_greed_sentiment` entry in
   `config/strategies.yaml` remains `enabled:false`; live funding-carry strategy
   behavior was not changed.
@@ -329,6 +357,88 @@ implementation exists.
 - Do-not-touch notes: do not enable candidates, touch `config/risk.yaml`, alter
   live/shadow/demo gates, change live funding-carry strategy behavior, edit
   `src/okx_quant/analytics/dsr.py`, or mutate existing result artifacts.
+
+## Funding XS Dispersion Research Candidate
+
+- User-facing behavior: checkpoint-only research candidate for
+  F-FUNDING-XS-DISPERSION. It tests a dollar-neutral perp-only book that goes
+  long low trailing funding APR and short high trailing funding APR across the
+  point-in-time liquid USDT-perp universe. This is evidence-review tooling only,
+  with no UI or API promotion entrypoint.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/funding_xs_dispersion_backtest.py`,
+  `backtesting/pipeline_stage3_registry.py`,
+  `scripts/run_funding_xs_dispersion_checkpoint.py`.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
+  Binance venue-scoped `canonical_candles`, `funding_rates`, and
+  `venue_instrument_specs`; generated sidecars live under
+  `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/`.
+- Config files: none changed.
+- Strategy / portfolio files: none changed; target-weight construction reuses
+  `okx_quant.strategies.xs_momentum.target_weights` from the research path.
+- Tests: `tests/unit/test_funding_xs_dispersion_backtest.py`,
+  `tests/unit/test_pipeline_stage3_registry.py`,
+  `tests/unit/test_pipeline_checkpoint1_check.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, relevant Change Manifest and session/context
+  handoffs.
+- Do-not-touch notes: do not enable a strategy, change live funding-carry
+  behavior, touch `config/strategies.yaml`, `config/risk.yaml`, risk,
+  portfolio, execution, demo/shadow/live gates, or mutate existing result
+  artifacts. Stop at checkpoint 1 unless Claude/human explicitly opens the next
+  task.
+
+## Strategy Research Pipeline Automation
+
+- User-facing behavior: generate and review advisory research-pipeline sidecars
+  before any candidate enters durable ledgers or backtests. Current sidecars are
+  stage2 feasibility JSON, checkpoint1 auto JSON, family-minting JSON, idea-batch
+  JSON, and hypothesis-ledger draft Markdown. Idea-batch B-half enumeration uses
+  supplied Stage-2 data-availability probe results before falling back to
+  taxonomy text; occupied-family verdicts come from `docs/HYPOTHESIS_LEDGER.md`
+  `Status`, while `docs/EXPERIMENT_REGISTRY.md` remains the trial/K-budget
+  source. Inconclusive/refuted/shelved occupied families require an explicit
+  twist marker to be drafted, and overlay-only taxonomy rows are skipped until a
+  deterministic base-family contract exists. The A-half literature driver runs
+  paper fetch/scoring through the crypto-alpha-lab prompt firewall, writes a
+  weekly screen, and registers literature drafts as `pending_llm` sidecars
+  without automatic family minting. Pipeline improvement P1-P8 adds
+  session-scoring handoff files, feedback ranking tags, advisory Stage2
+  reprobe, and per-batch funnel metrics; all remain research-only sidecars.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/pipeline_feasibility.py`,
+  `backtesting/pipeline_checkpoint1.py`, `backtesting/pipeline_family_minting.py`,
+  `backtesting/pipeline_idea_generator.py`.
+- Script files: `scripts/run_pipeline_stage2_check.py`,
+  `scripts/run_pipeline_checkpoint1_check.py`,
+  `scripts/run_pipeline_family_minting_check.py`,
+  `scripts/run_pipeline_idea_generator.py`,
+  `scripts/run_pipeline_literature_ideas.py`,
+  `scripts/run_pipeline_orchestrator.py`,
+  `scripts/run_pipeline_funnel_report.py`,
+  `scripts/literature_keyword_scorer.py`.
+- Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
+  `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
+  `results/<batch_id>/` directories without mutating existing artifacts.
+- Config files: `config/pipeline_feedback_tags.yaml` for Claude/human-owned
+  feedback ranking tags. This is not a strategy, risk, settings, or deployment
+  gate config.
+- Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_pipeline_family_minting.py`,
+  `tests/unit/test_pipeline_idea_generator.py`,
+  `tests/unit/test_pipeline_literature_ideas.py`,
+  `tests/unit/test_literature_keyword_scorer.py`,
+  `tests/unit/test_pipeline_orchestrator.py`,
+  `tests/unit/test_pipeline_funnel_report.py`.
+- Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
+  `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
+  relevant Change Manifest.
+- Do-not-touch notes: automation sidecars are advisory research controls only.
+  They must not append durable ledger rows, change `research/strategy_synthesis.md`,
+  enable strategies, run backtests, change CPCV/DSR/gate semantics, alter
+  config gates, or touch demo/shadow/live behavior without explicit approval.
 
 ## Strategy Registry / Strategy Selection
 
@@ -426,8 +536,26 @@ implementation exists.
   `src/okx_quant/monitoring/telegram_alert.py`,
   `src/okx_quant/monitoring/calibration_log.py`.
 - Config files: `config/settings.yaml`, `docker/prometheus.yml`.
-- Tests: no dedicated monitoring test is mapped here yet.
+- Tests: `tests/unit/test_monitoring.py`.
 - Docs to update: `docs/RUNBOOK.md`, `docs/DEBUGGING_RUNBOOK.md`,
   `docs/KNOWN_ISSUES.md`.
 - Do-not-touch notes: monitoring gaps should be recorded as operational gaps; do not
   infer alerting is production-ready from module presence alone.
+
+## Stocks Research Sandbox
+
+- User-facing behavior: local TW/US stock minute-bar research sandbox for
+  CSV/parquet experiments only; it is not wired into crypto replay, UI, API, or
+  deployment gates.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `src/okx_quant/stocks/`, `scripts/run_stock_backtest.py`.
+- Data / DB / artifact files: user-supplied stock minute-bar CSV/parquet files;
+  no managed DB/artifact pipeline is registered for this sandbox.
+- Config files: none.
+- Tests: `tests/unit/test_stock_system.py`.
+- Docs to update: `docs/FEATURE_MAP.md`; add broader docs only if an explicit
+  task promotes this sandbox into a supported workflow.
+- Do-not-touch notes: do not treat stocks results as crypto strategy evidence;
+  do not connect stocks code to live/shadow/demo gates, shared backtest artifacts,
+  or frontend/API surfaces without explicit human approval.

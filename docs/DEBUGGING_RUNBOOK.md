@@ -1,3 +1,13 @@
+---
+status: current
+type: reference
+owner: human
+created: 2026-05-11
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # Debugging Runbook
 
 Standard diagnostic flows for common failure modes. Before asking an AI to fix anything, work through the relevant section below and collect evidence. Then file a bug report using `.github/ISSUE_TEMPLATE/bug_report.md`.

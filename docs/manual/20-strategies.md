@@ -1,3 +1,13 @@
+---
+status: current
+type: manual
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # 策略與參數
 
 策略 runtime 參數主要在 `config/strategies.yaml`。`enabled: true` 只代表系統會載入或允許使用該策略，不代表它通過部署 Gate。

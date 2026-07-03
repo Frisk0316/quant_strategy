@@ -1,4 +1,8 @@
-"""Stock minute-bar backtesting and order-routing tools."""
+"""Research-only stock minute-bar backtesting and order-routing sandbox.
+
+This package is not wired into the crypto replay/API/UI or deployment gates.
+Use it for local CSV/parquet experiments unless an explicit task promotes it.
+"""
 from okx_quant.stocks.backtest import (
     MinuteBarBacktester,
     MinuteBacktestConfig,

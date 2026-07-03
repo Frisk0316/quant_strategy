@@ -10,6 +10,7 @@ venv/
 data/ticks/
 data/universe/
 data/parquet/
+data/literature_cache/
 *.db
 *.sqlite
 .DS_Store
@@ -34,3 +35,5 @@ logs/
 # crypto-alpha-lab (the shared literature ingestion / idea-generator A-half).
 research/*
 !research/crypto-alpha-lab/
+data/funding/
+

@@ -1,4 +1,64 @@
 datasets:
+  # Binance public openInterestHist is keyless but exposes only a short
+  # recent window (~30 days). This dataset is forward-accumulated by repeated
+  # checkpointed ingests; paid historical OI backfill is out of scope here.
+  oi_binance_btc:
+    provider: binance
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://fapi.binance.com/futures/data/openInterestHist
+    attribution: "Data source: Binance Futures openInterestHist"
+    adapter: binance_oi
+    symbol: BTCUSDT
+    interval: 1h
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is sumOpenInterestValue in USDT_notional. Binance public endpoint is limited to roughly the recent ~30-day window; true 2024 backfill requires a paid provider such as Coinglass/Coinalyze and is out of scope."
+
+  # Same short-history limitation as oi_binance_btc; do not fabricate old OI.
+  oi_binance_eth:
+    provider: binance
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://fapi.binance.com/futures/data/openInterestHist
+    attribution: "Data source: Binance Futures openInterestHist"
+    adapter: binance_oi
+    symbol: ETHUSDT
+    interval: 1h
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is sumOpenInterestValue in USDT_notional. Binance public endpoint is limited to roughly the recent ~30-day window; true 2024 backfill requires a paid provider such as Coinglass/Coinalyze and is out of scope."
+
+  dvol_deribit_btc:
+    provider: deribit
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://www.deribit.com/api/v2/public/get_volatility_index_data
+    attribution: "Data source: Deribit DVOL volatility index"
+    adapter: deribit_dvol
+    currency: BTC
+    resolution: 1D
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is daily DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+
+  dvol_deribit_eth:
+    provider: deribit
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://www.deribit.com/api/v2/public/get_volatility_index_data
+    attribution: "Data source: Deribit DVOL volatility index"
+    adapter: deribit_dvol
+    currency: ETH
+    resolution: 1D
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is daily DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+
   fear_greed_btc:
     provider: alternative_me
     frequency: daily

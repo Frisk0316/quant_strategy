@@ -1,3 +1,13 @@
+---
+status: current
+type: overview
+owner: human
+created: 2026-06-25
+last_reviewed: 2026-06-30
+expires: none
+superseded_by: null
+---
+
 # Human Review Overviews
 
 這個資料夾是**給人類看的審核入口**。當 Claude / Codex 根據使用者想法產生一批

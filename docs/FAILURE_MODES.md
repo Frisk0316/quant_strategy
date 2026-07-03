@@ -44,6 +44,8 @@ failure modes say how it silently breaks.
 | F20 | DSR unit/sample mismatch | Annualized Sharpe or overlapping CPCV paths are treated as thousands of independent per-bar observations, so DSR saturates to 1.0 even when PSR fails | I21 DSR/PSR invariant tests and CPCV `n_trials` checks | R7.4, R6.3 |
 | F21 | Single-name vol proxy used for a market-neutral book target | A diversified long-short book realizes far below the intended vol target while appearing spec-compliant | I22 XS momentum portfolio-vol sizing test and artifact realized-vol review | R4.4 |
 | F22 | Pseudo-OOS from full-sample parameter selection | WF/CPCV callback ignores the train fold, reuses one full-sample-selected return series, and reports in-sample selection as OOS evidence; CPCV paths may become identical or over-optimistic | I24 fold-refit tests and review of pipeline summary `validation_mode` / path dispersion | R6.3, R7.4 |
+| F23 | Wrong verdict source or standalone overlay in B-taxonomy idea generation | A stale experiment outcome or taxonomy free text makes an occupied inconclusive/refuted family look eligible, or an overlay family is drafted as a standalone alpha, inflating trial/K-budget risk | I28 idea-generator verdict/overlay tests and review of `idea_batch.json` skipped reasons | R6.3, R7.4 |
+| F24 | Timestamp precision drift in universe source parity | DB and parquet membership outputs represent the same calendar days but carry different `datetime64` units, breaking source-parity checks or downstream artifact comparisons | `tests/unit/test_universe_membership.py::test_build_membership_ignores_timestamp_storage_precision` and DB/parquet parity test | R6.2 |
 
 ## How to add a failure mode
 

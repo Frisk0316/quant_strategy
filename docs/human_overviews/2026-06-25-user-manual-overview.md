@@ -20,6 +20,7 @@ human_must_read:
   - docs/manual/10-backtest-validation.md
   - docs/manual/30-risk-limits.md
 superseded_by: null
+expires: none
 ---
 
 # Human Review Overview: In-Dashboard User Manual (使用手冊)

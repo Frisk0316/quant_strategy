@@ -147,8 +147,10 @@ the smoke check.
 make backtest-smoke
 ```
 
-Current behavior: verifies entrypoints and reports that a tiny no-DB replay fixture
-is still a known gap. It is not full execution coverage.
+Runs a tiny frozen OHLCV fixture through the replay backtest path without a DB,
+writes artifacts to a temporary directory, and verifies `result.json`,
+`metrics.json`, and `fills.csv`. The fixture uses `strategy_fill` /
+`idealized_fill`; it is smoke coverage only and is not promotion evidence.
 
 Strategy Fill replay:
 
@@ -161,6 +163,34 @@ Dual Output replay:
 ```powershell
 python scripts/run_replay_backtest.py --strategy macd_crossover --symbol BTC-USDT-SWAP --exchange binance --bar 1H --strategy-params "{\"fast_span\":12,\"slow_span\":26,\"signal_span\":9}" --execution-profile dual_output --save-artifacts --run-id manual_macd_dual
 ```
+
+## Turtle Research Runner Checks
+
+Turtle is DB-backed and 1D-only. It is a research-only standalone runner, not a
+replay strategy and not live-readiness evidence.
+
+Core parity/unit check:
+
+```powershell
+python -m pytest tests/unit/test_turtle_backtest.py tests/unit/test_routes_backtest_turtle.py -q
+```
+
+Manual API single run (requires a running server and DB 1D candles for the
+symbol):
+
+```powershell
+$body = @{
+  strategy = "turtle"; symbols = @("BTC-USDT-SWAP"); bar = "1D";
+  start = "2024-01-01"; end = "2024-03-01"; initial_equity = 50000;
+  strategy_params = @{ enter_term_sys1 = 20; enter_term_sys2 = 55; leave_term_sys1 = 10; leave_term_sys2 = 20; single_sys_unit_limit = 4; both_sys_unit_limit = 4; invest_pct = 0.01; min_position = 0.0001; fee = 0.003; atr_period = 20 }
+} | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/backtest/run -ContentType application/json -Body $body
+```
+
+Manual sweep payload uses the same `/api/backtest/sweep` endpoint with
+`strategy=turtle`; results are written under `results/turtle_sweeps/<sweep_id>/`
+and are available via `/api/backtest/sweep/result/{sweep_id}` and
+`/api/backtest/sweep/artifact/{sweep_id}/{name}`.
 
 ## Config Validation
 
@@ -178,6 +208,25 @@ make validate-data
 
 This may require local data files or DB-backed data, depending on configuration and
 environment.
+
+## Scheduled External Ingest (OKX liquidation)
+
+OKX's public liquidation-orders REST endpoint only retains a few hours of
+events (measured 2026-07-03: BTC ~14h, ETH ~5h at the 1,600-row cap), so
+`liq_okx_btc` / `liq_okx_eth` forward accumulation runs as a Windows scheduled
+task every 2 hours (user-approved 2026-07-03):
+
+```text
+Task name : quant_liq_okx_ingest  (schtasks, Interactive only — runs while logged on)
+Wrapper   : scripts/market_data/run_liq_ingest_task.cmd
+Log       : logs/liq_okx_ingest.log (gitignored)
+Manual run: schtasks /Run /TN quant_liq_okx_ingest
+Remove    : schtasks /Delete /TN quant_liq_okx_ingest /F
+```
+
+The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if
+the machine or DB is off for longer than the retention window — check the log
+and `external_observations` first/last timestamps when auditing coverage.
 
 ## Strategy Signal Validation
 

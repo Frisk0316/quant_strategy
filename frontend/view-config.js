@@ -4,7 +4,7 @@ import { html } from 'htm/preact';
 const useConfigState = useState;
 const useConfigEffect = useEffect;
 
-const { Sparkline } = window.Charts;
+const { Sparkline, LineChart, HeatmapChart } = window.Charts;
 
 const BAR_PERIODS = {
   "1m": 525600, "3m": 175200, "5m": 105120, "15m": 35040,
@@ -12,7 +12,8 @@ const BAR_PERIODS = {
 };
 const TECHNICAL_STRATEGIES = new Set(["ma_crossover", "ema_crossover", "macd_crossover"]);
 const EXTERNAL_STRATEGIES = new Set(["fear_greed_sentiment", "cme_gap_fill"]);
-const PARAMETERIZED_STRATEGIES = new Set([...TECHNICAL_STRATEGIES, ...EXTERNAL_STRATEGIES]);
+const TURTLE_STRATEGIES = new Set(["turtle"]);
+const PARAMETERIZED_STRATEGIES = new Set([...TECHNICAL_STRATEGIES, ...EXTERNAL_STRATEGIES, ...TURTLE_STRATEGIES]);
 const STRATEGY_PARAM_DEFAULTS = {
   ma_crossover: { fast_window: 20, slow_window: 50 },
   ema_crossover: { fast_span: 20, slow_span: 50 },
@@ -27,11 +28,36 @@ const STRATEGY_PARAM_DEFAULTS = {
     max_gap_bps: 0,
     allow_direction: "long_only",
   },
+  turtle: {
+    enter_term_sys1: 20,
+    enter_term_sys2: 55,
+    leave_term_sys1: 10,
+    leave_term_sys2: 20,
+    single_sys_unit_limit: 4,
+    both_sys_unit_limit: 4,
+    own_capital: 50000,
+    invest_pct: 0.01,
+    min_position: 0.0001,
+    fee: 0.003,
+    atr_period: 20,
+  },
 };
 const SWEEP_PARAM_DEFAULTS = {
   ma_crossover: { fast_window: "7~20", slow_window: "21~100" },
   ema_crossover: { fast_span: "7~20", slow_span: "21~100" },
   macd_crossover: { fast_span: "8, 12", slow_span: "21, 26, 50", signal_span: "9" },
+  turtle: {
+    enter_term_sys1: "5~30",
+    enter_term_sys2: "31~60",
+    leave_term_sys1: "5~20",
+    leave_term_sys2: "5~25",
+    invest_pct: "",
+    single_sys_unit_limit: "4",
+    both_sys_unit_limit: "4",
+    min_position: "0.0001",
+    fee: "0.003",
+    atr_period: "20",
+  },
 };
 const RISK_OVERRIDE_DEFAULTS = {
   max_order_notional_usd: "",
@@ -87,6 +113,13 @@ const SWEEP_PARAM_SPECS = {
     ["slow_span", "slow"],
     ["signal_span", "signal"],
   ],
+  turtle: [
+    ["enter_term_sys1", "S1 enter"],
+    ["enter_term_sys2", "S2 enter"],
+    ["leave_term_sys1", "S1 exit"],
+    ["leave_term_sys2", "S2 exit"],
+    ["invest_pct", "invest %"],
+  ],
 };
 const SWEEP_ROWS_PER_DAY = {
   "1m": 1440, "3m": 480, "5m": 288, "15m": 96,
@@ -96,6 +129,7 @@ const SWEEP_SECONDS_PER_EVENT = {
   ma_crossover: 0.0018,
   ema_crossover: 0.00020,
   macd_crossover: 0.00025,
+  turtle: 0.00045,
 };
 const DERIVABLE_FROM_1M_BARS = new Set(["3m", "5m", "15m", "30m", "1H", "2H", "4H", "6H", "12H", "1D"]);
 
@@ -113,6 +147,14 @@ const FETCH_TERMINAL_STATUSES = new Set(["done", "error", "cancelled"]);
 const fmtPct = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(d)}%`);
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? "-" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmtUSD = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `$${fmtNum(v, d)}`);
+const normalizeInvestPct = (v) => {
+  const n = Number(v);
+  return !isFinite(n) ? NaN : n > 1 ? n / 100 : n;
+};
+const fmtInvestPct = (v, d = 2) => {
+  const n = Number(v);
+  return !isFinite(n) ? "-" : `${(n > 1 ? n : n * 100).toFixed(d)}%`;
+};
 const fmtTs = (value) => {
   if (!value) return "-";
   const d = typeof value === "number" ? new Date(value) : new Date(value);
@@ -166,7 +208,7 @@ function ProgressStage({ job, style = {} }) {
     </div>
   `;
 }
-function parseSweepValues(raw) {
+function parseSweepValues(raw, { integer = true } = {}) {
   const out = [];
   String(raw || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((part) => {
     const m = part.match(/^(\d+(?:\.\d+)?)\s*(?:\.\.|~|-)\s*(\d+(?:\.\d+)?)(?::(\d+(?:\.\d+)?))?$/);
@@ -174,19 +216,28 @@ function parseSweepValues(raw) {
       const start = Number(m[1]);
       const end = Number(m[2]);
       const step = Number(m[3] || 1);
-      if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(step) || start <= 0 || end < start || step <= 0) {
+      if ((integer && (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(step))) || start <= 0 || end < start || step <= 0) {
         throw new Error(`Invalid range: ${part}`);
       }
-      for (let v = start; v <= end; v += step) out.push(v);
+      for (let v = start; v <= end + 1e-12; v += step) out.push(integer ? Math.round(v) : Number(v.toFixed(6)));
     } else {
       const v = Number(part);
-      if (!Number.isInteger(v) || v <= 0) throw new Error(`Invalid value: ${part}`);
+      if ((integer && !Number.isInteger(v)) || v <= 0) throw new Error(`Invalid value: ${part}`);
       out.push(v);
     }
   });
   return [...new Set(out)];
 }
 function buildSweepGrid(strategy, inputs) {
+  if (strategy === "turtle") {
+    const grid = {};
+    [...(SWEEP_PARAM_SPECS.turtle || []), ["single_sys_unit_limit"], ["both_sys_unit_limit"], ["min_position"], ["fee"], ["atr_period"]]
+      .forEach(([key]) => {
+        const value = inputs?.[key];
+        if (value !== "" && value != null) grid[key] = String(value);
+      });
+    return grid;
+  }
   const specs = SWEEP_PARAM_SPECS[strategy] || [];
   const grid = {};
   specs.forEach(([key]) => {
@@ -197,6 +248,25 @@ function buildSweepGrid(strategy, inputs) {
   return grid;
 }
 function countValidSweepCombos(strategy, grid) {
+  if (strategy === "turtle") {
+    const windows = ["enter_term_sys1", "enter_term_sys2", "leave_term_sys1", "leave_term_sys2"];
+    const values = {};
+    windows.forEach((key) => {
+      values[key] = parseSweepValues(grid?.[key] || "");
+    });
+    const invest = grid?.invest_pct ? parseSweepValues(grid.invest_pct, { integer: false }) : [null];
+    if (invest.length > 1 && windows.some((key) => values[key].length !== 1)) {
+      return { total: 0, valid: 0 };
+    }
+    const total = windows.reduce((acc, key) => acc * Math.max(values[key].length, 0), 1) * invest.length;
+    let valid = 0;
+    values.enter_term_sys1.forEach((s1) => values.enter_term_sys2.forEach((s2) => {
+      values.leave_term_sys1.forEach((l1) => values.leave_term_sys2.forEach((l2) => {
+        if (s1 > l1 && s2 > l2 && s2 > s1 && l1 >= 5 && l2 >= 5 && l2 > l1) valid += invest.length;
+      }));
+    }));
+    return { total, valid };
+  }
   const keys = Object.keys(grid || {});
   const total = keys.reduce((acc, key) => acc * (grid[key]?.length || 0), 1);
   const fastKey = strategy === "ma_crossover" ? "fast_window" : "fast_span";
@@ -319,16 +389,19 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const strat = MOCK.STRATEGIES.find((s) => s.id === strategy) || {};
   const isRotation = strategy === "ohlcv_rotation";
   const isDailyWinner = strategy === "daily_winner";
+  const isTurtle = strategy === "turtle";
   const isTechnical = TECHNICAL_STRATEGIES.has(strategy);
   const hasStrategyParams = PARAMETERIZED_STRATEGIES.has(strategy);
   const isBasketStrategy = isRotation || isDailyWinner || isTechnical;
-  const selectedBar = isDailyWinner ? "1D" : bar;
+  const selectedBar = (isDailyWinner || isTurtle) ? "1D" : bar;
   const tradingPairOptions = dbTradingPairsForBar(dataCoverage || [], selectedBar);
   const tradingPairOptionsKey = tradingPairOptions.join("|");
   const tradingPairSet = new Set(tradingPairOptions);
   const tradingPairStartMap = dbTradingPairStartMap(dataCoverage || [], selectedBar);
   const selectedSwapSymbols = strategy === "pairs_trading"
     ? [symbolX, symbolY]
+    : isTurtle
+    ? [symbol].filter((s) => s && s.includes("SWAP"))
     : isTechnical
     ? technicalSymbols
     : isBasketStrategy
@@ -342,16 +415,26 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     .filter((row) => row.instId && row.firstDate && start && start < row.firstDate)
     .sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.instId.localeCompare(b.instId));
   const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
-  const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[isDailyWinner ? "1D" : bar] || 24) * Math.max(1, selectedSwapSymbols.length);
+  const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[selectedBar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
   const executionProfileMultiplier = executionProfile === "dual_output" ? 2 : 1;
-  const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, isRotation ? "none" : validation);
+  const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation);
 
   useConfigEffect(() => {
     window.API.fetchDataCoverage()
       .then((rows) => setDataCoverage(rows || []))
       .catch(() => setDataCoverage([]));
   }, []);
+
+  useConfigEffect(() => {
+    if (!isTurtle) return;
+    const ownCapital = +equity || 5000;
+    setStrategyParams((all) => {
+      const current = all.turtle || {};
+      if (Number(current.own_capital) === ownCapital) return all;
+      return { ...all, turtle: { ...current, own_capital: ownCapital } };
+    });
+  }, [isTurtle, equity]);
 
   useConfigEffect(() => {
     if (dataCoverage == null) return;
@@ -441,11 +524,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   }, []);
 
   useConfigEffect(() => {
-    if (isDailyWinner && bar !== "1D") {
+    if ((isDailyWinner || isTurtle) && bar !== "1D") {
       setBar("1D");
       setPeriodsOverride(null);
     }
-  }, [isDailyWinner, bar]);
+  }, [isDailyWinner, isTurtle, bar]);
 
   function onBarChange(newBar) {
     setBar(newBar);
@@ -456,23 +539,25 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     const body = {
       strategy,
       exchange,
-      bar: isDailyWinner ? "1D" : bar,
-      periods: isDailyWinner ? BAR_PERIODS["1D"] : periods,
+      bar: selectedBar,
+      periods: (isDailyWinner || isTurtle) ? BAR_PERIODS["1D"] : periods,
       start,
       end,
-      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isTechnical ? technicalSymbols : isBasketStrategy ? [] : [symbol],
+      symbols: strategy === "pairs_trading" ? [symbolY, symbolX] : isTurtle ? [symbol] : isTechnical ? technicalSymbols : isBasketStrategy ? [] : [symbol],
       symbol_x: strategy === "pairs_trading" ? symbolX : null,
       symbol_y: strategy === "pairs_trading" ? symbolY : null,
       perp_symbol: strategy === "funding_carry" ? symbol : null,
       spot_symbol: strategy === "funding_carry" ? spotSymbol : null,
-      validate: isRotation ? null : (validation === "none" ? null : validation),
+      validate: (isRotation || isTurtle) ? null : (validation === "none" ? null : validation),
       universe: (isRotation || isDailyWinner) ? rotUniverse : [],
       benchmark: isRotation ? rotBenchmark : undefined,
       rebalance_minutes: isRotation ? rotRebalanceMin : undefined,
       top_k: isRotation ? rotTopK : undefined,
       rank_exit_buffer: isRotation ? rotRankExitBuffer : undefined,
       initial_equity: +equity || 5000,
-      strategy_params: hasStrategyParams ? (strategyParams[strategy] || {}) : {},
+      strategy_params: hasStrategyParams
+        ? (isTurtle ? { ...(strategyParams.turtle || {}), own_capital: +equity || 5000 } : (strategyParams[strategy] || {}))
+        : {},
       risk_overrides: cleanRiskOverrides(riskOverrides),
       execution_profile: executionProfile,
       fill_all_signals: fillAllSignals,
@@ -509,23 +594,24 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   function triggerParameterSweep() {
     try {
       const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
+      const turtleSweep = isTurtle;
       const body = {
         strategy,
         exchange,
-        bar,
-        periods,
+        bar: turtleSweep ? "1D" : bar,
+        periods: turtleSweep ? BAR_PERIODS["1D"] : periods,
         start,
         end,
-        symbols: technicalSymbols,
+        symbols: turtleSweep ? [symbol] : technicalSymbols,
         initial_equity: +equity || 5000,
         parameter_grid: parameterGrid,
         max_combinations: 5000,
         risk_overrides: cleanRiskOverrides(riskOverrides),
-        fill_all_signals: fillAllSignals,
-        run_finalists: true,
-        finalist_top_pct: Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
-        max_finalists: Math.max(0, Math.min(100, Number(sweepMaxFinalists) || 20)),
-        finalist_validation: sweepFinalistValidation === "none" ? null : sweepFinalistValidation,
+        fill_all_signals: turtleSweep ? false : fillAllSignals,
+        run_finalists: turtleSweep ? false : true,
+        finalist_top_pct: turtleSweep ? 0.1 : Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
+        max_finalists: turtleSweep ? 0 : Math.max(0, Math.min(100, Number(sweepMaxFinalists) || 20)),
+        finalist_validation: turtleSweep ? null : (sweepFinalistValidation === "none" ? null : sweepFinalistValidation),
       };
       setSweepJob({ status: "running", progress: 0, message: "Submitting parameter sweep..." });
       window.API.triggerBacktestSweep(body).then((job) => {
@@ -564,7 +650,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
             <div class="row" style=${{ gap: 8 }}>
               <button class="btn ghost sm">Save preset</button>
-              <button class="btn primary sm" disabled=${runJob?.status === "running" || runJob?.status === "cancelling" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1)} onClick=${triggerBacktest}>Run backtest</button>
+              <button class="btn primary sm" disabled=${runJob?.status === "running" || runJob?.status === "cancelling" || tradingPairOptions.length < 1 || !selectedTradingPairsValid || (strategy === "pairs_trading" && symbolX === symbolY) || ((isRotation || isDailyWinner) && rotUniverse.length < 2) || (isTechnical && technicalSymbols.length < 1) || (isTurtle && !symbol)} onClick=${triggerBacktest}>Run backtest</button>
             </div>
           </div>
 
@@ -719,10 +805,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             `}
             <div class="field">
               <div class="field-label">Bar size</div>
-              <select class="select mono" value=${isDailyWinner ? "1D" : bar} disabled=${isDailyWinner} onChange=${(e) => onBarChange(e.target.value)}>
+              <select class="select mono" value=${(isDailyWinner || isTurtle) ? "1D" : bar} disabled=${isDailyWinner || isTurtle} onChange=${(e) => onBarChange(e.target.value)}>
                 ${Object.keys(BAR_PERIODS).map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
               ${isDailyWinner && html`<div class="field-hint">Daily Winner always uses 1D candles derived from DB 1m OHLCV when needed.</div>`}
+              ${isTurtle && html`<div class="field-hint">Turtle S1/S2 uses DB 1D candles only.</div>`}
             </div>
             <div class="field">
               <div class="field-label">
@@ -739,7 +826,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 onChange=${(e) => setPeriodsOverride(+e.target.value)}
               />
               <div class="field-hint">
-                auto: ${BAR_PERIODS[isDailyWinner ? "1D" : bar]?.toLocaleString()} - <span style=${{ color: periodsOverride ? "var(--accent)" : "var(--text-muted)" }}>${periodsOverride ? "overridden" : "synced"}</span>
+                auto: ${BAR_PERIODS[selectedBar]?.toLocaleString()} - <span style=${{ color: periodsOverride ? "var(--accent)" : "var(--text-muted)" }}>${periodsOverride ? "overridden" : "synced"}</span>
               </div>
             </div>
             <div class="field">
@@ -774,6 +861,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 pairs_trading: 168 * 60,
                 ohlcv_rotation: 240,
                 daily_winner: 24 * 60,
+                turtle: 55 * 24 * 60,
               };
               const wm = warmupMin[strategy] || 0;
               if (!wm || !start || !end) return null;
@@ -787,7 +875,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               }
               return null;
             })()}
-            ${!isRotation && html`
+            ${!(isRotation || isTurtle) && html`
               <div class="field">
                 <div class="field-label">Validation</div>
                 <select class="select" value=${validation} onChange=${(e) => setValidation(e.target.value)}>
@@ -827,7 +915,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             </div>
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
-            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, isRotation ? "none" : validation)} passes)
+            Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation)} passes)
           </div>
           ${runJob && html`
             <div class="col" style=${{ gap: 8, marginTop: 16 }}>
@@ -883,6 +971,18 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               executionProfile=${executionProfile}
               setView=${setView}
               setSelectedRunId=${setSelectedRunId}
+            />
+          `}
+          ${isTurtle && html`
+            <div class="sep" style=${{ margin: "12px 0" }}></div>
+            <${TurtleSweepPanel}
+              inputs=${sweepParams.turtle || {}}
+              setInputs=${(next) => setSweepParams((all) => ({ ...all, turtle: next }))}
+              start=${start}
+              end=${end}
+              symbol=${symbol}
+              job=${sweepJob}
+              onRun=${triggerParameterSweep}
             />
           `}
         </div>
@@ -948,6 +1048,19 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
       ["holding_period", "1 day", "forced round trip", "Buys today's open and exits at today's daily close, producing one expected trade per complete day."],
       ["purpose", "validation", "backtest smoke test", "Designed to verify DB daily aggregation, trade generation, metrics, and frontend artifacts. Not a live trading candidate."],
     ],
+    turtle: [
+      ["enter_term_sys1", "20", "S1 entry lookback", "System 1 breakout entry lookback in daily bars."],
+      ["enter_term_sys2", "55", "S2 entry lookback", "System 2 breakout entry lookback in daily bars."],
+      ["leave_term_sys1", "10", "S1 exit lookback", "System 1 trailing low exit lookback in daily bars."],
+      ["leave_term_sys2", "20", "S2 exit lookback", "System 2 trailing low exit lookback in daily bars."],
+      ["single_sys_unit_limit", "4", "per-system unit cap", "Maximum units one Turtle system can pyramid."],
+      ["both_sys_unit_limit", "4", "combined unit cap", "Maximum combined S1/S2 units."],
+      ["own_capital", "50000", "sizing capital", "Sizing capital; the run request synchronizes this with Initial equity."],
+      ["invest_pct", "0.01", "risk budget", "Percent of sizing capital used in the reference unit-size formula. Keep exploratory values at or below 25% unless deliberately stress testing."],
+      ["min_position", "0.0001", "minimum position", "Reference floor increment for position size."],
+      ["fee", "0.003", "fee rate", "Fee rate applied on entries and exits."],
+      ["atr_period", "20", "ATR period", "Daily ATR rolling mean period; same-day ATR is used by the reference script."],
+    ],
   }[id] || [];
   const editable = PARAMETERIZED_STRATEGIES.has(id);
   const riskMaxOrder = Number(riskOverrides.max_order_notional_usd);
@@ -968,12 +1081,28 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
     <div class="col" style=${{ gap: 12 }}>
       ${specs.map(([k, v, short, full]) => html`
         <div key=${k} class="col" style=${{ gap: 4 }}>
+          ${id === "turtle" && k === "invest_pct" ? html`
+            <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 72px", alignItems: "center", gap: 8 }}>
+              <div style=${{ minWidth: 0, fontSize: 12, overflowWrap: "anywhere" }} class="mono" title=${short}>${k}</div>
+              <input class="input mono" type="number" min="0.1" max="100" step="0.1"
+                value=${(((activeParams[k] ?? v) * 100) || 1).toFixed(1)}
+                disabled=${!editable}
+                onChange=${(e) => setParams({ ...activeParams, [k]: Math.max(0.1, Math.min(100, Number(e.target.value) || 1)) / 100 })}
+                style=${{ width: "100%", padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+            </div>
+            <input type="range" min="0.1" max="100" step="0.1"
+              value=${((activeParams[k] ?? v) * 100) || 1}
+              disabled=${!editable}
+              onChange=${(e) => setParams({ ...activeParams, [k]: Number(e.target.value) / 100 })}
+              style=${{ width: "100%" }} />
+          ` : html`
           <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 120px)", alignItems: "center", gap: 8 }}>
             <div style=${{ minWidth: 0, fontSize: 12, overflowWrap: "anywhere" }} class="mono" title=${short}>${k}</div>
             <input class="input mono" value=${editable ? (activeParams[k] ?? v) : v} disabled=${!editable}
               onChange=${(e) => setParams({ ...activeParams, [k]: parseParam(e.target.value) })}
               style=${{ width: "100%", maxWidth: 120, padding: "4px 8px", fontSize: 12, textAlign: "right" }} />
           </div>
+          `}
           <div class="field-hint" style=${{ fontSize: 11 }}>${full}</div>
         </div>
       `)}
@@ -1150,6 +1279,222 @@ function ParameterSweepPanel({
       `}
       ${finalistRows.length > 0 && html`
         <div class="field-hint">${finalistRows.filter((r) => r.status === "ok").length}/${finalistRows.length} finalist full backtests saved.</div>
+      `}
+    </div>
+  `;
+}
+
+function TurtleSweepPanel({
+  inputs = {},
+  setInputs = () => {},
+  start,
+  end,
+  symbol,
+  job,
+  onRun,
+}) {
+  const [sweepResult, setSweepResult] = useConfigState(null);
+  const [resultError, setResultError] = useConfigState("");
+  const [selectedInvestIdx, setSelectedInvestIdx] = useConfigState(0);
+  let grid = {};
+  let parseError = "";
+  try {
+    grid = buildSweepGrid("turtle", inputs);
+    countValidSweepCombos("turtle", grid);
+  } catch (err) {
+    parseError = err.message;
+  }
+  const counts = parseError ? { total: 0, valid: 0 } : countValidSweepCombos("turtle", grid);
+  const estimateSeconds = parseError ? null : estimateSweepSeconds("turtle", grid, "1D", start, end, symbol ? [symbol] : []);
+  const windowSpecs = [
+    ["enter_term_sys1", "S1 enter"],
+    ["enter_term_sys2", "S2 enter"],
+    ["leave_term_sys1", "S1 exit"],
+    ["leave_term_sys2", "S2 exit"],
+  ];
+  const fixedSpecs = [
+    ["single_sys_unit_limit", "S/unit cap"],
+    ["both_sys_unit_limit", "both cap"],
+    ["atr_period", "ATR"],
+    ["fee", "fee"],
+    ["min_position", "min pos"],
+  ];
+  const rows = sweepResult?.rows || [];
+  const topRows = sweepResult?.top_results || job?.top_results || [];
+  const freeParams = sweepResult?.free_params || [];
+  const surfaceHref = job?.sweep_id && (sweepResult?.artifacts?.surface || job?.artifacts?.surface)
+    ? window.API.backtestSweepArtifactUrl(job.sweep_id, "surface")
+    : "";
+  const investRows = rows
+    .map((row) => ({ ...row, invest_pct_normalized: normalizeInvestPct(row.invest_pct) }))
+    .filter((row) => isFinite(row.invest_pct_normalized) && isFinite(Number(row.final_equity)))
+    .sort((a, b) => a.invest_pct_normalized - b.invest_pct_normalized);
+  const selectedInvestIndex = investRows.length
+    ? Math.max(0, Math.min(selectedInvestIdx, investRows.length - 1))
+    : 0;
+  const selectedInvestRow = investRows[selectedInvestIndex] || null;
+  const selectedInvestPct = selectedInvestRow?.invest_pct_normalized;
+  const selectedEquityCurve = (sweepResult?.equity_curves || [])
+    .filter((row) => Math.abs(normalizeInvestPct(row.invest_pct) - selectedInvestPct) < 1e-9)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const heatmapMetrics = [
+    ["final_equity", "Final equity"],
+    ["win_rate", "Win rate"],
+    ["mdd", "MDD"],
+    ["profit_loss_ratio", "PLR"],
+    ["expectancy", "Expectancy"],
+  ];
+
+  useConfigEffect(() => {
+    if (job?.status !== "done" || !job.sweep_id || !window.API.fetchBacktestSweepResult) return;
+    setResultError("");
+    window.API.fetchBacktestSweepResult(job.sweep_id)
+      .then((payload) => setSweepResult(payload))
+      .catch((err) => {
+        setResultError(err.message || "Failed to load sweep result");
+        setSweepResult(null);
+      });
+  }, [job?.status, job?.sweep_id]);
+
+  function update(key, value) {
+    setInputs({ ...inputs, [key]: value });
+  }
+
+  return html`
+    <div class="col" style=${{ gap: 10 }}>
+      <div>
+        <div class="card-title" style=${{ fontSize: 13 }}>Turtle sweep</div>
+        <div class="card-sub">window grid, optional invest_pct axis, research-only artifacts</div>
+      </div>
+      <div class="grid" style=${{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        ${windowSpecs.map(([key, label]) => html`
+          <div class="field" key=${key}>
+            <div class="field-label">${label}</div>
+            <input class="input mono" value=${inputs[key] || ""}
+              onChange=${(e) => update(key, e.target.value)}
+              placeholder="5~30"
+              style=${{ fontSize: 12 }} />
+          </div>
+        `)}
+      </div>
+      <div class="field">
+        <div class="field-label">invest_pct percent axis</div>
+        <input class="input mono" value=${inputs.invest_pct || ""}
+          onChange=${(e) => update("invest_pct", e.target.value)}
+          placeholder="optional, e.g. 1~25:1"
+          style=${{ fontSize: 12 }} />
+        <div class="field-hint">Leave blank to use the run parameter. A range/list requires all four windows fixed.</div>
+      </div>
+      <div class="grid" style=${{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        ${fixedSpecs.map(([key, label]) => html`
+          <div class="field" key=${key}>
+            <div class="field-label">${label}</div>
+            <input class="input mono" value=${inputs[key] || ""}
+              onChange=${(e) => update(key, e.target.value)}
+              style=${{ fontSize: 12 }} />
+          </div>
+        `)}
+      </div>
+      <div class="field-hint">
+        ${parseError
+          ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
+          : html`${counts.valid}/${counts.total} valid combos - estimate ${fmtDuration(estimateSeconds)}`}
+      </div>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbol || job?.status === "running"} onClick=${onRun}>
+        Run turtle sweep
+      </button>
+      ${job && html`
+        <div class="row" style=${{ gap: 8, alignItems: "center" }}>
+          <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
+          ${job.sweep_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${job.sweep_id}</span>`}
+        </div>
+        <${ProgressStage} job=${job} style=${{ marginTop: 6 }} />
+        ${job.status === "error" && html`
+          <pre style=${{ marginTop: 4, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 6, fontSize: 11, color: "var(--loss)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 160, overflowY: "auto" }}>${job.message || ""}</pre>
+        `}
+      `}
+      ${resultError && html`<div class="field-hint" style=${{ color: "var(--loss)" }}>${resultError}</div>`}
+      ${surfaceHref && html`
+        <a class="btn sm" href=${surfaceHref} target="_blank" rel="noreferrer">Open Plotly surface</a>
+      `}
+      ${investRows.length > 0 && html`
+        <div class="col" style=${{ gap: 8 }}>
+          <div>
+            <div class="card-title" style=${{ fontSize: 13 }}>invest_pct sweep</div>
+            <div class="card-sub">${fmtInvestPct(selectedInvestPct)} - ${fmtUSD(selectedInvestRow?.final_equity, 0)}</div>
+          </div>
+          <${LineChart}
+            height=${170}
+            series=${[{ label: "Final equity", values: investRows.map((row) => Number(row.final_equity)), color: "var(--accent)" }]}
+            xLabels=${investRows.map((row) => row.invest_pct_normalized)}
+            xTickFormatter=${(value) => fmtInvestPct(value, 0)}
+            tooltipLabelFormatter=${(value) => fmtInvestPct(value, 2)}
+            tooltipValueFormatter=${(value) => fmtUSD(value, 0)}
+          />
+          <input
+            type="range"
+            min="0"
+            max=${Math.max(investRows.length - 1, 0)}
+            step="1"
+            value=${selectedInvestIndex}
+            onInput=${(e) => setSelectedInvestIdx(Number(e.target.value) || 0)}
+          />
+          <div class="grid" style=${{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            <div>
+              <div class="field-label">Final equity</div>
+              <div class="mono">${fmtUSD(selectedInvestRow?.final_equity, 0)}</div>
+            </div>
+            <div>
+              <div class="field-label">MDD</div>
+              <div class="mono">${fmtPct(selectedInvestRow?.mdd, 1)}</div>
+            </div>
+            <div>
+              <div class="field-label">Min equity</div>
+              <div class="mono">${fmtUSD(selectedInvestRow?.min_equity, 0)}</div>
+            </div>
+          </div>
+          ${selectedEquityCurve.length > 0 && html`
+            <${LineChart}
+              height=${180}
+              series=${[{ label: "Equity", values: selectedEquityCurve.map((row) => Number(row.equity)), color: "var(--profit)" }]}
+              xLabels=${selectedEquityCurve.map((row) => row.date)}
+              tooltipValueFormatter=${(value) => fmtUSD(value, 0)}
+            />
+          `}
+        </div>
+      `}
+      ${freeParams.length === 2 && rows.length > 0 && html`
+        <div class="col" style=${{ gap: 8 }}>
+          ${heatmapMetrics.map(([valueKey, title]) => html`
+            <${HeatmapChart} key=${valueKey} rows=${rows} xKey=${freeParams[0]} yKey=${freeParams[1]} valueKey=${valueKey} title=${title} />
+          `)}
+        </div>
+      `}
+      ${topRows.length > 0 && html`
+        <div class="tbl-wrap" style=${{ maxHeight: 240 }}>
+          <table class="tbl" style=${{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>windows</th>
+                <th>equity</th>
+                <th>win</th>
+                <th>MDD</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topRows.slice(0, 8).map((row) => html`
+                <tr key=${row.rank}>
+                  <td>${row.rank}</td>
+                  <td class="mono">S1 ${row.enter_term_sys1}/${row.leave_term_sys1} S2 ${row.enter_term_sys2}/${row.leave_term_sys2}</td>
+                  <td>${fmtUSD(row.final_equity, 0)}</td>
+                  <td>${fmtPct(row.win_rate, 1)}</td>
+                  <td>${fmtPct(row.mdd, 1)}</td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
       `}
     </div>
   `;

@@ -16,28 +16,37 @@ workstreams:
     status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, review]
     current: review
-    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581)"
+    state: "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581) after 2026-06-30 F&G published_at as-of hardening"
     next: "No adapter/publish/demo/shadow/live for C1/C2/C3 without a new Claude/user-approved research path"
     links: [docs/superpowers/plans/2026-06-25-strategy-research-pipeline-stage1.md, docs/superpowers/plans/2026-06-29-strategy-research-pipeline-stage2.md, tasks/2026-06-29-c2-funding-carry-realism-task.md]
-    updated: 2026-06-29
+    updated: 2026-06-30
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, first_batch_review]
-    current: first_batch_review
-    state: "Checkpoint automation, family-minting checker, and B/A idea-generator front end implemented as advisory sidecars: checkpoint1_auto.json, family_minting.json, idea_batch.json, and hypothesis_ledger_draft.md. Human review remains required before durable ledger edits."
-    next: "Run the first real idea-batch sidecar from taxonomy/lab corpus, then Claude/human review the ledger draft before appending to docs/HYPOTHESIS_LEDGER.md."
-    links: [docs/superpowers/specs/2026-06-30-checkpoint1-automation-contract.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-06-30-idea-generator-frontend-design.md]
-    updated: 2026-06-30
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint]
+    current: first_stage3_checkpoint
+    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted (marginal miss, K 0/2 used, unlike the clean H-006/007/008 refutations). DSR==PSR is small-grid stability (all 5 CPCV paths select the same combo), not a defect."
+    next: "No chase-the-gate retry for H-009 (retry needs ex-ante rationale, burns K, accumulates n_trials). Next pipeline candidates: F-XVENUE-LEADLAG (pending OKX 1m backfill + Stage-2 reprobe) and F-OI-POSITIONING (Vision OI data available, needs Stage-2 probe + Stage-1 spec). Do not schedule the orchestrator or claim promotion/live readiness."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
+    updated: 2026-07-04
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done
     milestones: [spec, impl, validation, consolidated_pr, merge]
     current: merge
-    state: "Already merged into main (origin branch is 0 ahead / 19 behind origin/main); merged branch can be deleted"
-    next: "none - ADR-0007 P1 closed; delete the merged branch"
+    state: "Already merged into main (origin branch is 0 ahead / 19 behind origin/main); branch still exists"
+    next: "none - ADR-0007 P1 complete; no cleanup action taken"
     links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
     updated: 2026-06-29
+
+  - name: Repo maintenance (M1-M5, non-pipeline)
+    status: done
+    milestones: [audit, m1_ci_consistency, m2_doc_slimming, m3_smoke_fixture, m4_monitoring_tests, m5_stocks_decision, claude_review, m2_r1_history_migration]
+    current: m2_r1_history_migration
+    state: "M1-M5 + M2-R1 all ACCEPTED and committed (df96682/79c1ddc/0191c1d/2dea608/5eb71f8/21cc3c9). Stream closed."
+    next: "none - run make verify/full only in an environment with make, TimescaleDB, and required data."
+    links: [tasks/2026-07-03-project-maintenance-tasks.md]
+    updated: 2026-07-04
 
   - name: User manual
     status: done
@@ -47,3 +56,12 @@ workstreams:
     next: "none - manual complete; rerun scripts/generate_research_pipeline_doc.py if content changes"
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
     updated: 2026-06-29
+
+  - name: Turtle strategy platform integration
+    status: done
+    milestones: [spec, t1_core_port_parity, t2_run_api, t3_sweep_api, t4_frontend, t5_docs, claude_review, manual_pass]
+    current: manual_pass
+    state: "ACCEPTED and usable 2026-07-04 after the user-directed manual pass. Golden parity now passes on REAL data: 898 BTC-USDT-SWAP UTC daily bars exported from canonical DB, verbatim polars reference re-run in a scratch venv, pandas port matches exactly (17 columns, ints exact, floats rtol 1e-9; the earlier 600-day synthetic fixture is superseded/deleted). DB-backed end-to-end API smoke passed (manual-param run with invest_pct=0.05, 2-free-param sweep with surface.html, invest_pct-axis sweep with equity_curves.csv); the smoke found and fixed a Timestamp-serialization bug in run_turtle_sweep with a regression test. Full unit suite 599 passed. RF1-RF3 closed. Research-only standalone runner; no replay/trading-core/gate change."
+    next: "Optional polish only if the user asks: heatmap hover/click detail, warmup hint hardcodes 55d, fixed-vs-range invest_pct unit convention. No live/demo/shadow claim."
+    links: [docs/superpowers/specs/2026-07-03-turtle-platform-design.md, tasks/2026-07-03-turtle-strategy-platform-tasks.md, tests/fixtures/turtle/README.md]
+    updated: 2026-07-04

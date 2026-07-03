@@ -7,11 +7,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import yaml
+
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
+from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_from_dict
 from backtesting.pipeline_family_minting import decide_family_minting
 
 SCHEMA_VERSION = 1
 DEFAULT_CAP = 15
+DEFAULT_FEEDBACK_TAGS_PATH = Path("config/pipeline_feedback_tags.yaml")
+_VALID_FEEDBACK_GUIDANCE = {"avoid", "needs_data", "retry_with_twist"}
 
 
 def _cells(line: str) -> list[str]:
@@ -36,6 +41,66 @@ def _rows(markdown: str) -> list[dict[str, str]]:
     return rows
 
 
+def family_verdicts(hypothesis_ledger_text: str) -> dict[str, str]:
+    return {
+        row["Family ID"].strip(): (row.get("Status") or "").strip().lower()
+        for row in _rows(hypothesis_ledger_text)
+        if row.get("Family ID")
+    }
+
+
+def load_feedback_tags(path: str | Path | None = DEFAULT_FEEDBACK_TAGS_PATH) -> dict[str, dict[str, Any]]:
+    if path is None:
+        return {}
+    tags_path = Path(path)
+    if not tags_path.exists():
+        return {}
+    payload = yaml.safe_load(tags_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("families"), Mapping):
+        raise ValueError("feedback tags must contain a families mapping")
+    tags: dict[str, dict[str, Any]] = {}
+    for family_id, raw in payload["families"].items():
+        if not isinstance(family_id, str) or not family_id.strip():
+            raise ValueError("feedback tag family ids must be non-empty strings")
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"feedback tag for {family_id!r} must be a mapping")
+        guidance = raw.get("guidance")
+        if guidance not in _VALID_FEEDBACK_GUIDANCE:
+            raise ValueError(f"feedback tag for {family_id!r} has invalid guidance {guidance!r}")
+        reasons = raw.get("reasons", [])
+        if not isinstance(reasons, list) or not all(isinstance(reason, str) for reason in reasons):
+            raise ValueError(f"feedback tag for {family_id!r} reasons must be a list of strings")
+        verdict = raw.get("verdict", "")
+        if not isinstance(verdict, str):
+            raise ValueError(f"feedback tag for {family_id!r} verdict must be a string")
+        tags[family_id.strip()] = {
+            "verdict": verdict,
+            "reasons": reasons,
+            "guidance": guidance,
+        }
+    return tags
+
+
+def _has_twist(text: str) -> bool:
+    return "twist" in text or "轉折" in text
+
+
+def _fallback_verdict(text: str, ledger_status: str) -> str:
+    if "inconclusive" in text:
+        return "inconclusive"
+    if "refuted" in text or "shelved" in text:
+        return text
+    return ledger_status
+
+
+def _skip_reason_for_verdict(verdict: str) -> str | None:
+    if "inconclusive" in verdict:
+        return "inconclusive_no_twist"
+    if "refuted" in verdict or "shelved" in verdict:
+        return "refuted_no_twist"
+    return None
+
+
 def _slug(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "idea"
@@ -57,27 +122,95 @@ def _is_data_blocked(row: Mapping[str, str]) -> bool:
     return "blocked" in text or "無 options" in text or "on-chain" in text
 
 
+def _probe_answer(row: Mapping[str, str], data_availability_probe: Any | None) -> Any | None:
+    if data_availability_probe is None:
+        return None
+    if callable(data_availability_probe):
+        return data_availability_probe(row)
+    if isinstance(data_availability_probe, Mapping):
+        family_id = row.get("Family ID", "").strip()
+        return data_availability_probe.get(family_id)
+    return None
+
+
+def _check_data_feasible(check: FeasibilityCheck) -> bool | None:
+    if check.name != "data_availability":
+        return None
+    return check.status == "PASS"
+
+
+def _stage2_data_feasible(result: FeasibilityResult) -> bool | None:
+    for check in result.checks:
+        feasible = _check_data_feasible(check)
+        if feasible is not None:
+            return feasible
+    return None
+
+
+def _probe_data_feasible(row: Mapping[str, str], data_availability_probe: Any | None) -> bool | None:
+    answer = _probe_answer(row, data_availability_probe)
+    if answer is None:
+        return None
+    if isinstance(answer, bool):
+        return answer
+    if isinstance(answer, FeasibilityResult):
+        return _stage2_data_feasible(answer)
+    if isinstance(answer, FeasibilityCheck):
+        return _check_data_feasible(answer)
+    if isinstance(answer, Mapping):
+        if "checks" in answer:
+            return _stage2_data_feasible(result_from_dict(dict(answer)))
+        status = str(answer.get("status") or "").upper()
+        name = str(answer.get("name") or "data_availability")
+        if status in {"PASS", "FAIL"}:
+            return _check_data_feasible(FeasibilityCheck(name=name, status=status, reason=str(answer.get("reason") or "")))
+    return None
+
+
+def _feedback_penalty(tag: Mapping[str, Any] | None, probe_feasible: bool | None) -> int:
+    if not tag:
+        return 0
+    guidance = tag.get("guidance")
+    if guidance == "avoid":
+        return 20
+    if guidance == "needs_data" and probe_feasible is not True:
+        return 10
+    return 0
+
+
 def enumerate_gaps(
     taxonomy_text: str,
     ledger_text: str,
     data_availability_probe: Any | None = None,
+    *,
+    hypothesis_ledger_text: str | None = None,
+    feedback_tags: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Return taxonomy families that are feasible enough to draft."""
 
     registry = family_registry_from_text(ledger_text)
-    del data_availability_probe
+    verdicts = family_verdicts(hypothesis_ledger_text or "")
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in _rows(taxonomy_text):
         family_id = row.get("Family ID", "").strip()
         text = " ".join(row.values()).lower()
         ledger_status = (registry.get(family_id).status if registry.get(family_id) else "").lower()
-        if "refuted" in text or "shelved" in text or "refuted" in ledger_status or "shelved" in ledger_status:
-            skipped.append({"family_id": family_id, "reason": "refuted_no_twist"})
+        verdict = verdicts.get(family_id) or _fallback_verdict(text, ledger_status)
+        skip_reason = None if _has_twist(text) else _skip_reason_for_verdict(verdict)
+        if skip_reason:
+            skipped.append({"family_id": family_id, "reason": skip_reason})
             continue
-        if _is_data_blocked(row):
+        if "overlay" in text:
+            skipped.append({"family_id": family_id, "reason": "overlay_needs_base"})
+            continue
+        probe_feasible = _probe_data_feasible(row, data_availability_probe)
+        data_feasible = not _is_data_blocked(row) if probe_feasible is None else probe_feasible
+        if not data_feasible:
             skipped.append({"family_id": family_id, "reason": "data_blocked"})
             continue
+        tag = (feedback_tags or {}).get(family_id)
+        feedback_rank_penalty = _feedback_penalty(tag, probe_feasible)
         mechanism = row.get("機制") or row.get("mechanism") or row.get("col1") or family_id
         data_text = row.get("資料") or text
         eligible.append(
@@ -88,11 +221,20 @@ def enumerate_gaps(
                 "family_id_or_NEW": family_id,
                 "mechanism": mechanism,
                 "data_feasible": True,
-                "data_rank": _rank_from_text(data_text),
+                "data_rank": 0 if probe_feasible is True else _rank_from_text(data_text),
                 "crowding_rank": 1 if "高" in text else 0,
                 "planned_grid_size": 4,
                 "draft_status": "pending_llm",
-                "feedback_spawned": False,
+                "feedback_spawned": feedback_rank_penalty > 0,
+                **(
+                    {
+                        "feedback_rank_penalty": feedback_rank_penalty,
+                        "feedback_guidance": str(tag.get("guidance")),
+                        "feedback_reasons": list(tag.get("reasons", [])),
+                    }
+                    if feedback_rank_penalty
+                    else {}
+                ),
             }
         )
     return {"eligible": eligible, "skipped": skipped}
@@ -105,7 +247,7 @@ def rank_and_cap(gaps: Sequence[Mapping[str, Any]], cap: int = DEFAULT_CAP) -> t
     ranked = sorted(
         (dict(gap) for gap in gaps),
         key=lambda row: (
-            int(row.get("data_rank", 1)),
+            int(row.get("data_rank", 1)) + int(row.get("feedback_rank_penalty", 0)),
             int(row.get("crowding_rank", 1)),
             int(row.get("planned_grid_size", 999)),
             str(row.get("family_id") or row.get("family_id_or_NEW") or ""),
@@ -207,12 +349,22 @@ def generate_batch(
     ledger_path: str | Path,
     batch_id: str,
     *,
+    hypothesis_ledger_path: str | Path = "docs/HYPOTHESIS_LEDGER.md",
+    feedback_tags_path: str | Path | None = DEFAULT_FEEDBACK_TAGS_PATH,
     output_root: str | Path = "results",
     cap: int = DEFAULT_CAP,
+    data_availability_probe: Any | None = None,
 ) -> dict[str, Any]:
     taxonomy_text = Path(taxonomy_path).read_text(encoding="utf-8")
     ledger_text = Path(ledger_path).read_text(encoding="utf-8")
-    enumerated = enumerate_gaps(taxonomy_text, ledger_text)
+    hypothesis_ledger_text = Path(hypothesis_ledger_path).read_text(encoding="utf-8")
+    enumerated = enumerate_gaps(
+        taxonomy_text,
+        ledger_text,
+        data_availability_probe=data_availability_probe,
+        hypothesis_ledger_text=hypothesis_ledger_text,
+        feedback_tags=load_feedback_tags(feedback_tags_path),
+    )
     selected, overflow = rank_and_cap(enumerated["eligible"], cap=cap)
     return register_batch(
         selected,

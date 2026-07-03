@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -139,6 +141,17 @@ _VALIDATION_INPUT_ARTIFACT_FILES = {
 }
 
 _VALIDATION_JSON_ARTIFACTS = {"result", "config"}
+
+_TURTLE_SWEEP_ARTIFACT_FILES = {
+    "summary": "summary.json",
+    "summary.json": "summary.json",
+    "rows": "rows.csv",
+    "rows.csv": "rows.csv",
+    "equity_curves": "equity_curves.csv",
+    "equity_curves.csv": "equity_curves.csv",
+    "surface": "surface.html",
+    "surface.html": "surface.html",
+}
 
 
 def _summary_payload(result: dict[str, Any]) -> dict[str, Any]:
@@ -859,6 +872,410 @@ def _write_daily_winner_artifacts(
         index=False,
     )
     pd.DataFrame().to_csv(out_dir / "fills.csv", index=False)
+
+
+def _turtle_symbol(req: "RunBacktestRequest | ParameterSweepRequest") -> str:
+    symbols = [symbol for symbol in (req.symbols or []) if symbol]
+    if not symbols and isinstance(req, RunBacktestRequest) and req.benchmark:
+        symbols = [req.benchmark]
+    if len(symbols) != 1:
+        raise ValueError("turtle requires exactly one symbol")
+    return normalize_swap_symbol(symbols[0])
+
+
+def _turtle_fixed_grid_scalar(grid: dict[str, Any], name: str) -> Any | None:
+    value = grid.get(name)
+    if isinstance(value, dict):
+        if "fixed" not in value:
+            return None
+        value = value.get("fixed")
+    if isinstance(value, (list, tuple)):
+        return value[0] if len(value) == 1 else None
+    if isinstance(value, str) and ("~" in value or "," in value or ".." in value):
+        return None
+    return value
+
+
+def _turtle_sweep_base_params(grid: dict[str, Any]) -> dict[str, Any]:
+    param_keys = {
+        "enter_term_sys1",
+        "enter_term_sys2",
+        "leave_term_sys1",
+        "leave_term_sys2",
+        "single_sys_unit_limit",
+        "both_sys_unit_limit",
+        "own_capital",
+        "invest_pct",
+        "min_position",
+        "fee",
+        "atr_period",
+    }
+    return {
+        name: value
+        for name in param_keys
+        if (value := _turtle_fixed_grid_scalar(grid, name)) is not None
+    }
+
+
+def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest") -> Any:
+    from backtesting.turtle_backtest import TurtleParams
+
+    raw = dict(getattr(req, "strategy_params", {}) or {})
+    if isinstance(req, ParameterSweepRequest):
+        raw.update(_turtle_sweep_base_params(req.parameter_grid or {}))
+    raw.setdefault("own_capital", req.initial_equity or TurtleParams().own_capital)
+    int_fields = {
+        "enter_term_sys1",
+        "enter_term_sys2",
+        "leave_term_sys1",
+        "leave_term_sys2",
+        "single_sys_unit_limit",
+        "both_sys_unit_limit",
+        "atr_period",
+    }
+    float_fields = {"own_capital", "invest_pct", "min_position", "fee"}
+    cleaned: dict[str, Any] = {}
+    for key, value in raw.items():
+        if key in int_fields and value is not None and value != "":
+            cleaned[key] = int(value)
+        elif key in float_fields and value is not None and value != "":
+            cleaned[key] = float(value)
+        else:
+            cleaned[key] = value
+    params = TurtleParams(**cleaned)
+    params.validate()
+    return params
+
+
+def _turtle_load_daily_candles(req: "RunBacktestRequest | ParameterSweepRequest", symbol: str) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    from backtesting.data_loader import load_candles
+
+    dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+    exchange = _normalize_exchange(req.exchange)
+    load_backend = "market" if exchange else "postgres"
+    attempts: list[dict[str, Any]] = []
+    df = pd.DataFrame()
+    try:
+        df = load_candles(
+            inst_id=symbol,
+            bar="1D",
+            data_dir=req.data_dir or "data/ticks",
+            start=req.start,
+            end=req.end,
+            backend=load_backend,
+            dsn=dsn,
+            exchange=exchange if load_backend == "market" else None,
+        )
+        attempts.append({
+            "backend": load_backend,
+            "exchange": exchange if load_backend == "market" else None,
+            "rows": int(len(df)),
+        })
+    except Exception as exc:
+        attempts.append({
+            "backend": load_backend,
+            "exchange": exchange if load_backend == "market" else None,
+            "rows": 0,
+            "error": str(exc),
+        })
+    if df.empty and load_backend == "market":
+        df = load_candles(
+            inst_id=symbol,
+            bar="1D",
+            data_dir=req.data_dir or "data/ticks",
+            start=req.start,
+            end=req.end,
+            backend="postgres",
+            dsn=dsn,
+            exchange=None,
+        )
+        attempts.append({
+            "backend": "postgres",
+            "exchange": None,
+            "rows": int(len(df)),
+            "fallback": "canonical_1d",
+        })
+    if df.empty:
+        raise ValueError(f"No 1D OHLCV loaded for turtle symbol {symbol}")
+    return df, attempts
+
+
+def _run_turtle_job(
+    job_id: str,
+    req: "RunBacktestRequest",
+    run_id: str,
+    results_dir: Path,
+) -> None:
+    try:
+        from backtesting.turtle_backtest import run_turtle_backtest
+
+        if (req.bar or "1D") != "1D":
+            raise ValueError("turtle supports 1D bars only")
+        out_dir = results_dir / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        symbol = _turtle_symbol(req)
+        params = _turtle_params_from_request(req)
+        _run_jobs[job_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Loading turtle 1D candles from DB",
+        })
+        daily_df, attempts = _turtle_load_daily_candles(req, symbol)
+        if _run_cancel_requested(job_id):
+            _mark_run_cancelled(job_id)
+            return
+        _run_jobs[job_id].update({"progress": 65, "message": "Running turtle reference-port backtest"})
+        result = run_turtle_backtest(daily_df, params)
+        payload = _build_turtle_result_json(
+            run_id=run_id,
+            req=req,
+            result=result,
+            symbol=symbol,
+            data_sources=[{
+                "inst_id": symbol,
+                "status": "loaded",
+                "rows": int(len(daily_df)),
+                "first_ts": str(daily_df.index.min()) if not daily_df.empty else None,
+                "last_ts": str(daily_df.index.max()) if not daily_df.empty else None,
+                "attempts": attempts,
+            }],
+        )
+        _run_jobs[job_id].update({"progress": 85, "message": "Writing turtle frontend artifacts"})
+        _write_turtle_artifacts(out_dir, symbol, daily_df, result, payload)
+        payload = _json_sanitize(payload)
+        (out_dir / "result.json").write_text(
+            json.dumps(payload, allow_nan=False, indent=2),
+            encoding="utf-8",
+        )
+        _run_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Backtest complete",
+            "output": f"Turtle completed for {symbol}: {payload['metrics'].get('order_count', 0)} orders",
+        })
+    except Exception as exc:
+        _run_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+        })
+
+
+def _build_turtle_result_json(
+    *,
+    run_id: str,
+    req: "RunBacktestRequest",
+    result: Any,
+    symbol: str,
+    data_sources: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    params = _turtle_params_from_request(req)
+    equity_records = _turtle_equity_records(result.equity_curve)
+    returns_records = [
+        {
+            "ts": row["ts"],
+            "datetime": row["datetime"],
+            "return": row["return"],
+            "log_return": math.log1p(row["return"]) if row["return"] > -1 else None,
+        }
+        for row in equity_records
+    ]
+    trades_records = _turtle_trade_records(result.trades, symbol)
+    parameters = _request_parameters(req)
+    parameters.setdefault("strategies", {})["turtle"] = {
+        **asdict(params),
+        "symbol": symbol,
+        "bar": "1D",
+        "research_only_reference_port": True,
+    }
+    metrics = dict(result.metrics)
+    metrics["validation_only"] = True
+    metrics["research_only"] = True
+    return {
+        "run_id": run_id,
+        "created_at": pd.Timestamp.now(tz="UTC").isoformat(),
+        "strategies": ["turtle"],
+        "symbols": [symbol],
+        "bar": "1D",
+        "start": req.start or "",
+        "end": req.end or "",
+        "metrics": _json_sanitize(metrics),
+        "parameters": _json_sanitize(parameters),
+        "equity": equity_records,
+        "returns": returns_records,
+        "trades": trades_records,
+        "artifacts": {},
+        "validation": {
+            "validation_only": True,
+            "validation_mode": "none",
+            "research_only": True,
+            "turtle_data_sources": data_sources or [],
+            "reference_semantics": "new_startegy turtle_trading_system_full port",
+        },
+        "data_source": {
+            "primary_exchange": _normalize_exchange(req.exchange),
+            "backend": "market_or_postgres_1d",
+        },
+    }
+
+
+def _turtle_equity_records(equity_curve: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for _, row in equity_curve.iterrows():
+        ts_ms, dt = _visual_time_values(row.get("date"))
+        if ts_ms is None:
+            continue
+        rows.append({
+            "ts": ts_ms,
+            "datetime": dt,
+            "equity": _daily_winner_float(row.get("equity"), 0.0),
+            "return": _daily_winner_float(row.get("return"), 0.0),
+            "drawdown": _daily_winner_float(row.get("drawdown"), 0.0),
+        })
+    return rows
+
+
+def _turtle_trade_records(trades: pd.DataFrame, symbol: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    if trades is None or trades.empty:
+        return records
+    for i, row in trades.reset_index(drop=True).iterrows():
+        ts_ms, dt = _visual_time_values(_first_present(row, ["ts", "datetime"]))
+        if ts_ms is None:
+            continue
+        action = str(row.get("action") or "")
+        side = "sell" if action == "exit" else "buy"
+        price = _daily_winner_float(row.get("price"), 0.0)
+        qty = _daily_winner_float(row.get("size"), 0.0)
+        records.append({
+            "id": i,
+            "ts": ts_ms,
+            "datetime": dt,
+            "strategy": "turtle",
+            "inst_id": symbol,
+            "symbol": symbol,
+            "system": row.get("system"),
+            "side": side,
+            "execution_phase": "exit" if side == "sell" else "entry",
+            "action": action,
+            "reason": row.get("reason"),
+            "price": price,
+            "fill_px": price,
+            "qty": qty,
+            "fill_sz": qty,
+            "fee": _daily_winner_float(row.get("fee_paid"), 0.0),
+            "notional_usd": abs(price * qty),
+            "pnl": row.get("pnl"),
+            "net_realized_pnl": row.get("pnl"),
+            "cash_after": row.get("cash_after"),
+            "position_after": row.get("units_after"),
+        })
+    return _json_sanitize(records)
+
+
+def _turtle_price_series_frame(symbol: str, daily_df: pd.DataFrame) -> pd.DataFrame:
+    data = daily_df.sort_index().copy()
+    if not isinstance(data.index, pd.DatetimeIndex):
+        if "date" in data.columns:
+            data.index = pd.to_datetime(data["date"], utc=True, errors="coerce")
+        elif "ts" in data.columns:
+            data.index = pd.to_datetime(data["ts"], utc=True, errors="coerce")
+    rows: list[dict[str, Any]] = []
+    for ts_value, row in data.iterrows():
+        ts_ms, dt = _visual_time_values(ts_value)
+        if ts_ms is None:
+            continue
+        rows.append({
+            "ts": ts_ms,
+            "datetime": dt,
+            "inst_id": symbol,
+            "open": _daily_winner_float(row.get("open"), float("nan")),
+            "high": _daily_winner_float(row.get("high"), float("nan")),
+            "low": _daily_winner_float(row.get("low"), float("nan")),
+            "close": _daily_winner_float(row.get("close"), float("nan")),
+            "vol": _daily_winner_float(row.get("vol", row.get("volume")), 0.0),
+        })
+    return pd.DataFrame(rows, columns=["ts", "datetime", "inst_id", "open", "high", "low", "close", "vol"])
+
+
+def _turtle_indicator_series_frame(symbol: str, frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "ATR",
+        "last_enter_max_sys1",
+        "last_enter_max_sys2",
+        "last_leave_min_sys1",
+        "last_leave_min_sys2",
+        "s1_stop_loss",
+        "s2_stop_loss",
+        "s1_units",
+        "s2_units",
+        "total_units",
+        "equity",
+    ]
+    rows: list[dict[str, Any]] = []
+    for _, row in frame.iterrows():
+        ts_ms, dt = _visual_time_values(row.get("date"))
+        if ts_ms is None:
+            continue
+        item = {"ts": ts_ms, "datetime": dt, "strategy": "turtle", "inst_id": symbol}
+        for col in columns:
+            item[col] = row.get(col)
+        rows.append(item)
+    return pd.DataFrame(rows, columns=["ts", "datetime", "strategy", "inst_id", *columns])
+
+
+def _write_turtle_artifacts(
+    out_dir: Path,
+    symbol: str,
+    daily_df: pd.DataFrame,
+    result: Any,
+    payload: dict[str, Any],
+) -> None:
+    artifact_refs = payload.setdefault("artifacts", {})
+    price_series = _turtle_price_series_frame(symbol, daily_df)
+    price_series.to_csv(out_dir / "price_series.csv", index=False)
+    artifact_refs["price_series"] = "price_series.csv"
+
+    indicator_series = _turtle_indicator_series_frame(symbol, result.frame)
+    indicator_series.to_csv(out_dir / "indicator_series.csv", index=False)
+    artifact_refs["indicator_series"] = "indicator_series.csv"
+
+    trades = pd.DataFrame(payload.get("trades") or [])
+    trades.to_csv(out_dir / "trades.csv", index=False)
+    artifact_refs["trades"] = "trades.csv"
+
+    signals = trades[["ts", "datetime", "strategy", "inst_id", "side", "price"]].rename(
+        columns={"price": "fair_value"}
+    ) if not trades.empty else pd.DataFrame(columns=["ts", "datetime", "strategy", "inst_id", "side", "fair_value"])
+    signals.to_csv(out_dir / "signals.csv", index=False)
+    artifact_refs["signals"] = "signals.csv"
+
+    fills = trades.copy() if not trades.empty else pd.DataFrame(columns=["ts", "datetime", "strategy", "inst_id", "side", "fill_px", "fill_sz", "state"])
+    if not fills.empty:
+        fills["state"] = "filled"
+    fills.to_csv(out_dir / "fills.csv", index=False)
+    artifact_refs["fills"] = "fills.csv"
+
+    equity = pd.DataFrame(payload.get("equity") or [])
+    equity.to_csv(out_dir / "equity_curve.csv", index=False)
+    artifact_refs["equity"] = "equity_curve.csv"
+
+    returns = pd.DataFrame(payload.get("returns") or [])
+    returns.to_csv(out_dir / "returns.csv", index=False)
+    artifact_refs["returns"] = "returns.csv"
+
+    drawdown = equity[["ts", "datetime", "equity", "drawdown"]].copy() if not equity.empty else pd.DataFrame()
+    if not drawdown.empty:
+        drawdown["running_max_equity"] = equity["equity"].cummax()
+        drawdown["drawdown_pct"] = drawdown["drawdown"]
+    drawdown.to_csv(out_dir / "drawdown.csv", index=False)
+    artifact_refs["drawdown"] = "drawdown.csv"
+
+    (out_dir / "metrics.json").write_text(
+        json.dumps(_json_sanitize(payload.get("metrics") or {}), indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    artifact_refs["metrics"] = "metrics.json"
 
 
 def _daily_winner_price_series_frame(dfs: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -1937,6 +2354,90 @@ def _run_parameter_sweep_job(
         })
 
 
+def _run_turtle_sweep_job(
+    job_id: str,
+    req: ParameterSweepRequest,
+    sweep_id: str,
+    results_dir: Path,
+) -> None:
+    try:
+        from backtesting.turtle_backtest import run_turtle_sweep
+
+        symbol = _turtle_symbol(req)
+        params = _turtle_params_from_request(req)
+
+        def _on_progress(update: dict[str, Any]) -> None:
+            _sweep_jobs[job_id].update({
+                "status": "running",
+                "updated_at": _utc_now_iso(),
+                **update,
+            })
+
+        _sweep_jobs[job_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Loading turtle 1D candles from DB",
+            "updated_at": _utc_now_iso(),
+        })
+        daily_df, attempts = _turtle_load_daily_candles(req, symbol)
+        _sweep_jobs[job_id].update({
+            "progress": 35,
+            "message": "Running turtle parameter sweep",
+            "updated_at": _utc_now_iso(),
+        })
+        output_dir = results_dir / "turtle_sweeps" / Path(sweep_id).name
+        summary = run_turtle_sweep(
+            daily_df,
+            req.parameter_grid,
+            params,
+            output_dir=output_dir,
+            sweep_id=sweep_id,
+            progress_callback=_on_progress,
+        )
+        summary["symbol"] = symbol
+        summary["bar"] = "1D"
+        summary["validation"] = {
+            "validation_only": True,
+            "research_only": True,
+            "turtle_data_sources": [{
+                "inst_id": symbol,
+                "status": "loaded",
+                "rows": int(len(daily_df)),
+                "first_ts": str(daily_df.index.min()) if not daily_df.empty else None,
+                "last_ts": str(daily_df.index.max()) if not daily_df.empty else None,
+                "attempts": attempts,
+            }],
+        }
+        (output_dir / "summary.json").write_text(
+            json.dumps(_json_sanitize(summary), indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        _sweep_jobs[job_id].update({
+            "status": "done",
+            "progress": 100,
+            "message": "Turtle parameter sweep complete",
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+            "sweep_id": summary["sweep_id"],
+            "artifacts": summary.get("artifacts", {}),
+            "top_results": summary.get("top_results", [])[:10],
+            "completed_count": summary.get("completed_count", 0),
+            "failed_count": summary.get("failed_count", 0),
+            "skipped_count": summary.get("skipped_count", 0),
+            "elapsed_seconds": summary.get("elapsed_seconds"),
+            "symbol": symbol,
+            "bar": "1D",
+        })
+    except Exception as exc:
+        _sweep_jobs[job_id].update({
+            "status": "error",
+            "progress": 100,
+            "message": str(exc),
+            "updated_at": _utc_now_iso(),
+            "finished_at": _utc_now_iso(),
+        })
+
+
 def _run_differential_validation_job(
     job_id: str,
     run_id: str,
@@ -2393,6 +2894,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             "pairs_trading",
             "ohlcv_rotation",
             "daily_winner",
+            "turtle",
             "ma_crossover",
             "ema_crossover",
             "macd_crossover",
@@ -2409,6 +2911,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=400, detail="Pair trading requires two different symbols")
         if req.strategy in {"ohlcv_rotation", "daily_winner"} and not req.universe:
             raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol in universe")
+        if req.strategy == "turtle":
+            if (req.bar or "1D") != "1D":
+                raise HTTPException(status_code=400, detail="turtle supports 1D bars only")
+            try:
+                _turtle_symbol(req)
+                _turtle_params_from_request(req)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         if req.strategy in {"ma_crossover", "ema_crossover", "macd_crossover"} and not req.symbols:
             raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol")
         job_id = str(uuid.uuid4())[:8]
@@ -2424,6 +2934,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             bg.add_task(_run_ohlcv_rotation_job, job_id, req, run_id, results_dir)
         elif req.strategy == "daily_winner":
             bg.add_task(_run_daily_winner_job, job_id, req, run_id, results_dir)
+        elif req.strategy == "turtle":
+            bg.add_task(_run_turtle_job, job_id, req, run_id, results_dir)
         else:
             bg.add_task(_run_backtest_job, job_id, req, run_id, results_dir)
         return _run_jobs[job_id]
@@ -2455,6 +2967,43 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.post("/sweep")
     async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
+        if req.strategy == "turtle":
+            _validate_turtle_sweep_request(req)
+            try:
+                from backtesting.turtle_backtest import expand_turtle_grid
+
+                combinations, skipped = expand_turtle_grid(
+                    req.parameter_grid,
+                    max_combinations=req.max_combinations,
+                )
+                _turtle_params_from_request(req)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            job_id = str(uuid.uuid4())[:8]
+            sweep_id = req.sweep_id or f"ui_sweep_turtle_{job_id}"
+            _sweep_jobs[job_id] = {
+                "job_id": job_id,
+                "sweep_id": sweep_id,
+                "status": "running",
+                "progress": 0,
+                "message": "Turtle parameter sweep queued",
+                "created_at": _utc_now_iso(),
+                "updated_at": _utc_now_iso(),
+                "combination_count": len(combinations),
+                "skipped_count": len(skipped),
+                "finalist_count": 0,
+                "estimate": {
+                    "strategy": "turtle",
+                    "valid_combinations": len(combinations),
+                    "skipped_combinations": len(skipped),
+                    "run_finalists": False,
+                },
+                "symbol": _turtle_symbol(req),
+                "bar": "1D",
+            }
+            bg.add_task(_run_turtle_sweep_job, job_id, req, sweep_id, results_dir)
+            return _sweep_jobs[job_id]
+
         _validate_parameter_sweep_request(req)
         try:
             combinations, skipped = expand_parameter_grid(
@@ -2505,6 +3054,28 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/sweep/jobs")
     async def list_parameter_sweep_jobs():
         return list(_sweep_jobs.values())
+
+    @router.get("/sweep/result/{sweep_id}")
+    async def get_turtle_sweep_result(sweep_id: str):
+        clean = Path(sweep_id).name
+        path = results_dir / "turtle_sweeps" / clean / "summary.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Turtle sweep result not found")
+        return _read_json(path)
+
+    @router.get("/sweep/artifact/{sweep_id}/{name}")
+    async def get_turtle_sweep_artifact(sweep_id: str, name: str):
+        filename = _TURTLE_SWEEP_ARTIFACT_FILES.get(Path(name).name)
+        if filename is None:
+            raise HTTPException(status_code=404, detail="Turtle sweep artifact not found")
+        path = results_dir / "turtle_sweeps" / Path(sweep_id).name / filename
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Turtle sweep artifact not found")
+        if filename.endswith(".json"):
+            return _read_json(path)
+        if filename.endswith(".csv"):
+            return _read_csv(path)
+        return FileResponse(path, media_type="text/html")
 
     @router.delete("/{run_id}")
     async def delete_run(run_id: str):
@@ -3175,6 +3746,33 @@ def _validate_backtest_request(req: RunBacktestRequest) -> None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param: {key}")
         if not isinstance(value, (int, float, str, bool)) and value is not None:
             raise HTTPException(status_code=400, detail=f"Invalid strategy param value for: {key}")
+    try:
+        req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
+    except ResearchControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validate_turtle_sweep_request(req: ParameterSweepRequest) -> None:
+    _resolve_data_dir(req.data_dir)
+    if (req.bar or "1D") != "1D":
+        raise HTTPException(status_code=400, detail="turtle sweep supports 1D bars only")
+    if req.max_combinations > 5000:
+        raise HTTPException(status_code=400, detail="turtle sweep max_combinations is capped at 5000")
+    if req.finalist_validation not in {None, "none"}:
+        raise HTTPException(status_code=400, detail="turtle sweep does not run finalist validation")
+    if req.start and not _SAFE_DATE_RE.match(req.start):
+        raise HTTPException(status_code=400, detail="Invalid start date format")
+    if req.end and not _SAFE_DATE_RE.match(req.end):
+        raise HTTPException(status_code=400, detail="Invalid end date format")
+    try:
+        _turtle_symbol(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for key, value in req.parameter_grid.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(key)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter: {key}")
+        if not isinstance(value, (int, float, str, list, tuple, dict)):
+            raise HTTPException(status_code=400, detail=f"Invalid parameter value for: {key}")
     try:
         req.risk_overrides = sanitize_risk_overrides(req.risk_overrides)
     except ResearchControlError as exc:
