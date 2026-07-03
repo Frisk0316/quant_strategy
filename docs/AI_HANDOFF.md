@@ -25,96 +25,47 @@ Cycle + First Stage-1 Spec From Taxonomy").
 `0191c1d`, `2dea608`, `5eb71f8`, `21cc3c9`). Claude-reviewed and accepted on
 independent re-verification. No outstanding action.
 
-**Strategy research pipeline (P1-P9):** all committed (`dfc7af8`, `6997aba`,
-`14976d4`, and the in-progress P9 + Stage-1 spec commit). Result:
-`F-FUNDING-XS-DISPERSION` (`H-009`) is the first taxonomy-sourced candidate
-to clear Stage-2 `data_availability` (E-030: 32 eligible symbols, 28 good,
-breadth min 24/median 27 vs threshold 10). `stage2_status` stays FAIL —
-`distinctness` (vs `F-FUNDING-CARRY`) and `cost_after_edge` have not run.
-Stage-1 spec with the full mechanism-distinctness argument:
-`docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`.
+**Strategy research pipeline — first full cycle complete:**
+`F-FUNDING-XS-DISPERSION` (`H-009`) went taxonomy idea → Stage-2 data pass
+(E-030) → distinctness MINT (max abs corr 0.138 vs the real C2 reference
+signal) → pre-registered 4-combo fold-refit WF/CPCV (E-031: WF 1.1812, CPCV
+0.9553, DSR=PSR 0.9346) → checkpoint① FAIL on the 0.95 statistical gate
+only. **Verdict (Claude review, user-ratified 2026-07-04): KEEP as
+`testing`, MINT accepted, not refuted** — a genuinely marginal miss with K
+0/2 used, unlike the clean H-006/007/008 refutations. Standing constraint:
+no chase-the-gate retry — any retry needs an ex-ante rationale, burns K,
+and accumulates family n_trials. No promotion/live claim. Detail:
+`docs/CHANGELOG_AI.md` "2026-07-04 - Turtle Manual Pass +
+F-FUNDING-XS-DISPERSION Checkpoint Verdict" and the H-009/E-031 ledger rows.
 
-**Next action (Codex):** run the family-minting distinctness checker for
-`F-FUNDING-XS-DISPERSION` vs the `F-FUNDING-CARRY` reference signal first;
-then implement Stage 3 by reusing `xs_momentum_backtest.py`'s PIT-universe
-loader, corrected vol-targeting, and leak-fixed daily-shift as the skeleton
-(swap the ranking signal to trailing funding APR); pre-registered grid = 4
-combos (`L in [7,14] days, Q in [0.20,0.30]`); stop at checkpoint (1); no
-adapter/promotion/demo/shadow/live claim without Claude/user review of the
-Stage-3 evidence.
-
-**Turtle (海龜) platform integration — NEW workstream (planned 2026-07-03,
-Claude):** the user's standalone turtle system (`new_startegy_海龜/`,
-`turtle_trading_system_full` long version) is to be ported into the platform
-as a research-only standalone runner following the daily_winner precedent
-(NOT replay-engine, NOT `src/okx_quant/strategies/`, no
-`config/strategies.yaml` entry): pandas port + golden parity fixture in a new
-`backtesting/turtle_backtest.py`, single-run + sweep wiring in
-`routes_backtest.py`, frontend form with an `invest_pct` slider to 100%, and
-a sweep that replaces the console-interactive `sweep_params_interactive_full`
-(fix-or-range windows + optional invest_pct axis). Dual visualization per
-user decision: native SVG heatmaps + vendored-plotly `surface.html` artifact.
-Parity with the reference implementation is the acceptance bar; its quirks
-(same-day ATR, close fills, cash gate, S1 skip-after-win, no end liquidation)
-are preserved deliberately. polars/plotly must NOT become Python deps
-(fixtures come from a one-off scratch venv). Spec:
-`docs/superpowers/specs/2026-07-03-turtle-platform-design.md`. Codex tasks:
-`tasks/2026-07-03-turtle-strategy-platform-tasks.md` (T1–T5; T1 parity gate
-blocks T2–T4).
-
-Implementation update (2026-07-03 Codex): T1-T5 are implemented in the working
-tree. New code lives in `backtesting/turtle_backtest.py`,
-`src/okx_quant/api/routes_backtest.py`, `frontend/data.js`,
-`frontend/view-config.js`, `frontend/charts.js`, and
-`frontend/vendor/plotly.min.js`; tests are
-`tests/unit/test_turtle_backtest.py` and
-`tests/unit/test_routes_backtest_turtle.py`. Narrow pytest and Node syntax
-checks passed locally; DB-backed manual run/sweep smoke still needs a running
-server with 1D candles.
-
-2026-07-03 Claude review: **APPROVED WITH REQUIRED FIXES (3).** Independent
-evidence, not self-report: the reviewer extracted the reference
-`turtle_trading_system_full` verbatim into a polars scratch venv and ran it on
-a 600-day seeded fixture with two param sets (default + cash-gate stress) —
-the pandas port matched **exactly** (17 columns, ints exact, floats rtol
-1e-9, final equity identical: 49365.150060 / 7034.345421). Fixture + expected
-CSVs are now checked in under `tests/fixtures/turtle/` (with provenance
-README). Sweep artifacts smoke-verified in-process (rows.csv, surface.html
-with 5 metrics + /vendor/plotly.min.js ref, equity_curves.csv for the
-invest_pct axis). 30 focused tests pass, node --check passes, docs checks
-3/3 green, no forbidden file touched, plotly v2.35.2 MIT vendored and
-excluded from FRONTEND_JS. Required fixes before commit: **RF1** full-suite
-regression — `test_reference_validation_contract_covers_all_declared_
-strategies` FAILS because (a) the new local `allowed` variable in
-`_turtle_sweep_base_params` hijacks the test's regex scrape of the API
-allow-list (rename it), and (b) declared strategy `turtle` needs a minimal
-declarative `REFERENCE_VALIDATION_CONTRACTS` entry (touching
-`backtesting/differential_validation.py` was task-FORBIDDEN — scope
-amendment limited to one declarative registry entry, **user-approved
-2026-07-03**).
-**RF2** the user's core ask — the invest_pct 拉桿 scrub UI (final_equity vs
-invest_pct chart + slider switching the per-value equity curve) — is NOT
-implemented in TurtleSweepPanel even though equity_curves data is complete.
-**RF3** wire the checked-in golden fixture into a parity test in
-`tests/unit/test_turtle_backtest.py` (T1 acceptance). Minor (non-blocking):
-dashboard heatmaps show 3 of 5 metrics; fixed-vs-range invest_pct unit
-inconsistency in the sweep grid (scalar must be a fraction, range is
-percent — a bare "25" 400s); heatmap lacks hover/click detail; warmup hint
-hardcodes 55d.
-
-RF completion update (2026-07-03 Codex): RF1-RF3 are implemented in the
-working tree. RF1 renamed the turtle sweep local parameter set and added the
-single approved declarative `turtle` reference-validation contract entry. RF2
-added the `invest_pct` final-equity line chart, slider scrub, selected equity
-curve, and expanded Turtle heatmaps to 5 metrics. RF3 wires
-`tests/fixtures/turtle/daily_ohlc.csv` plus default/stress expected CSVs
-into the parity test without regenerating or editing fixtures. Targeted checks
-are green. Closure verification now also passed: `pytest tests/unit -q` (598
-passed), full frontend JS syntax loop (12 files), docs metadata/link checks,
-config-only validation, and current-code DB-backed Turtle API smoke on a
-temporary 8081 server (single run done; 2-row `invest_pct` sweep done with
-`rows.csv`, `equity_curves.csv`, and `summary.json`). Remaining closure is the
-turtle-scoped commit; do not stage the parallel funding-xs-dispersion stream.
+**Turtle (海龜) platform integration — ACCEPTED and usable (2026-07-04,
+user-directed manual pass complete):** the reference
+`turtle_trading_system_full` is ported as a research-only standalone runner
+(daily_winner precedent; no replay/trading-core/gate/deployment changes).
+Final state:
+- **Golden parity passes on REAL data:** 898 real BTC-USDT-SWAP UTC daily
+  bars exported from canonical DB (`tests/fixtures/turtle/daily_ohlc.csv`
+  with provenance README); the verbatim polars reference re-run in a scratch
+  venv on this fixture (default + cash-gate stress sets) and the pandas
+  port matches exactly — 17 columns, ints exact, floats rtol 1e-9, final
+  equities 50578.081905 / 12307.892184. The earlier 600-day synthetic
+  fixture is superseded and deleted.
+- **DB-backed end-to-end API smoke passed** (in-process TestClient against
+  the real router + DB, no mocks): manual-param single run
+  (invest_pct=0.05, 75 orders, full ADR-0002 artifact set), 2-free-param
+  sweep (6 combos → rows.csv + surface.html + result/artifact endpoints),
+  invest_pct-axis sweep (equity_curves.csv for the slider scrub UI). The
+  smoke caught and fixed one real bug: sweep equity-curve rows carried
+  pandas Timestamps and crashed `summary.json` serialization (fixed at
+  source with a regression test). Codex independently smoke-tested on a
+  temporary 8081 server.
+- Full unit suite **599 passed**; frontend node --check green; RF1-RF3 from
+  the earlier review round all closed (declarative `turtle` validation
+  contract entry [user-approved scope amendment], invest_pct scrub UI +
+  5-metric heatmaps, real-fixture parity wiring).
+- Optional polish (non-blocking): heatmap hover/click detail, warmup hint
+  hardcodes 55d, fixed-vs-range invest_pct unit convention
+  (scalar=fraction, range=percent).
 
 **Known pending items (not blocking, tracked in KNOWN_ISSUES/RUNBOOK):**
 liquidation ingest (`quant_liq_okx_ingest`) is Interactive-only (runs only
@@ -163,23 +114,19 @@ Full `make verify` / `make verify-full` still needs an environment with
 
 ## Next Steps
 
-1. Codex: run the family-minting distinctness checker for
-   `F-FUNDING-XS-DISPERSION` vs `F-FUNDING-CARRY`, then implement Stage 3
-   per the hand-off in
-   `docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`.
-2. If a later grid needs the 4 not-yet-backfilled symbols
+1. H-009 (`F-FUNDING-XS-DISPERSION`) stays `testing`: no retry without an
+   ex-ante rationale (burns K, accumulates n_trials); next candidates for
+   the pipeline are F-XVENUE-LEADLAG (pending OKX 1m backfill completion +
+   Stage-2 reprobe) and F-OI-POSITIONING (data now available, needs a
+   Stage-2 probe + Stage-1 spec).
+2. Turtle: usable from the frontend for manual parameter tuning now.
+   Optional polish only (heatmap hover/click, warmup hint, invest_pct unit
+   convention) — schedule if the user asks.
+3. If a later grid needs the 4 not-yet-backfilled symbols
    (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP), rerun
    `scripts/market_data/backfill_universe_funding.py` for them.
-3. Decide whether the `quant_liq_okx_ingest` Windows task needs an
+4. Decide whether the `quant_liq_okx_ingest` Windows task needs an
    unattended/service mode (currently Interactive-only).
-4. Codex: implement the turtle platform integration per
-   `tasks/2026-07-03-turtle-strategy-platform-tasks.md` (T1 first — the
-   golden parity fixture gates T2–T4); Claude reviews against the spec's
-   semantics contract.
-
-2026-07-03 update: turtle implementation plus RF1-RF3 fixes are present in the
-working tree and verified. The next turtle action is a turtle-scoped commit
-that excludes the parallel funding-xs-dispersion stream.
 
 ## Open Questions
 

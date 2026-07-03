@@ -24,35 +24,23 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
   `dfc7af8`/`6997aba`/`14976d4` plus an in-progress commit for P9 (DB-sourced
   universe membership) and the first Stage-1 spec produced from the
   taxonomy path.
-- **`F-FUNDING-XS-DISPERSION` (`H-009`) Stage-2 `data_availability` now
-  PASSES** (E-030) — the first taxonomy-sourced candidate to clear this gate.
-  Root cause of the earlier FAIL: `build_universe_membership.py` derived PIT
-  eligibility from a thin local-parquet mirror (median 2 eligible/day);
-  rebuilt from `canonical_candles` via a new `--source db` path, median is
-  now 28. `stage2_status` stays FAIL — `distinctness` (vs `F-FUNDING-CARRY`)
-  and `cost_after_edge` are the explicit next Codex step, per
-  `docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md`.
+- **`F-FUNDING-XS-DISPERSION` (`H-009`) first full pipeline cycle complete
+  (E-031):** distinctness MINT (corr 0.138 vs the real C2 reference),
+  pre-registered 4-combo fold-refit WF/CPCV — WF 1.1812 / CPCV 0.9553 /
+  DSR=PSR 0.9346 — checkpoint① FAIL on the 0.95 gate only. **Verdict
+  (user-ratified 2026-07-04): KEEP as `testing`, not refuted**; no
+  chase-the-gate retry (any retry needs ex-ante rationale, burns K 0/2,
+  accumulates n_trials). No promotion/live claim.
+- **Turtle (海龜) platform integration ACCEPTED and usable (2026-07-04,
+  manual pass complete):** golden parity passes on 898 REAL BTC-USDT-SWAP
+  daily bars against the verbatim polars reference (17 columns exact / rtol
+  1e-9; `tests/fixtures/turtle/`); DB-backed end-to-end API smoke passed
+  (manual-param run, 2-free-param sweep with surface.html, invest_pct-axis
+  sweep with equity_curves.csv), fixing one Timestamp-serialization bug
+  found by the smoke. Full unit suite 599 passed. Research-only standalone
+  runner; manual parameter tuning works from the frontend.
 - OKX liquidation forward-accumulation runs every 2h via Windows Task
   Scheduler (`quant_liq_okx_ingest`, Interactive-only).
-- **NEW: Turtle (海龜) platform integration is planned** (2026-07-03 Claude):
-  spec `docs/superpowers/specs/2026-07-03-turtle-platform-design.md`, Codex
-  tasks `tasks/2026-07-03-turtle-strategy-platform-tasks.md` (T1–T5,
-  daily_winner-precedent standalone runner + UI sweep + heatmap/plotly-surface
-  visualization; parity fixture gates implementation). Planning docs are
-  uncommitted in the working tree; build not started.
-
-2026-07-03 Codex update: turtle implementation is now present in the working
-tree (`backtesting/turtle_backtest.py`, `routes_backtest.py`, frontend controls,
-heatmaps, vendored Plotly, and focused tests).
-
-2026-07-03 Claude review: turtle **APPROVED WITH REQUIRED FIXES**; Codex has
-now implemented RF1-RF3 in the working tree. RF1 fixes the contract regression
-with the approved declarative `turtle` entry, RF2 adds the `invest_pct` scrub
-UI and 5-metric heatmaps, and RF3 wires the checked-in golden fixture into
-parity tests without regenerating it. Remaining closure: full unit suite,
-DB-backed run/sweep smoke where available, and docs checks are now complete;
-next closure is the turtle-scoped commit excluding the parallel
-funding-xs-dispersion stream.
 
 ## Active Warnings
 

@@ -358,6 +358,37 @@ implementation exists.
   live/shadow/demo gates, change live funding-carry strategy behavior, edit
   `src/okx_quant/analytics/dsr.py`, or mutate existing result artifacts.
 
+## Funding XS Dispersion Research Candidate
+
+- User-facing behavior: checkpoint-only research candidate for
+  F-FUNDING-XS-DISPERSION. It tests a dollar-neutral perp-only book that goes
+  long low trailing funding APR and short high trailing funding APR across the
+  point-in-time liquid USDT-perp universe. This is evidence-review tooling only,
+  with no UI or API promotion entrypoint.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/funding_xs_dispersion_backtest.py`,
+  `backtesting/pipeline_stage3_registry.py`,
+  `scripts/run_funding_xs_dispersion_checkpoint.py`.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
+  Binance venue-scoped `canonical_candles`, `funding_rates`, and
+  `venue_instrument_specs`; generated sidecars live under
+  `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/`.
+- Config files: none changed.
+- Strategy / portfolio files: none changed; target-weight construction reuses
+  `okx_quant.strategies.xs_momentum.target_weights` from the research path.
+- Tests: `tests/unit/test_funding_xs_dispersion_backtest.py`,
+  `tests/unit/test_pipeline_stage3_registry.py`,
+  `tests/unit/test_pipeline_checkpoint1_check.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, relevant Change Manifest and session/context
+  handoffs.
+- Do-not-touch notes: do not enable a strategy, change live funding-carry
+  behavior, touch `config/strategies.yaml`, `config/risk.yaml`, risk,
+  portfolio, execution, demo/shadow/live gates, or mutate existing result
+  artifacts. Stop at checkpoint 1 unless Claude/human explicitly opens the next
+  task.
+
 ## Strategy Research Pipeline Automation
 
 - User-facing behavior: generate and review advisory research-pipeline sidecars
