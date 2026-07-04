@@ -34,6 +34,13 @@ A5 backtesting; A7 frontend/API artifact review surface.
 - `tests/unit/test_turtle_backtest.py`,
   `tests/unit/test_routes_backtest_turtle.py` - reference semantics and API
   artifact tests.
+- `backtesting/differential_validation.py` - one declarative `turtle`
+  REFERENCE_VALIDATION_CONTRACTS entry (user-approved RF1 scope amendment);
+  remediation `d4047ed` relabeled its engine statuses `implemented` ->
+  `not_targeted` so the contract does not imply runnable external adapters
+  (`portable_validation_required: False`, engines SKIP with honest reasons);
+  `tests/unit/test_differential_validation.py` now enforces `not_targeted`
+  for nonportable contracts and all-`implemented` for portable ones.
 - Project docs and handoffs listed below.
 
 ## Behavior delta
@@ -74,9 +81,10 @@ A5 backtesting; A7 frontend/API artifact review surface.
 
 ## Risks and rollback
 - Risks: pandas port may still diverge from untested corners of the reference
-  script; DB daily candles must match UTC daily bars; Turtle is not covered by
-  differential-validation contracts; high `invest_pct` can plateau on the
-  reference cash gate.
+  script; DB daily candles must match UTC daily bars; Turtle's
+  differential-validation contract is declarative-only (`not_targeted`
+  engines - no runnable external validation exists or is claimed); high
+  `invest_pct` can plateau on the reference cash gate.
 - Rollback: remove `backtesting/turtle_backtest.py`, Turtle branches/helpers in
   `routes_backtest.py`, Turtle frontend additions/vendor Plotly, the two Turtle
   test files, this manifest, and the associated docs/handoff updates.
