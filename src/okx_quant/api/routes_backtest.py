@@ -1109,6 +1109,7 @@ def _build_turtle_result_json(
             "validation_only": True,
             "validation_mode": "none",
             "research_only": True,
+            "controls_ignored": ["risk_overrides", "execution_profile", "fill_all_signals"],
             "turtle_data_sources": data_sources or [],
             "reference_semantics": "new_startegy turtle_trading_system_full port",
         },
@@ -1523,18 +1524,21 @@ def _json_sanitize(value: Any) -> Any:
 
 
 def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
+    turtle = req.strategy == "turtle"
+    risk = {} if turtle else req.risk_overrides or {}
+    fill_all_signals = False if turtle else bool(req.fill_all_signals)
     return _json_sanitize({
         "strategies": {
             req.strategy: req.strategy_params or {},
         },
-        "risk": req.risk_overrides or {},
+        "risk": risk,
         "backtest": {
-            "execution_profile": req.execution_profile,
-            "fill_all_signals": bool(req.fill_all_signals),
+            "execution_profile": "strategy_fill" if turtle else req.execution_profile,
+            "fill_all_signals": fill_all_signals,
         },
         "overrides": {
             "strategy_params": req.strategy_params or {},
-            "risk_overrides": req.risk_overrides or {},
+            "risk_overrides": risk,
         },
     })
 
@@ -1797,7 +1801,11 @@ def _visual_time_values(value: Any) -> tuple[int | None, str]:
     if value is None or value == "":
         return None, ""
     try:
-        if isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
+        if isinstance(value, str) and re.fullmatch(r"[+-]?\d+(?:\.\d+)?", value.strip()):
+            raw = float(value)
+            unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
+            ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
+        elif isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
             raw = float(value)
             unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
             ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
@@ -3558,18 +3566,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             run_id,
             "execution_markers",
             "execution_markers.csv",
-            symbol=symbol,
-            n=limit,
-            downsample=bool(limit),
         )
         if records:
-            return records
+            return _limit_records(_filter_records_by_symbol(records, symbol), limit)
         result = await _read_result_payload(run_id)
-        fills = await _read_records_artifact(run_id, "fills", "fills.csv", symbol=symbol)
-        trades = await _read_records_artifact(run_id, "trades", "trades.csv", symbol=symbol)
+        fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+        trades = await _read_records_artifact(run_id, "trades", "trades.csv")
         if not trades:
             trades = _as_record_list(result.get("trades"))
-            trades = _filter_records_by_symbol(trades, symbol)
         markers = _fallback_execution_markers_from_records(
             fills=fills,
             trades=trades,

@@ -844,6 +844,17 @@ def _free_window_params(spec: dict[str, Any]) -> list[str]:
     return [name for name in WINDOW_PARAMS if not _is_fixed_grid_value(spec.get(name, ""))]
 
 
+def _fixed_surface_params(spec: dict[str, Any], base_params: TurtleParams, free_params: list[str]) -> dict[str, Any]:
+    fixed: dict[str, Any] = {}
+    for name in WINDOW_PARAMS:
+        if name in free_params:
+            continue
+        values, _ = _parse_values(spec.get(name, getattr(base_params, name)))
+        fixed[name] = values[0]
+    fixed["invest_pct"] = base_params.invest_pct
+    return fixed
+
+
 def run_turtle_sweep(
     daily_df: pd.DataFrame,
     spec: dict[str, Any],
@@ -886,7 +897,12 @@ def run_turtle_sweep(
     sweep_id = sweep_id or f"turtle_sweep_{int(started)}"
     surface_html = ""
     if len(free_params) == 2 and "invest_pct" not in spec:
-        surface_html = render_surface_html(rows, free_params[0], free_params[1])
+        surface_html = render_surface_html(
+            rows,
+            free_params[0],
+            free_params[1],
+            fixed_params=_fixed_surface_params(spec, base_params, free_params),
+        )
     summary = {
         "sweep_id": sweep_id,
         "strategy": "turtle",
@@ -928,23 +944,33 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def render_surface_html(rows: list[dict[str, Any]], x_col: str, y_col: str) -> str:
+def render_surface_html(
+    rows: list[dict[str, Any]],
+    x_col: str,
+    y_col: str,
+    *,
+    fixed_params: dict[str, Any] | None = None,
+) -> str:
     payload = json.dumps(rows, default=str)
+    fixed_info = ", ".join(f"{key}={value}" for key, value in (fixed_params or {}).items())
+    title = f"Turtle Sweep Surface | Fixed: {fixed_info}" if fixed_info else "Turtle Sweep Surface"
     return f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Turtle Sweep Surface</title>
+  <title>{title}</title>
   <script src="/vendor/plotly.min.js"></script>
   <style>body{{font-family:system-ui,sans-serif;margin:24px}}.grid{{display:grid;grid-template-columns:repeat(3,minmax(280px,1fr));gap:16px}}.chart{{height:360px}}</style>
 </head>
 <body>
-  <h1>Turtle Sweep Surface</h1>
+  <h1>{title}</h1>
   <div id="grid" class="grid"></div>
   <script>
     const rows = {payload};
     const metrics = {json.dumps(list(SWEEP_METRICS))};
     const metricNames = ["MDD", "Win Rate", "Final Asset", "Profit/Loss Ratio", "Expectancy"];
+    const xLabel = {json.dumps(x_col)};
+    const yLabel = {json.dumps(y_col)};
     const xs = [...new Set(rows.map(r => r[{json.dumps(x_col)}]))].sort((a,b) => a-b);
     const ys = [...new Set(rows.map(r => r[{json.dumps(y_col)}]))].sort((a,b) => a-b);
     const byKey = new Map(rows.map(r => [`${{r[{json.dumps(x_col)}]}}|${{r[{json.dumps(y_col)}]}}`, r]));
@@ -954,7 +980,7 @@ def render_surface_html(rows: list[dict[str, Any]], x_col: str, y_col: str) -> s
       div.className = "chart";
       root.appendChild(div);
       const z = ys.map(y => xs.map(x => (byKey.get(`${{x}}|${{y}}`) || {{}})[metric] ?? null));
-      Plotly.newPlot(div, [{{type:"surface", x:xs, y:ys, z, colorscale:"Viridis", showscale:false}}], {{
+      Plotly.newPlot(div, [{{type:"surface", x:xs, y:ys, z, colorscale:"Viridis", showscale:false, hovertemplate:`${{xLabel}}=%{{x}}<br>${{yLabel}}=%{{y}}<br>${{metric}}=%{{z:.4f}}<extra></extra>`}}], {{
         title: metricNames[i],
         scene: {{xaxis:{{title:{json.dumps(x_col)}}}, yaxis:{{title:{json.dumps(y_col)}}}, zaxis:{{title:metricNames[i]}}}},
         margin: {{l:0, r:0, b:0, t:40}}

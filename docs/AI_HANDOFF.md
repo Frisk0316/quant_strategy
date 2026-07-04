@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-04
 expires: none
 superseded_by: null
 ---
@@ -38,6 +38,21 @@ and accumulates family n_trials. No promotion/live claim. Detail:
 `docs/CHANGELOG_AI.md` "2026-07-04 - Turtle Manual Pass +
 F-FUNDING-XS-DISPERSION Checkpoint Verdict" and the H-009/E-031 ledger rows.
 
+**Pipeline next candidates Codex pass (2026-07-04):**
+`F-OI-POSITIONING` now has a Stage-2 data-availability probe in
+`backtesting/pipeline_stage2_registry.py` / `scripts/run_pipeline_stage2_data_probe.py`.
+E-034 PASSes the data gate on Binance Vision 5m OI:
+`oi_binance_hist_btc` and `oi_binance_hist_eth` each have 258,493 / 258,624
+expected rows over 2024-01-01 through 2026-06-16 UTC, coverage 0.999493,
+missing_ratio 0.000507, stale_ratio 0.004454. H-012 is only a proposed
+placeholder; Claude still owns the Stage-1 hypothesis spec. `F-XVENUE-LEADLAG`
+was rechecked in E-035 and remains data-blocked: Binance has full BTC/ETH 1m
+coverage but OKX still has 0 rows / 0.0 coverage / 0 aligned rows for both legs.
+The existing OKX ingest command was attempted, but sandbox networking failed
+with `WinError 10013`; the required escalated rerun was rejected by the
+approval/usage layer, so the backfill is **not** resumed from this session.
+No cross-venue substitution, strategy verdict, or promotion evidence.
+
 **Turtle (海龜) platform integration — ACCEPTED and usable (2026-07-04,
 user-directed manual pass complete):** the reference
 `turtle_trading_system_full` is ported as a research-only standalone runner
@@ -63,6 +78,16 @@ Final state:
   the earlier review round all closed (declarative `turtle` validation
   contract entry [user-approved scope amendment], invest_pct scrub UI +
   5-metric heatmaps, real-fixture parity wiring).
+- Follow-up Codex pass complete (2026-07-04): file/DB-backed Turtle
+  execution markers now survive numeric-string epoch parsing and
+  symbol-filtered marker endpoint calls; browser check on a patched local
+  server showed `212 markers` and live `invest_pct` slider sync. Turtle
+  risk overrides/execution profile/`fill_all_signals` are explicitly recorded
+  as ignored, sweep parity validation has a Tier A PASS, CI has a portable
+  verbatim-reference golden subset, and `surface.html` now carries fixed params
+  plus metric hover detail. Claude review re-run (E-033) upgraded Tier B to
+  PASS: the user reference CSV is exactly reproduced from the repo fixture
+  range; E-032's mismatch was input date range, not data provenance.
 - Optional polish (non-blocking): heatmap hover/click detail, warmup hint
   hardcodes 55d, fixed-vs-range invest_pct unit convention
   (scalar=fraction, range=percent).
@@ -89,9 +114,8 @@ another as microseconds. Regression coverage:
   `dfc7af8`/`6997aba`/`14976d4` (pipeline P1-P8 + real-data runs + warmup
   window), plus an in-progress commit for P9 + the F-FUNDING-XS-DISPERSION
   Stage-1 spec.
-- Working tree additionally contains the uncommitted 2026-07-03 turtle
-  planning docs (spec, task file, handoffs, these state-file updates); commit
-  on user request.
+- Current session finalization request covers the Turtle follow-up work plus
+  the pipeline next-candidate probe/docs pass; commit and push on user request.
 
 ## Do Not Touch
 
@@ -122,10 +146,11 @@ Full `make verify` / `make verify-full` still needs an environment with
 ## Next Steps
 
 1. H-009 (`F-FUNDING-XS-DISPERSION`) stays `testing`: no retry without an
-   ex-ante rationale (burns K, accumulates n_trials); next candidates for
-   the pipeline are F-XVENUE-LEADLAG (pending OKX 1m backfill completion +
-   Stage-2 reprobe) and F-OI-POSITIONING (data now available, needs a
-   Stage-2 probe + Stage-1 spec).
+   ex-ante rationale (burns K, accumulates n_trials). Next candidate handoff:
+   `F-OI-POSITIONING` has Stage-2 data availability PASS (E-034) and now needs
+   Claude Stage-1 spec; `F-XVENUE-LEADLAG` remains blocked until the OKX
+   BTC/ETH-USDT-SWAP 1m backfill runs successfully outside this sandbox, then
+   rerun the Stage-2 probe.
 2. Turtle: usable from the frontend for manual parameter tuning now.
    Optional polish only (heatmap hover/click, warmup hint, invest_pct unit
    convention) — schedule if the user asks.

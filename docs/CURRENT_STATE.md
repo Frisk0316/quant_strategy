@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-04
 expires: none
 superseded_by: null
 ---
@@ -17,7 +17,8 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 ## Snapshot
 
 - Current branch: `codex/pipeline-batch1-stage3`, working tree has uncommitted
-  turtle implementation/docs changes plus pre-existing planning/state edits.
+  Turtle follow-up changes plus the pipeline next-candidate probe/docs pass;
+  user requested commit and push after verification.
 - Repo maintenance (M1-M5 + M2-R1) is fully committed and closed:
   `df96682`/`79c1ddc`/`0191c1d`/`2dea608`/`5eb71f8`/`21cc3c9`.
 - Strategy research pipeline P1-P9 is fully committed:
@@ -41,7 +42,26 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
   (manual-param run, 2-free-param sweep with surface.html, invest_pct-axis
   sweep with equity_curves.csv), fixing one Timestamp-serialization bug
   found by the smoke. Full unit suite 599 passed. Research-only standalone
-  runner; manual parameter tuning works from the frontend.
+  runner; manual parameter tuning works from the frontend. Follow-up Codex
+  pass fixed Turtle trade markers for numeric-string epochs and
+  symbol-filtered endpoint calls (`212 markers` in browser check), made
+  Turtle risk/execution/`fill_all_signals` ignores explicit, added
+  CI-portable verbatim-reference golden coverage plus sweep parity validation,
+  and polished surface.html fixed-param/hover text. Claude review re-run
+  (E-033): Tier A AND Tier B both PASS — the user reference CSV is exactly
+  reproduced from the repo fixture (E-032's mismatch was input date range,
+  not data provenance).
+- **`F-OI-POSITIONING` (`H-012`/`E-034`) Stage-2 data availability PASS:**
+  Binance Vision 5m OI observations in `external_observations`
+  (`oi_binance_hist_btc`, `oi_binance_hist_eth`) each have 258,493 / 258,624
+  expected rows from 2024-01-01 through 2026-06-16 UTC, coverage 0.999493,
+  missing_ratio 0.000507, and stale_ratio 0.004454. This only unlocks Claude
+  Stage-1 spec drafting; no strategy verdict, WF/CPCV, promotion, or live claim.
+- **`F-XVENUE-LEADLAG` (`H-010`/`E-035`) remains data-blocked:** Binance
+  BTC/ETH 1m coverage is complete, but OKX BTC/ETH 1m rows remain 0 with 0
+  aligned rows. The existing OKX ingest command was attempted, but sandbox
+  network failed with `WinError 10013` and the escalated rerun was rejected by
+  the approval/usage layer, so backfill was not resumed.
 - OKX liquidation forward-accumulation runs every 2h via Windows Task
   Scheduler (`quant_liq_okx_ingest`, Interactive-only).
 
@@ -65,6 +85,9 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 - 4 point-in-time-eligible symbols under the rebuilt universe
   (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) have no funding history backfilled yet;
   not required for the current Stage-2 pass, only if a later grid needs them.
+- `F-XVENUE-LEADLAG` cannot progress until OKX BTC-USDT-SWAP and
+  ETH-USDT-SWAP 1m canonical candles are backfilled outside the current network
+  sandbox and the Stage-2 probe is rerun.
 - `src/okx_quant/stocks/` is kept as a docs-mapped research-only sandbox
   (M5 Option A); it is not wired into crypto replay, UI, API, or deployment
   gates.

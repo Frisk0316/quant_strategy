@@ -89,6 +89,7 @@ Main app views in `frontend/app.js`:
 - `daily_winner` is tagged as validation-only and is not deployment evidence.
 - `turtle` is a research-only standalone runner. `frontend/view-config.js` locks
   it to 1D, renders the 11 reference params with an `invest_pct` percent slider,
+  disables research risk/execution/`fill_all_signals` controls as not applied,
   and owns the Turtle sweep panel. Sweep results render 5 native SVG heatmaps
   plus an `invest_pct` final-equity line chart, slider scrub, selected equity
   curve, and Plotly 3D surface artifact link. `frontend/charts.js` exports the

@@ -1,9 +1,11 @@
 from backtesting.pipeline_feasibility import result_to_dict
 from scripts.run_pipeline_stage2_data_probe import (
     FundingThresholds,
+    OIThresholds,
     VenueThresholds,
     build_fail_closed_result,
     build_funding_data_check,
+    build_oi_data_check,
     build_stage2_result,
     build_xvenue_data_check,
 )
@@ -91,6 +93,32 @@ def test_xvenue_probe_does_not_substitute_binance_for_missing_okx_leg():
         {"inst_id": "BTC-USDT-SWAP", "venue": "okx", "coverage_ratio": 0.0}
     ]
     assert check.details["venue_coverage"]["BTC-USDT-SWAP"]["binance"]["coverage_ratio"] == 1.0
+
+
+def test_oi_probe_reports_coverage_missing_and_stale_ratios():
+    check = build_oi_data_check(
+        dataset_coverage={
+            "oi_binance_hist_btc": {
+                "row_count": 288,
+                "daily_rows": [{"day": "2024-01-01", "row_count": 288}],
+            },
+            "oi_binance_hist_eth": {
+                "row_count": 200,
+                "daily_rows": [{"day": "2024-01-01", "row_count": 200}],
+            },
+        },
+        thresholds=OIThresholds(min_coverage=0.95, max_stale_ratio=0.05),
+        expected_5m_rows=288,
+        expected_days=1,
+    )
+
+    assert check.status == "FAIL"
+    assert "oi_binance_hist_eth" in check.reason
+    assert check.details["dataset_coverage"]["oi_binance_hist_btc"]["coverage_ratio"] == 1.0
+    assert check.details["dataset_coverage"]["oi_binance_hist_btc"]["missing_ratio"] == 0.0
+    assert check.details["dataset_coverage"]["oi_binance_hist_btc"]["stale_ratio"] == 0.0
+    assert check.details["dataset_coverage"]["oi_binance_hist_eth"]["missing_ratio"] == 88 / 288
+    assert check.details["dataset_coverage"]["oi_binance_hist_eth"]["stale_ratio"] == 1.0
 
 
 def test_data_probe_unavailable_fails_closed_without_stage3_release():

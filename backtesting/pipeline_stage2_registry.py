@@ -18,6 +18,7 @@ END_EXCLUSIVE = "2026-06-17"
 DSN = "postgresql://quant:changeme@localhost:5432/quant"
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
 FUNDING_SOURCE = "binance"
+OI_DATASETS = ("oi_binance_hist_btc", "oi_binance_hist_eth")
 VENUES = ("binance", "okx")
 XVENUE_SYMBOLS = ("BTC-USDT-SWAP", "ETH-USDT-SWAP")
 
@@ -34,6 +35,9 @@ FUNDING_MAX_STALE_RATIO = 0.10
 FUNDING_BREADTH_WARMUP_DAYS = 30
 XVENUE_MIN_COVERAGE = 0.95
 XVENUE_MIN_ALIGNMENT = 0.95
+OI_MIN_COVERAGE = 0.95
+OI_MAX_STALE_RATIO = 0.05
+OI_5M_ROWS_PER_DAY = 288
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,12 @@ class VenueThresholds:
     min_alignment: float = XVENUE_MIN_ALIGNMENT
 
 
+@dataclass(frozen=True)
+class OIThresholds:
+    min_coverage: float = OI_MIN_COVERAGE
+    max_stale_ratio: float = OI_MAX_STALE_RATIO
+
+
 Stage2Context = Mapping[str, Any]
 Stage2Probe = Callable[[Any, Stage2Context], Awaitable[FeasibilityResult]]
 
@@ -78,6 +88,13 @@ CANDIDATES: dict[str, CandidateSpec] = {
         candidate_dir="f_xvenue_leadlag",
         hypothesis_id="H-010",
         family_id="F-XVENUE-LEADLAG",
+    ),
+    "oi": CandidateSpec(
+        key="oi",
+        candidate_id="B-f-oi-positioning",
+        candidate_dir="f_oi_positioning",
+        hypothesis_id="H-012",
+        family_id="F-OI-POSITIONING",
     ),
 }
 
@@ -108,6 +125,10 @@ def _jsonable(value: Any) -> Any:
 
 def _expected_1m_rows(start: datetime, end: datetime) -> int:
     return int((end - start).total_seconds() // 60)
+
+
+def _expected_5m_rows(start: datetime, end: datetime) -> int:
+    return int((end - start).total_seconds() // (5 * 60))
 
 
 def _expected_8h_rows(start: datetime, end: datetime) -> int:
@@ -282,6 +303,75 @@ def build_xvenue_data_check(
             "venue_coverage": normalized,
             "missing_venues": missing_venues,
             "alignment_failures": alignment_failures,
+        },
+    )
+
+
+def build_oi_data_check(
+    *,
+    dataset_coverage: Mapping[str, Mapping[str, Any]],
+    thresholds: OIThresholds,
+    expected_5m_rows: int,
+    expected_days: int,
+) -> FeasibilityCheck:
+    normalized: dict[str, dict[str, Any]] = {}
+    failures: list[dict[str, Any]] = []
+    for dataset_id in sorted(dataset_coverage):
+        row = dict(dataset_coverage[dataset_id])
+        daily_rows = [dict(day_row) for day_row in row.get("daily_rows") or []]
+        row_count = int(row.get("row_count") or 0)
+        complete_days = sum(1 for day_row in daily_rows if int(day_row.get("row_count") or 0) >= OI_5M_ROWS_PER_DAY)
+        missing_ratio = _safe_ratio(max(0, expected_5m_rows - row_count), expected_5m_rows)
+        stale_ratio = _safe_ratio(max(0, expected_days - complete_days), expected_days)
+        coverage_ratio = _safe_ratio(row_count, expected_5m_rows)
+        row.update(
+            {
+                "row_count": row_count,
+                "expected_5m_rows": expected_5m_rows,
+                "coverage_ratio": coverage_ratio,
+                "missing_ratio": missing_ratio,
+                "stale_ratio": stale_ratio,
+                "complete_days": complete_days,
+                "expected_days": expected_days,
+                "daily_rows": daily_rows,
+            }
+        )
+        normalized[dataset_id] = row
+        if coverage_ratio < thresholds.min_coverage or stale_ratio > thresholds.max_stale_ratio:
+            failures.append(
+                {
+                    "dataset_id": dataset_id,
+                    "coverage_ratio": coverage_ratio,
+                    "missing_ratio": missing_ratio,
+                    "stale_ratio": stale_ratio,
+                }
+            )
+
+    if failures:
+        status = "FAIL"
+        fail_text = "; ".join(
+            f"{row['dataset_id']} coverage={row['coverage_ratio']:.4f} stale={row['stale_ratio']:.4f}"
+            for row in failures
+        )
+        reason = f"Binance Vision 5m OI coverage failed: {fail_text}"
+    else:
+        status = "PASS"
+        reason = "Binance Vision 5m BTC/ETH OI coverage passed"
+    return FeasibilityCheck(
+        name="data_availability",
+        status=status,
+        reason=reason,
+        details={
+            "window": {
+                "start": f"{START}T00:00:00+00:00",
+                "end_exclusive": f"{END_EXCLUSIVE}T00:00:00+00:00",
+                "expected_5m_rows": expected_5m_rows,
+                "expected_days": expected_days,
+            },
+            "source": "binance_vision_metrics",
+            "thresholds": asdict(thresholds),
+            "dataset_coverage": normalized,
+            "failures": failures,
         },
     )
 
@@ -555,6 +645,83 @@ async def _fetch_venue_coverage(
     return coverage
 
 
+async def _fetch_oi_coverage(
+    conn: Any,
+    *,
+    datasets: Sequence[str],
+    start: datetime,
+    end: datetime,
+) -> dict[str, dict[str, Any]]:
+    expected_rows = _expected_5m_rows(start, end)
+    coverage: dict[str, dict[str, Any]] = {
+        dataset_id: {
+            "row_count": 0,
+            "expected_5m_rows": expected_rows,
+            "coverage_ratio": 0.0,
+            "missing_ratio": 1.0,
+            "first_ts": None,
+            "last_ts": None,
+            "daily_rows": [],
+        }
+        for dataset_id in datasets
+    }
+    total_rows = await conn.fetch(
+        """
+        SELECT
+            dataset_id,
+            COUNT(*)::bigint AS row_count,
+            MIN(observed_at) AS first_ts,
+            MAX(observed_at) AS last_ts
+        FROM external_observations
+        WHERE dataset_id = ANY($1::text[])
+          AND observed_at >= $2 AND observed_at < $3
+          AND value_num IS NOT NULL
+          AND quality_status != 'suspect'
+        GROUP BY dataset_id
+        """,
+        list(datasets),
+        start,
+        end,
+    )
+    for row in total_rows:
+        dataset_id = str(row["dataset_id"])
+        row_count = int(row["row_count"] or 0)
+        coverage[dataset_id].update(
+            {
+                "row_count": row_count,
+                "coverage_ratio": _safe_ratio(row_count, expected_rows),
+                "missing_ratio": _safe_ratio(max(0, expected_rows - row_count), expected_rows),
+                "first_ts": _iso_dt(row["first_ts"]),
+                "last_ts": _iso_dt(row["last_ts"]),
+            }
+        )
+
+    daily_rows = await conn.fetch(
+        """
+        SELECT
+            dataset_id,
+            date_trunc('day', observed_at)::date AS day,
+            COUNT(*)::bigint AS row_count
+        FROM external_observations
+        WHERE dataset_id = ANY($1::text[])
+          AND observed_at >= $2 AND observed_at < $3
+          AND value_num IS NOT NULL
+          AND quality_status != 'suspect'
+        GROUP BY dataset_id, date_trunc('day', observed_at)::date
+        ORDER BY dataset_id, day
+        """,
+        list(datasets),
+        start,
+        end,
+    )
+    for row in daily_rows:
+        dataset_id = str(row["dataset_id"])
+        coverage[dataset_id]["daily_rows"].append(
+            {"day": row["day"].isoformat(), "row_count": int(row["row_count"] or 0)}
+        )
+    return coverage
+
+
 async def probe_xvenue(
     conn: Any,
     *,
@@ -571,6 +738,23 @@ async def probe_xvenue(
     return build_stage2_result("xvenue", check)
 
 
+async def probe_oi(
+    conn: Any,
+    *,
+    start: datetime,
+    end: datetime,
+    thresholds: OIThresholds,
+) -> FeasibilityResult:
+    coverage = await _fetch_oi_coverage(conn, datasets=OI_DATASETS, start=start, end=end)
+    check = build_oi_data_check(
+        dataset_coverage=coverage,
+        thresholds=thresholds,
+        expected_5m_rows=_expected_5m_rows(start, end),
+        expected_days=(end.date() - start.date()).days,
+    )
+    return build_stage2_result("oi", check)
+
+
 async def _run_funding_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
     return await probe_funding(
         conn,
@@ -585,8 +769,13 @@ async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
     return await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
 
 
+async def _run_oi_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await probe_oi(conn, start=ctx["start"], end=ctx["end"], thresholds=OIThresholds())
+
+
 STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
+    "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
 }
 
@@ -627,6 +816,8 @@ async def run_data_probe(
                         end=end,
                         thresholds=FundingThresholds(),
                     )
+                elif candidate_key == "oi":
+                    result = await probe_oi(conn, start=start, end=end, thresholds=OIThresholds())
                 elif candidate_key == "xvenue":
                     result = await probe_xvenue(conn, start=start, end=end, thresholds=VenueThresholds())
                 else:
@@ -668,6 +859,13 @@ def _print_summary(result: FeasibilityResult, path: Path) -> None:
                 )
             venue_bits.append(f"aligned_rows={row.get('aligned_rows')} alignment={row.get('alignment_ratio')}")
             print(f"  {inst_id}: " + "; ".join(venue_bits))
+    if result.family_id == "F-OI-POSITIONING" and details:
+        for dataset_id, row in (details.get("dataset_coverage") or {}).items():
+            print(
+                f"  {dataset_id}: rows={row.get('row_count')} "
+                f"coverage={row.get('coverage_ratio')} "
+                f"missing={row.get('missing_ratio')} stale={row.get('stale_ratio')}"
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

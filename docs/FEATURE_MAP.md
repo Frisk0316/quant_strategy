@@ -51,7 +51,8 @@ implementation exists.
 - User-facing behavior: run the standalone Turtle S1/S2 reference port on one
   DB-backed 1D symbol; sweep window params and optional `invest_pct`; review
   standard run artifacts plus native SVG heatmaps and a Plotly surface HTML
-  sweep artifact.
+  sweep artifact. Research risk overrides and execution-profile controls are
+  explicitly ignored; Turtle fees/sizing come from Turtle params only.
 - Frontend files: `frontend/data.js`, `frontend/view-config.js`,
   `frontend/charts.js`, `frontend/vendor/plotly.min.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
@@ -406,6 +407,10 @@ implementation exists.
   without automatic family minting. Pipeline improvement P1-P8 adds
   session-scoring handoff files, feedback ranking tags, advisory Stage2
   reprobe, and per-batch funnel metrics; all remain research-only sidecars.
+  F-OI-POSITIONING Stage-2 data availability reads Binance Vision 5m OI from
+  `external_observations` (`oi_binance_hist_btc` / `oi_binance_hist_eth`) and
+  records coverage, missing-ratio, and stale-ratio only; it does not write a
+  Stage-1 spec or run a strategy.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
@@ -426,6 +431,8 @@ implementation exists.
   feedback ranking tags. This is not a strategy, risk, settings, or deployment
   gate config.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_pipeline_stage2_data_probe.py`,
+  `tests/unit/test_pipeline_stage2_registry.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
   `tests/unit/test_pipeline_literature_ideas.py`,

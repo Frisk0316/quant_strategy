@@ -417,7 +417,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[selectedBar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
-  const executionProfileMultiplier = executionProfile === "dual_output" ? 2 : 1;
+  const executionProfileMultiplier = isTurtle ? 1 : executionProfile === "dual_output" ? 2 : 1;
   const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation);
 
   useConfigEffect(() => {
@@ -558,9 +558,9 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       strategy_params: hasStrategyParams
         ? (isTurtle ? { ...(strategyParams.turtle || {}), own_capital: +equity || 5000 } : (strategyParams[strategy] || {}))
         : {},
-      risk_overrides: cleanRiskOverrides(riskOverrides),
-      execution_profile: executionProfile,
-      fill_all_signals: fillAllSignals,
+      risk_overrides: isTurtle ? {} : cleanRiskOverrides(riskOverrides),
+      execution_profile: isTurtle ? "strategy_fill" : executionProfile,
+      fill_all_signals: isTurtle ? false : fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -606,7 +606,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         initial_equity: +equity || 5000,
         parameter_grid: parameterGrid,
         max_combinations: 5000,
-        risk_overrides: cleanRiskOverrides(riskOverrides),
+        risk_overrides: turtleSweep ? {} : cleanRiskOverrides(riskOverrides),
         fill_all_signals: turtleSweep ? false : fillAllSignals,
         run_finalists: turtleSweep ? false : true,
         finalist_top_pct: turtleSweep ? 0.1 : Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
@@ -886,33 +886,40 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 </select>
               </div>
             `}
-            <div class="field" style=${{ gridColumn: "1 / -1" }}>
-              <div class="field-label">Research risk overrides</div>
-              <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                ${RISK_OVERRIDE_SPECS.map((spec) => html`
-                  <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
-                    <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
-                    <input class="input mono" type="number" min="0" step=${spec.step}
-                      value=${riskOverrides[spec.key]}
-                      placeholder=${spec.placeholder}
-                      title=${spec.help}
-                      aria-label=${spec.label}
-                      onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
-                    <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
-                  </div>
-                `)}
+            ${isTurtle ? html`
+              <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                <div class="field-label">Research risk overrides / Execution profile</div>
+                <div class="field-hint">Not applied: turtle is a research-only reference port; fees/sizing come from turtle params.</div>
               </div>
-              <div class="field" style=${{ marginTop: 10 }}>
-                <div class="field-label">Execution profile</div>
-                <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
-                  ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
-                </select>
-                <div class="field-hint">
-                  ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+            ` : html`
+              <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                <div class="field-label">Research risk overrides</div>
+                <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                  ${RISK_OVERRIDE_SPECS.map((spec) => html`
+                    <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
+                      <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
+                      <input class="input mono" type="number" min="0" step=${spec.step}
+                        value=${riskOverrides[spec.key]}
+                        placeholder=${spec.placeholder}
+                        title=${spec.help}
+                        aria-label=${spec.label}
+                        onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
+                      <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
+                    </div>
+                  `)}
                 </div>
+                <div class="field" style=${{ marginTop: 10 }}>
+                  <div class="field-label">Execution profile</div>
+                  <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
+                    ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
+                  </select>
+                  <div class="field-hint">
+                    ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+                  </div>
+                </div>
+                <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
               </div>
-              <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
-            </div>
+            `}
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
             Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation)} passes)
@@ -1093,7 +1100,7 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
             <input type="range" min="0.1" max="100" step="0.1"
               value=${((activeParams[k] ?? v) * 100) || 1}
               disabled=${!editable}
-              onChange=${(e) => setParams({ ...activeParams, [k]: Number(e.target.value) / 100 })}
+              onInput=${(e) => setParams({ ...activeParams, [k]: Number(e.target.value) / 100 })}
               style=${{ width: "100%" }} />
           ` : html`
           <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 120px)", alignItems: "center", gap: 8 }}>
@@ -1107,7 +1114,7 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
         </div>
       `)}
       <div class="sep"></div>
-      <div class="field-hint">td_mode: cross - post_only: true - ${riskSummary}${hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
+      <div class="field-hint">td_mode: cross - post_only: true - ${id === "turtle" ? "risk/execution controls not applied" : riskSummary}${id !== "turtle" && hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
     </div>
   `;
 }
