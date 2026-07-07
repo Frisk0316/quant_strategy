@@ -6,6 +6,7 @@ from scripts.run_pipeline_stage2_data_probe import (
     build_fail_closed_result,
     build_funding_data_check,
     build_oi_data_check,
+    build_oi_universe_data_check,
     build_stage2_result,
     build_xvenue_data_check,
 )
@@ -119,6 +120,37 @@ def test_oi_probe_reports_coverage_missing_and_stale_ratios():
     assert check.details["dataset_coverage"]["oi_binance_hist_btc"]["stale_ratio"] == 0.0
     assert check.details["dataset_coverage"]["oi_binance_hist_eth"]["missing_ratio"] == 88 / 288
     assert check.details["dataset_coverage"]["oi_binance_hist_eth"]["stale_ratio"] == 1.0
+
+
+def test_oi_universe_probe_uses_pit_days_and_good_symbol_gate():
+    good_symbols = [f"GOOD{i:02d}-USDT-SWAP" for i in range(9)]
+    daily_universe = {
+        "2024-01-01": set(good_symbols + ["THIN-USDT-SWAP"]),
+        "2024-01-02": set(good_symbols),
+    }
+    daily_rows = {
+        f"oi_binance_hist_good{i:02d}": [
+            {"day": "2024-01-01", "row_count": 288, "first_ts": "2024-01-01T00:00:00+00:00"},
+            {"day": "2024-01-02", "row_count": 288, "first_ts": "2024-01-02T00:00:00+00:00"},
+        ]
+        for i in range(9)
+    }
+    daily_rows["oi_binance_hist_thin"] = [{"day": "2024-01-01", "row_count": 100}]
+
+    check = build_oi_universe_data_check(
+        symbols=good_symbols + ["THIN-USDT-SWAP"],
+        daily_universe=daily_universe,
+        dataset_daily_rows=daily_rows,
+        thresholds=OIThresholds(min_good_symbols=10, min_coverage=0.95, max_stale_ratio=0.05),
+    )
+
+    assert check.status == "FAIL"
+    assert "good_symbols=9/10" in check.reason
+    assert check.details["good_symbol_count"] == 9
+    assert check.details["thresholds"]["min_good_symbols"] == 10
+    assert check.details["symbol_coverage"][0]["expected_5m_rows"] == 576
+    assert check.details["symbol_coverage"][-1]["inst_id"] == "THIN-USDT-SWAP"
+    assert check.details["symbol_coverage"][-1]["expected_5m_rows"] == 288
 
 
 def test_data_probe_unavailable_fails_closed_without_stage3_release():

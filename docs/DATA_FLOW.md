@@ -117,8 +117,11 @@ the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
 observations (`value_num = sumOpenInterestValue`, `fields.unit =
 "USDT_notional"`). `download_binance_vision_metrics.py` is the public historical
 OI path for Binance Vision UM daily metrics; it validates the BTCUSDT schema
-fail-closed before ingesting BTC/ETH 5m `sum_open_interest_value` observations
-with `provenance = binance_vision_metrics`. `OKXLiquidationClient` writes raw
+fail-closed before ingesting 5m `sum_open_interest_value` observations with
+`provenance = binance_vision_metrics`, stores contract-count OI in
+`fields.open_interest_contracts`, and can derive PIT-universe dataset ids as
+`oi_binance_hist_<base>` from `data/universe/universe_membership.parquet`
+starting each symbol at its first eligible day. `OKXLiquidationClient` writes raw
 long/short liquidation event observations from OKX public REST when available;
 notional is source-provided or computed from `sz * bkPx * contract_value` and
 raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /

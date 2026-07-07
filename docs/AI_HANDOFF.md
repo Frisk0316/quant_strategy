@@ -38,20 +38,24 @@ and accumulates family n_trials. No promotion/live claim. Detail:
 `docs/CHANGELOG_AI.md` "2026-07-04 - Turtle Manual Pass +
 F-FUNDING-XS-DISPERSION Checkpoint Verdict" and the H-009/E-031 ledger rows.
 
-**Pipeline next candidates Codex pass (2026-07-04):**
-`F-OI-POSITIONING` now has a Stage-2 data-availability probe in
-`backtesting/pipeline_stage2_registry.py` / `scripts/run_pipeline_stage2_data_probe.py`.
-E-034 PASSes the data gate on Binance Vision 5m OI:
-`oi_binance_hist_btc` and `oi_binance_hist_eth` each have 258,493 / 258,624
-expected rows over 2024-01-01 through 2026-06-16 UTC, coverage 0.999493,
-missing_ratio 0.000507, stale_ratio 0.004454. H-012 is only a proposed
-placeholder; Claude still owns the Stage-1 hypothesis spec. `F-XVENUE-LEADLAG`
-was rechecked in E-035 and remains data-blocked: Binance has full BTC/ETH 1m
-coverage but OKX still has 0 rows / 0.0 coverage / 0 aligned rows for both legs.
-The existing OKX ingest command was attempted, but sandbox networking failed
-with `WinError 10013`; the required escalated rerun was rejected by the
-approval/usage layer, so the backfill is **not** resumed from this session.
-No cross-venue substitution, strategy verdict, or promotion evidence.
+**Pipeline next candidates Codex pass (2026-07-04/05):**
+`F-OI-POSITIONING` now has the signed-off Stage-1 spec
+(`docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md`) and a
+universe-wide Binance Vision 5m OI Stage-2 data pass. E-034 first passed the
+BTC/ETH seed probe; E-036 then backfilled PIT-universe datasets
+`oi_binance_hist_<base>` and ran the extended PIT-aware probe:
+31 OI-good symbols pass the `>=10` breadth gate. `SHIB-USDT-SWAP` is the only
+failed symbol because Binance Vision native `SHIBUSDT` metrics zips are absent;
+`1000SHIB-USDT-SWAP` is separate and passes. Stage-3 is now unblocked only for
+the preflight/build in `tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md`
+Task B; no distinctness, WF/CPCV, checkpoint, promotion, demo, shadow, or live
+claim has run. `F-XVENUE-LEADLAG` was rechecked in E-035 and remains
+data-blocked: Binance has full BTC/ETH 1m coverage but OKX still has 0 rows /
+0.0 coverage / 0 aligned rows for both legs. The existing OKX ingest command was
+attempted, but sandbox networking failed with `WinError 10013`; the required
+escalated rerun was rejected by the approval/usage layer, so the backfill is
+**not** resumed from that session. No cross-venue substitution, strategy verdict,
+or promotion evidence.
 
 **Turtle (海龜) platform integration — ACCEPTED and usable (2026-07-04,
 user-directed manual pass complete):** the reference
@@ -147,8 +151,10 @@ Full `make verify` / `make verify-full` still needs an environment with
 
 1. H-009 (`F-FUNDING-XS-DISPERSION`) stays `testing`: no retry without an
    ex-ante rationale (burns K, accumulates n_trials). Next candidate handoff:
-   `F-OI-POSITIONING` has Stage-2 data availability PASS (E-034) and now needs
-   Claude Stage-1 spec; `F-XVENUE-LEADLAG` remains blocked until the OKX
+   `F-OI-POSITIONING` has signed-off Stage-1 plus E-036 universe OI data PASS
+   (31 good symbols); run Task B Stage-3 preflight/build next, starting with
+   family minting vs the F-FUNDING-XS-DISPERSION reference and stopping on
+   ASSIGN/SKIP_RECOMMENDED. `F-XVENUE-LEADLAG` remains blocked until the OKX
    BTC/ETH-USDT-SWAP 1m backfill runs successfully outside this sandbox, then
    rerun the Stage-2 probe.
 2. Turtle: usable from the frontend for manual parameter tuning now.

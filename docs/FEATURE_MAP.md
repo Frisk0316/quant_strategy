@@ -407,10 +407,13 @@ implementation exists.
   without automatic family minting. Pipeline improvement P1-P8 adds
   session-scoring handoff files, feedback ranking tags, advisory Stage2
   reprobe, and per-batch funnel metrics; all remain research-only sidecars.
-  F-OI-POSITIONING Stage-2 data availability reads Binance Vision 5m OI from
-  `external_observations` (`oi_binance_hist_btc` / `oi_binance_hist_eth`) and
-  records coverage, missing-ratio, and stale-ratio only; it does not write a
-  Stage-1 spec or run a strategy.
+  F-OI-POSITIONING Stage-2 data availability first read BTC/ETH Binance Vision
+  5m OI (`oi_binance_hist_btc` / `oi_binance_hist_eth`, E-034), then the
+  user-directed universe-wide backfill/probe generalized the dataset convention
+  to `oi_binance_hist_<base>` and evaluates PIT-eligible days per symbol
+  (E-036). It records coverage, missing-ratio, stale-ratio, and the OI-good
+  set only; Stage-3 strategy/backtest work remains gated on the signed-off
+  spec and distinctness preflight.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,

@@ -51,12 +51,15 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
   (E-033): Tier A AND Tier B both PASS — the user reference CSV is exactly
   reproduced from the repo fixture (E-032's mismatch was input date range,
   not data provenance).
-- **`F-OI-POSITIONING` (`H-012`/`E-034`) Stage-2 data availability PASS:**
-  Binance Vision 5m OI observations in `external_observations`
-  (`oi_binance_hist_btc`, `oi_binance_hist_eth`) each have 258,493 / 258,624
-  expected rows from 2024-01-01 through 2026-06-16 UTC, coverage 0.999493,
-  missing_ratio 0.000507, and stale_ratio 0.004454. This only unlocks Claude
-  Stage-1 spec drafting; no strategy verdict, WF/CPCV, promotion, or live claim.
+- **`F-OI-POSITIONING` (`H-012`/`E-034`/`E-036`) Stage-2 data availability PASS:**
+  Claude/user signed off the Stage-1 spec on 2026-07-04. Codex then backfilled
+  Binance Vision 5m OI for the PIT universe using `oi_binance_hist_<base>`
+  datasets and ran the extended PIT-aware probe. E-036 passes the breadth gate:
+  31 OI-good symbols vs `min_good_symbols=10`. `SHIB-USDT-SWAP` is the only
+  failed symbol because Binance Vision native `SHIBUSDT` metrics zips are
+  absent; `1000SHIB-USDT-SWAP` is separate and passes. This unlocks only the
+  Stage-3 preflight/build task; no strategy verdict, WF/CPCV, checkpoint,
+  promotion, or live claim exists.
 - **`F-XVENUE-LEADLAG` (`H-010`/`E-035`) remains data-blocked:** Binance
   BTC/ETH 1m coverage is complete, but OKX BTC/ETH 1m rows remain 0 with 0
   aligned rows. The existing OKX ingest command was attempted, but sandbox
@@ -85,6 +88,10 @@ short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
 - 4 point-in-time-eligible symbols under the rebuilt universe
   (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) have no funding history backfilled yet;
   not required for the current Stage-2 pass, only if a later grid needs them.
+- `F-OI-POSITIONING` next action is Task B in
+  `tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md`: run the family
+  minting preflight vs F-FUNDING-XS-DISPERSION first, and stop for review on
+  ASSIGN/SKIP_RECOMMENDED.
 - `F-XVENUE-LEADLAG` cannot progress until OKX BTC-USDT-SWAP and
   ETH-USDT-SWAP 1m canonical candles are backfilled outside the current network
   sandbox and the Stage-2 probe is rerun.

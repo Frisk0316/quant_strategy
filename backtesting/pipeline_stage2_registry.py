@@ -37,6 +37,7 @@ XVENUE_MIN_COVERAGE = 0.95
 XVENUE_MIN_ALIGNMENT = 0.95
 OI_MIN_COVERAGE = 0.95
 OI_MAX_STALE_RATIO = 0.05
+OI_MIN_GOOD_SYMBOLS = 10
 OI_5M_ROWS_PER_DAY = 288
 
 
@@ -68,6 +69,7 @@ class VenueThresholds:
 class OIThresholds:
     min_coverage: float = OI_MIN_COVERAGE
     max_stale_ratio: float = OI_MAX_STALE_RATIO
+    min_good_symbols: int = OI_MIN_GOOD_SYMBOLS
 
 
 Stage2Context = Mapping[str, Any]
@@ -371,6 +373,104 @@ def build_oi_data_check(
             "source": "binance_vision_metrics",
             "thresholds": asdict(thresholds),
             "dataset_coverage": normalized,
+            "failures": failures,
+        },
+    )
+
+
+def _oi_dataset_id_for_symbol(inst_id: str) -> str:
+    base = str(inst_id).upper().split("-")[0]
+    return f"oi_binance_hist_{base.lower()}"
+
+
+def build_oi_universe_data_check(
+    *,
+    symbols: Sequence[str],
+    daily_universe: Mapping[str, set[str]],
+    dataset_daily_rows: Mapping[str, Sequence[Mapping[str, Any]]],
+    thresholds: OIThresholds,
+) -> FeasibilityCheck:
+    by_dataset_day: dict[str, dict[str, dict[str, Any]]] = {
+        dataset_id: {str(row.get("day")): dict(row) for row in rows}
+        for dataset_id, rows in dataset_daily_rows.items()
+    }
+    symbol_coverage: list[dict[str, Any]] = []
+    good_symbols: list[str] = []
+    failures: list[dict[str, Any]] = []
+    for symbol in sorted(symbols):
+        dataset_id = _oi_dataset_id_for_symbol(symbol)
+        eligible_days = sorted(day for day, day_symbols in daily_universe.items() if symbol in day_symbols)
+        daily_rows: list[dict[str, Any]] = []
+        first_ts = None
+        last_ts = None
+        row_count = 0
+        complete_days = 0
+        for day in eligible_days:
+            source_row = dict(by_dataset_day.get(dataset_id, {}).get(day) or {})
+            day_count = int(source_row.get("row_count") or 0)
+            row_count += day_count
+            if day_count >= OI_5M_ROWS_PER_DAY:
+                complete_days += 1
+            if source_row.get("first_ts") is not None and first_ts is None:
+                first_ts = source_row.get("first_ts")
+            if source_row.get("last_ts") is not None:
+                last_ts = source_row.get("last_ts")
+            daily_rows.append({"day": day, "row_count": day_count})
+
+        expected_days = len(eligible_days)
+        expected_5m_rows = expected_days * OI_5M_ROWS_PER_DAY
+        coverage_ratio = _safe_ratio(row_count, expected_5m_rows)
+        missing_ratio = _safe_ratio(max(0, expected_5m_rows - row_count), expected_5m_rows)
+        stale_ratio = _safe_ratio(max(0, expected_days - complete_days), expected_days)
+        row = {
+            "inst_id": symbol,
+            "dataset_id": dataset_id,
+            "row_count": row_count,
+            "expected_5m_rows": expected_5m_rows,
+            "coverage_ratio": coverage_ratio,
+            "missing_ratio": missing_ratio,
+            "stale_ratio": stale_ratio,
+            "complete_days": complete_days,
+            "expected_days": expected_days,
+            "first_ts": _iso_dt(first_ts),
+            "last_ts": _iso_dt(last_ts),
+            "daily_rows": daily_rows,
+        }
+        symbol_coverage.append(row)
+        if coverage_ratio >= thresholds.min_coverage and stale_ratio <= thresholds.max_stale_ratio:
+            good_symbols.append(symbol)
+        else:
+            failures.append(
+                {
+                    "inst_id": symbol,
+                    "dataset_id": dataset_id,
+                    "coverage_ratio": coverage_ratio,
+                    "missing_ratio": missing_ratio,
+                    "stale_ratio": stale_ratio,
+                }
+            )
+
+    status = "PASS" if len(good_symbols) >= thresholds.min_good_symbols else "FAIL"
+    reason = (
+        f"Binance Vision PIT OI universe coverage {status}: "
+        f"good_symbols={len(good_symbols)}/{thresholds.min_good_symbols}"
+    )
+    return FeasibilityCheck(
+        name="data_availability",
+        status=status,
+        reason=reason,
+        details={
+            "window": {
+                "start": f"{START}T00:00:00+00:00",
+                "end_exclusive": f"{END_EXCLUSIVE}T00:00:00+00:00",
+                "rows_per_day": OI_5M_ROWS_PER_DAY,
+            },
+            "source": "binance_vision_metrics",
+            "thresholds": asdict(thresholds),
+            "universe_symbol_count": len(symbol_coverage),
+            "good_symbol_count": len(good_symbols),
+            "good_symbols": good_symbols,
+            "symbol_coverage": symbol_coverage,
             "failures": failures,
         },
     )
@@ -722,6 +822,47 @@ async def _fetch_oi_coverage(
     return coverage
 
 
+async def _fetch_oi_daily_rows(
+    conn: Any,
+    *,
+    datasets: Sequence[str],
+    start: datetime,
+    end: datetime,
+) -> dict[str, list[dict[str, Any]]]:
+    coverage: dict[str, list[dict[str, Any]]] = {dataset_id: [] for dataset_id in datasets}
+    rows = await conn.fetch(
+        """
+        SELECT
+            dataset_id,
+            date_trunc('day', observed_at)::date AS day,
+            COUNT(*)::bigint AS row_count,
+            MIN(observed_at) AS first_ts,
+            MAX(observed_at) AS last_ts
+        FROM external_observations
+        WHERE dataset_id = ANY($1::text[])
+          AND observed_at >= $2 AND observed_at < $3
+          AND value_num IS NOT NULL
+          AND quality_status != 'suspect'
+        GROUP BY dataset_id, date_trunc('day', observed_at)::date
+        ORDER BY dataset_id, day
+        """,
+        list(datasets),
+        start,
+        end,
+    )
+    for row in rows:
+        dataset_id = str(row["dataset_id"])
+        coverage.setdefault(dataset_id, []).append(
+            {
+                "day": row["day"].isoformat(),
+                "row_count": int(row["row_count"] or 0),
+                "first_ts": _iso_dt(row["first_ts"]),
+                "last_ts": _iso_dt(row["last_ts"]),
+            }
+        )
+    return coverage
+
+
 async def probe_xvenue(
     conn: Any,
     *,
@@ -755,6 +896,35 @@ async def probe_oi(
     return build_stage2_result("oi", check)
 
 
+async def probe_oi_universe(
+    conn: Any,
+    *,
+    universe_path: Path,
+    start: datetime,
+    end: datetime,
+    thresholds: OIThresholds,
+) -> FeasibilityResult:
+    symbols, daily_universe, _expected_by_symbol = load_point_in_time_universe(
+        universe_path,
+        start=start,
+        end=end,
+    )
+    datasets = [_oi_dataset_id_for_symbol(symbol) for symbol in symbols]
+    daily_rows = await _fetch_oi_daily_rows(conn, datasets=datasets, start=start, end=end)
+    check = build_oi_universe_data_check(
+        symbols=symbols,
+        daily_universe=daily_universe,
+        dataset_daily_rows=daily_rows,
+        thresholds=thresholds,
+    )
+    check.details["universe"] = {
+        "path": str(universe_path),
+        "eligible_symbols": symbols,
+        "daily_rebalance_count": len(daily_universe),
+    }
+    return build_stage2_result("oi", check)
+
+
 async def _run_funding_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
     return await probe_funding(
         conn,
@@ -770,7 +940,13 @@ async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
 
 
 async def _run_oi_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    return await probe_oi(conn, start=ctx["start"], end=ctx["end"], thresholds=OIThresholds())
+    return await probe_oi_universe(
+        conn,
+        universe_path=Path(ctx["universe_path"]),
+        start=ctx["start"],
+        end=ctx["end"],
+        thresholds=OIThresholds(),
+    )
 
 
 STAGE2_PROBES: dict[str, Stage2Probe] = {
@@ -817,7 +993,13 @@ async def run_data_probe(
                         thresholds=FundingThresholds(),
                     )
                 elif candidate_key == "oi":
-                    result = await probe_oi(conn, start=start, end=end, thresholds=OIThresholds())
+                    result = await probe_oi_universe(
+                        conn,
+                        universe_path=universe_path,
+                        start=start,
+                        end=end,
+                        thresholds=OIThresholds(),
+                    )
                 elif candidate_key == "xvenue":
                     result = await probe_xvenue(conn, start=start, end=end, thresholds=VenueThresholds())
                 else:
@@ -860,6 +1042,19 @@ def _print_summary(result: FeasibilityResult, path: Path) -> None:
             venue_bits.append(f"aligned_rows={row.get('aligned_rows')} alignment={row.get('alignment_ratio')}")
             print(f"  {inst_id}: " + "; ".join(venue_bits))
     if result.family_id == "F-OI-POSITIONING" and details:
+        if details.get("symbol_coverage"):
+            print(
+                "  OI universe: "
+                f"good_symbols={details.get('good_symbol_count')}/"
+                f"{(details.get('thresholds') or {}).get('min_good_symbols')}"
+            )
+            for row in details.get("symbol_coverage") or []:
+                print(
+                    f"  {row.get('inst_id')}: dataset={row.get('dataset_id')} rows={row.get('row_count')} "
+                    f"coverage={row.get('coverage_ratio')} "
+                    f"missing={row.get('missing_ratio')} stale={row.get('stale_ratio')}"
+                )
+            return
         for dataset_id, row in (details.get("dataset_coverage") or {}).items():
             print(
                 f"  {dataset_id}: rows={row.get('row_count')} "

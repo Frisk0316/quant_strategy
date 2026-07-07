@@ -19,13 +19,13 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
         calls.append(("xvenue", conn, start, end, type(thresholds).__name__))
         return FeasibilityResult("batch", "candidate", "dir", "H-2", "F-XVENUE-LEADLAG", ())
 
-    async def fake_oi(conn, *, start, end, thresholds):
-        calls.append(("oi", conn, start, end, type(thresholds).__name__))
+    async def fake_oi_universe(conn, *, universe_path, start, end, thresholds):
+        calls.append(("oi", conn, universe_path, start, end, type(thresholds).__name__))
         return FeasibilityResult("batch", "candidate", "dir", "H-3", "F-OI-POSITIONING", ())
 
     monkeypatch.setattr(registry, "probe_funding", fake_funding)
     monkeypatch.setattr(registry, "probe_xvenue", fake_xvenue)
-    monkeypatch.setattr(registry, "probe_oi", fake_oi)
+    monkeypatch.setattr(registry, "probe_oi_universe", fake_oi_universe)
 
     ctx = {
         "universe_path": "universe.parquet",
@@ -48,6 +48,6 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
     assert xvenue.family_id == "F-XVENUE-LEADLAG"
     assert calls == [
         ("funding", "conn", Path("universe.parquet"), ctx["start"], ctx["end"], "FundingThresholds"),
-        ("oi", "conn", ctx["start"], ctx["end"], "OIThresholds"),
+        ("oi", "conn", Path("universe.parquet"), ctx["start"], ctx["end"], "OIThresholds"),
         ("xvenue", "conn", ctx["start"], ctx["end"], "VenueThresholds"),
     ]

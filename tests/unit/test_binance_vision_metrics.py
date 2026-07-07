@@ -4,15 +4,19 @@ import zipfile
 from datetime import date, datetime, timezone
 from io import BytesIO
 
+import pandas as pd
 import pytest
 
 from scripts.market_data.download_binance_vision_metrics import (
     BinanceVisionSchemaError,
     LocalVisionMetricsSource,
     build_parser,
+    canonical_to_binance_symbol,
     ingest_symbol,
+    load_universe_symbol_starts,
     parse_metrics_zip,
     validate_btc_schema,
+    _dataset_id,
 )
 
 
@@ -89,6 +93,43 @@ def test_build_parser_accepts_minimal_dry_run_args(tmp_path):
     assert args.start == "2024-01-01"
     assert args.end == "2024-01-02"
     assert args.dry_run is True
+
+
+def test_dataset_id_generalizes_to_universe_symbols(tmp_path):
+    args = build_parser().parse_args([
+        "--symbol",
+        "SOLUSDT",
+        "--start",
+        "2024-01-01",
+        "--end",
+        "2024-01-02",
+        "--source-dir",
+        str(tmp_path),
+        "--dry-run",
+    ])
+
+    assert args.symbol == ["SOLUSDT"]
+    assert _dataset_id("SOLUSDT") == "oi_binance_hist_sol"
+    assert _dataset_id("1000SHIBUSDT") == "oi_binance_hist_1000shib"
+
+
+def test_universe_symbol_starts_use_first_eligible_day(tmp_path):
+    path = tmp_path / "universe.parquet"
+    pd.DataFrame(
+        [
+            {"date": "2024-01-01", "symbol": "SOL-USDT-SWAP", "eligible": False},
+            {"date": "2024-01-03", "symbol": "SOL-USDT-SWAP", "eligible": True},
+            {"date": "2024-01-02", "symbol": "1000SHIB-USDT-SWAP", "eligible": True},
+        ]
+    ).to_parquet(path, index=False)
+
+    starts = load_universe_symbol_starts(path, start=date(2024, 1, 1), end=date(2024, 1, 5))
+
+    assert canonical_to_binance_symbol("SOL-USDT-SWAP") == "SOLUSDT"
+    assert starts == {
+        "1000SHIBUSDT": date(2024, 1, 2),
+        "SOLUSDT": date(2024, 1, 3),
+    }
 
 
 @pytest.mark.asyncio
