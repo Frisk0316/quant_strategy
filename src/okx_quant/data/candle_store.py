@@ -59,7 +59,16 @@ class CandleStore:
         min_size: int = 2,
         max_size: int = 10,
     ) -> "CandleStore":
-        pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size)
+        pool = await asyncpg.create_pool(
+            dsn,
+            min_size=min_size,
+            max_size=max_size,
+            # Backfills INSERT into already-compressed chunks; Timescale's
+            # default 100k-tuple decompression cap aborts them mid-run.
+            server_settings={
+                "timescaledb.max_tuples_decompressed_per_dml_transaction": "0"
+            },
+        )
         return cls(pool)
 
     async def close(self) -> None:
