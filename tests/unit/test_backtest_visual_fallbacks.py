@@ -87,6 +87,36 @@ def test_funding_export_uses_fixed_8h_frequency_label():
     assert "No DB funding pairs available." in text
 
 
+def test_turtle_warmup_hint_uses_current_enter_terms():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function turtleWarmupMinutes" in text
+    assert "turtleWarmupMinutes(strategyParams.turtle" in text
+    assert "turtle: 55 * 24 * 60" not in text
+
+
+def test_turtle_invest_pct_result_rows_use_fraction_unit():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function turtleInvestPctFraction" in text
+    assert "invest_pct_fraction" in text
+    assert "normalizeInvestPct" not in text
+    assert "n > 1 ? n / 100 : n" not in text
+
+
+def test_heatmap_cells_have_hover_and_click_detail():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "charts.js").read_text(encoding="utf-8")
+
+    assert "const [hover, setHover] = useState(null);" in text
+    assert "const [selected, setSelected] = useState(null);" in text
+    assert "onPointerMove=" in text
+    assert "onClick=" in text
+    assert "<title>${cellLabel(cell)}</title>" in text
+
+
 def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")

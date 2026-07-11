@@ -92,9 +92,12 @@ Final state:
   plus metric hover detail. Claude review re-run (E-033) upgraded Tier B to
   PASS: the user reference CSV is exactly reproduced from the repo fixture
   range; E-032's mismatch was input date range, not data provenance.
-- Optional polish (non-blocking): heatmap hover/click detail, warmup hint
-  hardcodes 55d, fixed-vs-range invest_pct unit convention
-  (scalar=fraction, range=percent).
+- Optional Turtle UI polish complete in the working tree (2026-07-08):
+  warmup hint now uses the current Turtle enter-term params, sweep result
+  `invest_pct` rows are treated as backend-returned fractions without a
+  magnitude heuristic, and SVG heatmap cells expose exact x/y/value on hover
+  and click. UI/display-only; no backend semantics, strategy, risk, gate, or
+  artifact changes.
 
 **Known pending items (not blocking, tracked in KNOWN_ISSUES/RUNBOOK):**
 liquidation ingest (`quant_liq_okx_ingest`) is Interactive-only (runs only

@@ -147,14 +147,23 @@ const FETCH_TERMINAL_STATUSES = new Set(["done", "error", "cancelled"]);
 const fmtPct = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(d)}%`);
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? "-" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmtUSD = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `$${fmtNum(v, d)}`);
-const normalizeInvestPct = (v) => {
+function turtleInvestPctFraction(v) {
   const n = Number(v);
-  return !isFinite(n) ? NaN : n > 1 ? n / 100 : n;
-};
+  return !isFinite(n) ? NaN : n;
+}
 const fmtInvestPct = (v, d = 2) => {
   const n = Number(v);
-  return !isFinite(n) ? "-" : `${(n > 1 ? n : n * 100).toFixed(d)}%`;
+  return !isFinite(n) ? "-" : `${(n * 100).toFixed(d)}%`;
 };
+function turtleWarmupMinutes(params = {}) {
+  const defaults = STRATEGY_PARAM_DEFAULTS.turtle;
+  const enter1 = Number(params.enter_term_sys1 || defaults.enter_term_sys1);
+  const enter2 = Number(params.enter_term_sys2 || defaults.enter_term_sys2);
+  return Math.max(
+    Number.isFinite(enter1) ? enter1 : defaults.enter_term_sys1,
+    Number.isFinite(enter2) ? enter2 : defaults.enter_term_sys2
+  ) * 24 * 60;
+}
 const fmtTs = (value) => {
   if (!value) return "-";
   const d = typeof value === "number" ? new Date(value) : new Date(value);
@@ -861,7 +870,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 pairs_trading: 168 * 60,
                 ohlcv_rotation: 240,
                 daily_winner: 24 * 60,
-                turtle: 55 * 24 * 60,
+                turtle: turtleWarmupMinutes(strategyParams.turtle),
               };
               const wm = warmupMin[strategy] || 0;
               if (!wm || !start || !end) return null;
@@ -1333,16 +1342,16 @@ function TurtleSweepPanel({
     ? window.API.backtestSweepArtifactUrl(job.sweep_id, "surface")
     : "";
   const investRows = rows
-    .map((row) => ({ ...row, invest_pct_normalized: normalizeInvestPct(row.invest_pct) }))
-    .filter((row) => isFinite(row.invest_pct_normalized) && isFinite(Number(row.final_equity)))
-    .sort((a, b) => a.invest_pct_normalized - b.invest_pct_normalized);
+    .map((row) => ({ ...row, invest_pct_fraction: turtleInvestPctFraction(row.invest_pct) }))
+    .filter((row) => isFinite(row.invest_pct_fraction) && isFinite(Number(row.final_equity)))
+    .sort((a, b) => a.invest_pct_fraction - b.invest_pct_fraction);
   const selectedInvestIndex = investRows.length
     ? Math.max(0, Math.min(selectedInvestIdx, investRows.length - 1))
     : 0;
   const selectedInvestRow = investRows[selectedInvestIndex] || null;
-  const selectedInvestPct = selectedInvestRow?.invest_pct_normalized;
+  const selectedInvestPct = selectedInvestRow?.invest_pct_fraction;
   const selectedEquityCurve = (sweepResult?.equity_curves || [])
-    .filter((row) => Math.abs(normalizeInvestPct(row.invest_pct) - selectedInvestPct) < 1e-9)
+    .filter((row) => Math.abs(turtleInvestPctFraction(row.invest_pct) - selectedInvestPct) < 1e-9)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const heatmapMetrics = [
     ["final_equity", "Final equity"],
@@ -1433,7 +1442,7 @@ function TurtleSweepPanel({
           <${LineChart}
             height=${170}
             series=${[{ label: "Final equity", values: investRows.map((row) => Number(row.final_equity)), color: "var(--accent)" }]}
-            xLabels=${investRows.map((row) => row.invest_pct_normalized)}
+            xLabels=${investRows.map((row) => row.invest_pct_fraction)}
             xTickFormatter=${(value) => fmtInvestPct(value, 0)}
             tooltipLabelFormatter=${(value) => fmtInvestPct(value, 2)}
             tooltipValueFormatter=${(value) => fmtUSD(value, 0)}
@@ -1473,7 +1482,7 @@ function TurtleSweepPanel({
       ${freeParams.length === 2 && rows.length > 0 && html`
         <div class="col" style=${{ gap: 8 }}>
           ${heatmapMetrics.map(([valueKey, title]) => html`
-            <${HeatmapChart} key=${valueKey} rows=${rows} xKey=${freeParams[0]} yKey=${freeParams[1]} valueKey=${valueKey} title=${title} />
+            <${HeatmapChart} key=${`${sweepResult?.sweep_id || job?.sweep_id || "sweep"}-${valueKey}`} rows=${rows} xKey=${freeParams[0]} yKey=${freeParams[1]} valueKey=${valueKey} title=${title} />
           `)}
         </div>
       `}

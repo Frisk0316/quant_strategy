@@ -61,7 +61,7 @@ workstreams:
     status: done
     milestones: [spec, t1_core_port_parity, t2_run_api, t3_sweep_api, t4_frontend, t5_docs, claude_review, manual_pass]
     current: manual_pass
-    state: "ACCEPTED and usable 2026-07-04 after the user-directed manual pass. Golden parity passes on REAL data; DB-backed API smoke passed; follow-up Codex pass fixed Turtle marker display for numeric-string epochs and symbol-filtered endpoint calls (browser check: 212 markers), made risk/execution/fill_all_signals ignores explicit, added CI-portable verbatim-reference sweep golden coverage plus sweep parity validation (Tier A PASS; Tier B PASS on Claude re-run E-033 with fixture-range input — user reference CSV exactly reproduced), and polished surface.html fixed params/hover text. Research-only standalone runner; no replay/trading-core/gate change."
-    next: "Optional polish only if the user asks: heatmap hover/click detail, warmup hint hardcodes 55d, fixed-vs-range invest_pct unit convention. No live/demo/shadow claim."
+    state: "ACCEPTED and usable 2026-07-04 after the user-directed manual pass. Golden parity passes on REAL data; DB-backed API smoke passed; follow-up Codex pass fixed Turtle marker display for numeric-string epochs and symbol-filtered endpoint calls (browser check: 212 markers), made risk/execution/fill_all_signals ignores explicit, added CI-portable verbatim-reference sweep golden coverage plus sweep parity validation (Tier A PASS; Tier B PASS on Claude re-run E-033 with fixture-range input — user reference CSV exactly reproduced), polished surface.html fixed params/hover text, and completed optional UI polish for heatmap hover/click detail, dynamic warmup hints, and explicit fraction-unit invest_pct sweep display. Research-only standalone runner; no replay/trading-core/gate change."
+    next: "none - Turtle optional UI polish is complete; no live/demo/shadow claim."
     links: [docs/superpowers/specs/2026-07-03-turtle-platform-design.md, tasks/2026-07-03-turtle-strategy-platform-tasks.md, tests/fixtures/turtle/README.md]
-    updated: 2026-07-04
+    updated: 2026-07-08
