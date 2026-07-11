@@ -59,6 +59,112 @@ datasets:
     required: true
     notes: "Value is daily DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
 
+  dvol_deribit_btc_1h:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_volatility_index_data
+    attribution: "Data source: Deribit DVOL volatility index"
+    adapter: deribit_dvol
+    currency: BTC
+    resolution: "3600"
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+
+  dvol_deribit_eth_1h:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_volatility_index_data
+    attribution: "Data source: Deribit DVOL volatility index"
+    adapter: deribit_dvol
+    currency: ETH
+    resolution: "3600"
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+
+  funding_deribit_btc:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_funding_rate_history
+    attribution: "Data source: Deribit public funding rate history"
+    adapter: deribit_funding
+    instrument_name: BTC-PERPETUAL
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is hourly Deribit BTC-PERPETUAL interest_1h in rate_1h_decimal; fields include interest_8h and index prices."
+
+  funding_deribit_eth:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_funding_rate_history
+    attribution: "Data source: Deribit public funding rate history"
+    adapter: deribit_funding
+    instrument_name: ETH-PERPETUAL
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Value is hourly Deribit ETH-PERPETUAL interest_1h in rate_1h_decimal; fields include interest_8h and index prices."
+
+  optsurf_deribit_btc:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_book_summary_by_currency
+    attribution: "Data source: Deribit public option book summary"
+    adapter: deribit_option_surface
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only snapshot: value is total BTC option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot."
+
+  optsurf_deribit_eth:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_book_summary_by_currency
+    attribution: "Data source: Deribit public option book summary"
+    adapter: deribit_option_surface
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only snapshot: value is total ETH option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot."
+
+  optflow_deribit_btc:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://history.deribit.com/api/v2/public/get_last_trades_by_currency_and_time
+    attribution: "Data source: Deribit public options trade history"
+    adapter: deribit_option_flow
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Hourly inverse BTC option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record BTC premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count."
+
+  optflow_deribit_eth:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://history.deribit.com/api/v2/public/get_last_trades_by_currency_and_time
+    attribution: "Data source: Deribit public options trade history"
+    adapter: deribit_option_flow
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Hourly inverse ETH option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record ETH premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count."
+
   fear_greed_btc:
     provider: alternative_me
     frequency: daily

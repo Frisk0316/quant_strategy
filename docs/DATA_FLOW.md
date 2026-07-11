@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-11
 expires: none
 superseded_by: null
 ---
@@ -104,11 +104,12 @@ warmup; warmup days stay recorded in probe details for audit (user-approved
 ## External Observations Ingestion Flow
 
 ```text
-keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders -> research artifacts / data export
+keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders plus GET /api/data/external-series -> research artifacts / data export / Derivatives context chart
 ```
 
 Current: `config/external_data.yaml` registers keyless adapters for
-Alternative.me Fear & Greed, Binance futures open interest, and Deribit DVOL,
+Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
+Deribit funding, Deribit option-surface snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
 yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
@@ -125,9 +126,49 @@ starting each symbol at its first eligible day. `OKXLiquidationClient` writes ra
 long/short liquidation event observations from OKX public REST when available;
 notional is source-provided or computed from `sz * bkPx * contract_value` and
 raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /
-`dvol_deribit_eth` as daily DVOL close observations (`fields.unit =
-"dvol_index_points"`). Empty fetches for datasets marked `fail_on_empty_fetch`
-fail closed and do not advance the external-ingestion checkpoint.
+`dvol_deribit_eth` as daily DVOL close observations and
+`dvol_deribit_btc_1h` / `dvol_deribit_eth_1h` as hourly DVOL close
+observations (`fields.unit = "dvol_index_points"`). For bucketed external
+aggregates, `observed_at` is the market bucket label and `published_at` is the
+bucket end, which is the earliest safe as-of timestamp for replay joins; Deribit
+hourly DVOL and option-flow rows therefore publish one hour after
+`observed_at`, and daily DVOL publishes one day after `observed_at`.
+`DeribitFundingClient` writes `funding_deribit_btc` / `funding_deribit_eth` as
+hourly BTC-PERPETUAL/ETH-PERPETUAL funding observations with `value_num =
+interest_1h` and `fields.unit = "rate_1h_decimal"`; Deribit funding timestamps
+are treated as accrual-period end and are safe to use as both `observed_at` and
+`published_at`.
+`DeribitOptionSurfaceClient` writes forward-only `optsurf_deribit_btc` /
+`optsurf_deribit_eth` snapshots as one hourly aggregate row per currency:
+`value_num` is total option open interest, fields carry put/call OI, put/call
+ratio, max pain pooled across all listed expiries in the one-row-per-currency
+snapshot, OI-weighted mark IV, and spot index, and raw payloads are bounded to
+the top 20 instruments by open interest. `DeribitOptionFlowClient`
+and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
+`optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
+Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
+fields carry buy/sell premium amounts, IV, trade/liquidation counts, and the
+USDC-linear exclusion count, and raw payloads keep only a bounded trade sample.
+Hours containing only excluded USDC-linear option trades still emit a row with
+`value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
+v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
+can advance cleanly because zero inverse trades is a valid historical outcome;
+other required external datasets marked `fail_on_empty_fetch` still fail closed
+on an empty generic ingest.
+`GET /api/data/external-series` reads `external_observations` by `dataset_id`,
+optional UTC `start`/`end` bounds, filters to numeric `value_num`, downsamples to
+at most 5000 points while preserving endpoints, and exposes `{t, v}` rows plus
+the first available `fields.unit`; unknown dataset ids return 404 before the
+series query. The Run Backtest Derivatives context card uses this route for
+Deribit datasets through `window.API.fetchExternalSeries` and the existing
+`window.Charts.LineChart`.
+External export reads DB rows directly through `GET /api/data/export?kind=external`.
+The frontend runs the optional best-effort refresh pre-step only for selected
+yfinance datasets. Selected DB-only datasets bypass refresh and export existing
+rows directly, so they are not presented as skipped. The refresh API still
+returns `skipped` for non-on-demand or dynamically registered DB datasets when
+called directly; only datasets unknown in both yaml and `external_datasets` are
+rejected.
 
 Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
 recent ~30-day window, so that adapter remains forward accumulation; historical

@@ -184,3 +184,25 @@ results/<run_id>/trades.csv
 - Full API response body (not just status code)
 - Server-side traceback from logs
 - Frontend network tab showing request/response
+
+---
+
+## Private WebSocket Reconnect Loop
+
+**Symptoms:** `WS private connected`, `WS private error, reconnecting`, then
+`Circuit breaker: too many WS reconnects` during demo startup.
+
+1. Check `config/settings.yaml` mode. Demo mode connects to
+   `wss://wspap.okx.com:8443/ws/v5/private` and requires a Demo Trading API key;
+   a production key is not interchangeable.
+2. Read the first terminal authentication error. `60005 Invalid apiKey` means
+   the configured key is not valid for that environment; create a Demo Trading
+   API key in OKX rather than increasing reconnect thresholds or switching live.
+3. For frontend/backtest/data work only, run `python scripts/run_server.py`;
+   it serves the dashboard without starting public/private trading sockets.
+4. Check for duplicate local servers with `netstat -ano | Select-String ':8080'`.
+   Stop the stale listener before restarting, otherwise the browser may keep
+   reaching old code bound specifically to `127.0.0.1`.
+
+The private handler treats authentication failure as terminal and does not retry;
+transient socket failures still use the existing reconnect path and threshold.

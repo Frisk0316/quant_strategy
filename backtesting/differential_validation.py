@@ -439,6 +439,33 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "oi_positioning": {
+        "strategy_class": "external_positioning",
+        "minimum_reference_engines": 1,
+        "portable_validation_required": True,
+        "engines": {
+            "vectorbt": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "external_observations.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute contract-count OI fade targets before this can pass the portable gate.",
+            },
+            "backtrader": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "external_observations.csv", "funding_rates.csv"],
+                "limitation": "Adapter must independently recompute contract-count OI fade targets before this can pass the portable gate.",
+            },
+            "nautilus": {
+                "status": "adapter_required",
+                "role": "advisory",
+                "required_artifacts": ["result.json", "price_series.csv", "target_weights.csv", "external_observations.csv", "funding_rates.csv"],
+                "limitation": "Nautilus export/replay adapter is not implemented for this research family.",
+            },
+        },
+    },
 }
 REFERENCE_ROLES = {
     "reference_signals_only",

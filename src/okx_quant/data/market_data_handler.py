@@ -21,6 +21,10 @@ from okx_quant.core.events import Event, EvtType, MarketPayload
 from okx_quant.data.okx_book import OkxBook
 
 
+class _PrivateWSLoginError(RuntimeError):
+    pass
+
+
 class MarketDataHandler:
     def __init__(
         self,
@@ -90,19 +94,22 @@ class MarketDataHandler:
             url = url.replace("ws.okx.com:8443", "wspap.okx.com:8443") + "?brokerId=9999"
 
         async for ws in websockets.connect(url, ping_interval=None, max_size=2**23):
-            logger.info("WS private connected")
-            self._record_reconnect()
             heartbeat_task = None
             try:
                 await self._ws_login(ws)
                 await self._subscribe_private(ws)
+                logger.info("WS private connected and authenticated")
+                self._record_reconnect()
                 heartbeat_task = asyncio.create_task(self._heartbeat(ws))
                 async for raw in ws:
                     if raw == "pong":
                         continue
                     await self._handle_private_message(json.loads(raw))
+            except _PrivateWSLoginError as e:
+                logger.error(f"WS private authentication failed; reconnect disabled: {e}")
+                return
             except Exception as e:
-                logger.warning("WS private error, reconnecting", exc=str(e))
+                logger.warning(f"WS private error, reconnecting: {e}")
             finally:
                 if heartbeat_task is not None:
                     heartbeat_task.cancel()
@@ -259,8 +266,10 @@ class MarketDataHandler:
         await ws.send(json.dumps(login_msg))
         # Wait for login confirmation
         resp = json.loads(await ws.recv())
-        if resp.get("event") != "login":
-            raise RuntimeError(f"WS login failed: {resp}")
+        if resp.get("event") != "login" or str(resp.get("code", "0")) != "0":
+            raise _PrivateWSLoginError(
+                f"code={resp.get('code', 'unknown')} msg={resp.get('msg', 'Login failed') or 'Login failed'}"
+            )
 
     # ------------------------------------------------------------------
     # Circuit breaker tracking

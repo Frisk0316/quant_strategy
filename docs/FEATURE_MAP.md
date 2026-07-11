@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-11
 expires: none
 superseded_by: null
 ---
@@ -167,12 +167,15 @@ implementation exists.
 
 ## Market Data Ingestion
 
-- User-facing behavior: fetch or update market data, inspect coverage, export OHLCV,
-  funding, or external data, delete stale OHLCV/funding pairs, and use DB-backed
-  data for backtests. Fetch jobs are queued sequentially and shown as a job list
-  in the Market Data Coverage card. Binance fetches also sync exchangeInfo-derived
-  venue specs into `venue_instrument_specs` so replay can resolve multiplier
-  contracts such as `1000SHIB-USDT-SWAP` from DB.
+- User-facing behavior: fetch or update market data, inspect coverage, chart
+  Deribit external observations in the Run Backtest Derivatives context card,
+  export OHLCV, funding, or external data, delete stale OHLCV/funding pairs, and
+  use DB-backed data for backtests. Fetch jobs are queued sequentially and shown
+  as a job list in the Market Data Coverage card. Binance fetches also sync
+  exchangeInfo-derived venue specs into `venue_instrument_specs` so replay can
+  resolve multiplier contracts such as `1000SHIB-USDT-SWAP` from DB.
+  External coverage rows label Exchange from the dataset provider, and external
+  export downloads DB rows even when the optional refresh pre-step skips or fails.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -180,17 +183,29 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `src/okx_quant/data/external_clients/deribit_dvol.py`,
+  `src/okx_quant/data/external_clients/deribit_funding.py`,
+  `src/okx_quant/data/external_clients/deribit_option_surface.py`,
+  `src/okx_quant/data/external_clients/deribit_option_flow.py`,
   `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   `scripts/market_data/ingest_external.py`,
+  `scripts/market_data/snapshot_deribit_options.py`,
+  `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
-  `tests/unit/test_routes_data_delete.py`.
+  `tests/unit/test_routes_data_delete.py`,
+  `tests/unit/test_deribit_dvol_client.py`,
+  `tests/unit/test_deribit_funding_client.py`,
+  `tests/unit/test_deribit_option_surface.py`,
+  `tests/unit/test_deribit_option_flow.py`,
+  `tests/unit/test_snapshot_deribit_options.py`,
+  `tests/unit/test_routes_data_external_series.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
   `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: ingestion changes can affect backtest reproducibility; do not
@@ -393,6 +408,39 @@ implementation exists.
   artifacts. Stop at checkpoint 1 unless Claude/human explicitly opens the next
   task.
 
+## OI Positioning Research Candidate
+
+- User-facing behavior: checkpoint-only research candidate for
+  F-OI-POSITIONING. It tests a daily time-series fade book over the OI-good
+  PIT USDT-perp universe, using falling contract-count open interest as the
+  positioning signal. This is evidence-review tooling only, with no UI, API,
+  config gate, demo, shadow, live, risk, portfolio, or execution entrypoint.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/oi_positioning_backtest.py`,
+  `backtesting/pipeline_stage3_registry.py`,
+  `backtesting/differential_validation.py`,
+  `scripts/run_oi_positioning_checkpoint.py`.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
+  Binance venue-scoped `canonical_candles`, `funding_rates`,
+  `venue_instrument_specs`, and Binance Vision OI rows in
+  `external_observations.fields.open_interest_contracts`; generated sidecars
+  live under `results/idea_batch_20260701_taxonomy_002/f_oi_positioning/`.
+- Config files: none changed except `config/workstreams.yaml` progress text.
+- Strategy / portfolio files: none changed.
+- Tests: `tests/unit/test_oi_positioning_backtest.py`,
+  `tests/unit/test_pipeline_stage3_registry.py`,
+  `tests/unit/test_pipeline_batch2_contracts.py`,
+  `tests/unit/test_pipeline_checkpoint1_check.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, relevant Change Manifest and session/context
+  handoffs.
+- Do-not-touch notes: do not enable a strategy, use `value_num` as OI signal
+  input, touch `config/strategies.yaml`, `config/risk.yaml`, risk, portfolio,
+  execution, demo/shadow/live gates, or mutate existing result artifacts. Stop
+  at checkpoint 1 unless Claude/human explicitly opens the next task.
+
 ## Strategy Research Pipeline Automation
 
 - User-facing behavior: generate and review advisory research-pipeline sidecars
@@ -414,9 +462,10 @@ implementation exists.
   5m OI (`oi_binance_hist_btc` / `oi_binance_hist_eth`, E-034), then the
   user-directed universe-wide backfill/probe generalized the dataset convention
   to `oi_binance_hist_<base>` and evaluates PIT-eligible days per symbol
-  (E-036). It records coverage, missing-ratio, stale-ratio, and the OI-good
-  set only; Stage-3 strategy/backtest work remains gated on the signed-off
-  spec and distinctness preflight.
+  (E-036). E-037 then ran the signed-off Stage-3 Task B checkpoint with
+  family-minting vs F-FUNDING-XS-DISPERSION and the pre-registered 4-combo
+  fold-refit WF/CPCV grid; checkpoint1 fails the DSR/PSR threshold, so
+  promotion remains blocked.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,

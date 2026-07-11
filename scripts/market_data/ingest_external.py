@@ -18,6 +18,9 @@ from okx_quant.core.config import load_config
 from okx_quant.data.external_clients import (
     BinanceOIClient,
     DeribitDVOLClient,
+    DeribitFundingClient,
+    DeribitOptionFlowClient,
+    DeribitOptionSurfaceClient,
     FREDClient,
     FearGreedClient,
     NasdaqDataLinkClient,
@@ -119,6 +122,12 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
         return BinanceOIClient()
     if adapter == "deribit_dvol":
         return DeribitDVOLClient()
+    if adapter == "deribit_funding":
+        return DeribitFundingClient()
+    if adapter == "deribit_option_surface":
+        return DeribitOptionSurfaceClient()
+    if adapter == "deribit_option_flow":
+        return DeribitOptionFlowClient(endpoint=DeribitOptionFlowClient.www_endpoint)
     if adapter == "fear_greed":
         return FearGreedClient()
     if adapter == "okx_liquidation":
@@ -156,6 +165,20 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
             start=start,
             end=end,
             resolution=str(cfg.get("resolution") or "1D"),
+        )
+    if adapter == "deribit_funding":
+        return client.fetch(
+            instrument_name=str(cfg.get("instrument_name") or "BTC-PERPETUAL"),
+            start=start,
+            end=end,
+        )
+    if adapter == "deribit_option_surface":
+        return client.fetch(currency=str(cfg.get("currency") or "BTC"))
+    if adapter == "deribit_option_flow":
+        return client.fetch(
+            currency=str(cfg.get("currency") or "BTC"),
+            start=start,
+            end=end,
         )
     if adapter == "fear_greed":
         return client.fetch(start=start, end=end)

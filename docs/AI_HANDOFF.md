@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-04
+last_reviewed: 2026-07-11
 expires: none
 superseded_by: null
 ---
@@ -39,17 +39,19 @@ and accumulates family n_trials. No promotion/live claim. Detail:
 F-FUNDING-XS-DISPERSION Checkpoint Verdict" and the H-009/E-031 ledger rows.
 
 **Pipeline next candidates Codex pass (2026-07-04/05):**
-`F-OI-POSITIONING` now has the signed-off Stage-1 spec
-(`docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md`) and a
-universe-wide Binance Vision 5m OI Stage-2 data pass. E-034 first passed the
-BTC/ETH seed probe; E-036 then backfilled PIT-universe datasets
-`oi_binance_hist_<base>` and ran the extended PIT-aware probe:
-31 OI-good symbols pass the `>=10` breadth gate. `SHIB-USDT-SWAP` is the only
-failed symbol because Binance Vision native `SHIBUSDT` metrics zips are absent;
-`1000SHIB-USDT-SWAP` is separate and passes. Stage-3 is now unblocked only for
-the preflight/build in `tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md`
-Task B; no distinctness, WF/CPCV, checkpoint, promotion, demo, shadow, or live
-claim has run. `F-XVENUE-LEADLAG` was rechecked in E-035 and remains
+`F-OI-POSITIONING` has the signed-off Stage-1 spec
+(`docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md`), E-036
+universe-wide Binance Vision 5m OI Stage-2 data pass, and E-037 Task B
+Stage-3 checkpoint evidence. E-037 family-minting vs
+`F-FUNDING-XS-DISPERSION` returned provisional `MINT` (max abs corr 0.050384,
+human-review item `mechanism_novelty`), then the pre-registered 4-combo grid
+ran fold-refit WF/CPCV on 31 OI-good symbols. Result: WF OOS Sharpe 0.6034,
+CPCV OOS Sharpe 0.7240, DSR 0.7220, PSR 0.8484. `checkpoint1_auto.json`
+FAILS only the DSR/PSR >= 0.95 threshold; n_trials reconciliation, leak flag,
+DSR<=PSR sanity, idealized-fill exclusion, honest portable-block, and ct_val
+checks all PASS. H-012 stays `testing`; STOP at checkpoint for Claude/user
+review. No promotion/demo/shadow/live claim. `F-XVENUE-LEADLAG` was rechecked
+in E-035 and remains
 data-blocked: Binance has full BTC/ETH 1m coverage but OKX still has 0 rows /
 0.0 coverage / 0 aligned rows for both legs. The existing OKX ingest command was
 attempted, but sandbox networking failed with `WinError 10013`; the required
@@ -113,6 +115,66 @@ fail source-parity checks solely because one path stores dates as seconds and
 another as microseconds. Regression coverage:
 `tests/unit/test_universe_membership.py::test_build_membership_ignores_timestamp_storage_precision`.
 
+**Deribit data workstream implementation complete pending Claude research review (2026-07-11, Codex):**
+user sign-off was given 2026-07-11 for
+`tasks/2026-07-11-deribit-data-ingestion-tasks.md`. D2 hourly DVOL and D1
+funding clients/config are implemented and backfilled for BTC/ETH from
+2024-01-01 through 2026-07-10 23:00 UTC with no >2h gaps. D3 option-surface
+snapshots are implemented; one live BTC/ETH snapshot was stored, and RUNBOOK
+has schtasks registration instructions, but the Windows task was not registered.
+D4 option-flow aggregate client/script is implemented; the mandatory 2024-01
+pilot passed with 744 rows per currency and no gaps, and the full
+2024-01-01->2026-07-11 backfill completed with `optflow_deribit_btc` 22,126
+rows and `optflow_deribit_eth` 22,125 rows, first `2024-01-01T00:00:00Z`, last
+`2026-07-10T23:00:00Z`, and no gaps over 6h. Claude review fixes R1-R5 are
+applied: hourly bucketed Deribit rows publish at bucket end, existing DB rows
+were relabeled in place, checkpoint failures preserve the last successful
+cursor, backfill bounds must be hour-aligned, DVOL has throttle/retry, and R5
+minor API/frontend/docs/parser/edge-case fixes landed.
+D5 `GET /api/data/external-series` and the Run Backtest Derivatives context
+card are implemented and browser-verified against `dvol_deribit_btc_1h`.
+Architecture still uses `external_observations`; no new tables, strategy,
+risk, portfolio, execution, deployment gate, or existing result artifact change.
+**Claude re-review 2026-07-12: ACCEPT** — R1–R5 verified in code AND DB
+(relabel 100%, D4 backfill complete/gap-free, fixes tested; details appended
+to `tasks/2026-07-11-deribit-ingestion-review.md`). H-013 Stage-1 drafting is
+unblocked. Non-Deribit note: `test_turtle_invest_pct_result_rows_use_fraction_unit`
+fails at committed HEAD (`4ac9a41` reintroduced the heuristic `61f04e2`'s test
+bans) — Turtle workstream to reconcile.
+`F-VRP-TIMING` remains reserved for a future H-013 Stage-1 spec and is not
+minted or promotion evidence.
+
+**Market Data Coverage timeout fixed in the working tree (2026-07-12):**
+`GET /api/data/coverage` no longer performs one full joined aggregation over
+all `external_observations`. It now aggregates per dataset through the existing
+`(dataset_id, observed_at)` index. Real-DB in-process timing fell from the
+running server's observed 9.41-9.78 seconds to 2.23 seconds for 133 rows, below
+the frontend's unchanged 10-second timeout. Restart the existing API process to
+load the fix; no schema, data, strategy, config, or deployment gate changed.
+
+**Local runtime follow-up (2026-07-12):** the browser was still reaching a
+stale, hung API process bound to `127.0.0.1:8080` while the current engine was
+bound separately to `0.0.0.0:8080`. The stale process was stopped; localhost
+coverage now returns HTTP 200 in 2.33 seconds. The current demo private-WS login
+was independently probed and returns OKX `60005 Invalid apiKey`. Private login
+failures are now terminal and log the code once instead of reconnecting until
+the local breaker fires. A valid Demo Trading API key is still required; do not
+switch to live mode as a workaround.
+
+**External export skipped-count follow-up (2026-07-12):** the frontend no
+longer sends every selected DB-only external dataset through the yfinance-only
+refresh endpoint. DB-only selections now download existing rows directly and
+show `Using existing DB rows`; only selected `yahoo_finance` rows are refreshed.
+This removes the misleading `0 refreshed, 43 skipped` result without changing
+the exported DB rows or backend refresh contract.
+
+**Claude review of the Deribit pass (2026-07-11): ACCEPT-WITH-FIXES, fixes applied** —
+full findings in `tasks/2026-07-11-deribit-ingestion-review.md`. R1-R5 are
+implemented in the working tree, but Claude should still review the research
+interpretation topics before H-013/F-VRP-TIMING drafting: inverse premium units,
+endpoint deviations from the research note, and the observed history-host
+rate-limit ceiling from the full run.
+
 ## Current Branch
 
 - Branch: `codex/pipeline-batch1-stage3`.
@@ -121,8 +183,9 @@ another as microseconds. Regression coverage:
   `dfc7af8`/`6997aba`/`14976d4` (pipeline P1-P8 + real-data runs + warmup
   window), plus an in-progress commit for P9 + the F-FUNDING-XS-DISPERSION
   Stage-1 spec.
-- Current session finalization request covers the Turtle follow-up work plus
-  the pipeline next-candidate probe/docs pass; commit and push on user request.
+- Current working tree contains the Turtle optional polish, the pipeline
+  next-candidate probe/docs pass, and the Deribit ingestion/frontend work;
+  commit and push only on explicit user request.
 
 ## Do Not Touch
 
@@ -153,22 +216,40 @@ Full `make verify` / `make verify-full` still needs an environment with
 ## Next Steps
 
 1. H-009 (`F-FUNDING-XS-DISPERSION`) stays `testing`: no retry without an
-   ex-ante rationale (burns K, accumulates n_trials). Next candidate handoff:
-   `F-OI-POSITIONING` has signed-off Stage-1 plus E-036 universe OI data PASS
-   (31 good symbols); run Task B Stage-3 preflight/build next, starting with
-   family minting vs the F-FUNDING-XS-DISPERSION reference and stopping on
-   ASSIGN/SKIP_RECOMMENDED. `F-XVENUE-LEADLAG` remains blocked until the OKX
-   BTC/ETH-USDT-SWAP 1m backfill runs successfully outside this sandbox, then
-   rerun the Stage-2 probe.
-2. Turtle: usable from the frontend for manual parameter tuning now.
-   Optional polish only (heatmap hover/click, warmup hint, invest_pct unit
-   convention) — schedule if the user asks.
+   ex-ante rationale (burns K, accumulates n_trials). H-012
+   (`F-OI-POSITIONING`) also stays `testing` after E-037: provisional MINT
+   accepted by the checker, but checkpoint1 FAILs the statistical gate
+   (DSR 0.7220 / PSR 0.8484). Next action is Claude/user checkpoint review:
+   verdict, retry-vs-new-family judgment, leak-lag spot check, and portable
+   block reason review. No retry, adapter, demo, shadow, or live work is
+   justified before that review. `F-XVENUE-LEADLAG` remains blocked until the
+   OKX BTC/ETH-USDT-SWAP 1m backfill runs successfully outside this sandbox,
+   then rerun the Stage-2 probe.
+2. Turtle: usable from the frontend for manual parameter tuning now. Optional
+   UI polish is complete in the working tree; no further Turtle work is queued
+   unless the user asks. No live/demo/shadow claim.
 3. If a later grid needs the 4 not-yet-backfilled symbols
    (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP), rerun
    `scripts/market_data/backfill_universe_funding.py` for them.
 4. Decide whether the `quant_liq_okx_ingest` Windows task needs an
    unattended/service mode (currently Interactive-only).
+5. Deribit: Claude reviews the noted premium-currency units, endpoint
+   deviations, and history-host rate-limit behavior before drafting the
+   F-VRP-TIMING Stage-1 spec (H-013/E-038) for user review. The user may
+   register the RUNBOOK Windows scheduled tasks for Deribit forward ingest;
+   Codex did not register them.
 
 ## Open Questions
 
-- None currently open.
+- Deribit option-flow premium units: v1 records inverse-only premium in
+  `BTC`/`ETH` units and counts USDC-linear exclusions. Claude should confirm the
+  research interpretation before signal design.
+- Deribit endpoint deviations observed by implementation: DVOL continuation is
+  a backward timestamp cursor, funding history returns a capped latest list
+  rather than accepting continuation, and option history returns
+  `{trades, has_more}`.
+- Deribit history host rate limits: pilot/full run worked at <=5 req/s with no
+  persistent 429/10028 or undocumented host block; highest observed daily
+  option-flow page counts included BTC 63 pages/day (2026-02-05) and ETH 37
+  pages/day (2024-03-05). Claude should decide whether this evidence is enough
+  for research operations or whether to keep a lower scheduled cadence.

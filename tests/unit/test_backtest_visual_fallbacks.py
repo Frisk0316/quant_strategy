@@ -87,6 +87,19 @@ def test_funding_export_uses_fixed_8h_frequency_label():
     assert "No DB funding pairs available." in text
 
 
+def test_external_export_refresh_unavailable_is_not_shown_as_failure():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function externalRefreshFailureSummary" in text
+    assert "Refresh unavailable; downloading existing rows" in text
+    assert "Refresh failed:" not in text
+    assert "refreshableExternalDatasets" in text
+    assert "dataset_ids: refreshableDatasets" in text
+    assert "Using existing DB rows" in text
+    assert "${skipped} skipped" not in text
+
+
 def test_turtle_warmup_hint_uses_current_enter_terms():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")

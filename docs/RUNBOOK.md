@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-07-11
 expires: none
 superseded_by: null
 ---
@@ -243,6 +243,80 @@ Remove    : schtasks /Delete /TN quant_liq_okx_ingest /F
 The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if
 the machine or DB is off for longer than the retention window — check the log
 and `external_observations` first/last timestamps when auditing coverage.
+
+## Scheduled External Ingest (Deribit option surface)
+
+Deribit option-surface OI/IV snapshots are live-only and cannot be backfilled.
+History for `optsurf_deribit_btc` / `optsurf_deribit_eth` starts at the first
+successful snapshot. Codex provides the script; the user registers the Windows
+scheduled task:
+
+```powershell
+schtasks /Create /TN quant_deribit_options_snapshot /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\snapshot_deribit_options.py >> logs\deribit_options_snapshot.log 2>&1" /F
+```
+
+Manual run / removal:
+
+```powershell
+schtasks /Run /TN quant_deribit_options_snapshot
+schtasks /Delete /TN quant_deribit_options_snapshot /F
+```
+
+The snapshot writes one row per currency per run into `external_observations`;
+audit first/last timestamps and gaps before using the series in research.
+
+## Scheduled External Ingest (Deribit funding, DVOL, option flow)
+
+Deribit funding, hourly DVOL, and option-flow datasets have historical backfills
+plus forward accumulation through `scripts/market_data/ingest_external.py`.
+Register these Windows scheduled tasks yourself if the workstation should keep
+the datasets fresh; Codex should not register them during implementation:
+
+```powershell
+schtasks /Create /TN quant_deribit_funding_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset funding_deribit_btc --dataset funding_deribit_eth >> logs\deribit_funding_ingest.log 2>&1" /F
+schtasks /Create /TN quant_deribit_dvol_1h_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset dvol_deribit_btc_1h --dataset dvol_deribit_eth_1h >> logs\deribit_dvol_1h_ingest.log 2>&1" /F
+schtasks /Create /TN quant_deribit_optflow_forward /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset optflow_deribit_btc --dataset optflow_deribit_eth >> logs\deribit_optflow_forward.log 2>&1" /F
+```
+
+Manual run / removal:
+
+```powershell
+schtasks /Run /TN quant_deribit_funding_ingest
+schtasks /Run /TN quant_deribit_dvol_1h_ingest
+schtasks /Run /TN quant_deribit_optflow_forward
+schtasks /Delete /TN quant_deribit_funding_ingest /F
+schtasks /Delete /TN quant_deribit_dvol_1h_ingest /F
+schtasks /Delete /TN quant_deribit_optflow_forward /F
+```
+
+The forward option-flow path fetches the recent live window from
+`www.deribit.com`; if a task is down for more than the live lookback, rerun the
+history backfill script with explicit UTC `--start`/`--end` bounds and
+`--resume`. Keep all tasks at hourly cadence or slower to stay within the
+project's <=5 req/s Deribit rule.
+
+## Deribit Option Flow Backfill
+
+Deribit option-flow aggregates use the public history host for backfill and the
+`optflow_deribit_btc` / `optflow_deribit_eth` datasets. The script aggregates
+hourly inverse-option trades only; USDC-linear instruments are counted as
+excluded in `fields.excluded_linear_usdc_count`.
+
+Pilot one month first:
+
+```powershell
+python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00:00:00+00:00 --end 2024-02-01T00:00:00+00:00
+```
+
+Proceed to the full run only if the pilot reports per-currency rows in
+`[670, 744]`. The full run is checkpointed and resumable:
+
+```powershell
+python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00:00:00+00:00 --end 2026-07-11T00:00:00+00:00 --resume
+```
+
+At completion, review the script's JSON coverage summary and list any gaps over
+6 hours before using `optflow_deribit_*` in research.
 
 ## Strategy Signal Validation
 

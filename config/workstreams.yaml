@@ -3,6 +3,15 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Local runtime reliability
+    status: blocked
+    milestones: [coverage_query, single_server, private_ws_auth]
+    current: private_ws_auth
+    state: "Coverage indexed aggregation is fixed; stale duplicate PID on 127.0.0.1:8080 was stopped; localhost coverage is HTTP 200 in 2.33s. External DB-only exports bypass the yfinance-only refresh step and no longer report 43 skipped. Demo private WS probe returns OKX 60005 Invalid apiKey, and terminal auth failures now stop without reconnecting or tripping the local WS breaker."
+    next: "Create/configure a valid OKX Demo Trading API key before restarting engine mode. For frontend/backtest/data-only work, use scripts/run_server.py. Do not switch to live mode as a workaround."
+    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
+    updated: 2026-07-12
+
   - name: XS momentum
     status: blocked
     milestones: [spec, impl, backtest, wf_cpcv, demo, live]
@@ -25,10 +34,19 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint]
     current: first_stage3_checkpoint
-    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING now has signed-off Stage-1 plus E-036 universe OI data PASS: 31 OI-good symbols vs >=10, SHIB native OI zips absent, no Stage-3/backtest/promotion evidence yet. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
-    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING next is Task B: family-minting preflight vs F-FUNDING-XS-DISPERSION first, then only if MINT remains valid run the pre-registered Stage-3 checkpoint. F-XVENUE-LEADLAG needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
+    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
+    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING next is Claude/user checkpoint review: verdict, retry-vs-new-family judgment, leak-lag spot check, and portable block review; no retry/adapter/demo/shadow/live before review. F-XVENUE-LEADLAG needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
     links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
-    updated: 2026-07-05
+    updated: 2026-07-07
+
+  - name: Deribit derivatives data
+    status: active
+    milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec]
+    current: stage1_spec
+    state: "D1-D5 complete and Claude re-review ACCEPTED 2026-07-12 (tasks/2026-07-11-deribit-ingestion-review.md): R1-R5 fixes verified in code AND DB — PIT relabel 100% (all optflow/dvol_1h rows publish at bucket end), D4 option-flow backfill complete (BTC 22,126 / ETH 22,125 rows, 2024-01-01->2026-07-10 23:00Z, no >6h gaps), checkpoint/alignment/throttle fixes tested, 21/21 targeted tests green. optsurf is snapshot-only by design (1 row/ccy so far). Market Data Coverage indexed-aggregation fix reduces real-DB response time to 2.23s; restart the API process to load it."
+    next: "F-VRP-TIMING Stage-1 spec drafted 2026-07-12 (docs/superpowers/specs/2026-07-12-f-vrp-timing-hypothesis.md, H-013 proposed, E-038 reserved): AWAITING USER SIGN-OFF before Stage-2 probe / Stage-3 Codex work. User registers RUNBOOK schtasks for D3 snapshots + forward ingest or the series go stale. Decide ingest-or-retire for the empty daily dvol_deribit_* config datasets. No promotion/live claim."
+    links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md]
+    updated: 2026-07-12
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

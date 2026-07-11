@@ -143,6 +143,18 @@ const FETCH_START_INPUT_ID = "market-data-fetch-start";
 const FETCH_END_INPUT_ID = "market-data-fetch-end";
 let marketDataInstrumentSearchSeq = 0;
 const FETCH_TERMINAL_STATUSES = new Set(["done", "error", "cancelled"]);
+const DERIBIT_DATASET_ORDER = [
+  "dvol_deribit_btc_1h",
+  "dvol_deribit_eth_1h",
+  "dvol_deribit_btc",
+  "dvol_deribit_eth",
+  "funding_deribit_btc",
+  "funding_deribit_eth",
+  "optsurf_deribit_btc",
+  "optsurf_deribit_eth",
+  "optflow_deribit_btc",
+  "optflow_deribit_eth",
+];
 
 const fmtPct = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(d)}%`);
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? "-" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
@@ -1027,6 +1039,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         </div>
       </div>
 
+      <${DerivativesContextCard} coverage=${dataCoverage || []} />
       <${MarketDataCard} onCoverageChange=${setDataCoverage} />
     </div>
   `;
@@ -1556,6 +1569,92 @@ function TurtleSweepPanel({
   `;
 }
 
+function derivativesDatasetOptions(coverage = []) {
+  const ids = [...new Set((coverage || [])
+    .filter((row) => row.data_kind === "external")
+    .map((row) => row.inst_id)
+    .filter(Boolean))];
+  const source = ids.length ? ids : [...DERIBIT_DATASET_ORDER];
+  return source.sort((a, b) => {
+    const ai = DERIBIT_DATASET_ORDER.indexOf(a);
+    const bi = DERIBIT_DATASET_ORDER.indexOf(b);
+    const ar = ai === -1 ? 999 : ai;
+    const br = bi === -1 ? 999 : bi;
+    if (ar !== br) return ar - br;
+    return a.localeCompare(b);
+  });
+}
+
+function DerivativesContextCard({ coverage = [] } = {}) {
+  const options = derivativesDatasetOptions(coverage);
+  const [datasetId, setDatasetId] = useConfigState(options[0] || "dvol_deribit_btc_1h");
+  const [range, setRange] = useConfigState({ start: "2024-01-01", end: yesterday });
+  const [series, setSeries] = useConfigState({ status: "idle", dataset_id: datasetId, unit: null, points: [] });
+
+  useConfigEffect(() => {
+    if (options.length && !options.includes(datasetId)) {
+      setDatasetId(options[0]);
+    }
+  }, [options.join("|"), datasetId]);
+
+  useConfigEffect(() => {
+    if (!datasetId || !window.API.fetchExternalSeries) return;
+    let alive = true;
+    setSeries((prev) => ({ ...prev, status: "loading" }));
+    window.API.fetchExternalSeries({ dataset_id: datasetId, start: range.start, end: range.end })
+      .then((payload) => {
+        if (alive) setSeries({ status: "done", ...payload });
+      })
+      .catch((err) => {
+        if (alive) setSeries({ status: "error", dataset_id: datasetId, unit: null, points: [], error: err.message || String(err) });
+      });
+    return () => { alive = false; };
+  }, [datasetId, range.start, range.end]);
+
+  const points = series.points || [];
+  const values = points.map((point) => Number(point.v));
+  const labels = points.map((point) => point.t);
+  const lastPoint = points.at(-1);
+  return html`
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Derivatives context</div>
+          <div class="card-sub">${datasetId}${series.unit ? ` (${series.unit})` : ""}</div>
+        </div>
+        <div class="row" style=${{ gap: 8, alignItems: "end" }}>
+          <label class="field" style=${{ minWidth: 220 }}>
+            <div class="field-label">Dataset</div>
+            <select class="select mono" value=${datasetId} onChange=${(e) => setDatasetId(e.target.value)}>
+              ${options.map((id) => html`<option value=${id}>${id}</option>`)}
+            </select>
+          </label>
+          <label class="field">
+            <div class="field-label">Start</div>
+            <input class="input" type="date" value=${range.start} onInput=${(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+          </label>
+          <label class="field">
+            <div class="field-label">End</div>
+            <input class="input" type="date" value=${range.end} onInput=${(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+          </label>
+        </div>
+      </div>
+      ${series.status === "error" && html`<div class="field-hint">Series unavailable: ${series.error}</div>`}
+      ${series.status === "loading" && html`<div class="field-hint">Loading series...</div>`}
+      ${series.status === "done" && !points.length && html`<div class="field-hint">No observations for this range.</div>`}
+      ${points.length > 0 && html`
+        <${LineChart}
+          height=${220}
+          series=${[{ label: datasetId, values, color: "var(--accent)" }]}
+          xLabels=${labels}
+          tooltipValueFormatter=${(value) => fmtNum(value, 4)}
+        />
+        <div class="field-hint">Last point: ${lastPoint?.t || "-"} = ${fmtNum(Number(lastPoint?.v), 4)}</div>
+      `}
+    </div>
+  `;
+}
+
 function MarketDataCard({ onCoverageChange } = {}) {
   const [coverage, setCoverage] = useConfigState(null);
   const [coverageError, setCoverageError] = useConfigState("");
@@ -1607,6 +1706,10 @@ function MarketDataCard({ onCoverageChange } = {}) {
     .filter(Boolean))]
     .sort();
   const externalOptions = exportDatasets.length ? exportDatasets : ["cme_btc_yfinance"];
+  // ponytail: yfinance is the only on-demand adapter; expose refreshable in coverage if another is added.
+  const refreshableExternalDatasets = new Set((coverage || [])
+    .filter((row) => row.data_kind === "external" && row.provider === "yahoo_finance")
+    .map((row) => row.inst_id));
   const selectedExportSymbols = (exportForm.symbols || []).filter((s) => exportSymbols.includes(s));
   const selectedExportDatasets = (exportForm.datasets || []).filter((d) => externalOptions.includes(d));
   const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
@@ -1824,6 +1927,16 @@ function MarketDataCard({ onCoverageChange } = {}) {
     });
   }
 
+  function externalRefreshSummary(job) {
+    const rows = job?.datasets || [];
+    const refreshed = rows.filter((row) => row.status === "success").length;
+    return `${refreshed} dataset${refreshed === 1 ? "" : "s"} refreshed`;
+  }
+
+  function externalRefreshFailureSummary() {
+    return "Refresh unavailable; downloading existing rows";
+  }
+
   function triggerExport() {
     const body = {
       kind: exportKind,
@@ -1835,14 +1948,21 @@ function MarketDataCard({ onCoverageChange } = {}) {
     if (exportKind === "external") {
       const datasets = selectedExportDatasets.join(",");
       if (!datasets) return;
+      const url = window.API.dataExportUrl({ ...body, datasets });
+      const refreshableDatasets = selectedExportDatasets.filter((dataset) => refreshableExternalDatasets.has(dataset));
+      if (!refreshableDatasets.length) {
+        setExportJob({ status: "done", message: "Using existing DB rows" });
+        window.location.assign(url);
+        return;
+      }
       setExportJob({ status: "running", message: "Refreshing external dataset..." });
-      window.API.refreshExternalData({ dataset_ids: selectedExportDatasets, start: exportForm.start, end: exportForm.end })
+      window.API.refreshExternalData({ dataset_ids: refreshableDatasets, start: exportForm.start, end: exportForm.end })
         .then((job) => {
-          setExportJob({ status: "done", message: `${job.datasets?.[0]?.rows_fetched || 0} rows refreshed` });
-          window.location.assign(window.API.dataExportUrl({ ...body, datasets }));
+          setExportJob({ status: "done", message: externalRefreshSummary(job) });
           refreshCoverage();
         })
-        .catch((err) => setExportJob({ status: "error", message: err.message }));
+        .catch(() => setExportJob({ status: "done", message: externalRefreshFailureSummary() }))
+        .finally(() => window.location.assign(url));
       return;
     }
     const symbols = selectedExportSymbols.join(",");
