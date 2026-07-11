@@ -50,9 +50,12 @@ implementation exists.
 
 - User-facing behavior: run the standalone Turtle S1/S2 reference port on one
   DB-backed 1D symbol; sweep window params and optional `invest_pct`; review
-  standard run artifacts plus native SVG heatmaps and a Plotly surface HTML
-  sweep artifact. Research risk overrides and execution-profile controls are
-  explicitly ignored; Turtle fees/sizing come from Turtle params only.
+  standard run artifacts plus native SVG heatmaps, a Plotly surface HTML
+  sweep artifact, and batched/resumable large-sweep `rows.csv` artifacts with
+  progress/cancel job status; large sweep CSVs stay artifact-link only while
+  small 2D/invest sweeps can inline chart rows. Research risk overrides and
+  execution-profile controls are explicitly ignored; Turtle fees/sizing come
+  from Turtle params only.
 - Frontend files: `frontend/data.js`, `frontend/view-config.js`,
   `frontend/charts.js`, `frontend/vendor/plotly.min.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.

@@ -20,6 +20,10 @@ import pandas as pd
 
 WINDOW_PARAMS = ("enter_term_sys1", "enter_term_sys2", "leave_term_sys1", "leave_term_sys2")
 SWEEP_METRICS = ("mdd", "win_rate", "final_whole_asset", "profit_loss_ratio", "expectancy")
+DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS = 20_000
+HARD_TURTLE_SWEEP_MAX_COMBINATIONS = 200_000
+DEFAULT_TURTLE_SWEEP_MAX_RAW_CANDIDATES = 300_000
+DEFAULT_TURTLE_SWEEP_BATCH_SIZE = 250
 SWEEP_COLUMNS = (
     "enter_term_sys1",
     "enter_term_sys2",
@@ -800,8 +804,8 @@ def _valid_turtle_windows(combo: dict[str, int]) -> bool:
 def expand_turtle_grid(
     spec: dict[str, Any],
     *,
-    max_combinations: int = 5000,
-    max_raw_candidates: int = 20000,
+    max_combinations: int = DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS,
+    max_raw_candidates: int | None = DEFAULT_TURTLE_SWEEP_MAX_RAW_CANDIDATES,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     invest_pct_is_axis = "invest_pct" in spec and not _is_fixed_grid_value(spec.get("invest_pct"))
     if invest_pct_is_axis and not all(_is_fixed_grid_value(spec.get(name)) for name in WINDOW_PARAMS):
@@ -818,11 +822,11 @@ def expand_turtle_grid(
         parsed, count = _parse_values(spec.get(name, defaults[name]))
         values[name] = parsed
         raw_count *= max(count, 1)
-    if "invest_pct" in spec:
+    if invest_pct_is_axis:
         parsed, count = _parse_values(spec["invest_pct"], percent=True)
         values["invest_pct"] = parsed
         raw_count *= max(count, 1)
-    if raw_count > max_raw_candidates:
+    if max_raw_candidates is not None and raw_count > max_raw_candidates:
         raise ValueError(f"turtle sweep raw candidates exceed cap: {raw_count} > {max_raw_candidates}")
 
     combos: list[dict[str, Any]] = []
@@ -863,17 +867,73 @@ def run_turtle_sweep(
     output_dir: Path | None = None,
     sweep_id: str | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    cancel_callback: Callable[[], bool] | None = None,
+    batch_size: int = DEFAULT_TURTLE_SWEEP_BATCH_SIZE,
+    max_combinations: int = DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS,
 ) -> dict[str, Any]:
     base_params = base_params or TurtleParams()
     started = time.time()
-    combos, skipped = expand_turtle_grid(spec)
-    rows: list[dict[str, Any]] = []
-    equity_rows: list[dict[str, Any]] = []
+    combos, skipped = expand_turtle_grid(spec, max_combinations=max_combinations)
+    sweep_id = sweep_id or f"turtle_sweep_{int(started)}"
+    output_dir = Path(output_dir) if output_dir is not None else None
+    if output_dir and (output_dir / "summary.json").exists():
+        existing_summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+        if existing_summary.get("grid") is not None and existing_summary.get("grid") != spec:
+            raise ValueError("turtle sweep checkpoint grid does not match requested grid")
+        if existing_summary.get("params") is not None and existing_summary.get("params") != asdict(base_params):
+            raise ValueError("turtle sweep checkpoint params do not match requested params")
+    rows = _read_csv_rows(output_dir / "rows.csv") if output_dir and (output_dir / "rows.csv").exists() else []
+    equity_rows = (
+        _read_csv_rows(output_dir / "equity_curves.csv")
+        if output_dir and (output_dir / "equity_curves.csv").exists()
+        else []
+    )
+    invest_pct_is_axis = "invest_pct" in spec and not _is_fixed_grid_value(spec.get("invest_pct"))
+    completed_keys = {_turtle_combo_key(row, invest_pct_is_axis) for row in rows}
+    batch_size = max(1, int(batch_size or DEFAULT_TURTLE_SWEEP_BATCH_SIZE))
+
+    def flush(status: str = "running") -> dict[str, Any]:
+        summary = _turtle_sweep_summary(
+            sweep_id=sweep_id,
+            status=status,
+            spec=spec,
+            base_params=base_params,
+            combos=combos,
+            skipped=skipped,
+            rows=rows,
+            equity_rows=equity_rows,
+            started=started,
+            output_dir=output_dir,
+        )
+        if progress_callback:
+            completed = len(rows)
+            elapsed = time.time() - started
+            progress_callback(
+                {
+                    "progress": int(completed / max(len(combos), 1) * 100),
+                    "completed_count": completed,
+                    "completed_trials": completed,
+                    "total_trials": len(combos),
+                    "estimated_remaining_seconds": _estimate_remaining_seconds(elapsed, completed, len(combos)),
+                    "elapsed_seconds": elapsed,
+                    "message": f"Running turtle parameter sweep ({completed}/{len(combos)})",
+                }
+            )
+        return summary
+
+    if rows:
+        flush()
     for index, combo in enumerate(combos, start=1):
+        if cancel_callback and cancel_callback():
+            summary = flush("cancelled")
+            return summary if output_dir else summary | {"rows": rows, "equity_curves": equity_rows}
+        combo_key = _turtle_combo_key(combo, invest_pct_is_axis)
+        if combo_key in completed_keys:
+            continue
         params = TurtleParams(**{**asdict(base_params), **combo})
         result = run_turtle_backtest(daily_df, params)
         metric = turtle_metric_row(result.frame, params)
-        if "invest_pct" in combo:
+        if invest_pct_is_axis:
             metric["invest_pct"] = combo["invest_pct"]
             for _, eq_row in result.equity_curve.iterrows():
                 equity_rows.append(
@@ -886,17 +946,38 @@ def run_turtle_sweep(
                     }
                 )
         rows.append(metric)
-        if progress_callback and (index == 1 or index == len(combos) or index % 50 == 0):
-            progress_callback({"progress": int(index / max(len(combos), 1) * 90), "completed_count": index})
+        completed_keys.add(combo_key)
+        if cancel_callback and cancel_callback():
+            summary = flush("cancelled")
+            return summary if output_dir else summary | {"rows": rows, "equity_curves": equity_rows}
+        if len(rows) == len(combos) or len(rows) % batch_size == 0:
+            summary = flush()
 
+    summary = flush("done")
+    return summary if output_dir else summary | {"rows": rows, "equity_curves": equity_rows}
+
+
+def _turtle_sweep_summary(
+    *,
+    sweep_id: str,
+    status: str,
+    spec: dict[str, Any],
+    base_params: TurtleParams,
+    combos: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    equity_rows: list[dict[str, Any]],
+    started: float,
+    output_dir: Path | None,
+) -> dict[str, Any]:
     ranked = sorted(rows, key=lambda row: row.get("final_equity") or 0.0, reverse=True)
     for rank, row in enumerate(ranked, start=1):
         row["rank"] = rank
     free_params = _free_window_params(spec)
+    invest_pct_is_axis = "invest_pct" in spec and not _is_fixed_grid_value(spec.get("invest_pct"))
     artifacts: dict[str, str] = {}
-    sweep_id = sweep_id or f"turtle_sweep_{int(started)}"
     surface_html = ""
-    if len(free_params) == 2 and "invest_pct" not in spec:
+    if status == "done" and len(free_params) == 2 and not invest_pct_is_axis:
         surface_html = render_surface_html(
             rows,
             free_params[0],
@@ -905,14 +986,17 @@ def run_turtle_sweep(
         )
     summary = {
         "sweep_id": sweep_id,
+        "status": status,
         "strategy": "turtle",
         "params": asdict(base_params),
         "grid": spec,
+        "combination_count": len(combos),
         "completed_count": len(rows),
         "failed_count": 0,
         "skipped_count": len(skipped),
         "skipped": skipped[:100],
         "elapsed_seconds": time.time() - started,
+        "estimated_remaining_seconds": _estimate_remaining_seconds(time.time() - started, len(rows), len(combos)),
         "top_results": ranked[:10],
         "free_params": free_params,
         "artifacts": artifacts,
@@ -929,7 +1013,35 @@ def run_turtle_sweep(
             artifacts["surface"] = "surface.html"
         (output_dir / "summary.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
         artifacts["summary"] = "summary.json"
-    return summary | {"rows": rows, "equity_curves": equity_rows}
+    return summary
+
+
+def _turtle_combo_key(row: dict[str, Any], include_invest_pct: bool) -> tuple[Any, ...]:
+    key: tuple[Any, ...] = tuple(int(row[name]) for name in WINDOW_PARAMS)
+    if include_invest_pct:
+        key += (round(float(row["invest_pct"]), 12),)
+    return key
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        return [{key: _parse_csv_scalar(value) for key, value in row.items()} for row in csv.DictReader(fh)]
+
+
+def _parse_csv_scalar(value: Any) -> Any:
+    if value in {"", None}:
+        return None
+    text = str(value)
+    try:
+        return float(text) if any(ch in text for ch in ".eE") else int(text)
+    except ValueError:
+        return value
+
+
+def _estimate_remaining_seconds(elapsed_seconds: float, completed: int, total: int) -> float:
+    if completed <= 0:
+        return 0.0
+    return max(0.0, elapsed_seconds / completed * max(0, total - completed))
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:

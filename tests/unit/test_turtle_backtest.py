@@ -418,6 +418,209 @@ def test_sweep_metric_rows_match_verbatim_reference_golden_subset() -> None:
                 assert actual[key][column] == pytest.approx(expected[column], rel=1e-9, abs=1e-9)
 
 
+def test_expand_turtle_grid_caps_post_filter_valid_count_for_full_reference_grid() -> None:
+    combos, skipped = expand_turtle_grid(
+        {
+            "enter_term_sys1": "5~30",
+            "enter_term_sys2": "31~60",
+            "leave_term_sys1": "5~20",
+            "leave_term_sys2": "5~25",
+        },
+        max_combinations=115_200,
+    )
+
+    assert len(combos) == 115_200
+    assert len(skipped) == 146_880
+
+
+def test_expand_turtle_grid_keeps_raw_candidate_guardrail_above_reference_grid() -> None:
+    with pytest.raises(ValueError, match="raw candidates exceed cap"):
+        expand_turtle_grid(
+            {
+                "enter_term_sys1": "1~100",
+                "enter_term_sys2": "1~100",
+                "leave_term_sys1": "1~20",
+                "leave_term_sys2": "1~20",
+            },
+            max_combinations=200_000,
+        )
+
+
+def test_batched_turtle_sweep_rows_match_single_pass_bytes(tmp_path) -> None:
+    daily = pd.read_csv(FIXTURE_DIR / "daily_ohlc.csv")
+    base = TurtleParams(
+        enter_term_sys1=20,
+        enter_term_sys2=55,
+        leave_term_sys1=10,
+        leave_term_sys2=20,
+        own_capital=10_000.0,
+        invest_pct=0.25,
+        min_position=0.0001,
+        fee=0.003,
+        atr_period=20,
+        single_sys_unit_limit=4,
+        both_sys_unit_limit=4,
+    )
+    spec = {
+        "enter_term_sys1": "6,20,30",
+        "enter_term_sys2": 55,
+        "leave_term_sys1": "5,10,19",
+        "leave_term_sys2": 20,
+    }
+    single_dir = tmp_path / "single"
+    batched_dir = tmp_path / "batched"
+
+    run_turtle_sweep(daily, spec, base, output_dir=single_dir, sweep_id="single")
+    run_turtle_sweep(daily, spec, base, output_dir=batched_dir, sweep_id="batched", batch_size=1)
+
+    assert (batched_dir / "rows.csv").read_text(encoding="utf-8") == (
+        single_dir / "rows.csv"
+    ).read_text(encoding="utf-8")
+
+
+def test_turtle_sweep_resume_keeps_completed_combos_exactly_once(tmp_path) -> None:
+    daily = _daily([
+        (f"2024-01-{day:02d}", 10, 10 + (day / 10), 9, 10 + (day / 20))
+        for day in range(1, 13)
+    ])
+    base = TurtleParams(
+        enter_term_sys1=6,
+        enter_term_sys2=8,
+        leave_term_sys1=5,
+        leave_term_sys2=6,
+        own_capital=1_000,
+        invest_pct=0.5,
+        min_position=0.0001,
+        fee=0.0,
+        atr_period=2,
+    )
+    spec = {
+        "enter_term_sys1": "6~7",
+        "enter_term_sys2": "8~9",
+        "leave_term_sys1": 5,
+        "leave_term_sys2": 6,
+    }
+    output_dir = tmp_path / "resume"
+    cancel = {"stop": False}
+
+    def progress(update: dict[str, object]) -> None:
+        if int(update.get("completed_count") or 0) >= 2:
+            cancel["stop"] = True
+
+    first = run_turtle_sweep(
+        daily,
+        spec,
+        base,
+        output_dir=output_dir,
+        sweep_id="resume",
+        batch_size=1,
+        progress_callback=progress,
+        cancel_callback=lambda: cancel["stop"],
+    )
+    resumed = run_turtle_sweep(
+        daily,
+        spec,
+        base,
+        output_dir=output_dir,
+        sweep_id="resume",
+        batch_size=1,
+    )
+    fresh = run_turtle_sweep(daily, spec, base)
+    rows = pd.read_csv(output_dir / "rows.csv")
+    keys = list(zip(rows.enter_term_sys1, rows.enter_term_sys2, rows.leave_term_sys1, rows.leave_term_sys2))
+
+    assert first["status"] == "cancelled"
+    assert resumed["completed_count"] == fresh["completed_count"]
+    assert len(keys) == len(set(keys)) == fresh["completed_count"]
+    with pytest.raises(ValueError, match="checkpoint grid"):
+        run_turtle_sweep(
+            daily,
+            {**spec, "enter_term_sys2": "8~10"},
+            base,
+            output_dir=output_dir,
+            sweep_id="resume",
+            batch_size=1,
+        )
+
+
+def test_turtle_sweep_cancel_checks_between_combos_not_only_batches(tmp_path) -> None:
+    daily = _daily([
+        (f"2024-01-{day:02d}", 10, 10 + (day / 10), 9, 10 + (day / 20))
+        for day in range(1, 13)
+    ])
+    base = TurtleParams(
+        enter_term_sys1=6,
+        enter_term_sys2=8,
+        leave_term_sys1=5,
+        leave_term_sys2=6,
+        own_capital=1_000,
+        invest_pct=0.5,
+        min_position=0.0001,
+        fee=0.0,
+        atr_period=2,
+    )
+    calls = {"count": 0}
+
+    def cancel_after_first_combo() -> bool:
+        calls["count"] += 1
+        return calls["count"] > 1
+
+    summary = run_turtle_sweep(
+        daily,
+        {
+            "enter_term_sys1": "6~7",
+            "enter_term_sys2": "8~9",
+            "leave_term_sys1": 5,
+            "leave_term_sys2": 6,
+        },
+        base,
+        output_dir=tmp_path / "cancel",
+        sweep_id="cancel",
+        batch_size=100,
+        cancel_callback=cancel_after_first_combo,
+    )
+
+    assert summary["status"] == "cancelled"
+    assert summary["completed_count"] == 1
+
+
+def test_turtle_sweep_fixed_invest_pct_still_writes_surface_artifact(tmp_path) -> None:
+    daily = _daily([
+        (f"2024-01-{day:02d}", 10, 10 + (day / 10), 9, 10 + (day / 20))
+        for day in range(1, 13)
+    ])
+    base = TurtleParams(
+        enter_term_sys1=6,
+        enter_term_sys2=8,
+        leave_term_sys1=5,
+        leave_term_sys2=7,
+        own_capital=1_000,
+        invest_pct=0.25,
+        min_position=0.0001,
+        fee=0.0,
+        atr_period=2,
+    )
+    output_dir = tmp_path / "surface"
+
+    summary = run_turtle_sweep(
+        daily,
+        {
+            "enter_term_sys1": "6~7",
+            "enter_term_sys2": 8,
+            "leave_term_sys1": "5~6",
+            "leave_term_sys2": 7,
+            "invest_pct": "25",
+        },
+        base,
+        output_dir=output_dir,
+        sweep_id="surface",
+        batch_size=1,
+    )
+
+    assert summary["artifacts"]["surface"] == "surface.html"
+    assert (output_dir / "surface.html").exists()
+
+
 def test_expand_turtle_grid_validates_reference_constraints() -> None:
     combos, skipped = expand_turtle_grid(
         {

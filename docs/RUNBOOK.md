@@ -192,6 +192,22 @@ Manual sweep payload uses the same `/api/backtest/sweep` endpoint with
 and are available via `/api/backtest/sweep/result/{sweep_id}` and
 `/api/backtest/sweep/artifact/{sweep_id}/{name}`.
 
+Large Turtle sweeps are batched and resumable. The full four-window reference
+grid has 262,080 raw candidates and 115,200 valid combinations, so submit
+`max_combinations` at or above the visible valid count; the hard API guardrail
+is 200,000 valid combinations, with a 300,000 raw-candidate guardrail to catch
+accidental multi-day grids. Reusing the same `sweep_id` resumes from the
+existing `rows.csv` checkpoint when the grid and base params match. Cancel a
+running sweep with:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/backtest/sweep/cancel/<job_id>
+```
+
+`summary.json` stays small (`top_results`, counts, and artifact names only);
+full rows live in `rows.csv`. `/api/backtest/sweep/result/{sweep_id}` only
+inlines small 2D/invest artifacts; large CSVs stay behind artifact links.
+
 ## Config Validation
 
 ```bash

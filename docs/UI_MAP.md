@@ -92,7 +92,11 @@ Main app views in `frontend/app.js`:
   disables research risk/execution/`fill_all_signals` controls as not applied,
   and owns the Turtle sweep panel. Sweep results render 5 native SVG heatmaps
   plus an `invest_pct` final-equity line chart, slider scrub, selected equity
-  curve, and Plotly 3D surface artifact link. `frontend/charts.js` exports the
+  curve, Plotly 3D surface artifact link, rows/equity artifact links, and a
+  top-results table. Large Turtle sweeps run as batched/resumable jobs and show
+  completed/total progress plus cancel status. Large CSV results remain
+  artifact-link only; small 2D/invest sweeps can inline rows for charts.
+  `frontend/charts.js` exports the
   shared `LineChart` and `HeatmapChart`; Plotly artifacts load
   `frontend/vendor/plotly.min.js`.
 
@@ -134,6 +138,8 @@ Main app views in `frontend/app.js`:
 - `triggerBacktestRun`: `POST /api/backtest/run`.
 - `fetchBacktestRunStatus`: `GET /api/backtest/run/status/{job_id}`.
 - `triggerBacktestSweep`: `POST /api/backtest/sweep`.
+- `fetchBacktestSweepStatus`: `GET /api/backtest/sweep/status/{job_id}`.
+- `cancelBacktestSweep`: `POST /api/backtest/sweep/cancel/{job_id}`.
 - `fetchBacktestSweepResult`: `GET /api/backtest/sweep/result/{sweep_id}`.
 - `backtestSweepArtifactUrl`: URL builder for
   `GET /api/backtest/sweep/artifact/{sweep_id}/{name}`.

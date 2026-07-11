@@ -36,6 +36,10 @@ from backtesting.parameter_sweep import (
     expand_parameter_grid,
     run_parameter_sweep,
 )
+from backtesting.turtle_backtest import (
+    DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS,
+    HARD_TURTLE_SWEEP_MAX_COMBINATIONS,
+)
 from backtesting.artifact_rows import read_artifact_rows, validation_artifact_type
 from backtesting.research_controls import ResearchControlError, normalize_execution_profile, sanitize_risk_overrides
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
@@ -48,6 +52,9 @@ _price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
 # Live backtest subprocesses, keyed by job_id, so /run/cancel can terminate them.
 _run_procs: dict[str, "subprocess.Popen[str]"] = {}
 _RUN_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+_SWEEP_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+TURTLE_SWEEP_INLINE_ROW_LIMIT = 5_000
+TURTLE_SWEEP_INLINE_EQUITY_ROW_LIMIT = 50_000
 
 
 def _run_cancel_requested(job_id: str) -> bool:
@@ -65,6 +72,23 @@ def _mark_run_cancelled(job_id: str, output: str | None = None) -> None:
     })
     if output is not None:
         job["output"] = output[-4000:]
+
+
+def _sweep_cancel_requested(job_id: str) -> bool:
+    return bool(_sweep_jobs.get(job_id, {}).get("cancel_requested"))
+
+
+def _mark_sweep_cancelled(job_id: str) -> None:
+    job = _sweep_jobs.get(job_id)
+    if job is None:
+        return
+    job.update({
+        "status": "cancelled",
+        "progress": 100,
+        "message": "Sweep cancelled by user",
+        "updated_at": _utc_now_iso(),
+        "finished_at": _utc_now_iso(),
+    })
 
 
 def _utc_now_iso() -> str:
@@ -346,7 +370,7 @@ class ParameterSweepRequest(BaseModel):
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
     parameter_grid: dict[str, Any] = Field(default_factory=dict)
-    max_combinations: int = Field(default=5000, ge=1, le=10000)
+    max_combinations: int = Field(default=5000, ge=1, le=HARD_TURTLE_SWEEP_MAX_COMBINATIONS)
     liquidate_on_end: bool | None = None
     risk_overrides: dict[str, Any] = Field(default_factory=dict)
     fill_all_signals: bool = False
@@ -366,6 +390,13 @@ class StrategyDifferentialValidationRequest(BaseModel):
     engines: list[str] = Field(default_factory=lambda: ["vectorbt", "backtrader", "nautilus"])
     validation_id: str | None = None
     fixture_run_id: str | None = None
+
+
+def _request_field_was_set(req: BaseModel, name: str) -> bool:
+    fields = getattr(req, "model_fields_set", None)
+    if fields is None:
+        fields = getattr(req, "__fields_set__", set())
+    return name in fields
 
 
 def _run_ohlcv_rotation_job(
@@ -917,6 +948,17 @@ def _turtle_sweep_base_params(grid: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coerce_turtle_invest_pct(value: Any) -> float:
+    text = str(value).strip()
+    has_percent_suffix = text.endswith("%")
+    if has_percent_suffix:
+        text = text[:-1].strip()
+    number = float(text)
+    if has_percent_suffix or number > 1:
+        return number / 100.0
+    return number
+
+
 def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest") -> Any:
     from backtesting.turtle_backtest import TurtleParams
 
@@ -938,6 +980,8 @@ def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest
     for key, value in raw.items():
         if key in int_fields and value is not None and value != "":
             cleaned[key] = int(value)
+        elif key == "invest_pct" and value is not None and value != "":
+            cleaned[key] = _coerce_turtle_invest_pct(value)
         elif key in float_fields and value is not None and value != "":
             cleaned[key] = float(value)
         else:
@@ -2401,6 +2445,8 @@ def _run_turtle_sweep_job(
             output_dir=output_dir,
             sweep_id=sweep_id,
             progress_callback=_on_progress,
+            cancel_callback=lambda: _sweep_cancel_requested(job_id),
+            max_combinations=req.max_combinations,
         )
         summary["symbol"] = symbol
         summary["bar"] = "1D"
@@ -2420,6 +2466,20 @@ def _run_turtle_sweep_job(
             json.dumps(_json_sanitize(summary), indent=2, allow_nan=False),
             encoding="utf-8",
         )
+        if summary.get("status") == "cancelled":
+            _mark_sweep_cancelled(job_id)
+            _sweep_jobs[job_id].update({
+                "sweep_id": summary["sweep_id"],
+                "artifacts": summary.get("artifacts", {}),
+                "top_results": summary.get("top_results", [])[:10],
+                "completed_count": summary.get("completed_count", 0),
+                "failed_count": summary.get("failed_count", 0),
+                "skipped_count": summary.get("skipped_count", 0),
+                "elapsed_seconds": summary.get("elapsed_seconds"),
+                "symbol": symbol,
+                "bar": "1D",
+            })
+            return
         _sweep_jobs[job_id].update({
             "status": "done",
             "progress": 100,
@@ -2561,6 +2621,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
         df = pd.read_csv(path)
         return json.loads(df.to_json(orient="records", force_ascii=False))
+
+    def _csv_row_count(path: Path) -> int:
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"{path.name} not found")
+        with path.open("r", encoding="utf-8", newline="") as fh:
+            return max(0, sum(1 for _ in fh) - 1)
 
     def _metadata_dict(value: Any) -> dict:
         if isinstance(value, dict):
@@ -2976,6 +3042,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.post("/sweep")
     async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
         if req.strategy == "turtle":
+            if not _request_field_was_set(req, "max_combinations"):
+                req.max_combinations = DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS
             _validate_turtle_sweep_request(req)
             try:
                 from backtesting.turtle_backtest import expand_turtle_grid
@@ -3059,6 +3127,17 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail="Sweep job not found")
         return _sweep_jobs[job_id]
 
+    @router.post("/sweep/cancel/{job_id}")
+    async def cancel_parameter_sweep_job(job_id: str):
+        job = _sweep_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Sweep job not found")
+        if job.get("status") in _SWEEP_TERMINAL_STATUSES:
+            return job
+        job["cancel_requested"] = True
+        job.update({"status": "cancelling", "message": "Cancelling sweep...", "updated_at": _utc_now_iso()})
+        return job
+
     @router.get("/sweep/jobs")
     async def list_parameter_sweep_jobs():
         return list(_sweep_jobs.values())
@@ -3069,7 +3148,36 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         path = results_dir / "turtle_sweeps" / clean / "summary.json"
         if not path.exists():
             raise HTTPException(status_code=404, detail="Turtle sweep result not found")
-        return _read_json(path)
+        payload = _read_json(path)
+        artifacts = payload.get("artifacts") or {}
+        sweep_dir = path.parent
+        artifact_row_counts: dict[str, int] = {}
+        inline_omitted: dict[str, str] = {}
+        if artifacts.get("rows") and len(payload.get("free_params") or []) <= 2:
+            rows_path = sweep_dir / artifacts["rows"]
+            if rows_path.exists():
+                row_count = _csv_row_count(rows_path)
+                artifact_row_counts["rows"] = row_count
+                if row_count <= TURTLE_SWEEP_INLINE_ROW_LIMIT:
+                    payload["rows"] = _read_csv(rows_path)
+                else:
+                    inline_omitted["rows"] = f"rows.csv has {row_count} rows; use artifact endpoint"
+        if artifacts.get("equity_curves"):
+            equity_path = sweep_dir / artifacts["equity_curves"]
+            if equity_path.exists():
+                equity_count = _csv_row_count(equity_path)
+                artifact_row_counts["equity_curves"] = equity_count
+                if equity_count <= TURTLE_SWEEP_INLINE_EQUITY_ROW_LIMIT:
+                    payload["equity_curves"] = _read_csv(equity_path)
+                else:
+                    inline_omitted["equity_curves"] = (
+                        f"equity_curves.csv has {equity_count} rows; use artifact endpoint"
+                    )
+        if artifact_row_counts:
+            payload["artifact_row_counts"] = artifact_row_counts
+        if inline_omitted:
+            payload["inline_omitted"] = inline_omitted
+        return payload
 
     @router.get("/sweep/artifact/{sweep_id}/{name}")
     async def get_turtle_sweep_artifact(sweep_id: str, name: str):
@@ -3760,8 +3868,11 @@ def _validate_turtle_sweep_request(req: ParameterSweepRequest) -> None:
     _resolve_data_dir(req.data_dir)
     if (req.bar or "1D") != "1D":
         raise HTTPException(status_code=400, detail="turtle sweep supports 1D bars only")
-    if req.max_combinations > 5000:
-        raise HTTPException(status_code=400, detail="turtle sweep max_combinations is capped at 5000")
+    if req.max_combinations > HARD_TURTLE_SWEEP_MAX_COMBINATIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"turtle sweep max_combinations is capped at {HARD_TURTLE_SWEEP_MAX_COMBINATIONS}",
+        )
     if req.finalist_validation not in {None, "none"}:
         raise HTTPException(status_code=400, detail="turtle sweep does not run finalist validation")
     if req.start and not _SAFE_DATE_RE.match(req.start):
@@ -3787,6 +3898,10 @@ def _validate_parameter_sweep_request(req: ParameterSweepRequest) -> None:
     _resolve_data_dir(req.data_dir)
     if req.strategy not in {"ma_crossover", "ema_crossover", "macd_crossover"}:
         raise HTTPException(status_code=400, detail="Parameter sweep supports MA, EMA, and MACD only")
+    if req.max_combinations > 10000:
+        if _request_field_was_set(req, "max_combinations"):
+            raise HTTPException(status_code=400, detail="parameter sweep max_combinations is capped at 10000")
+        req.max_combinations = 5000
     if req.finalist_validation not in {None, "none", "wf", "cpcv", "both"}:
         raise HTTPException(status_code=400, detail="Unsupported finalist validation mode")
     if req.start and not _SAFE_DATE_RE.match(req.start):

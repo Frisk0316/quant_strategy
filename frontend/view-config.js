@@ -151,6 +151,14 @@ function turtleInvestPctFraction(v) {
   const n = Number(v);
   return !isFinite(n) ? NaN : n;
 }
+function turtleFixedInvestPctParam(params = {}) {
+  const raw = params?.invest_pct ?? STRATEGY_PARAM_DEFAULTS.turtle.invest_pct;
+  if (raw === "" || raw == null) return "";
+  const text = String(raw).trim().replace(/%$/, "").trim();
+  const n = Number(text);
+  if (!isFinite(n) || n <= 0) return "";
+  return String(n > 1 ? n / 100 : n);
+}
 const fmtInvestPct = (v, d = 2) => {
   const n = Number(v);
   return !isFinite(n) ? "-" : `${(n * 100).toFixed(d)}%`;
@@ -487,7 +495,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     const savedJobId = localStorage.getItem("activeBacktestJobId");
     if (!savedJobId) return;
     window.API.fetchBacktestRunStatus(savedJobId).then((s) => {
-      if (s && s.status === "running") {
+      if (s && (s.status === "running" || s.status === "cancelling")) {
         setRunJob(s);
         const iv = setInterval(() => {
           window.API.fetchBacktestRunStatus(savedJobId).then((st) => {
@@ -508,12 +516,12 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     const savedJobId = localStorage.getItem("activeSweepJobId");
     if (!savedJobId) return;
     window.API.fetchBacktestSweepStatus(savedJobId).then((s) => {
-      if (s && s.status === "running") {
+      if (s && (s.status === "running" || s.status === "cancelling")) {
         setSweepJob(s);
         const iv = setInterval(() => {
           window.API.fetchBacktestSweepStatus(savedJobId).then((st) => {
             setSweepJob(st);
-            if (st.status === "done" || st.status === "error") {
+            if (st.status === "done" || st.status === "error" || st.status === "cancelled") {
               clearInterval(iv);
               localStorage.removeItem("activeSweepJobId");
             }
@@ -523,7 +531,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             localStorage.removeItem("activeSweepJobId");
           });
         }, 2000);
-      } else if (s && (s.status === "done" || s.status === "error")) {
+      } else if (s && (s.status === "done" || s.status === "error" || s.status === "cancelled")) {
         setSweepJob(s);
         localStorage.removeItem("activeSweepJobId");
       } else {
@@ -604,6 +612,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     try {
       const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
       const turtleSweep = isTurtle;
+      if (turtleSweep && !parameterGrid.invest_pct) {
+        const fixedInvestPct = turtleFixedInvestPctParam(strategyParams.turtle || {});
+        if (fixedInvestPct) parameterGrid.invest_pct = fixedInvestPct;
+      }
+      const turtleCounts = turtleSweep ? countValidSweepCombos("turtle", parameterGrid) : null;
       const body = {
         strategy,
         exchange,
@@ -614,7 +627,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         symbols: turtleSweep ? [symbol] : technicalSymbols,
         initial_equity: +equity || 5000,
         parameter_grid: parameterGrid,
-        max_combinations: 5000,
+        max_combinations: turtleSweep ? Math.min(200000, Math.max(20000, turtleCounts?.valid || 0)) : 5000,
         risk_overrides: turtleSweep ? {} : cleanRiskOverrides(riskOverrides),
         fill_all_signals: turtleSweep ? false : fillAllSignals,
         run_finalists: turtleSweep ? false : true,
@@ -629,7 +642,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         const iv = setInterval(() => {
           window.API.fetchBacktestSweepStatus(job.job_id).then((s) => {
             setSweepJob(s);
-            if (s.status === "done" || s.status === "error") {
+            if (s.status === "done" || s.status === "error" || s.status === "cancelled") {
               clearInterval(iv);
               localStorage.removeItem("activeSweepJobId");
             }
@@ -646,6 +659,15 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     } catch (err) {
       setSweepJob({ status: "error", message: err.message });
     }
+  }
+
+  function cancelParameterSweep() {
+    const jobId = sweepJob?.job_id;
+    if (!jobId || !window.API.cancelBacktestSweep) return;
+    setSweepJob((j) => ({ ...(j || {}), status: "cancelling", message: "Cancel requested..." }));
+    window.API.cancelBacktestSweep(jobId)
+      .then((s) => setSweepJob(s))
+      .catch(() => {});
   }
 
   return html`
@@ -999,6 +1021,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               symbol=${symbol}
               job=${sweepJob}
               onRun=${triggerParameterSweep}
+              onCancel=${cancelParameterSweep}
             />
           `}
         </div>
@@ -1238,7 +1261,7 @@ function ParameterSweepPanel({
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
           : html`${counts.valid}/${counts.total} valid combos - screening ${fmtDuration(screeningSeconds)} - finalists ${finalistCount} / ${fmtDuration(finalistSeconds)} - total ${fmtDuration(estimateSeconds)}`}
       </div>
-      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running"} onClick=${onRun}>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running" || job?.status === "cancelling"} onClick=${onRun}>
         Run sweep
       </button>
       ${job && html`
@@ -1308,6 +1331,7 @@ function TurtleSweepPanel({
   symbol,
   job,
   onRun,
+  onCancel,
 }) {
   const [sweepResult, setSweepResult] = useConfigState(null);
   const [resultError, setResultError] = useConfigState("");
@@ -1338,8 +1362,15 @@ function TurtleSweepPanel({
   const rows = sweepResult?.rows || [];
   const topRows = sweepResult?.top_results || job?.top_results || [];
   const freeParams = sweepResult?.free_params || [];
-  const surfaceHref = job?.sweep_id && (sweepResult?.artifacts?.surface || job?.artifacts?.surface)
+  const artifacts = sweepResult?.artifacts || job?.artifacts || {};
+  const surfaceHref = job?.sweep_id && artifacts.surface
     ? window.API.backtestSweepArtifactUrl(job.sweep_id, "surface")
+    : "";
+  const rowsHref = job?.sweep_id && artifacts.rows
+    ? window.API.backtestSweepArtifactUrl(job.sweep_id, "rows")
+    : "";
+  const equityHref = job?.sweep_id && artifacts.equity_curves
+    ? window.API.backtestSweepArtifactUrl(job.sweep_id, "equity_curves")
     : "";
   const investRows = rows
     .map((row) => ({ ...row, invest_pct_fraction: turtleInvestPctFraction(row.invest_pct) }))
@@ -1416,13 +1447,18 @@ function TurtleSweepPanel({
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
           : html`${counts.valid}/${counts.total} valid combos - estimate ${fmtDuration(estimateSeconds)}`}
       </div>
-      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbol || job?.status === "running"} onClick=${onRun}>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbol || job?.status === "running" || job?.status === "cancelling"} onClick=${onRun}>
         Run turtle sweep
       </button>
       ${job && html`
         <div class="row" style=${{ gap: 8, alignItems: "center" }}>
           <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
           ${job.sweep_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${job.sweep_id}</span>`}
+          ${(job.status === "running" || job.status === "cancelling") && job.job_id && html`
+            <button class="btn ghost sm" disabled=${job.status === "cancelling"} onClick=${onCancel}>
+              ${job.status === "cancelling" ? "Cancelling..." : "Cancel"}
+            </button>
+          `}
         </div>
         <${ProgressStage} job=${job} style=${{ marginTop: 6 }} />
         ${job.status === "error" && html`
@@ -1430,8 +1466,12 @@ function TurtleSweepPanel({
         `}
       `}
       ${resultError && html`<div class="field-hint" style=${{ color: "var(--loss)" }}>${resultError}</div>`}
-      ${surfaceHref && html`
-        <a class="btn sm" href=${surfaceHref} target="_blank" rel="noreferrer">Open Plotly surface</a>
+      ${(surfaceHref || rowsHref || equityHref) && html`
+        <div class="row" style=${{ gap: 8, flexWrap: "wrap" }}>
+          ${surfaceHref && html`<a class="btn sm" href=${surfaceHref} target="_blank" rel="noreferrer">Open Plotly surface</a>`}
+          ${rowsHref && html`<a class="btn sm" href=${rowsHref} target="_blank" rel="noreferrer">Open rows artifact</a>`}
+          ${equityHref && html`<a class="btn sm" href=${equityHref} target="_blank" rel="noreferrer">Open equity curves</a>`}
+        </div>
       `}
       ${investRows.length > 0 && html`
         <div class="col" style=${{ gap: 8 }}>

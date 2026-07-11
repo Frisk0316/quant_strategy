@@ -415,6 +415,7 @@ window.API = (function () {
     triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
     fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),
     fetchBacktestSweepJobs:   ()        => _get("/api/backtest/sweep/jobs"),
+    cancelBacktestSweep:      (jobId)   => _post("/api/backtest/sweep/cancel/" + jobId, {}),
     fetchBacktestSweepResult: (sweepId) => _getLarge("/api/backtest/sweep/result/" + encodeURIComponent(sweepId)),
     backtestSweepArtifactUrl: (sweepId, name) => "/api/backtest/sweep/artifact/" + encodeURIComponent(sweepId) + "/" + encodeURIComponent(name),
     triggerDifferentialValidation: (id, body) => _post("/api/backtest/" + id + "/differential-validation/run", body),

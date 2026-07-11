@@ -248,11 +248,108 @@ def test_turtle_sweep_endpoint_queues_turtle_job(tmp_path, monkeypatch) -> None:
     assert status.json()["completed_count"] == 2
 
 
+def test_turtle_sweep_endpoint_accepts_full_reference_grid_cap(tmp_path, monkeypatch) -> None:
+    routes._sweep_jobs.clear()
+    captured: dict[str, float] = {}
+
+    def fake_turtle_sweep_job(job_id, req, sweep_id, results_dir):
+        captured["invest_pct"] = routes._turtle_params_from_request(req).invest_pct
+        routes._sweep_jobs[job_id].update({"status": "done", "progress": 100, "sweep_id": sweep_id})
+
+    monkeypatch.setattr(routes, "_run_turtle_sweep_job", fake_turtle_sweep_job)
+    client = _client(tmp_path)
+
+    response = client.post(
+        "/api/backtest/sweep",
+        json={
+            "strategy": "turtle",
+            "symbols": ["BTC-USDT-SWAP"],
+            "bar": "1D",
+            "max_combinations": 115_200,
+            "parameter_grid": {
+                "enter_term_sys1": "5~30",
+                "enter_term_sys2": "31~60",
+                "leave_term_sys1": "5~20",
+                "leave_term_sys2": "5~25",
+                "single_sys_unit_limit": 4,
+                "both_sys_unit_limit": 4,
+                "own_capital": 10_000,
+                "invest_pct": "25",
+                "min_position": 0.0001,
+                "fee": 0.003,
+                "atr_period": 20,
+            },
+            "run_finalists": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["combination_count"] == 115_200
+    assert payload["estimate"]["valid_combinations"] == 115_200
+    assert captured["invest_pct"] == pytest.approx(0.25)
+
+
+def test_turtle_sweep_cancel_endpoint_marks_running_job(tmp_path) -> None:
+    routes._sweep_jobs.clear()
+    client = _client(tmp_path)
+    routes._sweep_jobs["job1"] = {"job_id": "job1", "status": "running", "progress": 50}
+
+    response = client.post("/api/backtest/sweep/cancel/job1")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelling"
+    assert routes._sweep_jobs["job1"]["cancel_requested"] is True
+
+
+def test_turtle_sweep_job_keeps_summary_json_modest(tmp_path, monkeypatch) -> None:
+    routes._sweep_jobs.clear()
+    job_id = "job1"
+    sweep_id = "summary_unit"
+    routes._sweep_jobs[job_id] = {"job_id": job_id, "status": "running", "progress": 0}
+    req = routes.ParameterSweepRequest(
+        strategy="turtle",
+        symbols=["BTC-USDT-SWAP"],
+        bar="1D",
+        parameter_grid={
+            "enter_term_sys1": 6,
+            "enter_term_sys2": 8,
+            "leave_term_sys1": 5,
+            "leave_term_sys2": 6,
+        },
+        initial_equity=1_000,
+    )
+    daily = pd.DataFrame(
+        [
+            (f"2024-01-{day:02d}", 10, 10 + (day / 10), 9, 10 + (day / 20))
+            for day in range(1, 13)
+        ],
+        columns=["date", "open", "high", "low", "close"],
+    )
+    daily["date"] = pd.to_datetime(daily["date"])
+    monkeypatch.setattr(routes, "_turtle_load_daily_candles", lambda req, symbol: (daily, []))
+
+    routes._run_turtle_sweep_job(job_id, req, sweep_id, tmp_path)
+
+    summary = json.loads((tmp_path / "turtle_sweeps" / sweep_id / "summary.json").read_text(encoding="utf-8"))
+    assert routes._sweep_jobs[job_id]["status"] == "done"
+    assert "rows" not in summary
+    assert "equity_curves" not in summary
+    assert summary["artifacts"]["rows"] == "rows.csv"
+
+
 def test_turtle_sweep_result_and_artifact_endpoints(tmp_path) -> None:
     sweep_dir = tmp_path / "turtle_sweeps" / "sweep_unit"
     sweep_dir.mkdir(parents=True)
     (sweep_dir / "summary.json").write_text(
-        json.dumps({"sweep_id": "sweep_unit", "strategy": "turtle"}),
+        json.dumps(
+            {
+                "sweep_id": "sweep_unit",
+                "strategy": "turtle",
+                "free_params": ["enter_term_sys1", "leave_term_sys1"],
+                "artifacts": {"rows": "rows.csv"},
+            }
+        ),
         encoding="utf-8",
     )
     pd.DataFrame([{"rank": 1, "final_equity": 1010.0}]).to_csv(sweep_dir / "rows.csv", index=False)
@@ -264,5 +361,37 @@ def test_turtle_sweep_result_and_artifact_endpoints(tmp_path) -> None:
 
     assert result.status_code == 200
     assert result.json()["strategy"] == "turtle"
+    assert result.json()["rows"] == [{"rank": 1, "final_equity": 1010.0}]
     assert rows.status_code == 200
     assert rows.json() == [{"rank": 1, "final_equity": 1010.0}]
+
+
+def test_turtle_sweep_result_skips_large_inline_artifacts(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(routes, "TURTLE_SWEEP_INLINE_ROW_LIMIT", 1)
+    sweep_dir = tmp_path / "turtle_sweeps" / "sweep_large"
+    sweep_dir.mkdir(parents=True)
+    (sweep_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "sweep_id": "sweep_large",
+                "strategy": "turtle",
+                "free_params": ["enter_term_sys1", "leave_term_sys1"],
+                "artifacts": {"rows": "rows.csv"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {"rank": 1, "final_equity": 1010.0},
+            {"rank": 2, "final_equity": 1009.0},
+        ]
+    ).to_csv(sweep_dir / "rows.csv", index=False)
+
+    response = _client(tmp_path).get("/api/backtest/sweep/result/sweep_large")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "rows" not in payload
+    assert payload["artifact_row_counts"]["rows"] == 2
+    assert "rows.csv has 2 rows" in payload["inline_omitted"]["rows"]
