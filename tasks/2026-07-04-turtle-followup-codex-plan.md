@@ -1,3 +1,13 @@
+---
+status: current
+type: task
+owner: human
+created: 2026-07-04
+last_reviewed: 2026-07-04
+expires: none
+superseded_by: null
+---
+
 # Turtle follow-up — Codex implementation plan (2026-07-04)
 
 Author: Claude (planning). Executor: Codex. Read `AGENTS.md` first, then each

@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-03
+last_reviewed: 2026-07-03
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: Funding XS Dispersion Stage 3 Checkpoint - 2026-07-03
 
 ## Goal (one sentence)

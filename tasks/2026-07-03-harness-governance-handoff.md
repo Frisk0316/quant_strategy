@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-03
+last_reviewed: 2026-07-03
+expires: none
+superseded_by: null
+---
+
 # Session + Context Handoff: AI harness governance install — 2026-07-03
 
 Combined handoff per new CLAUDE.md session-end step 3.

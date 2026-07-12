@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-04
+last_reviewed: 2026-07-04
+expires: none
+superseded_by: null
+---
+
 # Session Handoff: Turtle follow-up Codex pass - 2026-07-04
 
 ## Implementation summary

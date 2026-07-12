@@ -9,7 +9,7 @@ SOURCE_PROVENANCE_ARGS ?= --help
 
 FRONTEND_JS = frontend/data.js frontend/tweaks-panel.js frontend/charts.js frontend/view-config.js frontend/view-results.js frontend/view-trades.js frontend/view-backtest.js frontend/view-validation.js frontend/view-glossary.js frontend/view-manual.js frontend/view-progress.js frontend/app.js
 
-.PHONY: setup dev test-unit test-integration test-all lint check-config validate-data frontend-check strategy-signal-validation source-provenance-validation engine-consistency-smoke api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
+.PHONY: setup dev test-unit test-integration test-lab test-all lint check-config validate-data frontend-check strategy-signal-validation source-provenance-validation engine-consistency-smoke api-smoke backtest-smoke smoke docs-check docs-impact verify verify-full all
 
 setup:
 	$(PYTHON) -m pip install -e ".[dev,backtest]"
@@ -22,6 +22,10 @@ test-unit:
 
 test-integration:
 	$(PYTEST) tests/integration/ -v --tb=short
+
+# Separate invocation keeps the lab package's imports out of the parent suite.
+test-lab:
+	$(PYTEST) research/crypto-alpha-lab/tests -q -p no:cacheprovider
 
 test-all:
 	$(PYTEST) tests/ -v --tb=short
@@ -69,11 +73,12 @@ smoke: frontend-check api-smoke backtest-smoke
 docs-check:
 	$(PYTHON) scripts/docs/check_doc_metadata.py
 	$(PYTHON) scripts/docs/check_feature_map_links.py
+	$(PYTHON) scripts/docs/check_ledger_consistency.py
 
 docs-impact:
 	$(PYTHON) scripts/docs/check_doc_impact.py
 
-verify: lint docs-check frontend-check check-config test-unit api-smoke backtest-smoke
+verify: lint docs-check frontend-check check-config test-unit test-lab api-smoke backtest-smoke
 
 verify-full: verify test-integration validate-data
 

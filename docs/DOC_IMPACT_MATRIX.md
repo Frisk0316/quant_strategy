@@ -40,8 +40,10 @@ Legend:
 
 A11 is not represented as a changed-file rule in `check_doc_impact.py`: research
 artifacts may be gitignored or external, so a diff-only rule would create false
-assurance. Ledger cross-consistency needs a dedicated validator; until that task
-lands, A11 remains an explicit review requirement.
+assurance. Ledger cross-consistency (H↔E ID links, family agreement, K-budget
+bounds) is machine-checked by `scripts/docs/check_ledger_consistency.py`
+(part of `make docs-check` since 2026-07-12). Artifact existence/content is
+still NOT machine-checked and remains an explicit review requirement.
 
 ## Rules of use
 

@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-12
+last_reviewed: 2026-07-12
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: Commit and push outstanding work — 2026-07-12
 
 ## Goal (one sentence)

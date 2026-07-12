@@ -8,7 +8,7 @@ workstreams:
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration]
     current: integration
     state: "2026-07-12 P0.1-P0.3 implemented and Claude-review APPROVED (tasks/2026-07-12-claude-p0-review.md). P0.4 Option B EXECUTED (Claude, user-authorized): P0 work committed as c84f5a1, origin/main merged with zero content delta and no conflicts, integration commit a950025 pushed, PR #9 opened with the documented integration exception. verify-full equivalent on a950025: unit 768 passed/1 Windows symlink skip, integration 38 passed, Ruff/docs/frontend/config/backtest-smoke green; api-smoke SKIP (no running server); validate-data FAIL is the pre-existing thin local parquet mirror (missing candles_1H/funding parquet), not merge-caused."
-    next: "Codex reviews/merges PR #9; then P1.1 governance enforcement and P1.2 documentation cleanup (Claude executing per 2026-07-12 user authorization, Codex reviews)."
+    next: "Codex reviews/merges PR #9, then reviews branch claude/p1-governance-docs (P1.1 governance enforcement: test-lab in verify, A11 ledger validator in docs-check, tasks/ lifecycle frontmatter enforcement, overview coverage manual step; P1.2 docs cleanup: README 897->101 with detail moved verbatim to RUNBOOK, completed plans archived, CHANGELOG backfilled 07-05/07-07/07-11). Remaining Codex P1: liquidation unattended mode."
     links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
     updated: 2026-07-12
 
