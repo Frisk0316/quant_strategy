@@ -119,6 +119,15 @@ substitution path remains; the Change Manifest and `docs-impact --strict` pass.
 
 ### P0.4 — Integrate or split the long-running feature branch
 
+**Status:** [x] EXECUTED 2026-07-12 by Claude under explicit user authorization
+(Codex to review). P0 work committed (`c84f5a1`); `origin/main` merged with
+zero content delta and no conflicts (main's PR #1–#8 content was already in
+branch history); integration commit `a950025` pushed; PR #9 opened with the
+documented integration exception. verify-full equivalent on `a950025`: unit
+768 passed/1 skipped, integration 38 passed, Ruff/docs/frontend/config/
+backtest-smoke pass; api-smoke SKIP (no server); validate-data FAIL is the
+pre-existing thin local parquet mirror, not merge-caused. No force-push.
+
 **Owner:** human; Codex supplies evidence only unless asked to perform Git actions.
 
 **Evidence:** current branch is 96 commits ahead and 5 behind `origin/main`, far

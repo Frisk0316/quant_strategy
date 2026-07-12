@@ -15,10 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Branch/HEAD: `codex/pipeline-batch1-stage3` at `7636dd9`, tracking the matching
-  origin branch. The branch was clean at audit start and was 96 commits ahead / 5
-  behind `origin/main`; the current tree contains the project-audit repair plus
-  the user-approved P0 implementation. Do not discard either scope.
+- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025` (integration merge),
+  tracking the matching origin branch; working tree is clean. The audit repair
+  plus approved P0 implementation are committed as `c84f5a1`; `origin/main` was
+  merged in with zero content delta and no conflicts. PR #9 (integration
+  exception, branch → main) is open awaiting Codex review; do not force-push.
 - No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
   `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
   authority in the documented order.
@@ -77,9 +78,13 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   privilege), integration `38 passed`, Ruff and `docs-impact --strict` pass.
   The `delete_run` indentation minor is fixed; the symlink regression still
   skips on Windows without privilege and remains active for CI/Linux.
-- P0.4 Option B is approved but not executed: merge the five main-only commits
-  into the branch, resolve conflicts, use one documented integration-exception
-  PR, and run `verify-full` on the integration commit. No force-push.
+- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
+  merged into the branch (zero delta — main's PR #1–#8 content was already in
+  branch history), integration commit `a950025`, PR #9 opened with the
+  documented exception. verify-full equivalent on the integration commit: Ruff,
+  docs, frontend, config, unit 768/1 skip, integration 38, backtest smoke all
+  pass; api-smoke SKIP (no server); validate-data FAIL is the pre-existing thin
+  local parquet mirror (no `candles_1H`/`funding` parquet), not merge-caused.
 - Governance follow-ups: separate lab test in `verify`, A11 ledger validator,
   task lifecycle scope, stale README/ADR/overview cleanup.
 - The shelved OI research runner has the F36 cost-lag bug class. It is not fixed
@@ -98,9 +103,9 @@ P0.1–P0.3 are CLOSED: Claude review approved all three on 2026-07-12 and reran
 the blocked verification (full unit 768/1 skipped, integration 38, Ruff,
 docs-impact strict — all pass).
 
-1. Execute the already-approved P0.4 Option B integration as a separate Git
-   task, with `verify-full` on the integration commit.
-2. Complete P1.1 governance enforcement and P1.2 documentation cleanup.
+1. Codex reviews/merges PR #9 (P0.4 integration exception).
+2. Complete P1.1 governance enforcement and P1.2 documentation cleanup
+   (Claude executing per 2026-07-12 user authorization; Codex reviews).
 3. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 remains unauthorized.
 4. Pending fact: the user creates the OKX Demo key.
 

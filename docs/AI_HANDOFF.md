@@ -23,14 +23,11 @@ authorized by this handoff.
 
 ## Branch and working tree
 
-- Branch/HEAD: `codex/pipeline-batch1-stage3` at `7636dd9`, tracking
-  `origin/codex/pipeline-batch1-stage3`.
-- Audit-start state: clean; relative to `origin/main`: 96 commits ahead, 5
-  behind. P0.4 Option B is approved but not executed: merge the five main-only
-  commits first, then use one documented integration-exception PR.
-- Current uncommitted diff contains the project-audit repair and the approved P0
-  implementation. Do not overwrite either scope; commit/push/merge only on
-  explicit user request.
+- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025`, tracking origin;
+  tree clean. P0 work committed as `c84f5a1` and pushed.
+- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
+  merged (zero content delta, no conflicts); PR #9 open — documented
+  integration-exception merge to main, awaiting Codex review. No force-push.
 
 ## Current implementation state
 
@@ -69,9 +66,11 @@ authorized by this handoff.
    position/PnL formulas are unchanged.
 3. **Closed - venue fail closed (F31/I33):** omitted/blank uses config
    primary; any explicit unknown venue returns 400 before the job queue.
-4. **Open - integration:** Option B is approved but not executed. Merge the five
-   main-only commits first, use one documented integration-exception PR, run
-   `verify-full`, and never force-push.
+4. **Closed - integration (P0.4):** Option B executed 2026-07-12; PR #9 carries
+   the documented exception. verify-full equivalent on `a950025`: unit 768/1
+   skip, integration 38, Ruff/docs/frontend/config/backtest-smoke pass;
+   api-smoke SKIP (no server); validate-data FAIL is the pre-existing thin
+   parquet mirror, not merge-caused. Codex review/merge of PR #9 pending.
 5. **Open - F36:** the shelved OI runner posts turnover cost on signal day even
    though positions/funding start t+1. Do not reuse E-037 as promotion evidence.
 
@@ -114,9 +113,8 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    and reran the blocked verification: full unit `768 passed, 1 skipped`
    (Windows symlink privilege), integration `38 passed`, Ruff pass,
    `docs-impact --strict` pass. Two minor findings, none blocking.
-2. P0.4 Option B — merge the 5 main-only commits into the
-   branch, one merge PR with a documented integration exception, `verify-full`
-   on the integration commit.
+2. DONE 2026-07-12: P0.4 Option B executed by Claude (user-authorized) —
+   integration commit `a950025`, PR #9 open for Codex review.
 3. Codex P1 work per the recorded decisions: liquidation unattended mode,
    lifecycle checker (new tasks/ files only), A11 validator, lab test target.
 4. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
