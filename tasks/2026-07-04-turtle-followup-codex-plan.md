@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: task
 owner: human
 created: 2026-07-04

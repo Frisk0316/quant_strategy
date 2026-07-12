@@ -545,7 +545,12 @@ Replay CPCV  combos=27 paths=15  DSR=0.961  PSR=0.974
 Replay WF    windows=32  mean_oos_sharpe=0.847
 ```
 
-**Gate:** `DSR >= 0.95` and `mean_oos_sharpe > 0` required before demo trading.
+**Gate:** the printed numbers alone authorize nothing. The binding
+promotion/demo gates are defined in `docs/ai_collaboration.md` (CPCV with
+honest `n_trials` and `DSR >= 0.95` **and** `PSR >= 0.95`, artifact
+`validation_status`, idealized-fill exclusion, differential validation,
+`ct_val` provenance, explicit user approval). This summary does not replace
+them.
 The result JSON includes `backtest_execution` showing the fill model parameters used.
 
 Results can be inspected in the dashboard (see "Trading Engine" and
@@ -1012,13 +1017,20 @@ python scripts/run_calibration_apply.py --apply --min-fills 50
 
 ## Live Deployment Gates
 
-**Required before enabling `system.mode: live`:**
+The **authoritative** gate definition is the Deployment Gates section of
+`docs/ai_collaboration.md` (walk-forward/CPCV with honest `n_trials`,
+`DSR >= 0.95` and `PSR >= 0.95`, idealized-fill exclusion, differential
+validation, `ct_val` source check, replay/shadow evidence, and explicit user
+approval at each stage). The engine-level operational checklist below is a
+subset and never overrides it. The deprecated bar-proxy backtest is NOT a
+gate and must not be cited as promotion evidence.
 
-| Gate | Requirement |
+**Engine-level operational checklist before `system.mode: live`:**
+
+| Step | Requirement |
 | ---- | ----------- |
-| Bar-proxy CPCV | DSR ≥ 0.95 (N=27 research trials) |
-| Replay CPCV (full) | DSR ≥ 0.95 (n_splits=6, k_test=2) with calibrated fill model |
-| Demo trading | ≥ 4 weeks, calibration data collected |
+| Replay CPCV (full) | passing per `docs/ai_collaboration.md` (DSR and PSR ≥ 0.95, honest n_trials) with calibrated fill model |
+| Demo trading | ≥ 4 weeks, calibration data collected, user-approved |
 | Shadow mode | ≥ 2 weeks, sim PnL tracks demo PnL within tolerance |
 | Human approval | Explicit sign-off required — engine will not self-promote |
 
@@ -1206,7 +1218,7 @@ backtest:
 
 - **Clock sync**: REST calls sync OKX server time every 5 minutes to avoid error 50102 (>30s drift).
 - **Post-only hard rule**: Error 51026 is logged and dropped; never retried as taker. This preserves maker-only execution semantics in both backtest and live.
-- **Contract value gate**: `validate_ct_val()` raises `ValueError` if `ctVal > 1`, guarding against fat-finger notional errors. Adjust allowlist when expanding beyond BTC/ETH.
+- **Contract value guard**: `validate_ct_val()` accepts only finite `0 < ct_val <= 1e7` and raises `ValueError` otherwise (ADR-0003 amendment, 2026-07-12). This is a corruption guard; venue-matched provenance is enforced separately (R1.4/I16).
 - **WS reconnect**: `CircuitBreaker` tracks reconnect count; halts strategies if threshold exceeded within the rolling window.
 - **OKX book CRC32**: `OkxBook` stores raw string tuples for exact CRC32 validation. Sequence gaps or checksum mismatches raise `RuntimeError` → reconnect.
 - **Feed storage**: Tick data written to Parquet by default; TimescaleDB backend available via `storage.backend: timescaledb` in `settings.yaml`.

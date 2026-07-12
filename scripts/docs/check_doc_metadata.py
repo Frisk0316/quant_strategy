@@ -10,10 +10,77 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / "docs"
 TASKS_DIR = REPO_ROOT / "tasks"
-# User decision 2026-07-12: new tasks/ files require lifecycle frontmatter;
-# dated files before this cutoff are historical records and are never scanned.
-TASKS_CUTOFF = "2026-07-01"
-_TASK_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
+# User decision 2026-07-12: every new tasks/ file requires lifecycle
+# frontmatter. The pre-policy files below are historical records and are
+# permanently exempt. This list is FROZEN — do not add entries; a file created
+# later with a backdated name is still enforced because it is not listed here.
+TASKS_LEGACY_EXEMPT = frozenset({
+    "2026-06-17-binance-bybit-base-unit-ct-val-context-handoff.md",
+    "2026-06-17-binance-bybit-base-unit-ct-val-session-handoff.md",
+    "2026-06-17-multi-venue-instrument-specs-context-handoff.md",
+    "2026-06-17-multi-venue-instrument-specs-session-handoff.md",
+    "2026-06-18-adr0007-p1-task6-closeout-context-handoff.md",
+    "2026-06-18-adr0007-p1-task6-closeout-session-handoff.md",
+    "2026-06-18-adr0007-source-scope-followup-context-handoff.md",
+    "2026-06-18-adr0007-source-scope-followup-session-handoff.md",
+    "2026-06-18-db-parity-close-only-context-handoff.md",
+    "2026-06-18-db-parity-close-only-session-handoff.md",
+    "2026-06-18-task4-db-parity-exchange-scope-context-handoff.md",
+    "2026-06-18-task4-db-parity-exchange-scope-session-handoff.md",
+    "2026-06-22-binance-venue-spec-sync-context-handoff.md",
+    "2026-06-22-binance-venue-spec-sync-session-handoff.md",
+    "2026-06-22-fast-artifact-rows-context-handoff.md",
+    "2026-06-22-fast-artifact-rows-session-handoff.md",
+    "2026-06-22-fill-all-yzoom-sparse-trading-context-handoff.md",
+    "2026-06-22-fill-all-yzoom-sparse-trading-session-handoff.md",
+    "2026-06-22-market-data-queue-delete-context-handoff.md",
+    "2026-06-22-market-data-queue-delete-session-handoff.md",
+    "2026-06-22-validation-lab-db-only-run-context-handoff.md",
+    "2026-06-22-validation-lab-db-only-run-session-handoff.md",
+    "2026-06-22-validation-lab-report-context-handoff.md",
+    "2026-06-22-validation-lab-report-session-handoff.md",
+    "2026-06-23-funding-carry-venue-fallback-context-handoff.md",
+    "2026-06-23-funding-carry-venue-fallback-session-handoff.md",
+    "2026-06-23-market-data-coverage-fast-path-context-handoff.md",
+    "2026-06-23-market-data-coverage-fast-path-session-handoff.md",
+    "2026-06-23-validation-lab-report-refresh-context-handoff.md",
+    "2026-06-23-validation-lab-report-refresh-session-handoff.md",
+    "2026-06-23-validation-report-audience-rewrite-context-handoff.md",
+    "2026-06-23-validation-report-audience-rewrite-session-handoff.md",
+    "2026-06-23-xs-momentum-d3-review.md",
+    "2026-06-23-xs-momentum-phase-c-context-handoff.md",
+    "2026-06-23-xs-momentum-phase-c-session-handoff.md",
+    "2026-06-23-xs-momentum-universe-context-handoff.md",
+    "2026-06-23-xs-momentum-universe-session-handoff.md",
+    "2026-06-23-xs-momentum-validation-context-handoff.md",
+    "2026-06-23-xs-momentum-validation-session-handoff.md",
+    "2026-06-24-cpcv-path-return-retention-honest-ntrials-task.md",
+    "2026-06-24-dsr-allstrategy-recheck-task.md",
+    "2026-06-24-dsr-computation-fix-task.md",
+    "2026-06-24-xs-momentum-lookahead-fix-task.md",
+    "2026-06-24-xs-momentum-phase-c-review.md",
+    "2026-06-24-xs-momentum-portfolio-vol-task.md",
+    "2026-06-25-manual-progress-route-context-handoff.md",
+    "2026-06-25-manual-progress-route-session-handoff.md",
+    "2026-06-25-pipeline-batch1-stage3-context-handoff.md",
+    "2026-06-25-pipeline-batch1-stage3-session-handoff.md",
+    "2026-06-25-pipeline-batch1-strategy-impl-task.md",
+    "2026-06-25-progress-panel-context-handoff.md",
+    "2026-06-25-progress-panel-session-handoff.md",
+    "2026-06-25-s7-spot-canonical-data-task.md",
+    "2026-06-29-c3-sentiment-stage3-context-handoff.md",
+    "2026-06-29-c3-sentiment-stage3-session-handoff.md",
+    "2026-06-29-c3-sentiment-stage3-verification-context-handoff.md",
+    "2026-06-29-c3-sentiment-stage3-verification-session-handoff.md",
+    "2026-06-29-c3-stage2-pass-summary-fix-task.md",
+    "2026-06-29-stage2-feasibility-automation-context-handoff.md",
+    "2026-06-29-stage2-feasibility-automation-session-handoff.md",
+    "2026-06-29-work-log.md",
+    "2026-06-30-idea-generator-context-handoff.md",
+    "2026-06-30-idea-generator-session-handoff.md",
+    "2026-06-30-xs-trials-and-idea-probe-context-handoff.md",
+    "2026-06-30-xs-trials-and-idea-probe-session-handoff.md",
+})
 
 REQUIRED_FIELDS = {
     "status",
@@ -73,14 +140,16 @@ def _markdown_files() -> list[Path]:
 
 
 def _task_files() -> list[Path]:
-    """Dated tasks/ files at or after the cutoff; templates/legacy exempt."""
+    """All tasks/ markdown recursively; templates and frozen legacy exempt."""
     if not TASKS_DIR.is_dir():
         return []
     selected = []
-    for path in sorted(TASKS_DIR.glob("*.md")):
-        match = _TASK_DATE_RE.match(path.name)
-        if match and match.group(1) >= TASKS_CUTOFF:
-            selected.append(path)
+    for path in sorted(TASKS_DIR.rglob("*.md")):
+        if "TEMPLATE" in path.name:
+            continue
+        if path.parent == TASKS_DIR and path.name in TASKS_LEGACY_EXEMPT:
+            continue
+        selected.append(path)
     return selected
 
 

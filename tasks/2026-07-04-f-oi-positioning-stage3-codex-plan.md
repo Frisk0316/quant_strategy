@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: plan
 owner: ai
 created: 2026-07-04

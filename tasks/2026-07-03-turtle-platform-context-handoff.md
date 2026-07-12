@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: handoff
 owner: claude
 created: 2026-07-03

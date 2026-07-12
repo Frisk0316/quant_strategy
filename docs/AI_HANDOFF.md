@@ -23,8 +23,10 @@ authorized by this handoff.
 
 ## Branch and working tree
 
-- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025`, tracking origin;
-  tree clean. P0 work committed as `c84f5a1` and pushed.
+- Branch/HEAD: `codex/pipeline-batch1-stage3`, tracking origin; tree clean.
+  Tip contains: P0 work (`c84f5a1`), zero-delta integration merge (`a950025`),
+  the merged P1 governance batch (PR #10, `00c7a51`), and the 2026-07-13 Codex
+  review fixes.
 - P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
   merged (zero content delta, no conflicts); PR #9 open — documented
   integration-exception merge to main, awaiting Codex review. No force-push.
@@ -114,7 +116,9 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    (Windows symlink privilege), integration `38 passed`, Ruff pass,
    `docs-impact --strict` pass. Two minor findings, none blocking.
 2. DONE 2026-07-12: P0.4 Option B executed by Claude (user-authorized) —
-   integration commit `a950025`, PR #9 open for Codex review.
+   integration commit `a950025`, PR #9 open for Codex review. Codex
+   review fixes (ct_val enforcement closure and governance-tooling hardening)
+   are committed on the same branch 2026-07-13.
 3. DONE 2026-07-12 (Claude, user-authorized; Codex review pending on branch
    `claude/p1-governance-docs`): P1.1 — `make test-lab` wired into `verify`,
    A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,

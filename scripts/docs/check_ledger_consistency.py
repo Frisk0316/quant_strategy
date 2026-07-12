@@ -73,30 +73,52 @@ def main() -> int:
         except ValueError:
             errors.append(f"k-budget {family}: non-integer K values {used!r}/{limit!r}")
 
+    # Empty tables must fail loud: an unreadable/reformatted ledger silently
+    # passing would defeat the whole check.
+    real_hypotheses = {h for h in hypotheses if h not in TEMPLATE_IDS}
+    real_experiments = {e for e in experiments if e not in TEMPLATE_IDS}
+    if not real_hypotheses:
+        errors.append("ledger: no non-template hypothesis rows parsed")
+    if not real_experiments:
+        errors.append("registry: no non-template experiment rows parsed")
+
     # H -> E links. "reserved" experiments are intentionally absent from the
     # registry until their probe runs (e.g. E-038 per the 2026-07-12 decision).
+    # The reserved annotation only covers the ID it directly follows: it is
+    # searched between this E-ID and the next E-ID (or end of cell), so it can
+    # never leak onto a neighboring experiment ID.
     for h_id, h in hypotheses.items():
         if h_id in TEMPLATE_IDS:
             continue
         text = h["experiments_text"]
-        for e_id in E_ID_RE.findall(text):
-            after = text.split(e_id, 1)[1][:30].lower()
-            if "reserved" in after and e_id not in experiments:
+        matches = list(E_ID_RE.finditer(text))
+        for idx, match in enumerate(matches):
+            e_id = match.group(0)
+            if e_id in experiments:
                 continue
-            if e_id not in experiments:
-                errors.append(f"ledger {h_id}: references {e_id} not present in registry")
+            tail_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+            annotation = text[match.end():tail_end].lower()
+            if "reserved" in annotation:
+                continue
+            errors.append(f"ledger {h_id}: references {e_id} not present in registry")
 
-    # E -> H links and family agreement.
+    # E -> H links, family agreement, and the reverse listing requirement:
+    # every registry experiment must be listed on its hypothesis row.
     for e_id, e in experiments.items():
         if e_id in TEMPLATE_IDS:
             continue
         h_ref = e["hypothesis"]
         if h_ref not in hypotheses:
             errors.append(f"registry {e_id}: hypothesis {h_ref!r} not present in ledger")
-        elif e["family"] != hypotheses[h_ref]["family"]:
+            continue
+        if e["family"] != hypotheses[h_ref]["family"]:
             errors.append(
                 f"registry {e_id}: family {e['family']!r} disagrees with "
                 f"ledger {h_ref} family {hypotheses[h_ref]['family']!r}"
+            )
+        if e_id not in E_ID_RE.findall(hypotheses[h_ref]["experiments_text"]):
+            errors.append(
+                f"registry {e_id}: not listed in ledger {h_ref} Experiment(s) column"
             )
 
     # Family coverage and K bounds.
@@ -104,7 +126,13 @@ def main() -> int:
     families_seen |= {e["family"] for e_id, e in experiments.items() if e_id not in TEMPLATE_IDS}
     for family in sorted(families_seen - set(k_budget) - TEMPLATE_IDS):
         errors.append(f"family {family}: missing from the K-budget table")
+    # K_limit = 2 is the documented pipeline stop condition; the pipeline
+    # consumes these values, so a relaxed or negative row is an error.
     for family, (used, limit) in sorted(k_budget.items()):
+        if used < 0:
+            errors.append(f"k-budget {family}: K_used {used} is negative")
+        if limit != 2:
+            errors.append(f"k-budget {family}: K_limit {limit} differs from the documented limit 2")
         if used > limit:
             errors.append(f"k-budget {family}: K_used {used} exceeds K_limit {limit}")
 

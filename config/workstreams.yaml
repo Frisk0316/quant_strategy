@@ -17,7 +17,7 @@ workstreams:
     milestones: [coverage_query, single_server, private_ws_auth]
     current: private_ws_auth
     state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. The pre-existing 127.0.0.1:8080 listener (PID 23696 during audit) timed out and was left untouched; temporary 8081 smoke passed. Demo private WS still returns OKX 60005 Invalid apiKey."
-    next: "Inspect/restart the user-owned 8080 process and configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
+    next: "Port 8080 is abandoned per the 2026-07-12 user decision (leave the user-owned PID untouched; run servers on another port). Configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
     updated: 2026-07-12
 

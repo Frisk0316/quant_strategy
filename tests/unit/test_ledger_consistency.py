@@ -71,3 +71,39 @@ def test_k_over_limit_fails(monkeypatch, tmp_path, capsys):
 
 def test_real_repo_ledgers_are_consistent():
     assert mod.main() == 0
+
+
+def test_registry_experiment_must_be_listed_on_hypothesis_row(monkeypatch, tmp_path, capsys):
+    registry = REGISTRY_OK + "| E-005 | 2026-07-02 | H-001 | F-A | s | 1 | a | o | n |\n"
+    assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
+    assert "not listed" in capsys.readouterr().out
+
+
+def test_reserved_annotation_does_not_leak_to_neighbor_id(monkeypatch, tmp_path, capsys):
+    # E-003 is missing and NOT reserved; E-002's reserved note must not cover it.
+    ledger = LEDGER_OK.replace("E-001; E-002 (reserved, probe)", "E-001; E-003, E-002 (reserved, probe)")
+    assert _run(monkeypatch, tmp_path, ledger, REGISTRY_OK) == 1
+    out = capsys.readouterr().out
+    assert "E-003" in out
+
+
+def test_empty_ledger_fails(monkeypatch, tmp_path, capsys):
+    assert _run(monkeypatch, tmp_path, "", REGISTRY_OK) == 1
+    assert "no non-template hypothesis rows" in capsys.readouterr().out
+
+
+def test_empty_registry_fails(monkeypatch, tmp_path, capsys):
+    assert _run(monkeypatch, tmp_path, LEDGER_OK, "") == 1
+    assert "no non-template experiment rows" in capsys.readouterr().out
+
+
+def test_k_limit_must_be_documented_limit_two(monkeypatch, tmp_path, capsys):
+    registry = REGISTRY_OK.replace("| F-A | 1 | 2 |", "| F-A | 1 | 999 |")
+    assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
+    assert "differs from the documented limit" in capsys.readouterr().out
+
+
+def test_negative_k_used_fails(monkeypatch, tmp_path, capsys):
+    registry = REGISTRY_OK.replace("| F-A | 1 | 2 |", "| F-A | -1 | 2 |")
+    assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
+    assert "negative" in capsys.readouterr().out

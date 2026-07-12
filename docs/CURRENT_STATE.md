@@ -15,12 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Branch `codex/pipeline-batch1-stage3` at `f1aac94` holds the committed P0
-  hardening (`c84f5a1`) plus the zero-delta `origin/main` integration merge
-  (`a950025`). PR #9 (documented integration exception, branch → main) is open
-  awaiting Codex review; do not force-push.
-- Branch `claude/p1-governance-docs` (off `f1aac94`) holds the P1.1/P1.2 work
-  below, PR pending Codex review.
+- Branch `codex/pipeline-batch1-stage3` holds: the committed P0 hardening
+  (`c84f5a1`), the zero-delta `origin/main` integration merge (`a950025`), the
+  merged P1 governance batch (PR #10 → `00c7a51`), and the 2026-07-13 Codex
+  review fixes. PR #9 (documented integration exception, branch → main) is
+  open awaiting Codex re-review; do not force-push.
 - No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
   `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
   authority in the documented order.
@@ -31,7 +30,9 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 - P0.1-P0.3 hardening implemented and Claude-review APPROVED: artifact-ID
   containment, `ct_val` finite-positive `<=1e7`, venue fail-closed. No PnL
-  formula or existing artifact changed.
+  formula or existing artifact changed. 2026-07-13: Codex review found a P0.2
+  enforcement gap; closed — explicit `ct_val` now passes the shared validator
+  in `PositionLedger` fills and replay caller specs (regressions added).
 - P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): zero-delta merge,
   integration commit verified (unit 768/1 skip, integration 38, Ruff/docs/
   frontend/config/backtest-smoke pass; api-smoke SKIP no server; validate-data
@@ -69,7 +70,7 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 ## Next actions, in order
 
 1. Codex reviews/merges PR #9 (P0.4 integration exception).
-2. Codex reviews the `claude/p1-governance-docs` PR (P1.1 + P1.2).
+2. (merged) PR #10 P1 batch is already in the branch; covered by PR #9 review.
 3. Codex P1.4 implementation: OKX liquidation unattended mode.
 4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
 5. Pending fact: the user creates the OKX Demo key.

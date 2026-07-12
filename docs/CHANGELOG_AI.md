@@ -13,6 +13,33 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-13 - Codex review fixes for PR #9/#10
+
+- Closed the P0.2 enforcement gap Codex found: `PositionLedger._fill_ct_val`
+  now routes every explicitly provided multiplier through the shared
+  `validate_ct_val()` (inf/>1e7 no longer enter positions/PnL; NaN no longer
+  silently becomes 1.0; the fallback applies only to truly absent values), and
+  replay caller-supplied `instrument_specs` are validated before receiving the
+  authoritative `config_override` provenance label. Regressions added; ct_val
+  Change Manifest addendum, R1.5/I34 updated. No PnL formula changed.
+- RUNBOOK corrections: demo/live gate text now defers to
+  `docs/ai_collaboration.md` (DSR and PSR >= 0.95, idealized-fill exclusion,
+  differential validation); the deprecated bar-proxy backtest removed from the
+  live-gate table; the stale `ctVal > 1` note replaced with the finite
+  `<= 1e7` contract.
+- Historical `tasks/` handoffs/plans (June and July) demoted from `current`
+  to `archived`; only the active follow-up backlog and the two latest session
+  handoffs remain `current`.
+- A11 validator hardened against fail-open: registry experiments must be
+  listed on their hypothesis row, `reserved` exemption is scoped to the ID it
+  annotates, empty ledgers fail, `K_used >= 0` and `K_limit == 2` enforced
+  (14 unit tests).
+- Task metadata checker now scans `tasks/` recursively with a frozen 65-name
+  legacy exemption list — undated, backdated, and nested new files are all
+  enforced (8 unit tests).
+- Doc sync: new Human Review Overview for the whole batch, review_index row,
+  workstream 8080-abandoned wording, CHANGELOG commit dates corrected.
+
 ## 2026-07-12 - P0.4 integration executed; P1.1 governance tooling; P1.2 docs cleanup
 
 - P0.4 Option B executed by Claude under explicit user authorization: the P0
@@ -109,14 +136,19 @@ on current state, current goal, do-not-touch constraints, and next actions.
   CPCV 0.7240, DSR 0.7220, PSR 0.8484); later user-ratified SHELVE/no-retry
   with hygiene finding F36 (turnover cost on signal day) recorded 2026-07-12.
 
-## 2026-07-05 - Turtle sweep scale-up, UI polish, weekly worklog
+## 2026-07-11/12 - Turtle sweep scale-up and UI polish (commits)
 
-- Batched resumable turtle sweeps with raised caps (`4ac9a41`), turtle UI
-  polish: warmup hint, invest_pct units, heatmap hover (`61f04e2`), Deribit
-  feed groundwork and research checkpoints (`b9ec041`).
-- Weekly compressed history 2026-06-29→07-05 lives in
-  `tasks/2026-07-05-work-log.md` (pipeline automation, batch-2 closure,
-  governance landing).
+- Turtle UI polish: warmup hint, invest_pct units, heatmap hover (`61f04e2`,
+  2026-07-11); batched resumable turtle sweeps with raised caps (`4ac9a41`,
+  2026-07-12); Deribit feed groundwork and research checkpoints (`b9ec041`,
+  2026-07-12).
+
+## 2026-07-05 - Weekly worklog (2026-06-29→07-05)
+
+- Compressed weekly history lives in `tasks/2026-07-05-work-log.md`: pipeline
+  automation (idea generation → literature scoring → orchestration → Stage-3
+  checkpoint), batch-2 closure, governance framework landing, turtle platform
+  acceptance, OI/DVOL data-source hookup.
 
 ## 2026-07-04 - Turtle Manual Pass + F-FUNDING-XS-DISPERSION Checkpoint Verdict
 

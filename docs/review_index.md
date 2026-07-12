@@ -22,6 +22,7 @@ conflicts with its source docs, the source docs win. See
 
 | Date | Topic | Overview | Status | Risk | Decision required | Human decision |
 |---|---|---|---|---|---|---|
+| 2026-07-13 | P0.4 integration + P1 governance batch + Codex review fixes | [docs/human_overviews/2026-07-13-p0-p1-governance-overview.md](human_overviews/2026-07-13-p0-p1-governance-overview.md) | current | medium | yes | pending (PR #9 merge) |
 | 2026-07-12 | Whole-project diagnosis and P0 closure | [docs/human_overviews/2026-07-12-project-diagnosis-overview.md](human_overviews/2026-07-12-project-diagnosis-overview.md) | current | high | no | approved |
 | 2026-06-25 | Strategy Research Pipeline Stage 1 | [docs/human_overviews/2026-06-25-strategy-research-pipeline-overview.md](human_overviews/2026-06-25-strategy-research-pipeline-overview.md) | deprecated | medium | yes | superseded |
 | 2026-06-25 | In-Dashboard User Manual (使用手冊) | [docs/human_overviews/2026-06-25-user-manual-overview.md](human_overviews/2026-06-25-user-manual-overview.md) | deprecated | low | no | superseded |

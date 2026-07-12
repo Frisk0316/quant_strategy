@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: review
 owner: claude
 created: 2026-07-12
