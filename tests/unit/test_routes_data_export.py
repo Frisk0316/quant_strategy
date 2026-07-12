@@ -330,6 +330,72 @@ async def test_resolve_fetch_symbols_can_use_existing_db_pairs(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refresh_external_datasets_skips_db_known_dataset_missing_from_yaml(monkeypatch):
+    async def fake_known_ids(_dsn, dataset_ids):
+        return {"oi_binance_hist_btc"}
+
+    monkeypatch.setattr(
+        routes_data,
+        "_known_external_dataset_ids",
+        fake_known_ids,
+    )
+
+    result = await _refresh_external_datasets(
+        "postgresql://unused",
+        ["oi_binance_hist_btc"],
+        datetime(2024, 1, 1, tzinfo=timezone.utc),
+        datetime(2024, 1, 10, tzinfo=timezone.utc),
+    )
+
+    assert result == {
+        "status": "done",
+        "datasets": [{
+            "dataset_id": "oi_binance_hist_btc",
+            "status": "skipped",
+            "reason": "dataset exists in DB but is not configured for on-demand refresh",
+        }],
+    }
+
+
+@pytest.mark.asyncio
+async def test_refresh_external_datasets_rejects_dataset_unknown_in_yaml_and_db(monkeypatch):
+    async def fake_known_ids(_dsn, dataset_ids):
+        return set()
+
+    monkeypatch.setattr(routes_data, "_known_external_dataset_ids", fake_known_ids)
+
+    with pytest.raises(routes_data.HTTPException) as exc:
+        await _refresh_external_datasets(
+            "postgresql://unused",
+            ["not_real"],
+            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 10, tzinfo=timezone.utc),
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Unknown external dataset: not_real"
+
+
+@pytest.mark.asyncio
+async def test_refresh_external_datasets_skips_non_yfinance_adapter():
+    result = await _refresh_external_datasets(
+        "postgresql://unused",
+        ["dvol_deribit_btc_1h"],
+        datetime(2024, 1, 1, tzinfo=timezone.utc),
+        datetime(2024, 1, 10, tzinfo=timezone.utc),
+    )
+
+    assert result == {
+        "status": "done",
+        "datasets": [{
+            "dataset_id": "dvol_deribit_btc_1h",
+            "status": "skipped",
+            "reason": "adapter deribit_dvol does not support on-demand refresh",
+        }],
+    }
+
+
+@pytest.mark.asyncio
 async def test_refresh_external_datasets_fetches_yfinance_and_upserts(monkeypatch):
     from okx_quant.data.external_clients.yfinance_client import YFinanceClient
     from okx_quant.data.external_store import ExternalDataStore

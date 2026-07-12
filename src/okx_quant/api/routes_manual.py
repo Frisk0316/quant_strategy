@@ -8,6 +8,13 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 
 
+def _without_frontmatter(text: str) -> str:
+    lines = text.splitlines()
+    if lines and lines[0] == "---" and "---" in lines[1:]:
+        return "\n".join(lines[lines.index("---", 1) + 1 :]).lstrip()
+    return text
+
+
 def make_manual_router(manual_dir: Path) -> APIRouter:
     router = APIRouter()
 
@@ -29,6 +36,6 @@ def make_manual_router(manual_dir: Path) -> APIRouter:
         file_path = manual_dir / chapter["file"]
         if not file_path.is_file():
             raise HTTPException(status_code=404, detail="chapter file missing")
-        return file_path.read_text(encoding="utf-8")
+        return _without_frontmatter(file_path.read_text(encoding="utf-8"))
 
     return router

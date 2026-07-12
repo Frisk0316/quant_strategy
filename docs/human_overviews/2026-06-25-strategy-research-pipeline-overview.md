@@ -1,9 +1,9 @@
 ---
-status: draft
+status: deprecated
 type: human_review_overview
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-06-25
+last_reviewed: 2026-07-12
 topic: "Strategy Research Pipeline Stage 1"
 source_docs:
   - docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md
@@ -20,11 +20,14 @@ human_must_read:
   - docs/superpowers/specs/2026-06-25-strategy-research-pipeline-design.md
   - docs/ai_collaboration.md
   - docs/change_manifests/2026-06-25-family-cumulative-n-trials.md
-superseded_by: null
+superseded_by: docs/human_overviews/2026-07-12-project-diagnosis-overview.md
 expires: none
 ---
 
 # Human Review Overview: Strategy Research Pipeline Stage 1
+
+> Superseded on 2026-07-12. The first full cycle and later checkpoints have run;
+> current evidence and pending human decisions are in the project diagnosis overview.
 
 ## 1. 這次在做什麼？
 

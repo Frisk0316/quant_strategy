@@ -69,3 +69,14 @@ def test_source_provenance_cli_fails_on_db_skip_result_json(tmp_path, capsys):
     assert exit_code == 1
     assert payload["status"] == "FAIL"
     assert "db_parity_not_pass" in payload["blocking_reasons"]
+
+
+def test_source_provenance_cli_rejects_unsafe_run_id(tmp_path, capsys):
+    exit_code = runner.main([
+        "--run-id", "../outside",
+        "--results-dir", str(tmp_path),
+    ])
+
+    assert exit_code == 2
+    assert "run_id" in capsys.readouterr().err
+    assert not (tmp_path.parent / "outside").exists()

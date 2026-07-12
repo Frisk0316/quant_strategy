@@ -3,29 +3,60 @@ status: current
 type: manual
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
 
-# 前端頁面導覽
+# Frontend views
 
-前端導覽與 API ownership 以 `docs/UI_MAP.md` 為主。Dashboard 是檢視與操作介面，不是部署 Gate 本身。
+`docs/UI_MAP.md` is the maintainer map. This chapter is the user-facing map of
+what each dashboard view is for. Dashboard views are inspection surfaces; they
+do not by themselves satisfy any deployment gate.
 
-| 頁面 | 用途 | 主要資料來源 |
+| View | Purpose | Main data/API |
 | --- | --- | --- |
-| Run Backtest | 啟動 replay、daily-winner、OHLCV rotation 等支援的回測 job | `/api/backtest/run`、config routes |
-| Backtest Runs | 檢視 run summary、metrics、charts、signals、fills、risk events | `/api/backtest/*` |
-| Validation Lab | 對既有 run 或 validation artifact 做跨引擎/資料檢查 | validation API endpoints |
-| Compare Runs | 比較多個 run 的主要績效與風險指標 | backtest artifact summaries |
-| Metrics Glossary | 解釋常見績效與風險指標 | static frontend glossary |
-| Progress | 顯示 git timeline、Codex/Claude/user attribution、`STATUS.md` branch board | `/api/progress` |
-| Risk Monitor | 讀取 live/offline risk 狀態；目前不可當部署核准 | live/risk API endpoints |
-| 使用手冊 | 顯示本手冊 manifest 與 markdown chapters | `/api/manual` |
+| Run Backtest | Configure replay/daily-winner/OHLCV-rotation jobs and inspect available market context | `/api/backtest/run`, `/api/data/coverage`, `/api/data/external-series` |
+| Backtest Runs | Review run summaries, metrics, charts, signals, fills, trades, and risk events | `/api/backtest/*` |
+| Validation Lab | Run or inspect validation artifacts and source-data checks | validation API endpoints |
+| Compare Runs | Compare saved run metrics and artifacts | backtest artifact summaries |
+| Metrics Glossary | Read metric definitions used by result cards | static frontend glossary |
+| Progress | Read-only workstream milestone panel | `/api/progress` |
+| Risk Monitor | Offline/live risk inspection surface; not a live-readiness claim | live/risk API endpoints |
+| User Manual | Manifest-driven markdown manual chapters | `/api/manual` |
 
-## UI 原則
+## Market Data Coverage
 
-- 前端不得自行發明缺失的驗證結論。
-- API 若回傳缺欄位，先查 artifact 與 backend route，再決定是否修資料形狀。
-- Progress panel 是 read-only；它只讀 local git、`STATUS.md` 與 linked plan checkboxes。
-- 手冊頁面只顯示 `docs/manual/manual.json` 宣告的章節。
+The Market Data Coverage card shows OHLCV, funding, and external observation
+rows stored in TimescaleDB. The Exchange filter is derived from the row's data
+source: external datasets use their provider label, with Binance Vision rows
+shown as `binance` and Deribit rows shown as `deribit`.
+
+The export panel can export OHLCV, funding, or external datasets. External export
+uses the DB export endpoint after an optional best-effort refresh pre-step.
+Only selected yfinance datasets are refreshed on demand. Deribit, Binance Vision
+OI, and other DB-only selections export existing rows directly and show
+`Using existing DB rows`; they are not reported as skipped.
+
+## Derivatives context
+
+The Run Backtest page includes a Derivatives context card next to Market Data
+Coverage. It is display-only and does not write backtest artifacts.
+
+- Dataset dropdown: built from external coverage rows, with Deribit datasets
+  ordered first.
+- Date range: UTC `Start` / `End` date inputs.
+- Data path: `GET /api/data/external-series?dataset_id=...&start=...&end=...`.
+- Chart: existing `window.Charts.LineChart`, downsampled by the API above 5,000
+  numeric points.
+
+Use this card to visually inspect Deribit DVOL, funding, option-flow, and
+option-surface context before research review. Unknown dataset ids return 404
+from the API.
+
+## UI rules of thumb
+
+- API shape issues should be traced through the backend route before changing
+  frontend defaults.
+- Progress is read-only and does not inspect git or DB state.
+- Manual chapters are declared in `docs/manual/manual.json`.

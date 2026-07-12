@@ -30,6 +30,26 @@ class _FakeWS:
         self.sent.append(json.loads(data))
 
 
+class _LoginFailureWS(_FakeWS):
+    async def recv(self) -> str:
+        return json.dumps({"event": "error", "code": "60005", "msg": "Invalid apiKey"})
+
+
+class _ConnectOnce:
+    def __init__(self, ws) -> None:
+        self.ws = ws
+        self.yielded = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.yielded:
+            raise AssertionError("terminal authentication failure must not reconnect")
+        self.yielded = True
+        return self.ws
+
+
 def _handler() -> MarketDataHandler:
     return MarketDataHandler(
         bus=_FakeBus(), symbols=[INST], api_key="", secret="", passphrase=""
@@ -99,3 +119,14 @@ async def test_updates_after_resubscribe_do_not_storm():
 
     assert ws.sent == []  # no unsubscribe/subscribe storm
     assert not mdh.books[INST].is_valid()
+
+
+async def test_private_auth_failure_does_not_reconnect_or_trip_breaker(monkeypatch):
+    mdh = _handler()
+    connector = _ConnectOnce(_LoginFailureWS())
+    monkeypatch.setattr("okx_quant.data.market_data_handler.websockets.connect", lambda *_args, **_kwargs: connector)
+
+    await mdh.run_private()
+
+    assert connector.yielded is True
+    assert mdh._reconnect_times == []

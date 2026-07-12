@@ -390,6 +390,12 @@ window.API = (function () {
     fetchStrategyValidationArtifact: (strategy, validationId, artifactName) => _getLarge("/api/backtest/strategy-validation/" + strategy + "/" + validationId + "/artifact/" + artifactName),
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
     fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage"),
+    fetchExternalSeries:      ({ dataset_id, start = "", end = "" }) => {
+      const q = new URLSearchParams({ dataset_id });
+      if (start) q.set("start", start);
+      if (end) q.set("end", end);
+      return _getLarge("/api/data/external-series?" + q.toString());
+    },
     fetchDataInstruments:     (exchange = "okx", q = "") => {
       const params = new URLSearchParams({ inst_type: "SWAP", quote_ccy: "USDT", exchange });
       if (q) params.set("q", q);
@@ -415,6 +421,7 @@ window.API = (function () {
     triggerBacktestSweep:     (body)    => _post("/api/backtest/sweep", body),
     fetchBacktestSweepStatus: (jobId)   => _get("/api/backtest/sweep/status/" + jobId),
     fetchBacktestSweepJobs:   ()        => _get("/api/backtest/sweep/jobs"),
+    cancelBacktestSweep:      (jobId)   => _post("/api/backtest/sweep/cancel/" + jobId, {}),
     fetchBacktestSweepResult: (sweepId) => _getLarge("/api/backtest/sweep/result/" + encodeURIComponent(sweepId)),
     backtestSweepArtifactUrl: (sweepId, name) => "/api/backtest/sweep/artifact/" + encodeURIComponent(sweepId) + "/" + encodeURIComponent(name),
     triggerDifferentialValidation: (id, body) => _post("/api/backtest/" + id + "/differential-validation/run", body),

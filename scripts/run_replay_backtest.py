@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting.artifacts import build_run_id, save_backtest_artifacts
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
 from backtesting.replay import run_replay_backtest, run_replay_validations
 from backtesting.research_controls import (
     EXECUTION_PROFILE_DUAL_OUTPUT,
@@ -87,7 +88,11 @@ def _write_execution_comparison(
             "strategy_minus_realistic_fill_rate": _delta(strategy_metrics, realistic_metrics, "fill_rate"),
         },
     }
-    path = Path(output_dir) / f"{base_run_id}_execution_comparison.json"
+    path = resolve_artifact_child(
+        output_dir,
+        f"{base_run_id}_execution_comparison.json",
+        "artifact_name",
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
@@ -331,8 +336,15 @@ def main() -> None:
 
     print("PROGRESS:20:Running replay backtest", flush=True)
     if profile == EXECUTION_PROFILE_DUAL_OUTPUT:
-        strategy_run_id = f"{base_run_id}_{EXECUTION_PROFILE_STRATEGY_FILL}"
-        realistic_run_id = f"{base_run_id}_{EXECUTION_PROFILE_REALISTIC}"
+        strategy_run_id = validate_artifact_id(
+            f"{base_run_id}_{EXECUTION_PROFILE_STRATEGY_FILL}",
+            "run_id",
+        )
+        realistic_run_id = validate_artifact_id(
+            f"{base_run_id}_{EXECUTION_PROFILE_REALISTIC}",
+            "run_id",
+        )
+        validate_artifact_id(f"{base_run_id}_execution_comparison.json", "artifact_name")
         result, run_dir = _run_profile_once(
             args=args,
             cfg=cfg,

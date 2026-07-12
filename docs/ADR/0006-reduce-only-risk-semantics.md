@@ -12,7 +12,10 @@ superseded_by: null
 
 ## Status
 
-Proposed - 2026-05-19, pending Claude re-review and human merge approval
+Accepted - 2026-05-19. Body/metadata mismatch found by the 2026-07-12 audit;
+user confirmed on 2026-07-12 that this ADR was approved, so the stale
+"Proposed, pending re-review" wording is corrected here without changing the
+decision content.
 
 ## Context
 

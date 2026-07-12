@@ -8,10 +8,53 @@ import pytest
 from backtesting.artifact_rows import (
     build_artifact_row_records,
     normalized_records_hash,
+    resolve_artifact_child,
+    resolve_artifact_path,
     row_payloads_hash,
     select_downsample_indices,
     upsert_artifact_rows,
+    validate_artifact_id,
+    validation_artifact_type,
 )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", ".", "..", "../x", "..\\x", "/tmp/x", "C:x", "C:\\x", "x" * 129, "..∕x", "CON", "nul.txt", "name."],
+)
+def test_artifact_id_rejects_unsafe_cross_platform_components(value):
+    with pytest.raises(ValueError, match="safe path component"):
+        validate_artifact_id(value)
+
+
+@pytest.mark.parametrize("value", ["db_0123abcd", "diffval_20260712_abcdef", "replay_ma_20260712_120000"])
+def test_artifact_id_accepts_generated_formats(value):
+    assert validate_artifact_id(value) == value
+
+
+def test_artifact_child_and_validation_type_preserve_safe_identifiers(tmp_path):
+    assert resolve_artifact_child(tmp_path, "run_1") == (tmp_path / "run_1").resolve()
+    assert validation_artifact_type("validation_1", "mismatches_signals.csv") == (
+        "validation/validation_1/mismatches_signals.csv"
+    )
+
+
+def test_artifact_path_rejects_fixed_namespace_symlink_escape(tmp_path):
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    try:
+        (root / "validation").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="escapes artifact root"):
+        resolve_artifact_path(
+            root,
+            ("validation", "artifact_namespace"),
+            ("validation_1", "validation_id"),
+        )
 
 
 def test_build_artifact_row_records_extracts_symbol_timestamp_and_preserves_payload():

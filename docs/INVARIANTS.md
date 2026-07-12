@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -51,6 +51,12 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I29 | Pipeline orchestration state (`orchestrator_state.json`) must be append-only per candidate: every status advance appends `status_history`, missing hypothesis IDs fail closed before state is written, unimplemented Stage2/Stage3 families including `family_id == "NEW"` move to `awaiting_stage2_implementation` or `awaiting_stage3_implementation` instead of being silently backtested, legacy Stage3 runners refuse non-legacy `batch_id` values, and the driver must not write `docs/HYPOTHESIS_LEDGER.md` or `docs/EXPERIMENT_REGISTRY.md`. | R6.3, R7.4 | `tests/unit/test_pipeline_orchestrator.py`, `tests/unit/test_pipeline_stage2_registry.py`, `tests/unit/test_pipeline_stage3_registry.py` |
 | I30 | Pipeline feedback tags are advisory ranking inputs only: they may lower rank and mark `feedback_spawned`, but they must not change eligibility, cap, Stage2/Stage3 gates, checkpoint thresholds, or ledger writes. Any feedback-spawned candidate that reaches checkpoint review must reconcile to family-cumulative `n_trials` like any other candidate. | R6.3, R7.4 | `tests/unit/test_pipeline_idea_generator.py`, `tests/unit/test_pipeline_orchestrator.py`, `tests/unit/test_pipeline_checkpoint1_check.py` |
 | I31 | Turtle S1/S2 reference semantics stay isolated to the research-only Turtle runner: shifted rolling thresholds, strict cash gate, S1 skip-after-win, and no forced end liquidation must not leak into replay/live semantics | R5.5, R7.1 | `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py` |
+| I32 | Every caller-controlled artifact identifier is a safe single path component, and its resolved read/write target remains inside the intended artifact root | — | `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtesting.py`, `tests/unit/test_differential_validation.py`, API/CLI regressions |
+| I33 | An unknown execution venue fails closed; it is never silently substituted with Binance or another venue | R6.4 | `tests/unit/test_backtest_request_exchange.py` |
+| I34 | Numeric `ct_val` validation rejects non-finite/non-positive values and values above `1e7`; every value inside that domain is accepted by the numeric guard | R1.5 | `tests/unit/test_sizing.py` |
+| I35 | Both supported FastAPI app factories expose the documented Manual and Progress routes | — | `tests/unit/test_routes_manual.py`, `tests/unit/test_routes_progress.py` |
+| I36 | Progress file reads serve only existing markdown paths explicitly listed in `config/workstreams.yaml` and resolved inside the repository | — | `tests/unit/test_routes_progress.py::test_progress_route_serves_only_configured_files` |
+| I37 | A research artifact that claims t+1 execution must delay every signal-dependent return component, including turnover cost, until that execution point | R5.3, R6.1 | Known gap: E-037 spot-check; `docs/KNOWN_ISSUES.md` |
 
 ## Usage
 

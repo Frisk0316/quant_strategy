@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-01
+last_reviewed: 2026-07-01
+expires: none
+superseded_by: null
+---
+
 # Session Handoff: Pipeline Orchestration Driver Implementation - 2026-07-01
 
 ## Implementation summary

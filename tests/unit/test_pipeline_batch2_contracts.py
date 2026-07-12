@@ -19,3 +19,16 @@ def test_pipeline_batch2_c3_reuses_existing_fear_greed_contract():
     contract = REFERENCE_VALIDATION_CONTRACTS["fear_greed_sentiment"]
     assert contract["portable_validation_required"] is True
     assert contract["engines"]["vectorbt"]["status"] == "implemented"
+
+
+def test_oi_positioning_research_candidate_is_adapter_required():
+    contract = REFERENCE_VALIDATION_CONTRACTS["oi_positioning"]
+    assert contract["portable_validation_required"] is True
+    assert {
+        engine: spec["status"]
+        for engine, spec in contract["engines"].items()
+    } == {
+        "vectorbt": "adapter_required",
+        "backtrader": "adapter_required",
+        "nautilus": "adapter_required",
+    }

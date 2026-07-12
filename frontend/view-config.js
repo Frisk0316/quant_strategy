@@ -143,18 +143,47 @@ const FETCH_START_INPUT_ID = "market-data-fetch-start";
 const FETCH_END_INPUT_ID = "market-data-fetch-end";
 let marketDataInstrumentSearchSeq = 0;
 const FETCH_TERMINAL_STATUSES = new Set(["done", "error", "cancelled"]);
+const DERIBIT_DATASET_ORDER = [
+  "dvol_deribit_btc_1h",
+  "dvol_deribit_eth_1h",
+  "dvol_deribit_btc",
+  "dvol_deribit_eth",
+  "funding_deribit_btc",
+  "funding_deribit_eth",
+  "optsurf_deribit_btc",
+  "optsurf_deribit_eth",
+  "optflow_deribit_btc",
+  "optflow_deribit_eth",
+];
 
 const fmtPct = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(d)}%`);
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? "-" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmtUSD = (v, d = 2) => (v == null || !isFinite(v) ? "-" : `$${fmtNum(v, d)}`);
-const normalizeInvestPct = (v) => {
+function turtleInvestPctFraction(v) {
   const n = Number(v);
-  return !isFinite(n) ? NaN : n > 1 ? n / 100 : n;
-};
+  return !isFinite(n) ? NaN : n;
+}
+function turtleFixedInvestPctParam(params = {}) {
+  const raw = params?.invest_pct ?? STRATEGY_PARAM_DEFAULTS.turtle.invest_pct;
+  if (raw === "" || raw == null) return "";
+  const text = String(raw).trim().replace(/%$/, "").trim();
+  const n = Number(text);
+  if (!isFinite(n) || n <= 0) return "";
+  return String(n);
+}
 const fmtInvestPct = (v, d = 2) => {
   const n = Number(v);
-  return !isFinite(n) ? "-" : `${(n > 1 ? n : n * 100).toFixed(d)}%`;
+  return !isFinite(n) ? "-" : `${(n * 100).toFixed(d)}%`;
 };
+function turtleWarmupMinutes(params = {}) {
+  const defaults = STRATEGY_PARAM_DEFAULTS.turtle;
+  const enter1 = Number(params.enter_term_sys1 || defaults.enter_term_sys1);
+  const enter2 = Number(params.enter_term_sys2 || defaults.enter_term_sys2);
+  return Math.max(
+    Number.isFinite(enter1) ? enter1 : defaults.enter_term_sys1,
+    Number.isFinite(enter2) ? enter2 : defaults.enter_term_sys2
+  ) * 24 * 60;
+}
 const fmtTs = (value) => {
   if (!value) return "-";
   const d = typeof value === "number" ? new Date(value) : new Date(value);
@@ -417,7 +446,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
   const estimateDays = Math.max(1, (new Date(end) - new Date(start)) / 86_400_000);
   const estimateEvents = estimateDays * (SWEEP_ROWS_PER_DAY[selectedBar] || 24) * Math.max(1, selectedSwapSymbols.length);
   const singleReplaySeconds = Math.max(0.6, 0.35 + estimateEvents * 0.00008);
-  const executionProfileMultiplier = executionProfile === "dual_output" ? 2 : 1;
+  const executionProfileMultiplier = isTurtle ? 1 : executionProfile === "dual_output" ? 2 : 1;
   const fullBacktestEstimate = singleReplaySeconds * executionProfileMultiplier * estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation);
 
   useConfigEffect(() => {
@@ -478,7 +507,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     const savedJobId = localStorage.getItem("activeBacktestJobId");
     if (!savedJobId) return;
     window.API.fetchBacktestRunStatus(savedJobId).then((s) => {
-      if (s && s.status === "running") {
+      if (s && (s.status === "running" || s.status === "cancelling")) {
         setRunJob(s);
         const iv = setInterval(() => {
           window.API.fetchBacktestRunStatus(savedJobId).then((st) => {
@@ -499,12 +528,12 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     const savedJobId = localStorage.getItem("activeSweepJobId");
     if (!savedJobId) return;
     window.API.fetchBacktestSweepStatus(savedJobId).then((s) => {
-      if (s && s.status === "running") {
+      if (s && (s.status === "running" || s.status === "cancelling")) {
         setSweepJob(s);
         const iv = setInterval(() => {
           window.API.fetchBacktestSweepStatus(savedJobId).then((st) => {
             setSweepJob(st);
-            if (st.status === "done" || st.status === "error") {
+            if (st.status === "done" || st.status === "error" || st.status === "cancelled") {
               clearInterval(iv);
               localStorage.removeItem("activeSweepJobId");
             }
@@ -514,7 +543,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
             localStorage.removeItem("activeSweepJobId");
           });
         }, 2000);
-      } else if (s && (s.status === "done" || s.status === "error")) {
+      } else if (s && (s.status === "done" || s.status === "error" || s.status === "cancelled")) {
         setSweepJob(s);
         localStorage.removeItem("activeSweepJobId");
       } else {
@@ -558,9 +587,9 @@ function RunBacktestView({ setView, setSelectedRunId }) {
       strategy_params: hasStrategyParams
         ? (isTurtle ? { ...(strategyParams.turtle || {}), own_capital: +equity || 5000 } : (strategyParams[strategy] || {}))
         : {},
-      risk_overrides: cleanRiskOverrides(riskOverrides),
-      execution_profile: executionProfile,
-      fill_all_signals: fillAllSignals,
+      risk_overrides: isTurtle ? {} : cleanRiskOverrides(riskOverrides),
+      execution_profile: isTurtle ? "strategy_fill" : executionProfile,
+      fill_all_signals: isTurtle ? false : fillAllSignals,
     };
     setRunJob({ status: "running", progress: 0, message: "Submitting backtest..." });
     window.API.triggerBacktestRun(body).then((job) => {
@@ -595,6 +624,11 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     try {
       const parameterGrid = buildSweepGrid(strategy, sweepParams[strategy] || {});
       const turtleSweep = isTurtle;
+      if (turtleSweep && !parameterGrid.invest_pct) {
+        const fixedInvestPct = turtleFixedInvestPctParam(strategyParams.turtle || {});
+        if (fixedInvestPct) parameterGrid.invest_pct = fixedInvestPct;
+      }
+      const turtleCounts = turtleSweep ? countValidSweepCombos("turtle", parameterGrid) : null;
       const body = {
         strategy,
         exchange,
@@ -605,8 +639,8 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         symbols: turtleSweep ? [symbol] : technicalSymbols,
         initial_equity: +equity || 5000,
         parameter_grid: parameterGrid,
-        max_combinations: 5000,
-        risk_overrides: cleanRiskOverrides(riskOverrides),
+        max_combinations: turtleSweep ? Math.min(200000, Math.max(20000, turtleCounts?.valid || 0)) : 5000,
+        risk_overrides: turtleSweep ? {} : cleanRiskOverrides(riskOverrides),
         fill_all_signals: turtleSweep ? false : fillAllSignals,
         run_finalists: turtleSweep ? false : true,
         finalist_top_pct: turtleSweep ? 0.1 : Math.max(1, Math.min(100, Number(sweepTopPct) || 10)) / 100,
@@ -620,7 +654,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
         const iv = setInterval(() => {
           window.API.fetchBacktestSweepStatus(job.job_id).then((s) => {
             setSweepJob(s);
-            if (s.status === "done" || s.status === "error") {
+            if (s.status === "done" || s.status === "error" || s.status === "cancelled") {
               clearInterval(iv);
               localStorage.removeItem("activeSweepJobId");
             }
@@ -637,6 +671,15 @@ function RunBacktestView({ setView, setSelectedRunId }) {
     } catch (err) {
       setSweepJob({ status: "error", message: err.message });
     }
+  }
+
+  function cancelParameterSweep() {
+    const jobId = sweepJob?.job_id;
+    if (!jobId || !window.API.cancelBacktestSweep) return;
+    setSweepJob((j) => ({ ...(j || {}), status: "cancelling", message: "Cancel requested..." }));
+    window.API.cancelBacktestSweep(jobId)
+      .then((s) => setSweepJob(s))
+      .catch(() => {});
   }
 
   return html`
@@ -861,7 +904,7 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 pairs_trading: 168 * 60,
                 ohlcv_rotation: 240,
                 daily_winner: 24 * 60,
-                turtle: 55 * 24 * 60,
+                turtle: turtleWarmupMinutes(strategyParams.turtle),
               };
               const wm = warmupMin[strategy] || 0;
               if (!wm || !start || !end) return null;
@@ -886,33 +929,40 @@ function RunBacktestView({ setView, setSelectedRunId }) {
                 </select>
               </div>
             `}
-            <div class="field" style=${{ gridColumn: "1 / -1" }}>
-              <div class="field-label">Research risk overrides</div>
-              <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                ${RISK_OVERRIDE_SPECS.map((spec) => html`
-                  <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
-                    <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
-                    <input class="input mono" type="number" min="0" step=${spec.step}
-                      value=${riskOverrides[spec.key]}
-                      placeholder=${spec.placeholder}
-                      title=${spec.help}
-                      aria-label=${spec.label}
-                      onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
-                    <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
-                  </div>
-                `)}
+            ${isTurtle ? html`
+              <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                <div class="field-label">Research risk overrides / Execution profile</div>
+                <div class="field-hint">Not applied: turtle is a research-only reference port; fees/sizing come from turtle params.</div>
               </div>
-              <div class="field" style=${{ marginTop: 10 }}>
-                <div class="field-label">Execution profile</div>
-                <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
-                  ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
-                </select>
-                <div class="field-hint">
-                  ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+            ` : html`
+              <div class="field" style=${{ gridColumn: "1 / -1" }}>
+                <div class="field-label">Research risk overrides</div>
+                <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                  ${RISK_OVERRIDE_SPECS.map((spec) => html`
+                    <div key=${spec.key} class="col" style=${{ gap: 4, minWidth: 0 }}>
+                      <div class="field-label" title=${spec.help} style=${{ fontSize: 11 }}>${spec.label}</div>
+                      <input class="input mono" type="number" min="0" step=${spec.step}
+                        value=${riskOverrides[spec.key]}
+                        placeholder=${spec.placeholder}
+                        title=${spec.help}
+                        aria-label=${spec.label}
+                        onChange=${(e) => setRiskOverrides((v) => ({ ...v, [spec.key]: e.target.value }))} />
+                      <div class="field-hint" title=${spec.help} style=${{ lineHeight: 1.35 }}>${spec.help}</div>
+                    </div>
+                  `)}
                 </div>
+                <div class="field" style=${{ marginTop: 10 }}>
+                  <div class="field-label">Execution profile</div>
+                  <select class="select" value=${executionProfile} onChange=${(e) => setExecutionProfile(e.target.value)}>
+                    ${EXECUTION_PROFILE_OPTIONS.map((opt) => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
+                  </select>
+                  <div class="field-hint">
+                    ${(EXECUTION_PROFILE_OPTIONS.find((opt) => opt.value === executionProfile) || EXECUTION_PROFILE_OPTIONS[0]).hint}
+                  </div>
+                </div>
+                <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
               </div>
-              <div class="field-hint" style=${{ marginTop: 6 }}>Blank risk overrides use config defaults. Strategy Fill is research-only idealized execution; live risk config is unchanged.</div>
-            </div>
+            `}
           </div>
           <div class="field-hint" style=${{ marginTop: 10 }}>
             Est. full backtest: ${fmtDuration(fullBacktestEstimate)} (${fmtDuration(singleReplaySeconds)} single replay × ${executionProfileMultiplier} profile(s) × ${estimateValidationMultiplier(start, end, (isRotation || isTurtle) ? "none" : validation)} passes)
@@ -983,11 +1033,13 @@ function RunBacktestView({ setView, setSelectedRunId }) {
               symbol=${symbol}
               job=${sweepJob}
               onRun=${triggerParameterSweep}
+              onCancel=${cancelParameterSweep}
             />
           `}
         </div>
       </div>
 
+      <${DerivativesContextCard} coverage=${dataCoverage || []} />
       <${MarketDataCard} onCoverageChange=${setDataCoverage} />
     </div>
   `;
@@ -1093,7 +1145,7 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
             <input type="range" min="0.1" max="100" step="0.1"
               value=${((activeParams[k] ?? v) * 100) || 1}
               disabled=${!editable}
-              onChange=${(e) => setParams({ ...activeParams, [k]: Number(e.target.value) / 100 })}
+              onInput=${(e) => setParams({ ...activeParams, [k]: Number(e.target.value) / 100 })}
               style=${{ width: "100%" }} />
           ` : html`
           <div style=${{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 120px)", alignItems: "center", gap: 8 }}>
@@ -1107,7 +1159,7 @@ function StrategyParams({ id, params: activeParams = {}, riskOverrides = {}, exe
         </div>
       `)}
       <div class="sep"></div>
-      <div class="field-hint">td_mode: cross - post_only: true - ${riskSummary}${hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
+      <div class="field-hint">td_mode: cross - post_only: true - ${id === "turtle" ? "risk/execution controls not applied" : riskSummary}${id !== "turtle" && hasRiskOverride ? " - research override active" : ""}${editable ? " - parameters are sent with this run" : ""}</div>
     </div>
   `;
 }
@@ -1222,7 +1274,7 @@ function ParameterSweepPanel({
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
           : html`${counts.valid}/${counts.total} valid combos - screening ${fmtDuration(screeningSeconds)} - finalists ${finalistCount} / ${fmtDuration(finalistSeconds)} - total ${fmtDuration(estimateSeconds)}`}
       </div>
-      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running"} onClick=${onRun}>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbols.length || job?.status === "running" || job?.status === "cancelling"} onClick=${onRun}>
         Run sweep
       </button>
       ${job && html`
@@ -1292,6 +1344,7 @@ function TurtleSweepPanel({
   symbol,
   job,
   onRun,
+  onCancel,
 }) {
   const [sweepResult, setSweepResult] = useConfigState(null);
   const [resultError, setResultError] = useConfigState("");
@@ -1322,20 +1375,27 @@ function TurtleSweepPanel({
   const rows = sweepResult?.rows || [];
   const topRows = sweepResult?.top_results || job?.top_results || [];
   const freeParams = sweepResult?.free_params || [];
-  const surfaceHref = job?.sweep_id && (sweepResult?.artifacts?.surface || job?.artifacts?.surface)
+  const artifacts = sweepResult?.artifacts || job?.artifacts || {};
+  const surfaceHref = job?.sweep_id && artifacts.surface
     ? window.API.backtestSweepArtifactUrl(job.sweep_id, "surface")
     : "";
+  const rowsHref = job?.sweep_id && artifacts.rows
+    ? window.API.backtestSweepArtifactUrl(job.sweep_id, "rows")
+    : "";
+  const equityHref = job?.sweep_id && artifacts.equity_curves
+    ? window.API.backtestSweepArtifactUrl(job.sweep_id, "equity_curves")
+    : "";
   const investRows = rows
-    .map((row) => ({ ...row, invest_pct_normalized: normalizeInvestPct(row.invest_pct) }))
-    .filter((row) => isFinite(row.invest_pct_normalized) && isFinite(Number(row.final_equity)))
-    .sort((a, b) => a.invest_pct_normalized - b.invest_pct_normalized);
+    .map((row) => ({ ...row, invest_pct_fraction: turtleInvestPctFraction(row.invest_pct) }))
+    .filter((row) => isFinite(row.invest_pct_fraction) && isFinite(Number(row.final_equity)))
+    .sort((a, b) => a.invest_pct_fraction - b.invest_pct_fraction);
   const selectedInvestIndex = investRows.length
     ? Math.max(0, Math.min(selectedInvestIdx, investRows.length - 1))
     : 0;
   const selectedInvestRow = investRows[selectedInvestIndex] || null;
-  const selectedInvestPct = selectedInvestRow?.invest_pct_normalized;
+  const selectedInvestPct = selectedInvestRow?.invest_pct_fraction;
   const selectedEquityCurve = (sweepResult?.equity_curves || [])
-    .filter((row) => Math.abs(normalizeInvestPct(row.invest_pct) - selectedInvestPct) < 1e-9)
+    .filter((row) => Math.abs(turtleInvestPctFraction(row.invest_pct) - selectedInvestPct) < 1e-9)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const heatmapMetrics = [
     ["final_equity", "Final equity"],
@@ -1400,13 +1460,18 @@ function TurtleSweepPanel({
           ? html`<span style=${{ color: "var(--loss)" }}>${parseError}</span>`
           : html`${counts.valid}/${counts.total} valid combos - estimate ${fmtDuration(estimateSeconds)}`}
       </div>
-      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbol || job?.status === "running"} onClick=${onRun}>
+      <button class="btn sm" disabled=${!!parseError || !counts.valid || !symbol || job?.status === "running" || job?.status === "cancelling"} onClick=${onRun}>
         Run turtle sweep
       </button>
       ${job && html`
         <div class="row" style=${{ gap: 8, alignItems: "center" }}>
           <span class=${`chip ${job.status === "done" ? "profit" : job.status === "error" ? "loss" : "warn"}`}>${job.status}</span>
           ${job.sweep_id && html`<span class="mono" style=${{ fontSize: 11, color: "var(--text-muted)", overflowWrap: "anywhere" }}>${job.sweep_id}</span>`}
+          ${(job.status === "running" || job.status === "cancelling") && job.job_id && html`
+            <button class="btn ghost sm" disabled=${job.status === "cancelling"} onClick=${onCancel}>
+              ${job.status === "cancelling" ? "Cancelling..." : "Cancel"}
+            </button>
+          `}
         </div>
         <${ProgressStage} job=${job} style=${{ marginTop: 6 }} />
         ${job.status === "error" && html`
@@ -1414,8 +1479,12 @@ function TurtleSweepPanel({
         `}
       `}
       ${resultError && html`<div class="field-hint" style=${{ color: "var(--loss)" }}>${resultError}</div>`}
-      ${surfaceHref && html`
-        <a class="btn sm" href=${surfaceHref} target="_blank" rel="noreferrer">Open Plotly surface</a>
+      ${(surfaceHref || rowsHref || equityHref) && html`
+        <div class="row" style=${{ gap: 8, flexWrap: "wrap" }}>
+          ${surfaceHref && html`<a class="btn sm" href=${surfaceHref} target="_blank" rel="noreferrer">Open Plotly surface</a>`}
+          ${rowsHref && html`<a class="btn sm" href=${rowsHref} target="_blank" rel="noreferrer">Open rows artifact</a>`}
+          ${equityHref && html`<a class="btn sm" href=${equityHref} target="_blank" rel="noreferrer">Open equity curves</a>`}
+        </div>
       `}
       ${investRows.length > 0 && html`
         <div class="col" style=${{ gap: 8 }}>
@@ -1426,7 +1495,7 @@ function TurtleSweepPanel({
           <${LineChart}
             height=${170}
             series=${[{ label: "Final equity", values: investRows.map((row) => Number(row.final_equity)), color: "var(--accent)" }]}
-            xLabels=${investRows.map((row) => row.invest_pct_normalized)}
+            xLabels=${investRows.map((row) => row.invest_pct_fraction)}
             xTickFormatter=${(value) => fmtInvestPct(value, 0)}
             tooltipLabelFormatter=${(value) => fmtInvestPct(value, 2)}
             tooltipValueFormatter=${(value) => fmtUSD(value, 0)}
@@ -1466,7 +1535,7 @@ function TurtleSweepPanel({
       ${freeParams.length === 2 && rows.length > 0 && html`
         <div class="col" style=${{ gap: 8 }}>
           ${heatmapMetrics.map(([valueKey, title]) => html`
-            <${HeatmapChart} key=${valueKey} rows=${rows} xKey=${freeParams[0]} yKey=${freeParams[1]} valueKey=${valueKey} title=${title} />
+            <${HeatmapChart} key=${`${sweepResult?.sweep_id || job?.sweep_id || "sweep"}-${valueKey}`} rows=${rows} xKey=${freeParams[0]} yKey=${freeParams[1]} valueKey=${valueKey} title=${title} />
           `)}
         </div>
       `}
@@ -1495,6 +1564,92 @@ function TurtleSweepPanel({
             </tbody>
           </table>
         </div>
+      `}
+    </div>
+  `;
+}
+
+function derivativesDatasetOptions(coverage = []) {
+  const ids = [...new Set((coverage || [])
+    .filter((row) => row.data_kind === "external")
+    .map((row) => row.inst_id)
+    .filter(Boolean))];
+  const source = ids.length ? ids : [...DERIBIT_DATASET_ORDER];
+  return source.sort((a, b) => {
+    const ai = DERIBIT_DATASET_ORDER.indexOf(a);
+    const bi = DERIBIT_DATASET_ORDER.indexOf(b);
+    const ar = ai === -1 ? 999 : ai;
+    const br = bi === -1 ? 999 : bi;
+    if (ar !== br) return ar - br;
+    return a.localeCompare(b);
+  });
+}
+
+function DerivativesContextCard({ coverage = [] } = {}) {
+  const options = derivativesDatasetOptions(coverage);
+  const [datasetId, setDatasetId] = useConfigState(options[0] || "dvol_deribit_btc_1h");
+  const [range, setRange] = useConfigState({ start: "2024-01-01", end: yesterday });
+  const [series, setSeries] = useConfigState({ status: "idle", dataset_id: datasetId, unit: null, points: [] });
+
+  useConfigEffect(() => {
+    if (options.length && !options.includes(datasetId)) {
+      setDatasetId(options[0]);
+    }
+  }, [options.join("|"), datasetId]);
+
+  useConfigEffect(() => {
+    if (!datasetId || !window.API.fetchExternalSeries) return;
+    let alive = true;
+    setSeries((prev) => ({ ...prev, status: "loading" }));
+    window.API.fetchExternalSeries({ dataset_id: datasetId, start: range.start, end: range.end })
+      .then((payload) => {
+        if (alive) setSeries({ status: "done", ...payload });
+      })
+      .catch((err) => {
+        if (alive) setSeries({ status: "error", dataset_id: datasetId, unit: null, points: [], error: err.message || String(err) });
+      });
+    return () => { alive = false; };
+  }, [datasetId, range.start, range.end]);
+
+  const points = series.points || [];
+  const values = points.map((point) => Number(point.v));
+  const labels = points.map((point) => point.t);
+  const lastPoint = points.at(-1);
+  return html`
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Derivatives context</div>
+          <div class="card-sub">${datasetId}${series.unit ? ` (${series.unit})` : ""}</div>
+        </div>
+        <div class="row" style=${{ gap: 8, alignItems: "end" }}>
+          <label class="field" style=${{ minWidth: 220 }}>
+            <div class="field-label">Dataset</div>
+            <select class="select mono" value=${datasetId} onChange=${(e) => setDatasetId(e.target.value)}>
+              ${options.map((id) => html`<option value=${id}>${id}</option>`)}
+            </select>
+          </label>
+          <label class="field">
+            <div class="field-label">Start</div>
+            <input class="input" type="date" value=${range.start} onInput=${(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+          </label>
+          <label class="field">
+            <div class="field-label">End</div>
+            <input class="input" type="date" value=${range.end} onInput=${(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+          </label>
+        </div>
+      </div>
+      ${series.status === "error" && html`<div class="field-hint">Series unavailable: ${series.error}</div>`}
+      ${series.status === "loading" && html`<div class="field-hint">Loading series...</div>`}
+      ${series.status === "done" && !points.length && html`<div class="field-hint">No observations for this range.</div>`}
+      ${points.length > 0 && html`
+        <${LineChart}
+          height=${220}
+          series=${[{ label: datasetId, values, color: "var(--accent)" }]}
+          xLabels=${labels}
+          tooltipValueFormatter=${(value) => fmtNum(value, 4)}
+        />
+        <div class="field-hint">Last point: ${lastPoint?.t || "-"} = ${fmtNum(Number(lastPoint?.v), 4)}</div>
       `}
     </div>
   `;
@@ -1551,6 +1706,10 @@ function MarketDataCard({ onCoverageChange } = {}) {
     .filter(Boolean))]
     .sort();
   const externalOptions = exportDatasets.length ? exportDatasets : ["cme_btc_yfinance"];
+  // ponytail: yfinance is the only on-demand adapter; expose refreshable in coverage if another is added.
+  const refreshableExternalDatasets = new Set((coverage || [])
+    .filter((row) => row.data_kind === "external" && row.provider === "yahoo_finance")
+    .map((row) => row.inst_id));
   const selectedExportSymbols = (exportForm.symbols || []).filter((s) => exportSymbols.includes(s));
   const selectedExportDatasets = (exportForm.datasets || []).filter((d) => externalOptions.includes(d));
   const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
@@ -1768,6 +1927,16 @@ function MarketDataCard({ onCoverageChange } = {}) {
     });
   }
 
+  function externalRefreshSummary(job) {
+    const rows = job?.datasets || [];
+    const refreshed = rows.filter((row) => row.status === "success").length;
+    return `${refreshed} dataset${refreshed === 1 ? "" : "s"} refreshed`;
+  }
+
+  function externalRefreshFailureSummary() {
+    return "Refresh unavailable; downloading existing rows";
+  }
+
   function triggerExport() {
     const body = {
       kind: exportKind,
@@ -1779,14 +1948,21 @@ function MarketDataCard({ onCoverageChange } = {}) {
     if (exportKind === "external") {
       const datasets = selectedExportDatasets.join(",");
       if (!datasets) return;
+      const url = window.API.dataExportUrl({ ...body, datasets });
+      const refreshableDatasets = selectedExportDatasets.filter((dataset) => refreshableExternalDatasets.has(dataset));
+      if (!refreshableDatasets.length) {
+        setExportJob({ status: "done", message: "Using existing DB rows" });
+        window.location.assign(url);
+        return;
+      }
       setExportJob({ status: "running", message: "Refreshing external dataset..." });
-      window.API.refreshExternalData({ dataset_ids: selectedExportDatasets, start: exportForm.start, end: exportForm.end })
+      window.API.refreshExternalData({ dataset_ids: refreshableDatasets, start: exportForm.start, end: exportForm.end })
         .then((job) => {
-          setExportJob({ status: "done", message: `${job.datasets?.[0]?.rows_fetched || 0} rows refreshed` });
-          window.location.assign(window.API.dataExportUrl({ ...body, datasets }));
+          setExportJob({ status: "done", message: externalRefreshSummary(job) });
           refreshCoverage();
         })
-        .catch((err) => setExportJob({ status: "error", message: err.message }));
+        .catch(() => setExportJob({ status: "done", message: externalRefreshFailureSummary() }))
+        .finally(() => window.location.assign(url));
       return;
     }
     const symbols = selectedExportSymbols.join(",");

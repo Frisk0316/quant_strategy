@@ -12,10 +12,26 @@ from fastapi.testclient import TestClient
 
 from backtesting import differential_validation as dv
 from okx_quant.api.routes_backtest import make_backtest_router
+import scripts.run_differential_validation as differential_cli
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REAL_NAUTILUS_ENGINE_SMOKE = dv._nautilus_engine_smoke
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [".", "..", "../outside", "..\\outside", "/tmp/outside", "C:outside", "x" * 129, "..∕outside"],
+)
+def test_differential_validation_cli_rejects_unsafe_run_id_before_io(tmp_path, run_id):
+    with pytest.raises(ValueError, match="run_id"):
+        differential_cli.main([
+            "--results-dir", str(tmp_path / "results"),
+            "--run-id", run_id,
+            "--engines", "vectorbt",
+        ])
+
+    assert not (tmp_path / "results").exists()
 
 
 @pytest.fixture(autouse=True)
@@ -2166,6 +2182,33 @@ def test_backtest_api_triggers_and_reads_differential_validation(tmp_path, monke
     detail = client.get("/api/backtest/api_run/differential-validation/api_validation")
     assert detail.status_code == 200
     assert detail.json()["ohlcv_source_validation"] == "artifact_pass_db_skipped"
+
+
+@pytest.mark.parametrize("validation_id", ["", ".", "..", "../outside", "..\\outside", "C:outside", "x" * 129])
+def test_differential_validation_rejects_unsafe_validation_id_before_writing(tmp_path, validation_id):
+    run_dir = _base_run(tmp_path, "safe_run")
+
+    with pytest.raises(ValueError, match="validation_id"):
+        dv.run_differential_validation(run_dir, engines=["vectorbt"], validation_id=validation_id)
+
+    assert not (run_dir / "validation").exists()
+
+
+def test_backtest_api_rejects_unsafe_validation_and_read_ids(tmp_path):
+    _base_run(tmp_path, "safe_run")
+    app = FastAPI()
+    app.include_router(make_backtest_router(tmp_path), prefix="/api/backtest")
+    client = TestClient(app)
+
+    write = client.post(
+        "/api/backtest/safe_run/differential-validation/run",
+        json={"engines": ["vectorbt"], "validation_id": "../outside"},
+    )
+    read = client.get("/api/backtest/safe_run/differential-validation/..%5Coutside")
+
+    assert write.status_code == 400
+    assert read.status_code == 400
+    assert not (tmp_path / "outside").exists()
 
 
 def test_backtest_api_triggers_db_only_differential_validation(tmp_path, monkeypatch):

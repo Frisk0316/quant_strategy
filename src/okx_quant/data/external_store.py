@@ -195,7 +195,10 @@ class ExternalDataStore:
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (dataset_id, direction) DO UPDATE SET
-                    cursor_time = EXCLUDED.cursor_time,
+                    cursor_time = CASE
+                        WHEN EXCLUDED.status = 'success' THEN EXCLUDED.cursor_time
+                        ELSE external_ingestion_checkpoints.cursor_time
+                    END,
                     request_count = external_ingestion_checkpoints.request_count + EXCLUDED.request_count,
                     row_count = external_ingestion_checkpoints.row_count + EXCLUDED.row_count,
                     status = EXCLUDED.status,

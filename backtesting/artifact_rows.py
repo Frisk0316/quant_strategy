@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,43 @@ ROW_INDEX_ARTIFACT_TYPES = {
     "execution_markers",
     "risk_events",
 }
+
+_ARTIFACT_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,128}\Z", re.ASCII)
+_WINDOWS_DEVICE_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def validate_artifact_id(value: str, field: str = "artifact_id") -> str:
+    """Return a safe single path component or reject it unchanged."""
+    if (
+        not isinstance(value, str)
+        or value in {"", ".", ".."}
+        or not _ARTIFACT_ID_RE.fullmatch(value)
+        or value.endswith(".")
+        or value.split(".", 1)[0].upper() in _WINDOWS_DEVICE_NAMES
+    ):
+        raise ValueError(f"{field} must be a safe path component (1-128 ASCII letters, digits, '.', '_' or '-')")
+    return value
+
+
+def resolve_artifact_child(root: str | Path, value: str, field: str = "artifact_id") -> Path:
+    """Resolve one validated child and assert it remains beneath root."""
+    return resolve_artifact_path(root, (value, field))
+
+
+def resolve_artifact_path(root: str | Path, *components: tuple[str, str]) -> Path:
+    """Resolve validated path components beneath one true artifact root."""
+    resolved_root = Path(root).resolve()
+    target = resolved_root.joinpath(
+        *(validate_artifact_id(value, field) for value, field in components)
+    ).resolve()
+    if not target.is_relative_to(resolved_root):
+        field = components[-1][1] if components else "artifact_path"
+        raise ValueError(f"{field} escapes artifact root")
+    return target
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS backtest_artifact_rows (
@@ -136,7 +174,7 @@ def select_downsample_indices(total: int, n: int) -> list[int]:
 
 
 def validation_artifact_type(validation_id: str, artifact_name: str) -> str:
-    return f"validation/{Path(validation_id).name}/{Path(artifact_name).name}"
+    return f"validation/{validate_artifact_id(validation_id, 'validation_id')}/{validate_artifact_id(artifact_name, 'artifact_name')}"
 
 
 async def ensure_artifact_rows_schema(conn: Any) -> None:

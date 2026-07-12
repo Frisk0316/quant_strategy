@@ -40,7 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Daily winner validation backtest")
     parser.add_argument("--backend", choices=["parquet", "postgres", "market"], default="postgres")
     parser.add_argument("--dsn", default=None, help="PostgreSQL DSN for postgres/market backends")
-    parser.add_argument("--exchange", default=None, help="Exchange filter for backend=market")
+    parser.add_argument(
+        "--exchange",
+        choices=["binance", "okx", "bybit", "coinbase", "kraken"],
+        default=None,
+        help="Exchange filter for backend=market",
+    )
     parser.add_argument("--data-dir", default="data/ticks")
     parser.add_argument("--start", default="2024-01-01")
     parser.add_argument("--end", default=None)

@@ -56,6 +56,15 @@ def _coverage_exchange(sources: list[str] | None) -> tuple[str | None, bool]:
     return "+".join(vals), len(vals) > 1
 
 
+def _external_exchange_from_provider(provider: str | None) -> str | None:
+    value = str(provider or "").strip().lower()
+    if not value:
+        return None
+    if value.startswith("binance"):
+        return "binance"
+    return value
+
+
 class FetchRequest(BaseModel):
     symbol: str | None = None
     symbols: list[str] = Field(default_factory=list)
@@ -187,6 +196,46 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
             ] + external
         finally:
             await conn.close()
+
+    @router.get("/external-series")
+    async def get_external_series(dataset_id: str, start: str = "", end: str = ""):
+        if not db_dsn:
+            raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+        start_dt = _parse_utc(start) if start else None
+        end_dt = _parse_utc(end) if end else None
+        if start_dt and end_dt and start_dt >= end_dt:
+            raise HTTPException(status_code=400, detail="start must be earlier than end")
+        import asyncpg
+
+        conn = await asyncpg.connect(db_dsn)
+        try:
+            exists = await conn.fetchrow(
+                "SELECT dataset_id FROM external_datasets WHERE dataset_id=$1",
+                dataset_id,
+            )
+            if not exists:
+                raise HTTPException(status_code=404, detail=f"unknown external dataset: {dataset_id}")
+            rows = await conn.fetch(
+                """
+                SELECT observed_at, value_num, fields
+                FROM external_observations
+                WHERE dataset_id = $1
+                  AND ($2::timestamptz IS NULL OR observed_at >= $2)
+                  AND ($3::timestamptz IS NULL OR observed_at < $3)
+                  AND value_num IS NOT NULL
+                ORDER BY observed_at
+                """,
+                dataset_id,
+                start_dt,
+                end_dt,
+            )
+        finally:
+            await conn.close()
+        points = _downsample_external_points([
+            {"t": row["observed_at"].isoformat(), "v": row["value_num"]}
+            for row in rows
+        ])
+        return {"dataset_id": dataset_id, "unit": _external_series_unit(rows), "points": points}
 
     @router.get("/exchanges")
     async def get_exchanges():
@@ -1131,13 +1180,35 @@ async def _refresh_external_datasets(
         datasets = (yaml.safe_load(fh) or {}).get("datasets") or {}
 
     refreshed: list[dict[str, Any]] = []
+    missing_from_yaml = [dataset_id for dataset_id in dataset_ids if dataset_id not in datasets]
+    known_db_ids = await _known_external_dataset_ids(db_dsn, missing_from_yaml)
+    refreshable: list[tuple[str, dict[str, Any]]] = []
+    for dataset_id in dataset_ids:
+        cfg = datasets.get(dataset_id)
+        if not cfg:
+            if dataset_id in known_db_ids:
+                refreshed.append({
+                    "dataset_id": dataset_id,
+                    "status": "skipped",
+                    "reason": "dataset exists in DB but is not configured for on-demand refresh",
+                })
+                continue
+            raise HTTPException(status_code=400, detail=f"Unknown external dataset: {dataset_id}")
+        adapter = str(cfg.get("adapter") or "")
+        if adapter != "yfinance":
+            refreshed.append({
+                "dataset_id": dataset_id,
+                "status": "skipped",
+                "reason": f"adapter {adapter or 'unknown'} does not support on-demand refresh",
+            })
+            continue
+        refreshable.append((dataset_id, cfg))
+
+    if not refreshable:
+        return {"status": "done", "datasets": refreshed}
+
     async with await ExternalDataStore.from_dsn(db_dsn, min_size=1, max_size=2) as store:
-        for dataset_id in dataset_ids:
-            cfg = datasets.get(dataset_id)
-            if not cfg:
-                raise HTTPException(status_code=400, detail=f"Unknown external dataset: {dataset_id}")
-            if str(cfg.get("adapter") or "") != "yfinance":
-                raise HTTPException(status_code=400, detail=f"Dataset does not support on-demand refresh: {dataset_id}")
+        for dataset_id, cfg in refreshable:
             await store.upsert_dataset(dataset_id, cfg)
             job_id = await store.start_fetch_job(dataset_id, str(cfg.get("provider") or "yfinance"), start, end)
             try:
@@ -1190,6 +1261,22 @@ async def _refresh_external_datasets(
                 )
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "done", "datasets": refreshed}
+
+
+async def _known_external_dataset_ids(db_dsn: str, dataset_ids: list[str]) -> set[str]:
+    if not dataset_ids:
+        return set()
+    import asyncpg
+
+    conn = await asyncpg.connect(db_dsn)
+    try:
+        rows = await conn.fetch(
+            "SELECT dataset_id FROM external_datasets WHERE dataset_id = ANY($1::text[])",
+            dataset_ids,
+        )
+    finally:
+        await conn.close()
+    return {str(row["dataset_id"]) for row in rows}
 
 
 def _project_root_path():
@@ -1404,6 +1491,28 @@ def _request_dataset_ids(req: ExternalRefreshRequest) -> list[str]:
     return [s for s in dataset_ids if s and not (s in seen or seen.add(s))]
 
 
+def _downsample_external_points(points: list[dict[str, Any]], cap: int = 5000) -> list[dict[str, Any]]:
+    if len(points) <= cap:
+        return points
+    last = len(points) - 1
+    return [points[round(i * last / (cap - 1))] for i in range(cap)]
+
+
+def _external_series_unit(rows: list[Any]) -> str | None:
+    for row in rows:
+        fields = row["fields"] or {}
+        if isinstance(fields, str):
+            import json as _json
+            try:
+                fields = _json.loads(fields)
+            except Exception:
+                fields = {}
+        unit = fields.get("unit") if isinstance(fields, dict) else None
+        if unit:
+            return str(unit)
+    return None
+
+
 async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
     try:
         rows = await conn.fetch(
@@ -1411,9 +1520,9 @@ async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
             SELECT
                 d.dataset_id AS inst_id,
                 COALESCE(d.frequency, 'external') AS bar,
-                MIN(o.observed_at) AS first_ts,
-                MAX(o.observed_at) AS last_ts,
-                COUNT(o.observed_at) AS row_count,
+                coverage.first_ts,
+                coverage.last_ts,
+                coverage.row_count,
                 d.provider,
                 d.value_kind,
                 d.frequency,
@@ -1421,11 +1530,14 @@ async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
                 d.attribution,
                 COALESCE((d.metadata->>'research_only')::boolean, false) AS research_only
             FROM external_datasets d
-            LEFT JOIN external_observations o
-              ON o.dataset_id = d.dataset_id
-            GROUP BY
-                d.dataset_id, d.provider, d.value_kind, d.frequency,
-                d.source_url, d.attribution, d.metadata
+            LEFT JOIN LATERAL (
+                SELECT
+                    MIN(o.observed_at) AS first_ts,
+                    MAX(o.observed_at) AS last_ts,
+                    COUNT(*) AS row_count
+                FROM external_observations o
+                WHERE o.dataset_id = d.dataset_id
+            ) coverage ON TRUE
             ORDER BY d.dataset_id
             """
         )
@@ -1436,6 +1548,8 @@ async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
             **dict(row),
             "gap_count": 0,
             "data_kind": "external",
+            "exchange": _external_exchange_from_provider(row["provider"]),
+            "mixed": False,
         }
         for row in rows
     ]

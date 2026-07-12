@@ -88,7 +88,11 @@ def test_coverage_route_uses_instrument_bars_fast_path(monkeypatch):
                     "row_count_estimated": True,
                     "sources": ["binance"],
                 }]
-            if "from funding_rates" in query or "from external_datasets" in query:
+            if "from funding_rates" in query:
+                return []
+            if "from external_datasets" in query:
+                assert "join lateral" in query
+                assert "where o.dataset_id = d.dataset_id" in query
                 return []
             raise AssertionError(sql)
 
@@ -157,6 +161,47 @@ def test_coverage_funding_provider_comes_from_source(monkeypatch):
         "exchange": "binance",
         "mixed": False,
     }]
+
+
+def test_coverage_external_exchange_comes_from_provider(monkeypatch):
+    import asyncpg
+
+    class FakeConn:
+        async def fetch(self, sql, *params):
+            query = " ".join(sql.lower().split())
+            if "from instrument_bars" in query or "from funding_rates" in query:
+                return []
+            if "from external_datasets" in query:
+                return [{
+                    "inst_id": "dvol_deribit_btc_1h",
+                    "bar": "hourly",
+                    "first_ts": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    "last_ts": datetime(2024, 1, 2, tzinfo=timezone.utc),
+                    "row_count": 25,
+                    "provider": "deribit",
+                    "value_kind": "scalar",
+                    "frequency": "hourly",
+                    "source_url": "https://www.deribit.com/api/v2/public/get_volatility_index_data",
+                    "attribution": "Data source: Deribit DVOL volatility index",
+                    "research_only": False,
+                }]
+            raise AssertionError(sql)
+
+        async def close(self):
+            return None
+
+    async def fake_connect(dsn):
+        return FakeConn()
+
+    monkeypatch.setattr(asyncpg, "connect", fake_connect)
+    app = FastAPI()
+    app.include_router(routes_data.make_data_router("postgresql://unused"), prefix="/api/data")
+
+    payload = TestClient(app).get("/api/data/coverage").json()
+
+    assert payload[0]["provider"] == "deribit"
+    assert payload[0]["exchange"] == "deribit"
+    assert payload[0]["mixed"] is False
 
 
 def test_delete_pair_route_returns_db_and_parquet_counts(monkeypatch, tmp_path):

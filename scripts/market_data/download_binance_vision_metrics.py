@@ -170,6 +170,8 @@ async def ingest_symbol(
     return {
         "symbol": symbol,
         "dataset_id": dataset_id,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
         "first": rows[0]["observed_at"].isoformat() if rows else None,
         "last": rows[-1]["observed_at"].isoformat() if rows else None,
         "rows": len(rows),
@@ -185,7 +187,10 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
     end = _parse_day(args.end)
     if end <= start:
         raise SystemExit("--end must be after --start")
-    symbols = [symbol.upper() for symbol in (args.symbol or ["BTCUSDT", "ETHUSDT"])]
+    universe_starts: dict[str, date] = {}
+    if args.universe_path:
+        universe_starts = load_universe_symbol_starts(args.universe_path, start=start, end=end)
+    symbols = [symbol.upper() for symbol in (args.symbol or sorted(universe_starts) or ["BTCUSDT", "ETHUSDT"])]
     source = LocalVisionMetricsSource(args.source_dir) if args.source_dir else HttpVisionMetricsSource()
     validate_btc_schema(source, _parse_day(args.schema_date) if args.schema_date else start)
 
@@ -197,7 +202,7 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
                 source,
                 symbol=symbol,
                 dataset_id=_dataset_id(symbol),
-                start=start,
+                start=universe_starts.get(symbol, start),
                 end=end,
                 dry_run=True,
             )
@@ -215,7 +220,7 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
                 source,
                 symbol=symbol,
                 dataset_id=_dataset_id(symbol),
-                start=start,
+                start=universe_starts.get(symbol, start),
                 end=end,
                 dry_run=False,
             )
@@ -225,7 +230,8 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--symbol", action="append", choices=sorted(DATASETS), help="Binance native symbol; repeatable")
+    parser.add_argument("--symbol", action="append", help="Binance native symbol; repeatable")
+    parser.add_argument("--universe-path", type=Path, help="Use all eligible symbols from PIT universe parquet")
     parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
     parser.add_argument("--end", required=True, help="End date YYYY-MM-DD, exclusive")
     parser.add_argument("--schema-date", help="BTCUSDT one-day schema check date; defaults to --start")
@@ -284,10 +290,34 @@ def _dataset_config(dataset_id: str, symbol: str) -> dict[str, Any]:
 
 
 def _dataset_id(symbol: str) -> str:
-    try:
-        return DATASETS[symbol.upper()]
-    except KeyError as exc:
-        raise SystemExit(f"unsupported symbol for P8 historical OI: {symbol}") from exc
+    symbol = symbol.upper()
+    if symbol in DATASETS:
+        return DATASETS[symbol]
+    if symbol.endswith("USDT") and len(symbol) > len("USDT"):
+        return f"oi_binance_hist_{symbol[:-4].lower()}"
+    raise SystemExit(f"unsupported symbol for historical OI: {symbol}")
+
+
+def canonical_to_binance_symbol(inst_id: str) -> str:
+    parts = str(inst_id).upper().split("-")
+    if parts[-1] in {"SWAP", "PERP", "FUTURES"}:
+        parts = parts[:-1]
+    return "".join(parts)
+
+
+def load_universe_symbol_starts(path: Path, *, start: date, end: date) -> dict[str, date]:
+    import pandas as pd
+
+    df = pd.read_parquet(path)
+    required = {"date", "symbol", "eligible"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError(f"universe membership missing columns: {sorted(missing)}")
+    frame = df.copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.date
+    mask = (frame["date"] >= start) & (frame["date"] < end) & frame["eligible"].astype(bool)
+    first_days = frame.loc[mask].groupby("symbol")["date"].min()
+    return {canonical_to_binance_symbol(symbol): day for symbol, day in first_days.items()}
 
 
 def _zip_name(symbol: str, day: date) -> str:

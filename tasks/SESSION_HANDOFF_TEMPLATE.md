@@ -10,6 +10,16 @@ Every session must end with a handoff. **Human Learning Notes are required.**
 ---
 
 ```markdown
+---
+status: current
+type: handoff
+owner: <human|claude|codex>
+created: <YYYY-MM-DD>
+last_reviewed: <YYYY-MM-DD>
+expires: none
+superseded_by: null
+---
+
 # Session Handoff: <title> — <YYYY-MM-DD>
 
 ## Implementation summary

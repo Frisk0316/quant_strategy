@@ -3,138 +3,137 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
 
 # AI Handoff
 
-Cross-session memory for Claude and Codex. Keep this file current-state only;
-move completed session history to `docs/CHANGELOG_AI.md` and durable gaps to
-`docs/KNOWN_ISSUES.md`.
+Cross-session current state for Claude and Codex. Read `docs/CURRENT_STATE.md`
+first; use `docs/CHANGELOG_AI.md` for history and `docs/KNOWN_ISSUES.md` for the
+durable backlog.
 
-## Current Goal
+## Current goal
 
-Both tracked streams are complete and committed as of 2026-07-04. Full
-narrative history moved to `docs/CHANGELOG_AI.md` (see "2026-07-03 - M2-R1
-Reviewed, Accepted, And Committed" and "2026-07-03/04 - Pipeline P1-P9 Full
-Cycle + First Stage-1 Spec From Taxonomy").
+Review/integrate the implemented 2026-07-12 P0 hardening safely, then continue
+the ordered P1 governance/docs backlog. Preserve every strategy, research, and
+deployment gate. No retry, adapter, promotion, demo, shadow, or live work is
+authorized by this handoff.
 
-**Repo maintenance (M1-M5 + M2-R1):** all committed (`df96682`, `79c1ddc`,
-`0191c1d`, `2dea608`, `5eb71f8`, `21cc3c9`). Claude-reviewed and accepted on
-independent re-verification. No outstanding action.
+## Branch and working tree
 
-**Strategy research pipeline — first full cycle complete:**
-`F-FUNDING-XS-DISPERSION` (`H-009`) went taxonomy idea → Stage-2 data pass
-(E-030) → distinctness MINT (max abs corr 0.138 vs the real C2 reference
-signal) → pre-registered 4-combo fold-refit WF/CPCV (E-031: WF 1.1812, CPCV
-0.9553, DSR=PSR 0.9346) → checkpoint① FAIL on the 0.95 statistical gate
-only. **Verdict (Claude review, user-ratified 2026-07-04): KEEP as
-`testing`, MINT accepted, not refuted** — a genuinely marginal miss with K
-0/2 used, unlike the clean H-006/007/008 refutations. Standing constraint:
-no chase-the-gate retry — any retry needs an ex-ante rationale, burns K,
-and accumulates family n_trials. No promotion/live claim. Detail:
-`docs/CHANGELOG_AI.md` "2026-07-04 - Turtle Manual Pass +
-F-FUNDING-XS-DISPERSION Checkpoint Verdict" and the H-009/E-031 ledger rows.
+- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025`, tracking origin;
+  tree clean. P0 work committed as `c84f5a1` and pushed.
+- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
+  merged (zero content delta, no conflicts); PR #9 open — documented
+  integration-exception merge to main, awaiting Codex review. No force-push.
 
-**Turtle (海龜) platform integration — ACCEPTED and usable (2026-07-04,
-user-directed manual pass complete):** the reference
-`turtle_trading_system_full` is ported as a research-only standalone runner
-(daily_winner precedent; no replay/trading-core/gate/deployment changes).
-Final state:
-- **Golden parity passes on REAL data:** 898 real BTC-USDT-SWAP UTC daily
-  bars exported from canonical DB (`tests/fixtures/turtle/daily_ohlc.csv`
-  with provenance README); the verbatim polars reference re-run in a scratch
-  venv on this fixture (default + cash-gate stress sets) and the pandas
-  port matches exactly — 17 columns, ints exact, floats rtol 1e-9, final
-  equities 50578.081905 / 12307.892184. The earlier 600-day synthetic
-  fixture is superseded and deleted.
-- **DB-backed end-to-end API smoke passed** (in-process TestClient against
-  the real router + DB, no mocks): manual-param single run
-  (invest_pct=0.05, 75 orders, full ADR-0002 artifact set), 2-free-param
-  sweep (6 combos → rows.csv + surface.html + result/artifact endpoints),
-  invest_pct-axis sweep (equity_curves.csv for the slider scrub UI). The
-  smoke caught and fixed one real bug: sweep equity-curve rows carried
-  pandas Timestamps and crashed `summary.json` serialization (fixed at
-  source with a regression test). Codex independently smoke-tested on a
-  temporary 8081 server.
-- Full unit suite **599 passed**; frontend node --check green; RF1-RF3 from
-  the earlier review round all closed (declarative `turtle` validation
-  contract entry [user-approved scope amendment], invest_pct scrub UI +
-  5-metric heatmaps, real-fixture parity wiring).
-- Optional polish (non-blocking): heatmap hover/click detail, warmup hint
-  hardcodes 55d, fixed-vs-range invest_pct unit convention
-  (scalar=fraction, range=percent).
+## Current implementation state
 
-**Known pending items (not blocking, tracked in KNOWN_ISSUES/RUNBOOK):**
-liquidation ingest (`quant_liq_okx_ingest`) is Interactive-only (runs only
-while logged in) — an unattended/service mode is a separate decision if
-needed; the 4 point-in-time-eligible symbols with zero funding history
-(`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) can be backfilled the same way as the
-other 28 if a later grid needs them.
+- Turtle: accepted research-only standalone runner; real-data golden parity,
+  API/UI, and resumable large sweeps exist. Audit fix restores the documented
+  fraction-unit sweep behavior.
+- Deribit: D1-D5 and review fixes accepted; BTC/ETH DVOL/funding/option-flow
+  history is present through 2026-07-10 23:00Z. Forward schedulers are not
+  registered; option-surface remains snapshot-only.
+- Manual/Progress: all manual chapters exist. The standalone server now wires
+  `/api/manual`, chapter frontmatter is removed, and configured Progress markdown
+  links are served through a contained allow-list route only on loopback binds.
+  Engine and non-loopback views render those paths without a file endpoint.
+- Runtime: the pre-existing listener on 127.0.0.1:8080 (PID 23696 during audit)
+  timed out and was left untouched; temporary 8081 smoke was healthy and cleaned
+  up. Demo engine login still needs a valid key.
+- P0 hardening: shared artifact-ID rejection/containment covers API, artifact
+  writers, differential-validation paths, sweeps, and caller-facing CLIs;
+  omitted/blank venues use configured primary while explicit unknown values
+  fail before queueing; shared `ct_val` validation is finite-positive through
+  `1e7`. No PnL formula or existing result changed.
+- Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
+  with no retry and E-037 remains immutable non-promotion evidence. H-010 is
+  data-blocked. H-013 Stage-1 is user-signed-off; E-038 is reserved-only and has
+  not run.
+- Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
+  unregistered retries.
 
-**P9 PR merge blocker fixed in the working tree (2026-07-03):**
-`scripts/build_universe_membership.py` now normalizes candle timestamps to
-`datetime64[ns]` before daily membership math, so DB and parquet inputs cannot
-fail source-parity checks solely because one path stores dates as seconds and
-another as microseconds. Regression coverage:
-`tests/unit/test_universe_membership.py::test_build_membership_ignores_timestamp_storage_precision`.
+## Audit closures and remaining blockers
 
-## Current Branch
+1. **Closed - artifact containment (F30/I32):** one reject-not-truncate
+   helper and resolved-root containment cover read/write API, library, sweep,
+   artifact-writer and caller-facing CLI boundaries.
+2. **Closed - `ct_val` contract (F32/I34):** the approved finite-positive
+   `<=1e7` contract, ADR-0003 amendment, Change Manifest and regressions agree;
+   position/PnL formulas are unchanged.
+3. **Closed - venue fail closed (F31/I33):** omitted/blank uses config
+   primary; any explicit unknown venue returns 400 before the job queue.
+4. **Closed - integration (P0.4):** Option B executed 2026-07-12; PR #9 carries
+   the documented exception. verify-full equivalent on `a950025`: unit 768/1
+   skip, integration 38, Ruff/docs/frontend/config/backtest-smoke pass;
+   api-smoke SKIP (no server); validate-data FAIL is the pre-existing thin
+   parquet mirror, not merge-caused. Codex review/merge of PR #9 pending.
+5. **Open - F36:** the shelved OI runner posts turnover cost on signal day even
+   though positions/funding start t+1. Do not reuse E-037 as promotion evidence.
 
-- Branch: `codex/pipeline-batch1-stage3`.
-- Recent commits: `df96682` (M1), `79c1ddc` (7/3 handoff preservation),
-  `0191c1d` (M2), `2dea608` (M3), `5eb71f8` (M4/M5), `21cc3c9` (M2-R1),
-  `dfc7af8`/`6997aba`/`14976d4` (pipeline P1-P8 + real-data runs + warmup
-  window), plus an in-progress commit for P9 + the F-FUNDING-XS-DISPERSION
-  Stage-1 spec.
-- Working tree additionally contains the uncommitted 2026-07-03 turtle
-  planning docs (spec, task file, handoffs, these state-file updates); commit
-  on user request.
+Full evidence and binary acceptance criteria are in the follow-up task file;
+durable gaps are in `docs/KNOWN_ISSUES.md`.
 
-## Do Not Touch
+## Do not touch without explicit approval
 
-Without explicit user approval, do not modify:
+- `research/` and existing `results/**` artifacts.
+- `src/okx_quant/strategies/`, `signals/`, `risk/`, `portfolio/`, `execution/`.
+- `config/risk.yaml`, strategy assumptions, or demo/shadow/live gates.
+- Differential-validation implementation beyond the completed P0.1 containment
+  boundary.
 
-- `research/` except explicit user-approved research tasks.
-- `results/**` existing artifacts.
-- `src/okx_quant/strategies/`, `src/okx_quant/signals/`.
-- `src/okx_quant/risk/`, `src/okx_quant/portfolio/`,
-  `src/okx_quant/execution/`.
-- `config/risk.yaml`, deployment/shadow/demo/live gates, or strategy assumptions.
-- Differential-validation implementation unless a current task explicitly lists it.
+## Verification baseline
 
-## Verification Notes
+- Audit baseline before repair: full unit `661 passed, 1 failed` (Turtle static
+  contract); integration `37 passed, 1 failed` (stale ADR-0007 test). After the
+  repair: full unit `666 passed`; integration `38 passed`.
+- Final P0 checks: targeted `306 passed, 1 skipped`; full unit `768 passed,
+  1 skipped`; integration `38 passed`; full Ruff, docs metadata/links/overview,
+  `docs-impact --strict`, config and backtest smoke pass. The skip is the Windows
+  no-symlink-privilege containment case.
+- Audit-scope Ruff, frontend syntax, docs metadata/links/overview/impact, config,
+  backtest smoke, live API smoke, and Playwright Manual/Progress checks pass.
+- `make` is unavailable in this Windows environment. Use the absolute Python
+  executable and Makefile-equivalent commands; report API smoke SKIP unless a
+  healthy server is explicitly provided.
 
-M1-M5 + M2-R1 verification evidence (test counts, docs-check output, smoke
-reproduction) moved to `docs/CHANGELOG_AI.md` — that stream is closed. P1-P9
-verification evidence (test counts, real-run row counts, doc-impact checks)
-is likewise in `docs/CHANGELOG_AI.md`.
+## Next steps
 
-`make` remains unavailable in this Windows sandbox; use the equivalent
-Python commands (`python scripts/docs/check_doc_metadata.py`,
-`python scripts/docs/check_feature_map_links.py`,
-`python scripts/docs/check_doc_impact.py --strict`) or `pytest` directly.
-Full `make verify` / `make verify-full` still needs an environment with
-`make`, TimescaleDB, and required data.
+Claude review (`tasks/2026-07-12-claude-p0-review.md`) is user-ratified and
+implemented for P0.1-P0.3, H-012, and H-013.
 
-## Next Steps
+All 2026-07-12 audit decisions are now recorded — see "Human decisions
+recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
 
-1. H-009 (`F-FUNDING-XS-DISPERSION`) stays `testing`: no retry without an
-   ex-ante rationale (burns K, accumulates n_trials); next candidates for
-   the pipeline are F-XVENUE-LEADLAG (pending OKX 1m backfill completion +
-   Stage-2 reprobe) and F-OI-POSITIONING (data now available, needs a
-   Stage-2 probe + Stage-1 spec).
-2. Turtle: usable from the frontend for manual parameter tuning now.
-   Optional polish only (heatmap hover/click, warmup hint, invest_pct unit
-   convention) — schedule if the user asks.
-3. If a later grid needs the 4 not-yet-backfilled symbols
-   (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP), rerun
-   `scripts/market_data/backfill_universe_funding.py` for them.
-4. Decide whether the `quant_liq_okx_ingest` Windows task needs an
-   unattended/service mode (currently Interactive-only).
+1. DONE 2026-07-12: Claude reviewed the P0 diff and APPROVED all three P0s
+   (implementation-review section of `tasks/2026-07-12-claude-p0-review.md`)
+   and reran the blocked verification: full unit `768 passed, 1 skipped`
+   (Windows symlink privilege), integration `38 passed`, Ruff pass,
+   `docs-impact --strict` pass. Two minor findings, none blocking.
+2. DONE 2026-07-12: P0.4 Option B executed by Claude (user-authorized) —
+   integration commit `a950025`, PR #9 open for Codex review.
+3. DONE 2026-07-12 (Claude, user-authorized; Codex review pending on branch
+   `claude/p1-governance-docs`): P1.1 — `make test-lab` wired into `verify`,
+   A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,
+   fixed missing F-VRP-TIMING K-budget row), tasks/ lifecycle frontmatter
+   enforced for dated files ≥2026-07-01 (28 files migrated, 4 templates
+   updated, legacy exempt), overview coverage documented as a manual review
+   step. P1.2 — README 897→101 lines with operational detail moved verbatim to
+   RUNBOOK, two completed 2026-06-25 plans archived, CHANGELOG backfilled
+   07-05/07-07/07-11.
+   Remaining Codex P1 work: liquidation unattended mode; review both PRs.
+4. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
+5. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
+   symbol, 2021-03-24→2026-07-11, values cross-checked against the hourly
+   series; manual-update command recorded in `docs/RUNBOOK.md` (must pass
+   `--start` AND `--end`). User creates the OKX Demo key later.
 
-## Open Questions
+## Open decisions
 
-- None currently open.
+- None. ADR-0001 local-task exception approved; ADR-0006 confirmed accepted;
+  E-038 stays reserved-only; H-012 shelved; P0.4 = Option B; P1.4 operations
+  decided (schedulers accepted-stale with manual updates, liquidation goes
+  unattended, port 8080 abandoned, Demo key later).

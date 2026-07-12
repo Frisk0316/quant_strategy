@@ -1,9 +1,9 @@
 ---
-status: draft
+status: deprecated
 type: human_review_overview
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-06-25
+last_reviewed: 2026-07-12
 topic: "In-Dashboard User Manual (使用手冊)"
 source_docs:
   - docs/superpowers/specs/2026-06-25-user-manual-design.md
@@ -19,11 +19,14 @@ human_must_read:
   - docs/superpowers/specs/2026-06-25-user-manual-design.md
   - docs/manual/10-backtest-validation.md
   - docs/manual/30-risk-limits.md
-superseded_by: null
+superseded_by: docs/human_overviews/2026-07-12-project-diagnosis-overview.md
 expires: none
 ---
 
 # Human Review Overview: In-Dashboard User Manual (使用手冊)
+
+> Superseded on 2026-07-12. The manual is implemented; current routing/status and
+> remaining content-refresh work are summarized in the project diagnosis overview.
 
 ## 1. 這次在做什麼？
 

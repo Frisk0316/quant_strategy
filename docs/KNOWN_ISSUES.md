@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -13,6 +13,61 @@ superseded_by: null
 Durable backlog for bugs, gaps, and open operational risks. `docs/AI_HANDOFF.md`
 may still reference active issues, but long-lived backlog items should move here
 over time.
+
+## Audit blockers and closures from 2026-07-12
+
+- **Closed — artifact path containment (F30/I32):** API, artifact writer,
+  differential validation and caller-facing CLIs now share reject-not-truncate
+  ID validation plus resolved-root containment.
+- **Closed — venue fail-closed validation (F31/I33):** omitted venue uses the
+  configured primary exchange; explicit unknown venues return HTTP 400 before
+  a run/sweep is queued.
+- **Closed — numeric `ct_val` validation (F32/I34):** the shared validator now
+  accepts finite positive multipliers through `1e7` and rejects zero, negative,
+  NaN, infinity and over-cap values. R1.4/I16 still enforce provenance
+  separately; PnL formulas are unchanged.
+- **Branch integration:** `codex/pipeline-batch1-stage3` was 96 commits ahead and
+  5 behind `origin/main` at audit time. Option B is approved but not executed:
+  merge the five main-only commits first, then one documented integration-
+  exception PR with `verify-full`; no force-push is authorized.
+
+## Research and operations state
+
+- H-009 remains a non-passing `testing` candidate with no chase-the-gate retry.
+  H-012 is user-ratified `shelved`, no retry; its E-037 spot-check also found
+  F36: turnover cost is posted on signal day while position/funding begin at
+  t+1. The immutable artifact remains non-promotion evidence; fix and a new
+  registered experiment are required before this runner is ever reused.
+- H-013/F-VRP-TIMING Stage-1 is user-signed-off and remains `proposed`; E-038 is
+  deliberately reserved-only and absent from the experiment registry until the
+  approved Stage-2 probe actually runs.
+- H-010 remains data-blocked on missing OKX BTC/ETH-USDT-SWAP 1m candles.
+- By user decision, Deribit snapshot/forward-ingest Windows tasks remain
+  unregistered and stale series are accepted while the RUNBOOK manual path
+  remains usable. Daily `dvol_deribit_*` is retained and was backfilled on
+  2026-07-12 (1,936 gap-free rows per symbol through 2026-07-11); its manual
+  update command is recorded in the RUNBOOK.
+- OKX Demo private login returns `60005 Invalid apiKey`; a valid Demo key is
+  required. Do not switch to live as a workaround.
+- The existing `127.0.0.1:8080` listener (PID 23696 during the audit) timed out
+  and was not stopped because it was not owned by this session. The user has
+  abandoned that port; use another port and do not kill the user process.
+- `quant_liq_okx_ingest` remains Interactive-only while measured public REST
+  retention is hours-scale. The user approved unattended/service mode; Codex
+  implementation remains a separate P1.4 task.
+
+## Governance follow-ups
+
+- `make verify` still lacks the separate crypto-alpha-lab test target required
+  by the original M1 acceptance criteria; parent and lab suites must remain
+  separate packages.
+- DOC_IMPACT A11 cannot be enforced honestly from Git diff alone. Add a ledger
+  consistency validator for hypothesis/experiment/family/K-budget relations.
+- Lifecycle metadata coverage currently excludes `tasks/`; four templates and
+  many historical handoffs therefore remain implicit drafts.
+- ADR-0006 is user-confirmed accepted, and ADR-0001 now records the approved
+  local-`tasks/` exception. Remaining P1.2 work is narrative/archive cleanup,
+  not a pending policy decision.
 
 ## Harness
 

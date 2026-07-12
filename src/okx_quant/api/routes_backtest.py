@@ -36,7 +36,17 @@ from backtesting.parameter_sweep import (
     expand_parameter_grid,
     run_parameter_sweep,
 )
-from backtesting.artifact_rows import read_artifact_rows, validation_artifact_type
+from backtesting.turtle_backtest import (
+    DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS,
+    HARD_TURTLE_SWEEP_MAX_COMBINATIONS,
+)
+from backtesting.artifact_rows import (
+    read_artifact_rows,
+    resolve_artifact_child,
+    resolve_artifact_path,
+    validate_artifact_id,
+    validation_artifact_type,
+)
 from backtesting.research_controls import ResearchControlError, normalize_execution_profile, sanitize_risk_overrides
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
 
@@ -48,6 +58,9 @@ _price_series_fallback_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
 # Live backtest subprocesses, keyed by job_id, so /run/cancel can terminate them.
 _run_procs: dict[str, "subprocess.Popen[str]"] = {}
 _RUN_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+_SWEEP_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+TURTLE_SWEEP_INLINE_ROW_LIMIT = 5_000
+TURTLE_SWEEP_INLINE_EQUITY_ROW_LIMIT = 50_000
 
 
 def _run_cancel_requested(job_id: str) -> bool:
@@ -65,6 +78,23 @@ def _mark_run_cancelled(job_id: str, output: str | None = None) -> None:
     })
     if output is not None:
         job["output"] = output[-4000:]
+
+
+def _sweep_cancel_requested(job_id: str) -> bool:
+    return bool(_sweep_jobs.get(job_id, {}).get("cancel_requested"))
+
+
+def _mark_sweep_cancelled(job_id: str) -> None:
+    job = _sweep_jobs.get(job_id)
+    if job is None:
+        return
+    job.update({
+        "status": "cancelled",
+        "progress": 100,
+        "message": "Sweep cancelled by user",
+        "updated_at": _utc_now_iso(),
+        "finished_at": _utc_now_iso(),
+    })
 
 
 def _utc_now_iso() -> str:
@@ -273,21 +303,24 @@ _ALLOWED_EXCHANGES = {"binance", "okx", "bybit", "coinbase", "kraken"}
 
 
 def _normalize_exchange(value: str | None) -> str:
-    """Validate the per-run exchange selection against the allowed set.
-
-    Falls back to cfg.storage.primary_exchange when the input is missing or
-    not whitelisted, so a stale frontend can't ask for a non-existent venue.
-    """
+    """Use the configured default when omitted and reject unknown venues."""
     candidate = (value or "").strip().lower()
-    if candidate in _ALLOWED_EXCHANGES:
+    if candidate:
+        if candidate not in _ALLOWED_EXCHANGES:
+            allowed = ", ".join(sorted(_ALLOWED_EXCHANGES))
+            raise HTTPException(status_code=400, detail=f"exchange must be one of: {allowed}")
         return candidate
+    from okx_quant.core.config import load_config
+
+    cfg = load_config(require_secrets=False)
+    return str(cfg.storage.primary_exchange).lower()
+
+
+def _artifact_id_or_400(value: str, field: str) -> str:
     try:
-        from okx_quant.core.config import load_config
-        cfg = load_config(require_secrets=False)
-        cfg_value = (getattr(cfg.storage, "primary_exchange", None) or "binance").lower()
-    except Exception:
-        cfg_value = "binance"
-    return cfg_value if cfg_value in _ALLOWED_EXCHANGES else "binance"
+        return validate_artifact_id(value, field)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 DEFAULT_DAILY_WINNER_UNIVERSE = [
     "BTC-USDT-SWAP",
     "ETH-USDT-SWAP",
@@ -320,7 +353,7 @@ class RunBacktestRequest(BaseModel):
     validation: str | None = Field(default=None, alias="validate")
     # Exchange whose data the backtest should consume. Must match the live-target
     # exchange for deployment promotion (see ai_collaboration.md deployment gates).
-    exchange: str = "binance"
+    exchange: str | None = None
     universe: list[str] = []
     benchmark: str = "BTC-USDT-SWAP"
     rebalance_minutes: int = 60
@@ -342,11 +375,11 @@ class ParameterSweepRequest(BaseModel):
     start: str | None = None
     end: str | None = None
     sweep_id: str | None = None
-    exchange: str = "binance"
+    exchange: str | None = None
     initial_equity: float = 5000.0
     data_dir: str = "data/ticks"
     parameter_grid: dict[str, Any] = Field(default_factory=dict)
-    max_combinations: int = Field(default=5000, ge=1, le=10000)
+    max_combinations: int = Field(default=5000, ge=1, le=HARD_TURTLE_SWEEP_MAX_COMBINATIONS)
     liquidate_on_end: bool | None = None
     risk_overrides: dict[str, Any] = Field(default_factory=dict)
     fill_all_signals: bool = False
@@ -368,6 +401,13 @@ class StrategyDifferentialValidationRequest(BaseModel):
     fixture_run_id: str | None = None
 
 
+def _request_field_was_set(req: BaseModel, name: str) -> bool:
+    fields = getattr(req, "model_fields_set", None)
+    if fields is None:
+        fields = getattr(req, "__fields_set__", set())
+    return name in fields
+
+
 def _run_ohlcv_rotation_job(
     job_id: str,
     req: "RunBacktestRequest",
@@ -376,7 +416,7 @@ def _run_ohlcv_rotation_job(
 ) -> None:
     try:
         script = PROJECT_ROOT / "scripts" / "backtest_ohlcv_rotation.py"
-        out_dir = results_dir / run_id
+        out_dir = resolve_artifact_child(results_dir, run_id, "run_id")
         out_dir.mkdir(parents=True, exist_ok=True)
         bar = req.bar or "1H"
 
@@ -614,7 +654,7 @@ def _run_daily_winner_job(
         from backtesting.daily_winner_backtest import DailyWinnerParams, run_daily_winner_backtest
         from backtesting.data_loader import load_candles
 
-        out_dir = results_dir / run_id
+        out_dir = resolve_artifact_child(results_dir, run_id, "run_id")
         out_dir.mkdir(parents=True, exist_ok=True)
         universe = list(dict.fromkeys(req.universe or DEFAULT_DAILY_WINNER_UNIVERSE))
         dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
@@ -917,6 +957,17 @@ def _turtle_sweep_base_params(grid: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coerce_turtle_invest_pct(value: Any) -> float:
+    text = str(value).strip()
+    has_percent_suffix = text.endswith("%")
+    if has_percent_suffix:
+        text = text[:-1].strip()
+    number = float(text)
+    if has_percent_suffix or number > 1:
+        return number / 100.0
+    return number
+
+
 def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest") -> Any:
     from backtesting.turtle_backtest import TurtleParams
 
@@ -938,6 +989,8 @@ def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest
     for key, value in raw.items():
         if key in int_fields and value is not None and value != "":
             cleaned[key] = int(value)
+        elif key == "invest_pct" and value is not None and value != "":
+            cleaned[key] = _coerce_turtle_invest_pct(value)
         elif key in float_fields and value is not None and value != "":
             cleaned[key] = float(value)
         else:
@@ -1011,7 +1064,7 @@ def _run_turtle_job(
 
         if (req.bar or "1D") != "1D":
             raise ValueError("turtle supports 1D bars only")
-        out_dir = results_dir / run_id
+        out_dir = resolve_artifact_child(results_dir, run_id, "run_id")
         out_dir.mkdir(parents=True, exist_ok=True)
         symbol = _turtle_symbol(req)
         params = _turtle_params_from_request(req)
@@ -1109,6 +1162,7 @@ def _build_turtle_result_json(
             "validation_only": True,
             "validation_mode": "none",
             "research_only": True,
+            "controls_ignored": ["risk_overrides", "execution_profile", "fill_all_signals"],
             "turtle_data_sources": data_sources or [],
             "reference_semantics": "new_startegy turtle_trading_system_full port",
         },
@@ -1523,18 +1577,21 @@ def _json_sanitize(value: Any) -> Any:
 
 
 def _request_parameters(req: "RunBacktestRequest") -> dict[str, Any]:
+    turtle = req.strategy == "turtle"
+    risk = {} if turtle else req.risk_overrides or {}
+    fill_all_signals = False if turtle else bool(req.fill_all_signals)
     return _json_sanitize({
         "strategies": {
             req.strategy: req.strategy_params or {},
         },
-        "risk": req.risk_overrides or {},
+        "risk": risk,
         "backtest": {
-            "execution_profile": req.execution_profile,
-            "fill_all_signals": bool(req.fill_all_signals),
+            "execution_profile": "strategy_fill" if turtle else req.execution_profile,
+            "fill_all_signals": fill_all_signals,
         },
         "overrides": {
             "strategy_params": req.strategy_params or {},
-            "risk_overrides": req.risk_overrides or {},
+            "risk_overrides": risk,
         },
     })
 
@@ -1797,7 +1854,11 @@ def _visual_time_values(value: Any) -> tuple[int | None, str]:
     if value is None or value == "":
         return None, ""
     try:
-        if isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
+        if isinstance(value, str) and re.fullmatch(r"[+-]?\d+(?:\.\d+)?", value.strip()):
+            raw = float(value)
+            unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
+            ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
+        elif isinstance(value, (int, float, np.integer, np.floating)) and math.isfinite(float(value)):
             raw = float(value)
             unit = "ms" if raw > 1_000_000_000_000 else "s" if raw > 1_000_000_000 else None
             ts = pd.to_datetime(raw, unit=unit, utc=True, errors="coerce") if unit else pd.to_datetime(raw, utc=True, errors="coerce")
@@ -2243,16 +2304,27 @@ def _run_backtest_job(
             })
             return
         warning_fields: dict[str, Any] = {}
-        effective_run_id = run_id
-        comparison_path = results_dir / f"{Path(run_id).name}_execution_comparison.json"
+        effective_run_id = validate_artifact_id(run_id, "run_id")
+        comparison_path = resolve_artifact_child(
+            results_dir,
+            f"{effective_run_id}_execution_comparison.json",
+            "artifact_name",
+        )
         comparison_payload: dict[str, Any] = {}
         if req.execution_profile == "dual_output" and comparison_path.exists():
             try:
                 comparison_payload = json.loads(comparison_path.read_text(encoding="utf-8"))
-                effective_run_id = str(comparison_payload.get("strategy_fill_run_id") or f"{run_id}_strategy_fill")
+                effective_run_id = validate_artifact_id(
+                    str(comparison_payload.get("strategy_fill_run_id") or f"{run_id}_strategy_fill"),
+                    "run_id",
+                )
             except Exception:
-                effective_run_id = f"{run_id}_strategy_fill"
-        result_path = results_dir / effective_run_id / "result.json"
+                effective_run_id = validate_artifact_id(f"{run_id}_strategy_fill", "run_id")
+        result_path = resolve_artifact_path(
+            results_dir,
+            (effective_run_id, "run_id"),
+            ("result.json", "artifact_name"),
+        )
         if result_path.exists():
             try:
                 warning_fields = _attach_idealized_fill_warning(
@@ -2385,7 +2457,11 @@ def _run_turtle_sweep_job(
             "message": "Running turtle parameter sweep",
             "updated_at": _utc_now_iso(),
         })
-        output_dir = results_dir / "turtle_sweeps" / Path(sweep_id).name
+        output_dir = resolve_artifact_path(
+            results_dir,
+            ("turtle_sweeps", "artifact_namespace"),
+            (sweep_id, "sweep_id"),
+        )
         summary = run_turtle_sweep(
             daily_df,
             req.parameter_grid,
@@ -2393,6 +2469,8 @@ def _run_turtle_sweep_job(
             output_dir=output_dir,
             sweep_id=sweep_id,
             progress_callback=_on_progress,
+            cancel_callback=lambda: _sweep_cancel_requested(job_id),
+            max_combinations=req.max_combinations,
         )
         summary["symbol"] = symbol
         summary["bar"] = "1D"
@@ -2412,6 +2490,20 @@ def _run_turtle_sweep_job(
             json.dumps(_json_sanitize(summary), indent=2, allow_nan=False),
             encoding="utf-8",
         )
+        if summary.get("status") == "cancelled":
+            _mark_sweep_cancelled(job_id)
+            _sweep_jobs[job_id].update({
+                "sweep_id": summary["sweep_id"],
+                "artifacts": summary.get("artifacts", {}),
+                "top_results": summary.get("top_results", [])[:10],
+                "completed_count": summary.get("completed_count", 0),
+                "failed_count": summary.get("failed_count", 0),
+                "skipped_count": summary.get("skipped_count", 0),
+                "elapsed_seconds": summary.get("elapsed_seconds"),
+                "symbol": symbol,
+                "bar": "1D",
+            })
+            return
         _sweep_jobs[job_id].update({
             "status": "done",
             "progress": 100,
@@ -2532,9 +2624,23 @@ def _run_strategy_differential_validation_job(
 def make_backtest_router(results_dir: Path) -> APIRouter:
     router = APIRouter()
 
+    def _artifact_id(value: str, field: str) -> str:
+        return _artifact_id_or_400(value, field)
+
+    def _artifact_child(root: Path, value: str, field: str) -> Path:
+        try:
+            return resolve_artifact_child(root, value, field)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def _artifact_path(root: Path, *components: tuple[str, str]) -> Path:
+        try:
+            return resolve_artifact_path(root, *components)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     def _run_dir(run_id: str) -> Path:
-        clean = Path(run_id).name
-        d = results_dir / clean
+        d = _artifact_child(results_dir, run_id, "run_id")
         if not d.is_dir():
             raise HTTPException(status_code=404, detail="Run not found")
         return d
@@ -2553,6 +2659,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
         df = pd.read_csv(path)
         return json.loads(df.to_json(orient="records", force_ascii=False))
+
+    def _csv_row_count(path: Path) -> int:
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"{path.name} not found")
+        with path.open("r", encoding="utf-8", newline="") as fh:
+            return max(0, sum(1 for _ in fh) - 1)
 
     def _metadata_dict(value: Any) -> dict:
         if isinstance(value, dict):
@@ -2619,6 +2731,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         return [records[i] for i in sorted(indices)]
 
     async def _read_db_artifact(run_id: str, artifact_type: str) -> Any | None:
+        clean_run_id = _artifact_id(run_id, "run_id")
         try:
             import asyncpg
 
@@ -2633,7 +2746,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     FROM backtest_artifacts
                     WHERE run_id = $1 AND artifact_type = $2
                     """,
-                    Path(run_id).name,
+                    clean_run_id,
                     artifact_type,
                 )
             finally:
@@ -2646,6 +2759,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             return None
 
     async def _read_db_artifacts(run_id: str) -> dict[str, Any]:
+        clean_run_id = _artifact_id(run_id, "run_id")
         try:
             import asyncpg
 
@@ -2660,7 +2774,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     FROM backtest_artifacts
                     WHERE run_id = $1
                     """,
-                    Path(run_id).name,
+                    clean_run_id,
                 )
             finally:
                 await conn.close()
@@ -2680,10 +2794,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         pd.DataFrame(_as_record_list(payload)).to_csv(path, index=False)
 
     async def _materialize_db_validation_input(run_id: str) -> Path | None:
+        clean = _artifact_id(run_id, "run_id")
         artifacts = await _read_db_artifacts(run_id)
         if "result" not in artifacts:
             return None
-        clean = Path(run_id).name
         materialized = Path(tempfile.mkdtemp(prefix=f"diffval_{clean}_"))
         try:
             for artifact_type, filename in _VALIDATION_INPUT_ARTIFACT_FILES.items():
@@ -2702,12 +2816,13 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         offset: int = 0,
         n: int = 0,
     ) -> list[dict[str, Any]]:
+        clean_run_id = _artifact_id(run_id, "run_id")
         dsn = os.environ.get("DATABASE_URL")
         if not dsn:
             return []
         return await read_artifact_rows(
             dsn=dsn,
-            run_id=Path(run_id).name,
+            run_id=clean_run_id,
             artifact_type=artifact_type,
             symbol=symbol,
             limit=limit,
@@ -2716,13 +2831,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         )
 
     async def _read_result_payload(run_id: str) -> dict[str, Any]:
+        clean_run_id = _artifact_id(run_id, "run_id")
         payload = await _read_db_artifact(run_id, "result")
         if payload is not None:
             result_payload = _normalize_daily_winner_payload(payload)
         else:
             result_payload = _normalize_daily_winner_payload(_read_json(_run_dir(run_id) / "result.json"))
         if not result_payload.get("parameters"):
-            run_dir = results_dir / Path(run_id).name
+            run_dir = _artifact_child(results_dir, clean_run_id, "run_id")
             if run_dir.is_dir():
                 result_payload["parameters"] = _parameters_from_config(run_dir, result_payload)
         if not result_payload.get("display_name"):
@@ -2739,6 +2855,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         n: int = 0,
         downsample: bool = False,
     ) -> list[dict[str, Any]]:
+        clean_run_id = _artifact_id(run_id, "run_id")
         row_records = await _read_row_artifact(
             run_id,
             artifact_type,
@@ -2759,7 +2876,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             if limit:
                 records = records[:limit]
             return _downsample_records(records, n) if downsample else records
-        d = results_dir / Path(run_id).name
+        d = _artifact_child(results_dir, clean_run_id, "run_id")
         if not d.is_dir():
             return []
         path = d / filename
@@ -2922,7 +3039,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if req.strategy in {"ma_crossover", "ema_crossover", "macd_crossover"} and not req.symbols:
             raise HTTPException(status_code=400, detail=f"{req.strategy} requires at least one symbol")
         job_id = str(uuid.uuid4())[:8]
-        run_id = req.run_id or f"ui_{req.strategy}_{job_id}"
+        run_id = _artifact_id(req.run_id or f"ui_{req.strategy}_{job_id}", "run_id")
         _run_jobs[job_id] = {
             "job_id": job_id,
             "run_id": run_id,
@@ -2968,6 +3085,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.post("/sweep")
     async def start_parameter_sweep(req: ParameterSweepRequest, bg: BackgroundTasks):
         if req.strategy == "turtle":
+            if not _request_field_was_set(req, "max_combinations"):
+                req.max_combinations = DEFAULT_TURTLE_SWEEP_MAX_COMBINATIONS
             _validate_turtle_sweep_request(req)
             try:
                 from backtesting.turtle_backtest import expand_turtle_grid
@@ -2980,7 +3099,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             job_id = str(uuid.uuid4())[:8]
-            sweep_id = req.sweep_id or f"ui_sweep_turtle_{job_id}"
+            sweep_id = _artifact_id(req.sweep_id or f"ui_sweep_turtle_{job_id}", "sweep_id")
             _sweep_jobs[job_id] = {
                 "job_id": job_id,
                 "sweep_id": sweep_id,
@@ -3028,7 +3147,11 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             finalist_validation=req.finalist_validation,
         )
         job_id = str(uuid.uuid4())[:8]
-        sweep_id = req.sweep_id or f"ui_sweep_{req.strategy}_{job_id}"
+        sweep_id = _artifact_id(req.sweep_id or f"ui_sweep_{req.strategy}_{job_id}", "sweep_id")
+        if finalist_count:
+            _artifact_id(f"{sweep_id}_rank_{finalist_count:03d}", "finalist_run_id")
+        _artifact_id(f"{sweep_id}.json", "artifact_name")
+        _artifact_id(f"{sweep_id}.csv", "artifact_name")
         _sweep_jobs[job_id] = {
             "job_id": job_id,
             "sweep_id": sweep_id,
@@ -3051,24 +3174,73 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail="Sweep job not found")
         return _sweep_jobs[job_id]
 
+    @router.post("/sweep/cancel/{job_id}")
+    async def cancel_parameter_sweep_job(job_id: str):
+        job = _sweep_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Sweep job not found")
+        if job.get("status") in _SWEEP_TERMINAL_STATUSES:
+            return job
+        job["cancel_requested"] = True
+        job.update({"status": "cancelling", "message": "Cancelling sweep...", "updated_at": _utc_now_iso()})
+        return job
+
     @router.get("/sweep/jobs")
     async def list_parameter_sweep_jobs():
         return list(_sweep_jobs.values())
 
     @router.get("/sweep/result/{sweep_id}")
     async def get_turtle_sweep_result(sweep_id: str):
-        clean = Path(sweep_id).name
-        path = results_dir / "turtle_sweeps" / clean / "summary.json"
+        path = _artifact_path(
+            results_dir,
+            ("turtle_sweeps", "artifact_namespace"),
+            (sweep_id, "sweep_id"),
+            ("summary.json", "artifact_name"),
+        )
         if not path.exists():
             raise HTTPException(status_code=404, detail="Turtle sweep result not found")
-        return _read_json(path)
+        payload = _read_json(path)
+        artifacts = payload.get("artifacts") or {}
+        sweep_dir = path.parent
+        artifact_row_counts: dict[str, int] = {}
+        inline_omitted: dict[str, str] = {}
+        if artifacts.get("rows") and len(payload.get("free_params") or []) <= 2:
+            rows_path = sweep_dir / artifacts["rows"]
+            if rows_path.exists():
+                row_count = _csv_row_count(rows_path)
+                artifact_row_counts["rows"] = row_count
+                if row_count <= TURTLE_SWEEP_INLINE_ROW_LIMIT:
+                    payload["rows"] = _read_csv(rows_path)
+                else:
+                    inline_omitted["rows"] = f"rows.csv has {row_count} rows; use artifact endpoint"
+        if artifacts.get("equity_curves"):
+            equity_path = sweep_dir / artifacts["equity_curves"]
+            if equity_path.exists():
+                equity_count = _csv_row_count(equity_path)
+                artifact_row_counts["equity_curves"] = equity_count
+                if equity_count <= TURTLE_SWEEP_INLINE_EQUITY_ROW_LIMIT:
+                    payload["equity_curves"] = _read_csv(equity_path)
+                else:
+                    inline_omitted["equity_curves"] = (
+                        f"equity_curves.csv has {equity_count} rows; use artifact endpoint"
+                    )
+        if artifact_row_counts:
+            payload["artifact_row_counts"] = artifact_row_counts
+        if inline_omitted:
+            payload["inline_omitted"] = inline_omitted
+        return payload
 
     @router.get("/sweep/artifact/{sweep_id}/{name}")
     async def get_turtle_sweep_artifact(sweep_id: str, name: str):
-        filename = _TURTLE_SWEEP_ARTIFACT_FILES.get(Path(name).name)
+        filename = _TURTLE_SWEEP_ARTIFACT_FILES.get(_artifact_id(name, "artifact_name"))
         if filename is None:
             raise HTTPException(status_code=404, detail="Turtle sweep artifact not found")
-        path = results_dir / "turtle_sweeps" / Path(sweep_id).name / filename
+        path = _artifact_path(
+            results_dir,
+            ("turtle_sweeps", "artifact_namespace"),
+            (sweep_id, "sweep_id"),
+            (filename, "artifact_name"),
+        )
         if not path.exists():
             raise HTTPException(status_code=404, detail="Turtle sweep artifact not found")
         if filename.endswith(".json"):
@@ -3079,7 +3251,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
 
     @router.delete("/{run_id}")
     async def delete_run(run_id: str):
-        d = results_dir / Path(run_id).name
+        clean_run_id = _artifact_id(run_id, "run_id")
+        d = _artifact_child(results_dir, clean_run_id, "run_id")
         shutil.rmtree(d, ignore_errors=True)
         try:
             import asyncpg
@@ -3088,12 +3261,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             if dsn:
                 conn = await asyncpg.connect(dsn)
                 try:
-                    await conn.execute("DELETE FROM backtest_runs WHERE run_id = $1", run_id)
+                    await conn.execute("DELETE FROM backtest_runs WHERE run_id = $1", clean_run_id)
                 finally:
                     await conn.close()
         except Exception:
             pass
-        return {"deleted": run_id}
+        return {"deleted": clean_run_id}
 
     # ------------------------------------------------------------------
     # Differential validation
@@ -3103,7 +3276,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def list_strategy_validation_fixtures(strategy: str | None = None):
         from backtesting.differential_validation import list_strategy_validation_fixtures
 
-        return list_strategy_validation_fixtures(results_dir, strategy)
+        clean_strategy = _artifact_id(strategy, "strategy") if strategy else None
+        return list_strategy_validation_fixtures(results_dir, clean_strategy)
 
     @router.post("/strategy-validation/run")
     async def run_strategy_differential_validation_endpoint(
@@ -3112,9 +3286,17 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     ):
         from backtesting.differential_validation import ENGINE_NAMES
 
-        strategy = Path(req.strategy).name
-        if not strategy:
-            raise HTTPException(status_code=400, detail="strategy is required")
+        strategy = _artifact_id(req.strategy, "strategy")
+        fixture_run_id = (
+            _artifact_id(req.fixture_run_id, "fixture_run_id")
+            if req.fixture_run_id is not None
+            else None
+        )
+        validation_id = (
+            _artifact_id(req.validation_id, "validation_id")
+            if req.validation_id is not None
+            else None
+        )
         engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
         if not engines:
             engines = ["vectorbt", "backtrader", "nautilus"]
@@ -3125,8 +3307,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         _validation_jobs[job_id] = {
             "job_id": job_id,
             "strategy": strategy,
-            "fixture_run_id": req.fixture_run_id,
-            "validation_id": req.validation_id,
+            "fixture_run_id": fixture_run_id,
+            "validation_id": validation_id,
             "engines": engines,
             "status": "queued",
             "progress": 0,
@@ -3139,9 +3321,9 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             job_id,
             results_dir,
             strategy,
-            req.fixture_run_id,
+            fixture_run_id,
             engines,
-            req.validation_id,
+            validation_id,
         )
         return _validation_jobs[job_id]
 
@@ -3149,7 +3331,8 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def list_strategy_validations(strategy: str | None = None):
         from backtesting.differential_validation import list_strategy_validation_results
 
-        return list_strategy_validation_results(results_dir, strategy)
+        clean_strategy = _artifact_id(strategy, "strategy") if strategy else None
+        return list_strategy_validation_results(results_dir, clean_strategy)
 
     @router.get("/strategy-validation/contracts")
     async def get_strategy_validation_contracts(strategy: str | None = None):
@@ -3159,7 +3342,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         )
 
         if strategy:
-            return strategy_reference_validation_contract(Path(strategy).name)
+            return strategy_reference_validation_contract(_artifact_id(strategy, "strategy"))
         return [
             strategy_reference_validation_contract(name)
             for name in sorted(REFERENCE_VALIDATION_CONTRACTS)
@@ -3169,14 +3352,18 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     async def list_strategy_validations_for_strategy(strategy: str):
         from backtesting.differential_validation import list_strategy_validation_results
 
-        return list_strategy_validation_results(results_dir, strategy)
+        return list_strategy_validation_results(results_dir, _artifact_id(strategy, "strategy"))
 
     @router.get("/strategy-validation/{strategy}/{validation_id}")
     async def get_strategy_validation(strategy: str, validation_id: str):
         from backtesting.differential_validation import read_strategy_validation_result
 
         try:
-            return read_strategy_validation_result(results_dir, strategy, validation_id)
+            return read_strategy_validation_result(
+                results_dir,
+                _artifact_id(strategy, "strategy"),
+                _artifact_id(validation_id, "validation_id"),
+            )
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Strategy validation result not found")
 
@@ -3189,7 +3376,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         from backtesting.differential_validation import read_strategy_validation_artifact
 
         try:
-            return read_strategy_validation_artifact(results_dir, strategy, validation_id, artifact_name)
+            return read_strategy_validation_artifact(
+                results_dir,
+                _artifact_id(strategy, "strategy"),
+                _artifact_id(validation_id, "validation_id"),
+                _artifact_id(artifact_name, "artifact_name"),
+            )
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Strategy validation artifact not found")
 
@@ -3201,11 +3393,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     ):
         from backtesting.differential_validation import ENGINE_NAMES
 
-        clean_run_id = Path(run_id).name
-        d = results_dir / clean_run_id
+        clean_run_id = _artifact_id(run_id, "run_id")
+        run_artifact_dir = _artifact_child(results_dir, clean_run_id, "run_id")
+        d = run_artifact_dir
         output_dir: Path | None = None
         cleanup_dir: Path | None = None
-        validation_id = req.validation_id
+        validation_id = (
+            _artifact_id(req.validation_id, "validation_id")
+            if req.validation_id is not None
+            else None
+        )
         if not d.is_dir():
             materialized = await _materialize_db_validation_input(clean_run_id)
             if materialized is None:
@@ -3213,7 +3410,12 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             d = materialized
             cleanup_dir = materialized
             validation_id = validation_id or f"db_{uuid.uuid4().hex[:10]}"
-            output_dir = results_dir / clean_run_id / "validation" / validation_id
+            output_dir = _artifact_path(
+                results_dir,
+                (clean_run_id, "run_id"),
+                ("validation", "artifact_namespace"),
+                (validation_id, "validation_id"),
+            )
         engines = [str(engine).strip().lower() for engine in (req.engines or []) if str(engine).strip()]
         if not engines:
             engines = ["vectorbt", "backtrader", "nautilus"]
@@ -3265,7 +3467,10 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         from backtesting.differential_validation import read_validation_result
 
         try:
-            return read_validation_result(_run_dir(run_id), validation_id)
+            return read_validation_result(
+                _run_dir(run_id),
+                _artifact_id(validation_id, "validation_id"),
+            )
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Differential validation result not found")
 
@@ -3278,14 +3483,16 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         from backtesting.differential_validation import read_validation_artifact
 
         try:
-            if Path(artifact_name).name.lower().endswith(".csv"):
+            clean_validation_id = _artifact_id(validation_id, "validation_id")
+            clean_artifact_name = _artifact_id(artifact_name, "artifact_name")
+            if clean_artifact_name.lower().endswith(".csv"):
                 rows = await _read_row_artifact(
                     run_id,
-                    validation_artifact_type(validation_id, artifact_name),
+                    validation_artifact_type(clean_validation_id, clean_artifact_name),
                 )
                 if rows:
                     return rows
-            return read_validation_artifact(_run_dir(run_id), validation_id, artifact_name)
+            return read_validation_artifact(_run_dir(run_id), clean_validation_id, clean_artifact_name)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Differential validation artifact not found")
 
@@ -3306,20 +3513,21 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
     @router.get("/{run_id}/execution-comparison")
     async def get_execution_comparison(run_id: str):
         """Return the paired Strategy Fill vs realistic execution comparison."""
-        result = await _read_result_payload(run_id)
-        clean_run_id = Path(run_id).name
+        await _read_result_payload(run_id)
+        clean_run_id = _artifact_id(run_id, "run_id")
         candidates: list[Path] = []
-        for value in (
-            result.get("execution_comparison"),
-            (result.get("validation") or {}).get("execution_comparison"),
-            (result.get("artifacts") or {}).get("execution_comparison"),
-        ):
-            if isinstance(value, str) and value:
-                candidates.append(results_dir / Path(value).name)
         for suffix in ("_strategy_fill", "_realistic_execution"):
             if clean_run_id.endswith(suffix):
-                candidates.append(results_dir / f"{clean_run_id[:-len(suffix)]}_execution_comparison.json")
-        candidates.append(results_dir / f"{clean_run_id}_execution_comparison.json")
+                candidates.append(_artifact_child(
+                    results_dir,
+                    f"{clean_run_id[:-len(suffix)]}_execution_comparison.json",
+                    "artifact_name",
+                ))
+        candidates.append(_artifact_child(
+            results_dir,
+            f"{clean_run_id}_execution_comparison.json",
+            "artifact_name",
+        ))
         for path in candidates:
             if path.name.endswith("_execution_comparison.json") and path.exists():
                 return _read_json(path)
@@ -3558,18 +3766,14 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
             run_id,
             "execution_markers",
             "execution_markers.csv",
-            symbol=symbol,
-            n=limit,
-            downsample=bool(limit),
         )
         if records:
-            return records
+            return _limit_records(_filter_records_by_symbol(records, symbol), limit)
         result = await _read_result_payload(run_id)
-        fills = await _read_records_artifact(run_id, "fills", "fills.csv", symbol=symbol)
-        trades = await _read_records_artifact(run_id, "trades", "trades.csv", symbol=symbol)
+        fills = await _read_records_artifact(run_id, "fills", "fills.csv")
+        trades = await _read_records_artifact(run_id, "trades", "trades.csv")
         if not trades:
             trades = _as_record_list(result.get("trades"))
-            trades = _filter_records_by_symbol(trades, symbol)
         markers = _fallback_execution_markers_from_records(
             fills=fills,
             trades=trades,
@@ -3586,7 +3790,7 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         if symbol:
             if not _SAFE_SYMBOL_RE.match(symbol):
                 raise HTTPException(status_code=400, detail=f"Invalid symbol: {symbol}")
-        clean_run_id = Path(run_id).name
+        clean_run_id = _artifact_id(run_id, "run_id")
         records = await _read_records_artifact(
             run_id,
             "price_series",
@@ -3721,10 +3925,17 @@ def _resolve_data_dir(data_dir: str | None) -> Path:
 
 def _validate_backtest_request(req: RunBacktestRequest) -> None:
     _resolve_data_dir(req.data_dir)
+    req.exchange = _normalize_exchange(req.exchange)
+    if req.run_id is not None:
+        req.run_id = _artifact_id_or_400(req.run_id, "run_id")
     try:
         req.execution_profile = normalize_execution_profile(req.execution_profile)
     except ResearchControlError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if req.run_id is not None and req.execution_profile == "dual_output":
+        _artifact_id_or_400(f"{req.run_id}_strategy_fill", "run_id")
+        _artifact_id_or_400(f"{req.run_id}_realistic_execution", "run_id")
+        _artifact_id_or_400(f"{req.run_id}_execution_comparison.json", "artifact_name")
     if req.start and not _SAFE_DATE_RE.match(req.start):
         raise HTTPException(status_code=400, detail="Invalid start date format")
     if req.end and not _SAFE_DATE_RE.match(req.end):
@@ -3754,10 +3965,16 @@ def _validate_backtest_request(req: RunBacktestRequest) -> None:
 
 def _validate_turtle_sweep_request(req: ParameterSweepRequest) -> None:
     _resolve_data_dir(req.data_dir)
+    req.exchange = _normalize_exchange(req.exchange)
+    if req.sweep_id is not None:
+        req.sweep_id = _artifact_id_or_400(req.sweep_id, "sweep_id")
     if (req.bar or "1D") != "1D":
         raise HTTPException(status_code=400, detail="turtle sweep supports 1D bars only")
-    if req.max_combinations > 5000:
-        raise HTTPException(status_code=400, detail="turtle sweep max_combinations is capped at 5000")
+    if req.max_combinations > HARD_TURTLE_SWEEP_MAX_COMBINATIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"turtle sweep max_combinations is capped at {HARD_TURTLE_SWEEP_MAX_COMBINATIONS}",
+        )
     if req.finalist_validation not in {None, "none"}:
         raise HTTPException(status_code=400, detail="turtle sweep does not run finalist validation")
     if req.start and not _SAFE_DATE_RE.match(req.start):
@@ -3781,8 +3998,15 @@ def _validate_turtle_sweep_request(req: ParameterSweepRequest) -> None:
 
 def _validate_parameter_sweep_request(req: ParameterSweepRequest) -> None:
     _resolve_data_dir(req.data_dir)
+    req.exchange = _normalize_exchange(req.exchange)
+    if req.sweep_id is not None:
+        req.sweep_id = _artifact_id_or_400(req.sweep_id, "sweep_id")
     if req.strategy not in {"ma_crossover", "ema_crossover", "macd_crossover"}:
         raise HTTPException(status_code=400, detail="Parameter sweep supports MA, EMA, and MACD only")
+    if req.max_combinations > 10000:
+        if _request_field_was_set(req, "max_combinations"):
+            raise HTTPException(status_code=400, detail="parameter sweep max_combinations is capped at 10000")
+        req.max_combinations = 5000
     if req.finalist_validation not in {None, "none", "wf", "cpcv", "both"}:
         raise HTTPException(status_code=400, detail="Unsupported finalist validation mode")
     if req.start and not _SAFE_DATE_RE.match(req.start):

@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -18,7 +18,8 @@ implementation exists.
 
 - User-facing behavior: configure a strategy, symbols/universe, bar, date range,
   execution exchange, capital, validation mode, risk overrides, and optional
-  parameter sweep; queue a run and poll job status.
+  parameter sweep; queue a run and poll job status. An omitted exchange uses
+  `config/settings.yaml` primary exchange; an explicit unknown venue returns 400.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, `frontend/view-config.js`,
   `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -38,6 +39,7 @@ implementation exists.
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_backtesting.py`, `tests/unit/test_parameter_sweep.py`,
   `tests/unit/test_backtest_request_exchange.py`,
+  `tests/unit/test_artifact_rows.py`,
   `tests/unit/test_multi_venue_convergence.py`,
   `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py`,
   `tests/integration/test_replay_engine.py`.
@@ -50,8 +52,12 @@ implementation exists.
 
 - User-facing behavior: run the standalone Turtle S1/S2 reference port on one
   DB-backed 1D symbol; sweep window params and optional `invest_pct`; review
-  standard run artifacts plus native SVG heatmaps and a Plotly surface HTML
-  sweep artifact.
+  standard run artifacts plus native SVG heatmaps, a Plotly surface HTML
+  sweep artifact, and batched/resumable large-sweep `rows.csv` artifacts with
+  progress/cancel job status; large sweep CSVs stay artifact-link only while
+  small 2D/invest sweeps can inline chart rows. Research risk overrides and
+  execution-profile controls are explicitly ignored; Turtle fees/sizing come
+  from Turtle params only.
 - Frontend files: `frontend/data.js`, `frontend/view-config.js`,
   `frontend/charts.js`, `frontend/vendor/plotly.min.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
@@ -118,7 +124,7 @@ implementation exists.
 - Frontend files: `frontend/app.js`, `frontend/index.html`,
   `frontend/view-manual.js`.
 - Backend/API files: `src/okx_quant/api/routes_manual.py`,
-  `src/okx_quant/api/server.py`.
+  `src/okx_quant/api/server.py`, `scripts/run_server.py`.
 - Manual content files: `docs/manual/manual.json`, `docs/manual/*.md`.
 - Tests: `tests/unit/test_manual_manifest.py`,
   `tests/unit/test_routes_manual.py`.
@@ -134,7 +140,11 @@ implementation exists.
 - Frontend files: `frontend/app.js`, `frontend/index.html`,
   `frontend/view-progress.js`, `frontend/data.js`, `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_progress.py`,
-  `src/okx_quant/api/server.py`.
+  `src/okx_quant/api/server.py`, `scripts/run_server.py`. Only markdown paths
+  explicitly listed in `config/workstreams.yaml` are exposed by the read-only
+  progress-file endpoint; containment checks prevent serving arbitrary repo files.
+  File serving is disabled in the network-facing engine app and enabled only by
+  the standalone server when it binds to a loopback host.
 - Data / docs files: `config/workstreams.yaml`; linked plan files are only
   surfaced as card links.
 - Tests: `tests/unit/test_routes_progress.py`, `make frontend-check`,
@@ -163,12 +173,15 @@ implementation exists.
 
 ## Market Data Ingestion
 
-- User-facing behavior: fetch or update market data, inspect coverage, export OHLCV,
-  funding, or external data, delete stale OHLCV/funding pairs, and use DB-backed
-  data for backtests. Fetch jobs are queued sequentially and shown as a job list
-  in the Market Data Coverage card. Binance fetches also sync exchangeInfo-derived
-  venue specs into `venue_instrument_specs` so replay can resolve multiplier
-  contracts such as `1000SHIB-USDT-SWAP` from DB.
+- User-facing behavior: fetch or update market data, inspect coverage, chart
+  Deribit external observations in the Run Backtest Derivatives context card,
+  export OHLCV, funding, or external data, delete stale OHLCV/funding pairs, and
+  use DB-backed data for backtests. Fetch jobs are queued sequentially and shown
+  as a job list in the Market Data Coverage card. Binance fetches also sync
+  exchangeInfo-derived venue specs into `venue_instrument_specs` so replay can
+  resolve multiplier contracts such as `1000SHIB-USDT-SWAP` from DB.
+  External coverage rows label Exchange from the dataset provider, and external
+  export downloads DB rows even when the optional refresh pre-step skips or fails.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -176,17 +189,29 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `src/okx_quant/data/external_clients/deribit_dvol.py`,
+  `src/okx_quant/data/external_clients/deribit_funding.py`,
+  `src/okx_quant/data/external_clients/deribit_option_surface.py`,
+  `src/okx_quant/data/external_clients/deribit_option_flow.py`,
   `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   `scripts/market_data/ingest_external.py`,
+  `scripts/market_data/snapshot_deribit_options.py`,
+  `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
-  `tests/unit/test_routes_data_delete.py`.
+  `tests/unit/test_routes_data_delete.py`,
+  `tests/unit/test_deribit_dvol_client.py`,
+  `tests/unit/test_deribit_funding_client.py`,
+  `tests/unit/test_deribit_option_surface.py`,
+  `tests/unit/test_deribit_option_flow.py`,
+  `tests/unit/test_snapshot_deribit_options.py`,
+  `tests/unit/test_routes_data_external_series.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
   `docs/DEBUGGING_RUNBOOK.md`.
 - Do-not-touch notes: ingestion changes can affect backtest reproducibility; do not
@@ -389,6 +414,39 @@ implementation exists.
   artifacts. Stop at checkpoint 1 unless Claude/human explicitly opens the next
   task.
 
+## OI Positioning Research Candidate
+
+- User-facing behavior: checkpoint-only research candidate for
+  F-OI-POSITIONING. It tests a daily time-series fade book over the OI-good
+  PIT USDT-perp universe, using falling contract-count open interest as the
+  positioning signal. This is evidence-review tooling only, with no UI, API,
+  config gate, demo, shadow, live, risk, portfolio, or execution entrypoint.
+- Frontend files: none.
+- Backend/API files: none.
+- Backtesting files: `backtesting/oi_positioning_backtest.py`,
+  `backtesting/pipeline_stage3_registry.py`,
+  `backtesting/differential_validation.py`,
+  `scripts/run_oi_positioning_checkpoint.py`.
+- Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
+  Binance venue-scoped `canonical_candles`, `funding_rates`,
+  `venue_instrument_specs`, and Binance Vision OI rows in
+  `external_observations.fields.open_interest_contracts`; generated sidecars
+  live under `results/idea_batch_20260701_taxonomy_002/f_oi_positioning/`.
+- Config files: none changed except `config/workstreams.yaml` progress text.
+- Strategy / portfolio files: none changed.
+- Tests: `tests/unit/test_oi_positioning_backtest.py`,
+  `tests/unit/test_pipeline_stage3_registry.py`,
+  `tests/unit/test_pipeline_batch2_contracts.py`,
+  `tests/unit/test_pipeline_checkpoint1_check.py`.
+- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, relevant Change Manifest and session/context
+  handoffs.
+- Do-not-touch notes: do not enable a strategy, use `value_num` as OI signal
+  input, touch `config/strategies.yaml`, `config/risk.yaml`, risk, portfolio,
+  execution, demo/shadow/live gates, or mutate existing result artifacts. Stop
+  at checkpoint 1 unless Claude/human explicitly opens the next task.
+
 ## Strategy Research Pipeline Automation
 
 - User-facing behavior: generate and review advisory research-pipeline sidecars
@@ -406,6 +464,14 @@ implementation exists.
   without automatic family minting. Pipeline improvement P1-P8 adds
   session-scoring handoff files, feedback ranking tags, advisory Stage2
   reprobe, and per-batch funnel metrics; all remain research-only sidecars.
+  F-OI-POSITIONING Stage-2 data availability first read BTC/ETH Binance Vision
+  5m OI (`oi_binance_hist_btc` / `oi_binance_hist_eth`, E-034), then the
+  user-directed universe-wide backfill/probe generalized the dataset convention
+  to `oi_binance_hist_<base>` and evaluates PIT-eligible days per symbol
+  (E-036). E-037 then ran the signed-off Stage-3 Task B checkpoint with
+  family-minting vs F-FUNDING-XS-DISPERSION and the pre-registered 4-combo
+  fold-refit WF/CPCV grid; checkpoint1 fails the DSR/PSR threshold, so
+  promotion remains blocked.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
@@ -426,6 +492,8 @@ implementation exists.
   feedback ranking tags. This is not a strategy, risk, settings, or deployment
   gate config.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_pipeline_stage2_data_probe.py`,
+  `tests/unit/test_pipeline_stage2_registry.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
   `tests/unit/test_pipeline_literature_ideas.py`,
@@ -466,13 +534,14 @@ implementation exists.
   `frontend/view-trades.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
 - Backtesting files: `backtesting/artifacts.py`, `backtesting/result_utils.py`,
-  `backtesting/replay.py`.
+  `backtesting/replay.py`; shared artifact-ID validation and contained child
+  resolution live in `backtesting/artifact_rows.py`.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
   runtime `result`, `metrics`, `config`, `price_series`, `indicator_series`, `fills`,
   `orders`, `trades`, `funding`, `risk_events`, and coverage artifacts.
 - Config files: `config/settings.yaml`, `config/risk.yaml`, `config/strategies.yaml`.
 - Tests: `tests/unit/test_backtest_artifact_schema.py`,
-  `tests/unit/test_backtesting.py`.
+  `tests/unit/test_backtesting.py`, `tests/unit/test_artifact_rows.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`,
   `docs/results_validation_manifest.md`, `docs/DATA_FLOW.md`.
 - Do-not-touch notes: do not edit frozen historical result artifacts; schema changes
@@ -496,7 +565,12 @@ implementation exists.
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_differential_validation.py`,
   `tests/unit/test_engine_consistency_smoke.py`,
-  `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`.
+  `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`,
+  `tests/unit/test_all_strategy_signal_validation.py`,
+  `tests/unit/test_source_provenance_validation.py`.
+- Trust boundary: caller-controlled run, sweep, fixture, strategy, validation,
+  and validation-artifact identifiers are rejected unless they are safe single
+  path components; every filesystem child is resolved below its intended root.
 - Docs to update: `docs/ai_collaboration.md`, `docs/backtest_live_parity_plan.md`,
   `docs/results_validation_manifest.md`, `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: validation harness/interface changes must not alter strategy,

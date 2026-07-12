@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,111 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-12 - P0.4 integration executed; P1.1 governance tooling; P1.2 docs cleanup
+
+- P0.4 Option B executed by Claude under explicit user authorization: the P0
+  hardening plus audit repair committed as `c84f5a1`; `origin/main` merged with
+  zero content delta (main's PR #1–#8 content was already in branch history);
+  integration commit `a950025` verified (unit 768/1 skip, integration 38, Ruff/
+  docs/frontend/config/backtest-smoke pass; api-smoke SKIP; validate-data FAIL
+  is the pre-existing thin local parquet mirror); PR #9 opened with the
+  documented integration exception. No force-push.
+- P1.1 (branch `claude/p1-governance-docs`): `make test-lab` runs
+  `research/crypto-alpha-lab/tests` separately and is part of `verify`;
+  `scripts/docs/check_ledger_consistency.py` (A11: H↔E links, family
+  agreement, K-budget bounds) added to `docs-check` with 8 unit tests — it
+  immediately caught the missing F-VRP-TIMING K-budget row, now added;
+  lifecycle frontmatter enforced for dated `tasks/` files ≥2026-07-01 (28 July
+  files migrated, 4 templates updated, pre-July legacy exempt); Human Review
+  Overview coverage documented as a manual review step.
+- P1.2: README slimmed 897→101 lines; all operational commands/gates moved
+  verbatim into `docs/RUNBOOK.md`; completed 2026-06-25 pipeline/manual plans
+  archived; CHANGELOG backfilled with 07-05/07-07/07-11 entries.
+
+## 2026-07-12 - P0 artifact, ct_val, and venue hardening
+
+- Implemented the user-ratified Claude P0 review. One shared validate-and-reject
+  path contract now covers caller-controlled artifact IDs across API, library,
+  writers/readers, sweeps, differential/strategy validation, and CLIs; fixed
+  namespace and final derived paths are resolved against their true root.
+- Changed the numeric `ct_val` guard to finite `0 < value <= 1e7`, preserving all
+  sizing/PnL/funding formulas. Numeric acceptance remains separate from
+  promotion-grade provenance under R1.4/I16.
+- Changed run/sweep venue requests so omitted/blank resolves to configured
+  primary and any explicit unknown venue returns HTTP 400 before queue mutation;
+  the daily-winner CLI uses the same supported venue allow-list.
+- Recorded H-012 as shelved/no-retry after hygiene found F36 (turnover cost on
+  signal day while position/funding begin t+1); E-037 remains immutable
+  non-promotion evidence. Accepted H-013 Stage-1; E-038 stays reserved-only and
+  no probe/grid/adapter ran.
+- Added three Change Manifests and synchronized rules, invariants, failure modes,
+  maps, current state, Progress, task plan, ledger/spec, and Human Review
+  Overview. No research file, existing result, schema, deployment gate, commit,
+  push, or merge changed.
+- Final verification: P0 target suite `306 passed, 1 skipped`; full unit
+  `768 passed, 1 skipped`; integration `38 passed`; full Ruff, docs metadata/
+  links/overview, `docs-impact --strict`, config, backtest smoke and 12 frontend
+  syntax checks passed. API smoke explicitly skipped without `API_BASE_URL`;
+  optional local `validate-data` remained advisory-fail because its legacy
+  parquet fixture is absent. Claude implementation review approved all P0s.
+
+## 2026-07-12 - Whole-project audit and baseline repair
+
+- Rebuilt project status from collaboration docs, accepted ADRs, maps, Git, and
+  executable checks. Replaced stale uncommitted-work claims, deprecated the old
+  branch board, corrected XS Momentum to shelved, and added a current Progress
+  hardening stream plus a human review entry.
+- Fixed the RUNBOOK standalone server's missing Manual router, hid lifecycle
+  frontmatter from rendered chapters, and replaced broken Progress repo links
+  with a read-only route limited to configured, repo-contained markdown files.
+  File serving is enabled only for loopback standalone binds; the engine and
+  non-loopback views expose no repository-file endpoint.
+- Removed the reintroduced Turtle fixed-input unit guess and corrected the stale
+  integration test to exercise unknown OKX metadata instead of valid Binance
+  base-unit contracts.
+- Made `docs-impact` fail closed on Git inspection errors, supplied invocation-
+  scoped safe-directory handling, added A9/A10 executable rules, and documented
+  why A11 needs a dedicated ledger validator rather than a diff heuristic.
+- Recorded new blockers F30-F32/I32-I34 (artifact path containment, invalid-
+  venue fallback, `ct_val` metadata validation) without changing their protected
+  code paths. Full scope/order is in
+  `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
+- Verification: 666 unit passed; 38 integration passed; Ruff, all frontend Node
+  syntax checks, docs metadata/links/overview/doc-impact, config validation,
+  backtest smoke, live API smoke on temporary port 8081, and Playwright Manual /
+  Progress allow-list checks passed. No backtest result artifact was changed.
+
+## 2026-07-11 - Deribit D2-D5 ingestion, R1-R5 review fixes, D4 backfill
+
+- Implemented the signed-off Deribit plan: hourly DVOL, funding, option-surface
+  snapshot, option-flow hourly aggregates, and a frontend/API read path for
+  external derivative context (`routes_data.py`, `config/external_data.yaml`).
+- Applied Claude review fixes R1-R5: PIT `published_at` labels for hourly DVOL
+  and option-flow, checkpoint preservation on failed chunks, hour-aligned
+  option-flow bounds, DVOL throttling/retry, minor surface/snapshot/API/frontend
+  fixes. D4 option-flow history backfilled through 2026-07-10 23:00Z.
+- No business-rule change; `check_doc_impact.py --strict` passed. Source
+  handoffs: `tasks/2026-07-11-deribit-*-handoff.md`.
+
+## 2026-07-07 - F-OI-POSITIONING Stage-3 runner and E-037 checkpoint
+
+- Implemented the research-only H-012 Stage-3 runner
+  (`backtesting/oi_positioning_backtest.py`, checkpoint CLI, unit coverage,
+  Stage-3 registry entry), Change Manifest
+  `docs/change_manifests/2026-07-07-oi-positioning-stage3.md`.
+- E-037 4-combo fold-refit checkpoint failed the statistical gate (WF 0.6034,
+  CPCV 0.7240, DSR 0.7220, PSR 0.8484); later user-ratified SHELVE/no-retry
+  with hygiene finding F36 (turnover cost on signal day) recorded 2026-07-12.
+
+## 2026-07-05 - Turtle sweep scale-up, UI polish, weekly worklog
+
+- Batched resumable turtle sweeps with raised caps (`4ac9a41`), turtle UI
+  polish: warmup hint, invest_pct units, heatmap hover (`61f04e2`), Deribit
+  feed groundwork and research checkpoints (`b9ec041`).
+- Weekly compressed history 2026-06-29→07-05 lives in
+  `tasks/2026-07-05-work-log.md` (pipeline automation, batch-2 closure,
+  governance landing).
 
 ## 2026-07-04 - Turtle Manual Pass + F-FUNDING-XS-DISPERSION Checkpoint Verdict
 

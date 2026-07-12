@@ -22,5 +22,9 @@ def test_funding_xs_dispersion_frontier_family_is_registered():
     assert "F-FUNDING-XS-DISPERSION" in STAGE3_RUNNERS
 
 
+def test_oi_positioning_frontier_family_is_registered():
+    assert "F-OI-POSITIONING" in STAGE3_RUNNERS
+
+
 def test_unimplemented_frontier_families_are_not_registered_as_stage3_runners():
     assert "F-XVENUE-LEADLAG" not in STAGE3_RUNNERS

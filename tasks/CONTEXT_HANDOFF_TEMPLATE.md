@@ -11,6 +11,16 @@ See `docs/COMPRESSION_RULES.md` for what must be preserved verbatim.
 ---
 
 ```markdown
+---
+status: current
+type: handoff
+owner: <human|claude|codex>
+created: <YYYY-MM-DD>
+last_reviewed: <YYYY-MM-DD>
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: <task / area> — <YYYY-MM-DD>
 
 ## Goal (one sentence)

@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -46,6 +46,18 @@ failure modes say how it silently breaks.
 | F22 | Pseudo-OOS from full-sample parameter selection | WF/CPCV callback ignores the train fold, reuses one full-sample-selected return series, and reports in-sample selection as OOS evidence; CPCV paths may become identical or over-optimistic | I24 fold-refit tests and review of pipeline summary `validation_mode` / path dispersion | R6.3, R7.4 |
 | F23 | Wrong verdict source or standalone overlay in B-taxonomy idea generation | A stale experiment outcome or taxonomy free text makes an occupied inconclusive/refuted family look eligible, or an overlay family is drafted as a standalone alpha, inflating trial/K-budget risk | I28 idea-generator verdict/overlay tests and review of `idea_batch.json` skipped reasons | R6.3, R7.4 |
 | F24 | Timestamp precision drift in universe source parity | DB and parquet membership outputs represent the same calendar days but carry different `datetime64` units, breaking source-parity checks or downstream artifact comparisons | `tests/unit/test_universe_membership.py::test_build_membership_ignores_timestamp_storage_precision` and DB/parquet parity test | R6.2 |
+| F25 | Artifact round-trip loses marker semantics | File-backed CSV fills/trades parse epoch `ts` as strings, or DB/file artifact symbol filtering runs before normalized marker construction, so chart marker fallback drops otherwise valid executions | `tests/unit/test_routes_backtest_turtle.py::test_turtle_csv_string_records_emit_execution_markers`; local artifact regression `test_existing_turtle_run_symbol_filtered_execution_marker_endpoint` is skip-gated when gitignored files are absent | R7.1 |
+| F26 | Bucketed external aggregate published at bucket start | As-of joins can see up to one bucket of future DVOL or option-flow data while charts and gap scans look normal | Deribit hourly DVOL and option-flow tests assert `published_at = observed_at + 1h`; DB relabel scan checks no `_1h`/`optflow` rows publish at bucket start | R6.1 |
+| F27 | Optional pre-step blocks primary action | A best-effort preparation step, such as external dataset refresh before export, hard-fails and prevents the actual DB-backed export/download even though usable data exists | `tests/unit/test_routes_data_export.py::test_refresh_external_datasets_skips_db_known_dataset_missing_from_yaml`, frontend `node --check`, and manual browser export check | R7.2 |
+| F28 | Full-table coverage aggregation exceeds the UI timeout | Market Data Coverage reports `signal timed out` even though DB rows exist | `tests/unit/test_routes_data_delete.py::test_coverage_route_uses_instrument_bars_fast_path` requires per-dataset LATERAL aggregation over the existing external-observation index; real-DB timing check | R7.2 |
+| F29 | Terminal private-WS authentication failure treated as reconnectable | Invalid demo credentials produce a connect/error loop and eventually trip the local WS reconnect breaker instead of exposing the OKX error once | `tests/unit/test_market_data_handler.py::test_private_auth_failure_does_not_reconnect_or_trip_breaker`; OKX login probe confirms error `60005 Invalid apiKey` | R7.2 |
+| F30 | Unvalidated artifact identifier escapes the result root | A caller-controlled `run_id` or `validation_id` containing path separators writes or reads outside the intended result directory | Shared validate-and-resolve helper plus `test_artifact_rows.py`, API, writer, differential-validation and CLI regressions | — |
+| F31 | Unknown execution venue silently normalizes to Binance | A typo selects plausible Binance data/specs instead of rejecting the request, invalidating venue provenance without an obvious error | `tests/unit/test_backtest_request_exchange.py` requires explicit unknown venue 400 before queueing | R6.4 |
+| F32 | `ct_val` validation assumes multipliers are at most one or accepts non-finite values | Legitimate multiplier contracts are rejected while NaN can enter sizing/accounting and corrupt downstream values | `tests/unit/test_sizing.py` enforces finite `0 < ct_val <= 1e7`; ADR-0003 amendment | R1.2, R1.4, R1.5 |
+| F33 | Parallel FastAPI app factories expose different UI routes | A feature passes direct-router tests and works under the trading engine but returns 404 from the RUNBOOK-recommended standalone server | `tests/unit/test_routes_manual.py::test_standalone_server_registers_manual_router` | — |
+| F34 | Progress repo paths are sent through the frontend-only static mount | Every configured document exists, but clicking a card opens HTTP 404 | `tests/unit/test_routes_progress.py::test_progress_route_serves_only_configured_files` plus browser smoke | — |
+| F35 | Documentation lifecycle frontmatter renders as manual prose | The manual opens but begins with internal `status`, owner, and review metadata | `tests/unit/test_routes_manual.py::test_chapter_markdown_returned` | — |
+| F36 | Turnover cost is posted before the claimed execution lag | A day-t target affects day-t research returns through cost even though position PnL/funding begin at t+1, so leak checks can look green while return timing is inconsistent | E-037 manual leak-lag spot-check; known-gap review before reusing `oi_positioning_backtest.py` | R5.3, R6.1 |
 
 ## How to add a failure mode
 

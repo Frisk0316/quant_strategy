@@ -87,6 +87,49 @@ def test_funding_export_uses_fixed_8h_frequency_label():
     assert "No DB funding pairs available." in text
 
 
+def test_external_export_refresh_unavailable_is_not_shown_as_failure():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function externalRefreshFailureSummary" in text
+    assert "Refresh unavailable; downloading existing rows" in text
+    assert "Refresh failed:" not in text
+    assert "refreshableExternalDatasets" in text
+    assert "dataset_ids: refreshableDatasets" in text
+    assert "Using existing DB rows" in text
+    assert "${skipped} skipped" not in text
+
+
+def test_turtle_warmup_hint_uses_current_enter_terms():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function turtleWarmupMinutes" in text
+    assert "turtleWarmupMinutes(strategyParams.turtle" in text
+    assert "turtle: 55 * 24 * 60" not in text
+
+
+def test_turtle_invest_pct_result_rows_use_fraction_unit():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "view-config.js").read_text(encoding="utf-8")
+
+    assert "function turtleInvestPctFraction" in text
+    assert "invest_pct_fraction" in text
+    assert "normalizeInvestPct" not in text
+    assert "n > 1 ? n / 100 : n" not in text
+
+
+def test_heatmap_cells_have_hover_and_click_detail():
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "frontend" / "charts.js").read_text(encoding="utf-8")
+
+    assert "const [hover, setHover] = useState(null);" in text
+    assert "const [selected, setSelected] = useState(null);" in text
+    assert "onPointerMove=" in text
+    assert "onClick=" in text
+    assert "<title>${cellLabel(cell)}</title>" in text
+
+
 def test_validation_lab_engine_cards_show_contract_limits_artifacts_and_triggers():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "view-validation.js").read_text(encoding="utf-8")
@@ -594,6 +637,30 @@ def test_execution_comparison_endpoint_infers_dual_output_file(tmp_path):
 
     assert response.status_code == 200
     assert response.json() == comparison
+
+
+def test_execution_comparison_ignores_payload_path_instead_of_truncating(tmp_path):
+    run_dir = tmp_path / "safe_run"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        json.dumps({
+            "run_id": "safe_run",
+            "metrics": {},
+            "execution_comparison": "../victim_execution_comparison.json",
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "victim_execution_comparison.json").write_text(
+        json.dumps({"secret": "wrong run"}),
+        encoding="utf-8",
+    )
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/safe_run/execution-comparison")
+
+    assert response.status_code == 404
 
 
 def test_execution_markers_endpoint_filters_by_symbol(tmp_path):

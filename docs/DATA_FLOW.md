@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -104,11 +104,12 @@ warmup; warmup days stay recorded in probe details for audit (user-approved
 ## External Observations Ingestion Flow
 
 ```text
-keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders -> research artifacts / data export
+keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter -> external_datasets and external_observations -> Stage-2 external-feature coverage probes and as-of feature loaders plus GET /api/data/external-series -> research artifacts / data export / Derivatives context chart
 ```
 
 Current: `config/external_data.yaml` registers keyless adapters for
-Alternative.me Fear & Greed, Binance futures open interest, and Deribit DVOL,
+Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
+Deribit funding, Deribit option-surface snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
 yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
@@ -117,14 +118,57 @@ the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
 observations (`value_num = sumOpenInterestValue`, `fields.unit =
 "USDT_notional"`). `download_binance_vision_metrics.py` is the public historical
 OI path for Binance Vision UM daily metrics; it validates the BTCUSDT schema
-fail-closed before ingesting BTC/ETH 5m `sum_open_interest_value` observations
-with `provenance = binance_vision_metrics`. `OKXLiquidationClient` writes raw
+fail-closed before ingesting 5m `sum_open_interest_value` observations with
+`provenance = binance_vision_metrics`, stores contract-count OI in
+`fields.open_interest_contracts`, and can derive PIT-universe dataset ids as
+`oi_binance_hist_<base>` from `data/universe/universe_membership.parquet`
+starting each symbol at its first eligible day. `OKXLiquidationClient` writes raw
 long/short liquidation event observations from OKX public REST when available;
 notional is source-provided or computed from `sz * bkPx * contract_value` and
 raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /
-`dvol_deribit_eth` as daily DVOL close observations (`fields.unit =
-"dvol_index_points"`). Empty fetches for datasets marked `fail_on_empty_fetch`
-fail closed and do not advance the external-ingestion checkpoint.
+`dvol_deribit_eth` as daily DVOL close observations and
+`dvol_deribit_btc_1h` / `dvol_deribit_eth_1h` as hourly DVOL close
+observations (`fields.unit = "dvol_index_points"`). For bucketed external
+aggregates, `observed_at` is the market bucket label and `published_at` is the
+bucket end, which is the earliest safe as-of timestamp for replay joins; Deribit
+hourly DVOL and option-flow rows therefore publish one hour after
+`observed_at`, and daily DVOL publishes one day after `observed_at`.
+`DeribitFundingClient` writes `funding_deribit_btc` / `funding_deribit_eth` as
+hourly BTC-PERPETUAL/ETH-PERPETUAL funding observations with `value_num =
+interest_1h` and `fields.unit = "rate_1h_decimal"`; Deribit funding timestamps
+are treated as accrual-period end and are safe to use as both `observed_at` and
+`published_at`.
+`DeribitOptionSurfaceClient` writes forward-only `optsurf_deribit_btc` /
+`optsurf_deribit_eth` snapshots as one hourly aggregate row per currency:
+`value_num` is total option open interest, fields carry put/call OI, put/call
+ratio, max pain pooled across all listed expiries in the one-row-per-currency
+snapshot, OI-weighted mark IV, and spot index, and raw payloads are bounded to
+the top 20 instruments by open interest. `DeribitOptionFlowClient`
+and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
+`optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
+Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
+fields carry buy/sell premium amounts, IV, trade/liquidation counts, and the
+USDC-linear exclusion count, and raw payloads keep only a bounded trade sample.
+Hours containing only excluded USDC-linear option trades still emit a row with
+`value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
+v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
+can advance cleanly because zero inverse trades is a valid historical outcome;
+other required external datasets marked `fail_on_empty_fetch` still fail closed
+on an empty generic ingest.
+`GET /api/data/external-series` reads `external_observations` by `dataset_id`,
+optional UTC `start`/`end` bounds, filters to numeric `value_num`, downsamples to
+at most 5000 points while preserving endpoints, and exposes `{t, v}` rows plus
+the first available `fields.unit`; unknown dataset ids return 404 before the
+series query. The Run Backtest Derivatives context card uses this route for
+Deribit datasets through `window.API.fetchExternalSeries` and the existing
+`window.Charts.LineChart`.
+External export reads DB rows directly through `GET /api/data/export?kind=external`.
+The frontend runs the optional best-effort refresh pre-step only for selected
+yfinance datasets. Selected DB-only datasets bypass refresh and export existing
+rows directly, so they are not presented as skipped. The refresh API still
+returns `skipped` for non-on-demand or dynamically registered DB datasets when
+called directly; only datasets unknown in both yaml and `external_datasets` are
+rejected.
 
 Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
 recent ~30-day window, so that adapter remains forward accumulation; historical
@@ -220,6 +264,9 @@ Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
 momentum has a separate research-only vectorized runner and is not wired into
 the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
 does not yet run a tiny frozen replay fixture.
+Run and sweep requests use `config/settings.yaml` primary exchange only when the
+field is omitted/blank; any explicit unknown exchange returns HTTP 400 before a
+background job is queued.
 
 Research-only `fill_all_signals` replay raises capacity and stop thresholds
 inside the copied run config before replay starts: order notional, position
@@ -250,6 +297,9 @@ ReplayBacktestResult -> backtesting.artifacts.save_backtest_artifacts -> files, 
 
 Current: artifact mode is controlled by environment and DSN availability. Do not
 edit existing historical artifacts as part of code or docs cleanup.
+Caller-controlled artifact IDs are validate-and-reject ASCII path components;
+writers and readers resolve each child below the intended artifact root instead
+of truncating a supplied path to its basename.
 
 Fast-read path: `save_backtest_artifacts` keeps writing the compatibility
 `backtest_artifacts.payload` rows/files, then best-effort writes derived
@@ -311,6 +361,7 @@ strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
 
 ```text
 config/workstreams.yaml -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
+                         -> allow-listed .md path -> GET /api/progress/file -> browser tab
 ```
 
 Current: the Progress panel is a read-only operations surface. It does not read
@@ -318,6 +369,10 @@ from git, DB, or the network, write repository state, alter strategy/config/gate
 behavior, or modify result artifacts. Missing `config/workstreams.yaml` returns
 HTTP 200 with an empty `workstreams` list; malformed YAML returns HTTP 200 with
 an `error` field so the panel can show an unavailable state.
+Progress file reads are limited to existing markdown paths explicitly present in
+the workstream config and resolved inside the repository; the repo root is not
+mounted as static content. File reads are disabled in the engine app and for a
+standalone server bound to a non-loopback host.
 
 ## Validation Artifact Flow
 
@@ -346,3 +401,6 @@ Run-scoped differential validation CSV artifacts may be indexed in
 `backtest_artifact_rows` as `validation/{validation_id}/{artifact_name}` for
 faster artifact detail reads. Strategy-validation artifacts stay file-backed
 because they are not keyed by `backtest_runs.run_id`.
+Run, fixture, strategy, validation and validation-artifact identifiers use the
+same reject-not-truncate helper across API, library and CLI entrypoints; invalid
+IDs fail before validation evidence is read or written.

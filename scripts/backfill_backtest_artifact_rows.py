@@ -19,7 +19,10 @@ from backtesting.artifact_rows import (  # noqa: E402
     build_artifact_row_records,
     normalized_records_hash,
     read_artifact_rows,
+    resolve_artifact_child,
+    resolve_artifact_path,
     upsert_artifact_rows,
+    validate_artifact_id,
     validation_artifact_type,
 )
 
@@ -55,6 +58,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def main_async(args: argparse.Namespace) -> int:
     results_dir = Path(args.results_dir)
+    explicit_run_ids = [validate_artifact_id(run_id, "run_id") for run_id in args.run_id]
     artifact_types = set(args.artifact_type or sorted(ROW_INDEX_ARTIFACT_TYPES))
     unknown = sorted(artifact_types - ROW_INDEX_ARTIFACT_TYPES)
     if unknown:
@@ -67,7 +71,7 @@ async def main_async(args: argparse.Namespace) -> int:
         run_ids = await _discover_run_ids(
             conn=conn,
             results_dir=results_dir,
-            explicit=args.run_id,
+            explicit=explicit_run_ids,
             include_all=args.all,
             limit=args.limit_runs,
         )
@@ -139,7 +143,7 @@ async def _discover_run_ids(
     limit: int,
 ) -> list[str]:
     if explicit:
-        run_ids = list(dict.fromkeys(explicit))
+        run_ids = list(dict.fromkeys(validate_artifact_id(value, "run_id") for value in explicit))
     elif include_all:
         run_ids = []
         if conn is not None:
@@ -150,11 +154,11 @@ async def _discover_run_ids(
                 ORDER BY created_at DESC
                 """
             )
-            run_ids.extend(str(row["run_id"]) for row in rows)
+            run_ids.extend(validate_artifact_id(str(row["run_id"]), "run_id") for row in rows)
         if results_dir.exists():
             for path in sorted(results_dir.iterdir(), reverse=True):
                 if path.is_dir() and (path / "result.json").exists() and path.name not in run_ids:
-                    run_ids.append(path.name)
+                    run_ids.append(validate_artifact_id(path.name, "run_id"))
     else:
         return []
     return run_ids[:limit] if limit > 0 else run_ids
@@ -166,6 +170,7 @@ async def _load_artifacts(
     run_id: str,
     artifact_types: set[str],
 ) -> dict[str, list[dict[str, Any]]]:
+    run_id = validate_artifact_id(run_id, "run_id")
     artifacts: dict[str, list[dict[str, Any]]] = {}
     if conn is not None:
         rows = await conn.fetch(
@@ -182,7 +187,7 @@ async def _load_artifacts(
             if isinstance(payload, list):
                 artifacts[str(row["artifact_type"])] = [dict(item) for item in payload if isinstance(item, dict)]
 
-    run_dir = results_dir / Path(run_id).name
+    run_dir = resolve_artifact_child(results_dir, run_id, "run_id")
     for artifact_type in sorted(artifact_types - set(artifacts)):
         filename = ARTIFACT_FILES.get(artifact_type)
         if not filename:
@@ -225,12 +230,35 @@ def _read_csv_records(path: Path) -> list[dict[str, Any]]:
 
 
 def _load_validation_artifacts(results_dir: Path, run_id: str) -> dict[str, list[dict[str, Any]]]:
-    validation_root = results_dir / Path(run_id).name / "validation"
+    validation_root = resolve_artifact_path(
+        results_dir,
+        (run_id, "run_id"),
+        ("validation", "artifact_namespace"),
+    )
     artifacts: dict[str, list[dict[str, Any]]] = {}
     if not validation_root.is_dir():
         return artifacts
-    for validation_dir in sorted(path for path in validation_root.iterdir() if path.is_dir()):
-        for path in sorted(validation_dir.glob("*.csv")):
+    for candidate in sorted(path for path in validation_root.iterdir() if path.is_dir()):
+        try:
+            validation_dir = resolve_artifact_path(
+                results_dir,
+                (run_id, "run_id"),
+                ("validation", "artifact_namespace"),
+                (candidate.name, "validation_id"),
+            )
+        except ValueError:
+            continue
+        for candidate_path in sorted(validation_dir.glob("*.csv")):
+            try:
+                path = resolve_artifact_path(
+                    results_dir,
+                    (run_id, "run_id"),
+                    ("validation", "artifact_namespace"),
+                    (validation_dir.name, "validation_id"),
+                    (candidate_path.name, "artifact_name"),
+                )
+            except ValueError:
+                continue
             artifacts[validation_artifact_type(validation_dir.name, path.name)] = _read_csv_records(path)
     return artifacts
 

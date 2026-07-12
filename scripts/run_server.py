@@ -23,6 +23,7 @@ import uvicorn
 from okx_quant.api.routes_backtest import make_backtest_router
 from okx_quant.api.routes_config import make_config_router
 from okx_quant.api.routes_data import make_data_router
+from okx_quant.api.routes_manual import make_manual_router
 from okx_quant.api.routes_progress import make_progress_router
 from okx_quant.core.config import load_config
 
@@ -41,12 +42,26 @@ def _db_dsn() -> str | None:
     return None
 
 
-def create_app(results_dir: Path, frontend_dir: Path) -> FastAPI:
+def create_app(
+    results_dir: Path,
+    frontend_dir: Path,
+    *,
+    serve_progress_files: bool = False,
+) -> FastAPI:
     app = FastAPI(title="OKX Quant Backtest Viewer", docs_url="/api/docs")
     app.include_router(make_backtest_router(results_dir), prefix="/api/backtest", tags=["backtest"])
     app.include_router(make_config_router(), prefix="/api", tags=["config"])
     app.include_router(make_data_router(_db_dsn()), prefix="/api/data", tags=["data"])
-    app.include_router(make_progress_router(PROJECT_ROOT), prefix="/api/progress", tags=["progress"])
+    app.include_router(
+        make_manual_router(PROJECT_ROOT / "docs" / "manual"),
+        prefix="/api/manual",
+        tags=["manual"],
+    )
+    app.include_router(
+        make_progress_router(PROJECT_ROOT, serve_files=serve_progress_files),
+        prefix="/api/progress",
+        tags=["progress"],
+    )
 
     @app.get("/api/live/status")
     def live_status():
@@ -77,7 +92,11 @@ def main() -> None:
         results_dir.mkdir(parents=True)
         print(f"Created results dir: {results_dir}")
 
-    app = create_app(results_dir, frontend_dir)
+    app = create_app(
+        results_dir,
+        frontend_dir,
+        serve_progress_files=args.host in {"127.0.0.1", "localhost", "::1"},
+    )
     print(f"\n  Frontend: http://{args.host}:{args.port}")
     print(f"  API docs: http://{args.host}:{args.port}/api/docs")
     print(f"  Results:  {results_dir.resolve()}\n")

@@ -1297,6 +1297,8 @@ function IndicatorChart({
 }
 
 function HeatmapChart({ rows = [], xKey, yKey, valueKey, title = "", height = 220 }) {
+  const [hover, setHover] = useState(null);
+  const [selected, setSelected] = useState(null);
   const clean = (rows || [])
     .map((row) => ({
       x: Number(row?.[xKey]),
@@ -1317,6 +1319,7 @@ function HeatmapChart({ rows = [], xKey, yKey, valueKey, title = "", height = 22
   const innerH = h - padT - padB;
   const cellW = xs.length ? innerW / xs.length : innerW;
   const cellH = ys.length ? innerH / ys.length : innerH;
+  const activeCell = hover || selected;
   function fill(value) {
     if (!Number.isFinite(value)) return "var(--surface-2)";
     const t = max === min ? 0.5 : (value - min) / (max - min);
@@ -1325,23 +1328,49 @@ function HeatmapChart({ rows = [], xKey, yKey, valueKey, title = "", height = 22
     const b = Math.round(142 - t * 62);
     return `rgb(${r}, ${g}, ${b})`;
   }
+  function cellAtPointer(e) {
+    const box = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - box.left) / Math.max(box.width, 1);
+    const relY = (e.clientY - box.top) / Math.max(box.height, 1);
+    const xi = Math.max(0, Math.min(xs.length - 1, Math.floor(relX * xs.length)));
+    const yi = Math.max(0, Math.min(ys.length - 1, Math.floor(relY * ys.length)));
+    const x = xs[xi];
+    const y = ys[yi];
+    return { x, y, xi, yi, value: byKey.get(`${x}|${y}`) };
+  }
+  function cellLabel(cell) {
+    if (!cell) return "";
+    return `${xKey}: ${cell.x} | ${yKey}: ${cell.y} | ${valueKey}: ${defaultTooltipValue(cell.value)}`;
+  }
+  function handlePointerMove(e) {
+    setHover(cellAtPointer(e));
+  }
+  function handleClick(e) {
+    setSelected(cellAtPointer(e));
+  }
   if (!clean.length || xs.length < 1 || ys.length < 1) {
     return html`<div class="field-hint" style=${{ padding: 12 }}>No heatmap rows.</div>`;
   }
+  const tooltipW = 236;
+  const tooltipX = activeCell ? Math.min(padL + (activeCell.xi + 1) * cellW + 8, w - tooltipW - 8) : 0;
+  const tooltipY = activeCell ? Math.max(8, Math.min(padT + activeCell.yi * cellH + 8, h - 82)) : 0;
   return html`
     <svg viewBox=${`0 0 ${w} ${h}`} width="100%" height=${h} role="img" aria-label=${title || valueKey}>
       ${title && html`<text x=${padL} y="18" fill="var(--text)" font-size="12" font-family="var(--font-mono)">${title}</text>`}
       ${ys.map((y, yi) => xs.map((x, xi) => {
         const value = byKey.get(`${x}|${y}`);
+        const cell = { x, y, value, xi, yi };
         return html`
-          <rect
-            key=${`${x}|${y}`}
-            x=${padL + xi * cellW}
-            y=${padT + yi * cellH}
-            width=${Math.max(cellW - 1, 1)}
-            height=${Math.max(cellH - 1, 1)}
-            fill=${fill(value)}
-          />
+          <g key=${`${x}|${y}`}>
+            <title>${cellLabel(cell)}</title>
+            <rect
+              x=${padL + xi * cellW}
+              y=${padT + yi * cellH}
+              width=${Math.max(cellW - 1, 1)}
+              height=${Math.max(cellH - 1, 1)}
+              fill=${fill(value)}
+            />
+          </g>
           ${cellW > 42 && cellH > 22 && Number.isFinite(value) && html`
             <text x=${padL + xi * cellW + cellW / 2} y=${padT + yi * cellH + cellH / 2 + 4}
               text-anchor="middle" font-size="10" fill="#fff" font-family="var(--font-mono)">
@@ -1356,8 +1385,54 @@ function HeatmapChart({ rows = [], xKey, yKey, valueKey, title = "", height = 22
       ${ys.map((y, yi) => html`
         <text x=${padL - 8} y=${padT + yi * cellH + cellH / 2 + 4} text-anchor="end" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)">${y}</text>
       `)}
+      ${selected && html`
+        <rect
+          x=${padL + selected.xi * cellW}
+          y=${padT + selected.yi * cellH}
+          width=${Math.max(cellW - 1, 1)}
+          height=${Math.max(cellH - 1, 1)}
+          fill="none"
+          stroke="var(--text)"
+          stroke-width="1.8"
+          pointer-events="none"
+        />
+      `}
+      ${hover && html`
+        <rect
+          x=${padL + hover.xi * cellW}
+          y=${padT + hover.yi * cellH}
+          width=${Math.max(cellW - 1, 1)}
+          height=${Math.max(cellH - 1, 1)}
+          fill="none"
+          stroke="var(--accent)"
+          stroke-width="1.4"
+          pointer-events="none"
+        />
+      `}
+      ${activeCell && html`
+        <g transform=${`translate(${tooltipX}, ${tooltipY})`} pointer-events="none">
+          <rect width=${tooltipW} height="74" rx="6" fill="var(--surface)" stroke="var(--border-strong)" />
+          <text x="10" y="18" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">
+            ${hover ? "Hover" : "Selected"}
+          </text>
+          <text x="10" y="36" font-size="11" fill="var(--text)" font-family="var(--font-mono)">${xKey}: ${activeCell.x}</text>
+          <text x="10" y="52" font-size="11" fill="var(--text)" font-family="var(--font-mono)">${yKey}: ${activeCell.y}</text>
+          <text x="10" y="68" font-size="11" fill="var(--text)" font-family="var(--font-mono)">${valueKey}: ${defaultTooltipValue(activeCell.value)}</text>
+        </g>
+      `}
       <text x=${padL + innerW / 2} y=${h - 2} text-anchor="middle" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)">${xKey}</text>
       <text x="12" y=${padT + innerH / 2} text-anchor="middle" font-size="10" fill="var(--text-muted)" font-family="var(--font-mono)" transform=${`rotate(-90 12 ${padT + innerH / 2})`}>${yKey}</text>
+      <rect
+        x=${padL}
+        y=${padT}
+        width=${innerW}
+        height=${innerH}
+        fill="transparent"
+        style=${{ cursor: "pointer" }}
+        onPointerMove=${handlePointerMove}
+        onPointerLeave=${() => setHover(null)}
+        onClick=${handleClick}
+      />
     </svg>
   `;
 }

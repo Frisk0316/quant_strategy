@@ -3,7 +3,7 @@ status: accepted
 type: adr
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -79,7 +79,21 @@ A short perp receives +0.01 USDT when funding rate is positive.
 
 ### Source of ct_val
 
-`ct_val` is fetched from OKX REST `/api/v5/public/instruments` at engine startup and stored per `inst_id` in the instrument registry. **Never hardcode `ct_val`.** Use `validate_ct_val()` from `portfolio/sizing.py` which asserts `0 < ct_val ≤ 1`.
+`ct_val` is resolved through the venue-aware metadata path defined by ADR-0007
+and stored per execution venue and symbol. That path may use an explicitly
+non-authoritative registry or BTC/ETH offline fallback; those values do not
+satisfy promotion provenance. R1.4/I16 separately govern venue-matched authority,
+and new production support must not add ad-hoc multiplier constants.
+
+### Amendment — 2026-07-12: multiplier validation range
+
+The original `0 < ct_val <= 1` validator assumed OKX small-contract values and
+conflicted with ADR-0007 plus accepted multiplier metadata such as `100`, `1000`
+and `1e6`. `validate_ct_val()` now requires a finite value in
+`0 < ct_val <= 1e7`. The upper bound is a corruption sanity cap with 10x
+headroom over the largest currently accepted multiplier; R1.4 provenance still
+determines whether a value is authoritative. This amendment changes only input
+validation: every PnL, notional, funding and sizing formula above is unchanged.
 
 ## Consequences
 

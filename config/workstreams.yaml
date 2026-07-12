@@ -3,14 +3,32 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
-  - name: XS momentum
+  - name: Project audit and hardening
+    status: active
+    milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration]
+    current: integration
+    state: "2026-07-12 P0.1-P0.3 implemented and Claude-review APPROVED (tasks/2026-07-12-claude-p0-review.md). P0.4 Option B EXECUTED (Claude, user-authorized): P0 work committed as c84f5a1, origin/main merged with zero content delta and no conflicts, integration commit a950025 pushed, PR #9 opened with the documented integration exception. verify-full equivalent on a950025: unit 768 passed/1 Windows symlink skip, integration 38 passed, Ruff/docs/frontend/config/backtest-smoke green; api-smoke SKIP (no running server); validate-data FAIL is the pre-existing thin local parquet mirror (missing candles_1H/funding parquet), not merge-caused."
+    next: "Codex reviews/merges PR #9, then reviews branch claude/p1-governance-docs (P1.1 governance enforcement: test-lab in verify, A11 ledger validator in docs-check, tasks/ lifecycle frontmatter enforcement, overview coverage manual step; P1.2 docs cleanup: README 897->101 with detail moved verbatim to RUNBOOK, completed plans archived, CHANGELOG backfilled 07-05/07-07/07-11). Remaining Codex P1: liquidation unattended mode."
+    links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
+    updated: 2026-07-12
+
+  - name: Local runtime reliability
     status: blocked
+    milestones: [coverage_query, single_server, private_ws_auth]
+    current: private_ws_auth
+    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. The pre-existing 127.0.0.1:8080 listener (PID 23696 during audit) timed out and was left untouched; temporary 8081 smoke passed. Demo private WS still returns OKX 60005 Invalid apiKey."
+    next: "Inspect/restart the user-owned 8080 process and configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
+    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
+    updated: 2026-07-12
+
+  - name: XS momentum
+    status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, demo, live]
     current: wf_cpcv
-    state: "PSR 0.82 < 0.95; promotion BLOCKED; xs_momentum stays disabled"
-    next: "re-run after portfolio-vol sizing decision; raise PSR >= 0.95"
+    state: "Portfolio-vol E-005 completed and H-002 was refuted/shelved: DSR 0.7823, PSR 0.8234; xs_momentum stays disabled and is not promotion evidence."
+    next: "Do not tune to chase the gate. Revisit only with materially more OOS history or a genuinely new Claude/user-approved signal thesis with honest n_trials."
     links: [docs/superpowers/plans/2026-06-23-xs-momentum-universe.md]
-    updated: 2026-06-25
+    updated: 2026-07-12
 
   - name: Strategy research pipeline (batch 2 C1/C2/C3)
     status: shelved
@@ -23,18 +41,27 @@ workstreams:
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint]
-    current: first_stage3_checkpoint
-    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted (marginal miss, K 0/2 used, unlike the clean H-006/007/008 refutations). DSR==PSR is small-grid stability (all 5 CPCV paths select the same combo), not a defect."
-    next: "No chase-the-gate retry for H-009 (retry needs ex-ante rationale, burns K, accumulates n_trials). Next pipeline candidates: F-XVENUE-LEADLAG (pending OKX 1m backfill + Stage-2 reprobe) and F-OI-POSITIONING (Vision OI data available, needs Stage-2 probe + Stage-1 spec). Do not schedule the orchestrator or claim promotion/live readiness."
-    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
-    updated: 2026-07-04
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
+    current: checkpoint_review
+    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
+    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. P0 blockers are closed locally, so F-VRP-TIMING/H-013 E-038 may proceed only as a separately scoped Stage-2 probe; Stage 3 remains unauthorized. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
+    updated: 2026-07-12
+
+  - name: Deribit derivatives data
+    status: active
+    milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec, stage1_review, stage2_probe]
+    current: stage2_probe
+    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 Stage-1 was user-approved 2026-07-12; E-038 remains reserved-only and absent from EXPERIMENT_REGISTRY because no probe has run."
+    next: "Run E-038 only under a separate Stage-2 scope (coverage, staleness, zero-delta feed check); do not start the Stage-3 grid. Forward schedulers stay unregistered by user decision, with stale series accepted and manual RUNBOOK updates. Daily dvol_deribit_* backfill DONE 2026-07-12 (1,936 gap-free rows/symbol, 2021-03-24 to 2026-07-11, cross-checked vs hourly); manual-update command in RUNBOOK. No promotion/live claim."
+    links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md]
+    updated: 2026-07-12
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done
     milestones: [spec, impl, validation, consolidated_pr, merge]
     current: merge
-    state: "Already merged into main (origin branch is 0 ahead / 19 behind origin/main); branch still exists"
+    state: "ADR-0007 P1 implementation is merged and closed; no strategy or deployment readiness claim follows from branch existence."
     next: "none - ADR-0007 P1 complete; no cleanup action taken"
     links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
     updated: 2026-06-29
@@ -52,16 +79,16 @@ workstreams:
     status: done
     milestones: [draft, write, verify]
     current: verify
-    state: "All chapters incl. 90-research-pipeline written, verified, and committed (fac6386)"
-    next: "none - manual complete; rerun scripts/generate_research_pipeline_doc.py if content changes"
+    state: "All ten chapters are written. The 2026-07-12 audit wired /api/manual into the RUNBOOK standalone server and strips lifecycle frontmatter before rendering; targeted route and browser checks pass."
+    next: "Content refresh for stale strategy/pipeline narrative is tracked in the project follow-up plan; rerun scripts/generate_research_pipeline_doc.py when chapter 90 changes."
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
-    updated: 2026-06-29
+    updated: 2026-07-12
 
   - name: Turtle strategy platform integration
     status: done
     milestones: [spec, t1_core_port_parity, t2_run_api, t3_sweep_api, t4_frontend, t5_docs, claude_review, manual_pass]
     current: manual_pass
-    state: "ACCEPTED and usable 2026-07-04 after the user-directed manual pass. Golden parity now passes on REAL data: 898 BTC-USDT-SWAP UTC daily bars exported from canonical DB, verbatim polars reference re-run in a scratch venv, pandas port matches exactly (17 columns, ints exact, floats rtol 1e-9; the earlier 600-day synthetic fixture is superseded/deleted). DB-backed end-to-end API smoke passed (manual-param run with invest_pct=0.05, 2-free-param sweep with surface.html, invest_pct-axis sweep with equity_curves.csv); the smoke found and fixed a Timestamp-serialization bug in run_turtle_sweep with a regression test. Full unit suite 599 passed. RF1-RF3 closed. Research-only standalone runner; no replay/trading-core/gate change."
-    next: "Optional polish only if the user asks: heatmap hover/click detail, warmup hint hardcodes 55d, fixed-vs-range invest_pct unit convention. No live/demo/shadow claim."
+    state: "ACCEPTED research-only runner with real-data golden parity, DB-backed API smoke, marker display, resumable large sweeps, and UI polish. The audit removed the reintroduced fixed-input unit heuristic; fraction-unit regression is green."
+    next: "none - no strategy, replay-core, gate, live, demo, or shadow claim."
     links: [docs/superpowers/specs/2026-07-03-turtle-platform-design.md, tasks/2026-07-03-turtle-strategy-platform-tasks.md, tests/fixtures/turtle/README.md]
-    updated: 2026-07-04
+    updated: 2026-07-12

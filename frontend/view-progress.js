@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { html } from 'htm/preact';
 
 const STATUS_CHIP = { active: "accent", blocked: "bad", done: "ok", shelved: "" };
+const progressFileUrl = (path) => `/api/progress/file?path=${encodeURIComponent(path)}`;
 
 function Stepper({ milestones, status }) {
   return html`
@@ -41,7 +42,7 @@ function Stepper({ milestones, status }) {
   `;
 }
 
-function WorkstreamCard({ ws }) {
+function WorkstreamCard({ ws, fileLinksEnabled }) {
   if (ws.error) {
     return html`
       <div class="card">
@@ -76,8 +77,11 @@ function WorkstreamCard({ ws }) {
         ${ws.links && ws.links.length ? html`
           <div class="row wrap" style=${{ gap: 6 }}>
             ${ws.links.map((lnk) => html`
-              <a key=${lnk} class="chip" href=${"/" + lnk} target="_blank" rel="noreferrer"
-                 style=${{ textTransform: "none", overflowWrap: "anywhere" }}>${lnk}</a>`)}
+              ${fileLinksEnabled
+                ? html`<a key=${lnk} class="chip" href=${progressFileUrl(lnk)} target="_blank" rel="noreferrer"
+                    style=${{ textTransform: "none", overflowWrap: "anywhere" }}>${lnk}</a>`
+                : html`<span key=${lnk} class="chip" style=${{ textTransform: "none", overflowWrap: "anywhere" }}>${lnk}</span>`}
+            `)}
           </div>` : null}
       </div>
     </div>
@@ -113,7 +117,7 @@ function ProgressView() {
       </div>
       <div class="grid" style=${{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
         ${workstreams.length
-          ? workstreams.map((ws) => html`<${WorkstreamCard} key=${ws.name} ws=${ws} />`)
+          ? workstreams.map((ws) => html`<${WorkstreamCard} key=${ws.name} ws=${ws} fileLinksEnabled=${payload.file_links_enabled} />`)
           : html`<div class="card"><div class="empty">No workstreams in config/workstreams.yaml</div></div>`}
       </div>
     </div>

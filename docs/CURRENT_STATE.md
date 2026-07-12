@@ -3,75 +3,77 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
 
 # Current State
 
-A small, always-current snapshot a session can trust on a cold start. Keep this
-short and present-tense; history goes to `docs/CHANGELOG_AI.md`, backlog goes to
-`docs/KNOWN_ISSUES.md`.
+Short present-tense snapshot. History belongs in `docs/CHANGELOG_AI.md`; durable
+gaps belong in `docs/KNOWN_ISSUES.md`.
 
-## Snapshot
+## Repository
 
-- Current branch: `codex/pipeline-batch1-stage3`, working tree has uncommitted
-  turtle implementation/docs changes plus pre-existing planning/state edits.
-- Repo maintenance (M1-M5 + M2-R1) is fully committed and closed:
-  `df96682`/`79c1ddc`/`0191c1d`/`2dea608`/`5eb71f8`/`21cc3c9`.
-- Strategy research pipeline P1-P9 is fully committed:
-  `dfc7af8`/`6997aba`/`14976d4` plus an in-progress commit for P9 (DB-sourced
-  universe membership) and the first Stage-1 spec produced from the
-  taxonomy path.
-- P9 merge-blocker fix is in the working tree: universe membership candle
-  timestamps are normalized before daily membership math, with regression
-  coverage for `datetime64[us]` vs `datetime64[s]` source parity.
-- **`F-FUNDING-XS-DISPERSION` (`H-009`) first full pipeline cycle complete
-  (E-031):** distinctness MINT (corr 0.138 vs the real C2 reference),
-  pre-registered 4-combo fold-refit WF/CPCV — WF 1.1812 / CPCV 0.9553 /
-  DSR=PSR 0.9346 — checkpoint① FAIL on the 0.95 gate only. **Verdict
-  (user-ratified 2026-07-04): KEEP as `testing`, not refuted**; no
-  chase-the-gate retry (any retry needs ex-ante rationale, burns K 0/2,
-  accumulates n_trials). No promotion/live claim.
-- **Turtle (海龜) platform integration ACCEPTED and usable (2026-07-04,
-  manual pass complete):** golden parity passes on 898 REAL BTC-USDT-SWAP
-  daily bars against the verbatim polars reference (17 columns exact / rtol
-  1e-9; `tests/fixtures/turtle/`); DB-backed end-to-end API smoke passed
-  (manual-param run, 2-free-param sweep with surface.html, invest_pct-axis
-  sweep with equity_curves.csv), fixing one Timestamp-serialization bug
-  found by the smoke. Full unit suite 599 passed. Research-only standalone
-  runner; manual parameter tuning works from the frontend.
-- OKX liquidation forward-accumulation runs every 2h via Windows Task
-  Scheduler (`quant_liq_okx_ingest`, Interactive-only).
+- Branch `codex/pipeline-batch1-stage3` at `f1aac94` holds the committed P0
+  hardening (`c84f5a1`) plus the zero-delta `origin/main` integration merge
+  (`a950025`). PR #9 (documented integration exception, branch → main) is open
+  awaiting Codex review; do not force-push.
+- Branch `claude/p1-governance-docs` (off `f1aac94`) holds the P1.1/P1.2 work
+  below, PR pending Codex review.
+- No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
+  `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
+  authority in the documented order.
+- Do not modify research, existing results, strategy/signal/risk/execution
+  behavior, DB schema, or deployment gates without a dedicated approved task.
 
-## Active Warnings
+## Completed and usable
 
-- No strategy, risk, portfolio, execution, deployment gate, or existing
-  result artifact was changed by any of the above; no live/demo/shadow
-  readiness is claimed.
-- `research/strategy_synthesis.md`, `docs/backtest_live_parity_plan.md`, and
-  `config/` remain truth sources for strategy/config behavior.
+- P0.1-P0.3 hardening implemented and Claude-review APPROVED: artifact-ID
+  containment, `ct_val` finite-positive `<=1e7`, venue fail-closed. No PnL
+  formula or existing artifact changed.
+- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): zero-delta merge,
+  integration commit verified (unit 768/1 skip, integration 38, Ruff/docs/
+  frontend/config/backtest-smoke pass; api-smoke SKIP no server; validate-data
+  FAIL is the pre-existing thin local parquet mirror), PR #9 open.
+- P1.1 governance enforcement DONE 2026-07-12 (Claude, Codex review pending):
+  `make test-lab` runs the crypto-alpha-lab suite separately and is wired into
+  `verify`; A11 ledger validator `scripts/docs/check_ledger_consistency.py` is
+  in `docs-check` with unit tests (it found and fixed the missing F-VRP-TIMING
+  K-budget row); new dated `tasks/` files (≥2026-07-01) require lifecycle
+  frontmatter — checker enforces, 28 July files migrated, 4 templates updated,
+  legacy exempt; overview coverage is a documented manual review step in
+  `docs/human_overviews/README.md`.
+- P1.2 documentation cleanup DONE 2026-07-12: README slimmed 897→101 lines with
+  operational detail moved verbatim into `docs/RUNBOOK.md` (521→1237 lines,
+  gate wording unchanged); completed 2026-06-25 pipeline/manual plans archived;
+  CHANGELOG_AI backfilled with compressed 07-05/07-07/07-11 entries; ADR-0001
+  amendment and ADR-0006 status were already fixed by the audit session.
+- Turtle research runner, Deribit D1-D5 + R1-R5, manual/Progress routes, and
+  daily DVOL backfill (2021-03-24→2026-07-11, gap-free) remain accepted.
 
-## Current Gaps
+## Active / blocked
 
-- `make` is unavailable in the current Windows sandbox; use the Python
-  equivalents (`scripts/docs/check_doc_metadata.py`,
-  `scripts/docs/check_feature_map_links.py`,
-  `scripts/docs/check_doc_impact.py --strict`) or `pytest` directly.
-- `quant_liq_okx_ingest` is Interactive-only (runs only while logged on); the
-  measured OKX public REST retention window is hours-scale (BTC ~14h, ETH
-  ~5h), so extended logout gaps will drop liquidation events.
-- 4 point-in-time-eligible symbols under the rebuilt universe
-  (`CC`/`FIL`/`M`/`SHIB`-USDT-SWAP) have no funding history backfilled yet;
-  not required for the current Stage-2 pass, only if a later grid needs them.
-- `src/okx_quant/stocks/` is kept as a docs-mapped research-only sandbox
-  (M5 Option A); it is not wired into crypto replay, UI, API, or deployment
-  gates.
+- H-013/F-VRP-TIMING Stage-1 signed off, `proposed`; E-038 reserved-only until
+  a separately scoped Stage-2 probe. Stage 3 unauthorized.
+- H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
+  H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 blocked on OKX
+  BTC/ETH 1m backfill.
+- Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
+  later. Port 8080 abandoned; use another port.
+- Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
+  updates). OKX liquidation unattended mode is an approved Codex task.
+- F36: the shelved OI runner posts turnover cost on signal day; any reuse needs
+  a fix, guarding test, ex-ante rationale, and a new experiment record.
 
-## How to Update
+## Next actions, in order
 
-Overwrite this snapshot when it goes stale. Do not append history.
+1. Codex reviews/merges PR #9 (P0.4 integration exception).
+2. Codex reviews the `claude/p1-governance-docs` PR (P1.1 + P1.2).
+3. Codex P1.4 implementation: OKX liquidation unattended mode.
+4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
+5. Pending fact: the user creates the OKX Demo key.
 
-Related: `docs/AI_HANDOFF.md`, `docs/CHANGELOG_AI.md`, `docs/KNOWN_ISSUES.md`,
-`docs/CONTEXT_INDEX.md`, and `docs/CONTEXT_BUDGET.md`.
+Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`,
+`config/workstreams.yaml`,
+`tasks/2026-07-12-project-diagnosis-followup-tasks.md`.

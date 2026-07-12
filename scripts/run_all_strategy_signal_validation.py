@@ -25,6 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "backtesting"))
 
 from backtesting import differential_validation as dv
+from backtesting.artifact_rows import resolve_artifact_child, resolve_artifact_path, validate_artifact_id
 from backtesting.replay import ReplayBacktestEngine
 
 ENGINES = ["vectorbt", "backtrader", "nautilus"]
@@ -81,7 +82,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _prepare_run_dir(results_dir: Path, run_id: str, *, force: bool) -> Path:
-    run_dir = results_dir / run_id
+    run_dir = resolve_artifact_child(results_dir, run_id, "run_id")
     if run_dir.exists() and any(run_dir.iterdir()) and not force:
         raise FileExistsError(f"{run_dir} already exists; choose another --batch-id or pass --force")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -637,18 +638,25 @@ def _prepare_engine_environment(engines: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    results_dir = Path(args.results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    batch_id = args.batch_id or f"portable_signal_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    generated_batch_id = f"portable_signal_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    batch_id = validate_artifact_id(
+        args.batch_id if args.batch_id is not None else generated_batch_id,
+        "batch_id",
+    )
     strategies = args.strategies
     engines = args.engines
+    validation_id = validate_artifact_id(f"{batch_id}_three_engine_signal_point", "validation_id")
+    for strategy in strategies:
+        validate_artifact_id(f"{batch_id}_{strategy}", "run_id")
+    validate_artifact_id(f"{batch_id}_summary.json", "artifact_name")
+    results_dir = Path(args.results_dir).resolve()
+    results_dir.mkdir(parents=True, exist_ok=True)
     _prepare_engine_environment(engines)
 
     rows = []
     for strategy in strategies:
         builder = BUILDERS[strategy]
         run_dir = builder(results_dir, batch_id, force=args.force)
-        validation_id = f"{batch_id}_three_engine_signal_point"
         summary = dv.run_strategy_differential_validation(
             results_dir,
             strategy,
@@ -682,7 +690,11 @@ def main(argv: list[str] | None = None) -> None:
         ],
         "rows": rows,
     }
-    summary_path = results_dir / "strategy_validation" / f"{batch_id}_summary.json"
+    summary_path = resolve_artifact_path(
+        results_dir,
+        ("strategy_validation", "artifact_namespace"),
+        (f"{batch_id}_summary.json", "artifact_name"),
+    )
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(report, indent=2, ensure_ascii=False))

@@ -9,6 +9,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / "docs"
+TASKS_DIR = REPO_ROOT / "tasks"
+# User decision 2026-07-12: new tasks/ files require lifecycle frontmatter;
+# dated files before this cutoff are historical records and are never scanned.
+TASKS_CUTOFF = "2026-07-01"
+_TASK_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
 
 REQUIRED_FIELDS = {
     "status",
@@ -67,19 +72,34 @@ def _markdown_files() -> list[Path]:
     return files
 
 
+def _task_files() -> list[Path]:
+    """Dated tasks/ files at or after the cutoff; templates/legacy exempt."""
+    if not TASKS_DIR.is_dir():
+        return []
+    selected = []
+    for path in sorted(TASKS_DIR.glob("*.md")):
+        match = _TASK_DATE_RE.match(path.name)
+        if match and match.group(1) >= TASKS_CUTOFF:
+            selected.append(path)
+    return selected
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
-    for path in _markdown_files():
+    task_paths = set(_task_files())
+    for path in _markdown_files() + sorted(task_paths):
         rel = _repo_rel(path)
         text = path.read_text(encoding="utf-8")
         meta = _metadata_block(text)
+        # New tasks/ files are enforced at error level per the 2026-07-12 decision.
+        is_task = path in task_paths
         is_required_new = rel in REQUIRED_NEW_DOCS
 
         if meta is None:
             message = f"{rel}: missing lifecycle metadata"
-            if is_required_new:
+            if is_required_new or is_task:
                 errors.append(message)
             else:
                 warnings.append(message)
@@ -89,7 +109,7 @@ def main() -> int:
         status = meta.get("status", "")
         if missing:
             message = f"{rel}: missing metadata fields: {', '.join(missing)}"
-            if is_required_new:
+            if is_required_new or is_task:
                 errors.append(message)
             else:
                 warnings.append(message)

@@ -7,6 +7,16 @@ implementation begins.
 ---
 
 ```markdown
+---
+status: current
+type: task
+owner: <human|claude|codex>
+created: <YYYY-MM-DD>
+last_reviewed: <YYYY-MM-DD>
+expires: none
+superseded_by: null
+---
+
 # Feature Spec: <title> — <YYYY-MM-DD>
 
 ## Problem statement (one sentence)

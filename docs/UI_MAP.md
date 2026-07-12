@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -75,8 +75,10 @@ Main app views in `frontend/app.js`:
 - Parameter sweep defaults/specs live in `SWEEP_PARAM_DEFAULTS` and
   `SWEEP_PARAM_SPECS`.
 - `frontend/view-config.js` owns the run-level Exchange selector. It sends
-  `exchange` on both run-backtest and parameter-sweep payloads; the API stores it
-  as `cfg.storage.primary_exchange`.
+  `exchange` on both run-backtest and parameter-sweep payloads. If an API client
+  omits or sends a blank value, the request resolves to the configured primary
+  exchange; an explicit unknown value is rejected with HTTP 400 rather than
+  substituted with Binance. The request does not rewrite configuration.
 - `frontend/view-config.js` owns the execution-profile selector. It shows only
   `Strategy Fill` (`execution_profile=strategy_fill`) and `Dual Output`
   (`execution_profile=dual_output`); dual jobs open the strategy-fill child run
@@ -89,9 +91,14 @@ Main app views in `frontend/app.js`:
 - `daily_winner` is tagged as validation-only and is not deployment evidence.
 - `turtle` is a research-only standalone runner. `frontend/view-config.js` locks
   it to 1D, renders the 11 reference params with an `invest_pct` percent slider,
+  disables research risk/execution/`fill_all_signals` controls as not applied,
   and owns the Turtle sweep panel. Sweep results render 5 native SVG heatmaps
   plus an `invest_pct` final-equity line chart, slider scrub, selected equity
-  curve, and Plotly 3D surface artifact link. `frontend/charts.js` exports the
+  curve, Plotly 3D surface artifact link, rows/equity artifact links, and a
+  top-results table. Large Turtle sweeps run as batched/resumable jobs and show
+  completed/total progress plus cancel status. Large CSV results remain
+  artifact-link only; small 2D/invest sweeps can inline rows for charts.
+  `frontend/charts.js` exports the
   shared `LineChart` and `HeatmapChart`; Plotly artifacts load
   `frontend/vendor/plotly.min.js`.
 
@@ -114,6 +121,10 @@ Main app views in `frontend/app.js`:
   when status is blocked) plus state/next lines and doc links.
 - Backend endpoint is implemented in `src/okx_quant/api/routes_progress.py`; it
   reads `config/workstreams.yaml` only, with no git, DB, or network access.
+- Doc links use `GET /api/progress/file?path=...`; only existing `.md` paths
+  explicitly listed by a workstream are served, after repo-containment checks.
+  This file route is enabled only by a loopback-bound standalone server. The
+  engine app and non-loopback standalone binds render paths as non-clickable chips.
 
 ## User Manual
 
@@ -123,7 +134,9 @@ Main app views in `frontend/app.js`:
   `marked`.
 - Stub chapters render a visible `待補` placeholder instead of a blank page.
 - Backend endpoints are implemented in `src/okx_quant/api/routes_manual.py` and
-  registered in `src/okx_quant/api/server.py` before the static file mount.
+  registered by both `src/okx_quant/api/server.py` and the RUNBOOK-recommended
+  standalone `scripts/run_server.py` before the static file mount. Lifecycle
+  frontmatter is removed from chapter responses before markdown rendering.
 
 ## API Calls Used By Frontend
 
@@ -133,6 +146,8 @@ Main app views in `frontend/app.js`:
 - `triggerBacktestRun`: `POST /api/backtest/run`.
 - `fetchBacktestRunStatus`: `GET /api/backtest/run/status/{job_id}`.
 - `triggerBacktestSweep`: `POST /api/backtest/sweep`.
+- `fetchBacktestSweepStatus`: `GET /api/backtest/sweep/status/{job_id}`.
+- `cancelBacktestSweep`: `POST /api/backtest/sweep/cancel/{job_id}`.
 - `fetchBacktestSweepResult`: `GET /api/backtest/sweep/result/{sweep_id}`.
 - `backtestSweepArtifactUrl`: URL builder for
   `GET /api/backtest/sweep/artifact/{sweep_id}/{name}`.
@@ -150,6 +165,7 @@ Main app views in `frontend/app.js`:
 - `fetchBacktestPriceSeries`: `GET /api/backtest/{run_id}/price-series`.
 - `fetchBacktestIndicators`: `GET /api/backtest/{run_id}/indicators`.
 - `fetchDataCoverage`: `GET /api/data/coverage`.
+- `fetchExternalSeries`: `GET /api/data/external-series?dataset_id=...&start=...&end=...`.
 - `fetchDataInstruments`: `GET /api/data/instruments`.
 - `triggerDataFetch`: `POST /api/data/fetch`.
 - `fetchDataFetchJobs`: `GET /api/data/fetch/jobs`.
@@ -158,6 +174,7 @@ Main app views in `frontend/app.js`:
 - `fetch manual manifest/chapter`: `GET /api/manual`,
   `GET /api/manual/{slug}`.
 - `fetchProgress`: `GET /api/progress`.
+- Progress file links: `GET /api/progress/file?path=<configured markdown path>`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
 cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh
@@ -167,7 +184,8 @@ manual reload behavior.
 
 ## Market Data Coverage
 
-- `frontend/view-config.js` owns the Market Data Coverage card.
+- `frontend/view-config.js` owns the Market Data Coverage card and the
+  Derivatives context card.
 - `GET /api/data/coverage` uses `instrument_bars` metadata for the OHLCV table
   fast path, so the card does not full-scan `canonical_candles` on every load.
   OHLCV row counts in this view are estimated from first/last timestamp and bar
@@ -186,13 +204,29 @@ manual reload behavior.
 - The coverage table has local filters for exchange, trading pair/dataset text
   search, and data type (`OHLCV`, funding rate, or other/external). These
   filters do not call a separate backend query.
+- External coverage rows derive the Exchange label from the dataset provider:
+  `deribit` rows display `DERIBIT`, Binance Vision rows display `BINANCE`, and
+  other providers keep their provider label. The filter dropdown uses the same
+  row exchange field.
 - The export panel treats funding as fixed-frequency data: the disabled
   frequency field displays `8H`, and the export request uses `bar=funding`
   rather than an OHLCV bar such as `1H`.
+- External export runs the best-effort `POST /api/data/external/refresh` pre-step
+  only for selected yfinance datasets. DB-only selections download existing rows
+  directly and show `Using existing DB rows`, rather than reporting every dataset
+  as skipped. Refresh HTTP failures also fall through to the DB-backed download;
+  successful refresh calls report only the count actually refreshed.
 - Coverage rows for OHLCV and funding pairs include a Delete button. The button
   uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
   coverage when the API succeeds. External dataset rows are not pair-delete
   targets.
+- The Derivatives context card reads the available Deribit external datasets from
+  coverage, calls `fetchExternalSeries`, and renders the selected dataset through
+  the existing `window.Charts.LineChart`. It defaults to
+  `dvol_deribit_btc_1h`, keeps start/end dates as UTC date bounds, and expects
+  the API to return downsampled `{t, v}` points plus `fields.unit` when present.
+  Unknown dataset ids return 404 from the API; the card ignores stale async
+  responses when the user changes dataset or date range quickly.
 
 Validation-lab calls live in `frontend/view-validation.js`. The selector merges
 saved Backtest Runs from `GET /api/backtest/runs` with strategy fixture candidates:
