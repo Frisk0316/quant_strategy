@@ -48,7 +48,11 @@ current/target/known-gap distinction — do not silently "fix" either side.
   promotion-grade evidence for other venues.
 - **R1.5** `ct_val` validation accepts only finite values in
   `0 < ct_val <= 1e7`. The cap is a corruption guard, not a replacement for
-  R1.4 venue-matched provenance.
+  R1.4 venue-matched provenance. Enforcement points (closed 2026-07-13):
+  every explicitly provided multiplier — fill metadata in
+  `PositionLedger.on_fill`, caller-supplied replay `instrument_specs`, and the
+  DB/config replay paths — goes through the shared `validate_ct_val()`; the
+  `1.0` fallback applies only when no value is provided at all.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 
