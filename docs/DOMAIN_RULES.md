@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -46,6 +46,9 @@ current/target/known-gap distinction — do not silently "fix" either side.
   DB lookup; canonical `1000...` multiplier contracts still require DB specs.
   `config/instrument_specs.yaml` is an OKX-only fallback and is not
   promotion-grade evidence for other venues.
+- **R1.5** `ct_val` validation accepts only finite values in
+  `0 < ct_val <= 1e7`. The cap is a corruption guard, not a replacement for
+  R1.4 venue-matched provenance.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 
@@ -113,7 +116,8 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
 - **R6.4** A run that declares an execution venue must source candles only from
   provenance-tagged data for that venue. Missing venue bars are explicit
   gaps/errors; they must not be silently substituted from another venue or from
-  source-less parquet.
+  source-less parquet. Omitting the venue selects the configured primary
+  exchange; an explicit unknown venue must fail before the run is queued.
 
 ## R7. Promotion Gates
 

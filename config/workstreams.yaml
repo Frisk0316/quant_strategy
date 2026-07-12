@@ -3,23 +3,32 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Project audit and hardening
+    status: active
+    milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration]
+    current: integration
+    state: "2026-07-12 P0.1-P0.3 are implemented and Claude-review APPROVED (implementation-review section of tasks/2026-07-12-claude-p0-review.md): artifact IDs reject unsafe components and remain root-contained; ct_val is finite-positive through 1e7 with formulas unchanged; omitted/blank venue uses config primary and explicit unknown venue returns 400 before queueing. Final checks: targeted 306 passed/1 Windows symlink skip, full unit 768 passed/1 skip, integration 38 passed, full Ruff/docs/config/backtest-smoke green. The indentation minor is fixed; symlink skip and fail-loud legacy-name note remain nonblocking."
+    next: "Execute approved P0.4 Option B as a separate Git task: merge the five main-only commits into this branch, one documented integration-exception PR, verify-full on the integration commit, no force-push."
+    links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
+    updated: 2026-07-12
+
   - name: Local runtime reliability
     status: blocked
     milestones: [coverage_query, single_server, private_ws_auth]
     current: private_ws_auth
-    state: "Coverage indexed aggregation is fixed; stale duplicate PID on 127.0.0.1:8080 was stopped; localhost coverage is HTTP 200 in 2.33s. External DB-only exports bypass the yfinance-only refresh step and no longer report 43 skipped. Demo private WS probe returns OKX 60005 Invalid apiKey, and terminal auth failures now stop without reconnecting or tripping the local WS breaker."
-    next: "Create/configure a valid OKX Demo Trading API key before restarting engine mode. For frontend/backtest/data-only work, use scripts/run_server.py. Do not switch to live mode as a workaround."
+    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. The pre-existing 127.0.0.1:8080 listener (PID 23696 during audit) timed out and was left untouched; temporary 8081 smoke passed. Demo private WS still returns OKX 60005 Invalid apiKey."
+    next: "Inspect/restart the user-owned 8080 process and configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
     updated: 2026-07-12
 
   - name: XS momentum
-    status: blocked
+    status: shelved
     milestones: [spec, impl, backtest, wf_cpcv, demo, live]
     current: wf_cpcv
-    state: "PSR 0.82 < 0.95; promotion BLOCKED; xs_momentum stays disabled"
-    next: "re-run after portfolio-vol sizing decision; raise PSR >= 0.95"
+    state: "Portfolio-vol E-005 completed and H-002 was refuted/shelved: DSR 0.7823, PSR 0.8234; xs_momentum stays disabled and is not promotion evidence."
+    next: "Do not tune to chase the gate. Revisit only with materially more OOS history or a genuinely new Claude/user-approved signal thesis with honest n_trials."
     links: [docs/superpowers/plans/2026-06-23-xs-momentum-universe.md]
-    updated: 2026-06-25
+    updated: 2026-07-12
 
   - name: Strategy research pipeline (batch 2 C1/C2/C3)
     status: shelved
@@ -32,19 +41,19 @@ workstreams:
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint]
-    current: first_stage3_checkpoint
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
+    current: checkpoint_review
     state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
-    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING next is Claude/user checkpoint review: verdict, retry-vs-new-family judgment, leak-lag spot check, and portable block review; no retry/adapter/demo/shadow/live before review. F-XVENUE-LEADLAG needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
+    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. P0 blockers are closed locally, so F-VRP-TIMING/H-013 E-038 may proceed only as a separately scoped Stage-2 probe; Stage 3 remains unauthorized. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
     links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
-    updated: 2026-07-07
+    updated: 2026-07-12
 
   - name: Deribit derivatives data
     status: active
-    milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec]
-    current: stage1_spec
-    state: "D1-D5 complete and Claude re-review ACCEPTED 2026-07-12 (tasks/2026-07-11-deribit-ingestion-review.md): R1-R5 fixes verified in code AND DB — PIT relabel 100% (all optflow/dvol_1h rows publish at bucket end), D4 option-flow backfill complete (BTC 22,126 / ETH 22,125 rows, 2024-01-01->2026-07-10 23:00Z, no >6h gaps), checkpoint/alignment/throttle fixes tested, 21/21 targeted tests green. optsurf is snapshot-only by design (1 row/ccy so far). Market Data Coverage indexed-aggregation fix reduces real-DB response time to 2.23s; restart the API process to load it."
-    next: "F-VRP-TIMING Stage-1 spec drafted 2026-07-12 (docs/superpowers/specs/2026-07-12-f-vrp-timing-hypothesis.md, H-013 proposed, E-038 reserved): AWAITING USER SIGN-OFF before Stage-2 probe / Stage-3 Codex work. User registers RUNBOOK schtasks for D3 snapshots + forward ingest or the series go stale. Decide ingest-or-retire for the empty daily dvol_deribit_* config datasets. No promotion/live claim."
+    milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec, stage1_review, stage2_probe]
+    current: stage2_probe
+    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 Stage-1 was user-approved 2026-07-12; E-038 remains reserved-only and absent from EXPERIMENT_REGISTRY because no probe has run."
+    next: "Run E-038 only under a separate Stage-2 scope (coverage, staleness, zero-delta feed check); do not start the Stage-3 grid. Forward schedulers stay unregistered by user decision, with stale series accepted and manual RUNBOOK updates. Daily dvol_deribit_* backfill DONE 2026-07-12 (1,936 gap-free rows/symbol, 2021-03-24 to 2026-07-11, cross-checked vs hourly); manual-update command in RUNBOOK. No promotion/live claim."
     links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md]
     updated: 2026-07-12
 
@@ -52,7 +61,7 @@ workstreams:
     status: done
     milestones: [spec, impl, validation, consolidated_pr, merge]
     current: merge
-    state: "Already merged into main (origin branch is 0 ahead / 19 behind origin/main); branch still exists"
+    state: "ADR-0007 P1 implementation is merged and closed; no strategy or deployment readiness claim follows from branch existence."
     next: "none - ADR-0007 P1 complete; no cleanup action taken"
     links: [docs/superpowers/plans/2026-06-17-multi-venue-instrument-specs-p1.md]
     updated: 2026-06-29
@@ -70,16 +79,16 @@ workstreams:
     status: done
     milestones: [draft, write, verify]
     current: verify
-    state: "All chapters incl. 90-research-pipeline written, verified, and committed (fac6386)"
-    next: "none - manual complete; rerun scripts/generate_research_pipeline_doc.py if content changes"
+    state: "All ten chapters are written. The 2026-07-12 audit wired /api/manual into the RUNBOOK standalone server and strips lifecycle frontmatter before rendering; targeted route and browser checks pass."
+    next: "Content refresh for stale strategy/pipeline narrative is tracked in the project follow-up plan; rerun scripts/generate_research_pipeline_doc.py when chapter 90 changes."
     links: [docs/superpowers/plans/2026-06-25-user-manual.md]
-    updated: 2026-06-29
+    updated: 2026-07-12
 
   - name: Turtle strategy platform integration
     status: done
     milestones: [spec, t1_core_port_parity, t2_run_api, t3_sweep_api, t4_frontend, t5_docs, claude_review, manual_pass]
     current: manual_pass
-    state: "ACCEPTED and usable 2026-07-04 after the user-directed manual pass. Golden parity passes on REAL data; DB-backed API smoke passed; follow-up Codex pass fixed Turtle marker display for numeric-string epochs and symbol-filtered endpoint calls (browser check: 212 markers), made risk/execution/fill_all_signals ignores explicit, added CI-portable verbatim-reference sweep golden coverage plus sweep parity validation (Tier A PASS; Tier B PASS on Claude re-run E-033 with fixture-range input — user reference CSV exactly reproduced), polished surface.html fixed params/hover text, and completed optional UI polish for heatmap hover/click detail, dynamic warmup hints, and explicit fraction-unit invest_pct sweep display. Research-only standalone runner; no replay/trading-core/gate change."
-    next: "none - Turtle optional UI polish is complete; no live/demo/shadow claim."
+    state: "ACCEPTED research-only runner with real-data golden parity, DB-backed API smoke, marker display, resumable large sweeps, and UI polish. The audit removed the reintroduced fixed-input unit heuristic; fraction-unit regression is green."
+    next: "none - no strategy, replay-core, gate, live, demo, or shadow claim."
     links: [docs/superpowers/specs/2026-07-03-turtle-platform-design.md, tasks/2026-07-03-turtle-strategy-platform-tasks.md, tests/fixtures/turtle/README.md]
-    updated: 2026-07-08
+    updated: 2026-07-12

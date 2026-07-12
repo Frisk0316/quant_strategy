@@ -3,7 +3,7 @@ status: current
 type: index
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-06-25
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -22,8 +22,9 @@ conflicts with its source docs, the source docs win. See
 
 | Date | Topic | Overview | Status | Risk | Decision required | Human decision |
 |---|---|---|---|---|---|---|
-| 2026-06-25 | Strategy Research Pipeline Stage 1 | [docs/human_overviews/2026-06-25-strategy-research-pipeline-overview.md](human_overviews/2026-06-25-strategy-research-pipeline-overview.md) | draft | medium | yes | pending |
-| 2026-06-25 | In-Dashboard User Manual (使用手冊) | [docs/human_overviews/2026-06-25-user-manual-overview.md](human_overviews/2026-06-25-user-manual-overview.md) | draft | low | no | approved |
+| 2026-07-12 | Whole-project diagnosis and P0 closure | [docs/human_overviews/2026-07-12-project-diagnosis-overview.md](human_overviews/2026-07-12-project-diagnosis-overview.md) | current | high | no | approved |
+| 2026-06-25 | Strategy Research Pipeline Stage 1 | [docs/human_overviews/2026-06-25-strategy-research-pipeline-overview.md](human_overviews/2026-06-25-strategy-research-pipeline-overview.md) | deprecated | medium | yes | superseded |
+| 2026-06-25 | In-Dashboard User Manual (使用手冊) | [docs/human_overviews/2026-06-25-user-manual-overview.md](human_overviews/2026-06-25-user-manual-overview.md) | deprecated | low | no | superseded |
 
 ## Rules
 

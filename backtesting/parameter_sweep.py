@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
 from backtesting.artifacts import save_backtest_artifacts
 from backtesting.data_loader import _dsn_reachable as _dsn_probe
 from backtesting.replay import (
@@ -229,6 +230,13 @@ def run_parameter_sweep(
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run a lightweight parameter sweep and write summary JSON/CSV artifacts."""
+    generated_sweep_id = f"sweep_{strategy}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    sweep_id = validate_artifact_id(
+        sweep_id if sweep_id is not None else generated_sweep_id,
+        "sweep_id",
+    )
+    validate_artifact_id(f"{sweep_id}.json", "artifact_name")
+    validate_artifact_id(f"{sweep_id}.csv", "artifact_name")
     combinations, skipped = expand_parameter_grid(
         strategy,
         parameter_grid,
@@ -237,6 +245,15 @@ def run_parameter_sweep(
     normalized_symbols = [normalize_swap_symbol(symbol) for symbol in symbols]
     if not normalized_symbols:
         raise ParameterSweepError("at least one symbol is required")
+
+    finalist_count_estimate = _estimate_finalist_count(
+        len(combinations),
+        run_finalists=run_finalists,
+        finalist_top_pct=finalist_top_pct,
+        max_finalists=max_finalists,
+    )
+    if finalist_count_estimate:
+        validate_artifact_id(f"{sweep_id}_rank_{finalist_count_estimate:03d}", "finalist_run_id")
 
     cfg = _prepare_base_config(
         cfg or load_config(require_secrets=False),
@@ -248,12 +265,6 @@ def run_parameter_sweep(
     cfg, applied_risk_overrides = apply_research_risk_overrides(cfg, risk_overrides)
     cfg, applied_fill_all_controls = apply_fill_all_signal_controls(cfg, fill_all_signals)
     effective_periods = periods or _annualization_periods(bar)
-    finalist_count_estimate = _estimate_finalist_count(
-        len(combinations),
-        run_finalists=run_finalists,
-        finalist_top_pct=finalist_top_pct,
-        max_finalists=max_finalists,
-    )
     estimate = estimate_sweep_runtime(
         strategy=strategy,
         bar=bar,
@@ -266,9 +277,9 @@ def run_parameter_sweep(
     )
 
     sweep_started = time.perf_counter()
-    output_path = Path(output_dir)
+    output_path = Path(output_dir).resolve()
+    sweep_base = resolve_artifact_child(output_path, sweep_id, "sweep_id")
     output_path.mkdir(parents=True, exist_ok=True)
-    sweep_id = sweep_id or f"sweep_{strategy}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
     if progress_callback:
         progress_callback({
@@ -425,8 +436,8 @@ def run_parameter_sweep(
         "data_coverage": coverage,
     }
 
-    json_path = output_path / f"{sweep_id}.json"
-    csv_path = output_path / f"{sweep_id}.csv"
+    json_path = resolve_artifact_child(output_path, f"{sweep_base.name}.json", "artifact_name")
+    csv_path = resolve_artifact_child(output_path, f"{sweep_base.name}.csv", "artifact_name")
     _write_json(json_path, summary)
     _write_csv(csv_path, summary["results"], strategy)
     summary["artifacts"] = {

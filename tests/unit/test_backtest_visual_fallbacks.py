@@ -639,6 +639,30 @@ def test_execution_comparison_endpoint_infers_dual_output_file(tmp_path):
     assert response.json() == comparison
 
 
+def test_execution_comparison_ignores_payload_path_instead_of_truncating(tmp_path):
+    run_dir = tmp_path / "safe_run"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        json.dumps({
+            "run_id": "safe_run",
+            "metrics": {},
+            "execution_comparison": "../victim_execution_comparison.json",
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "victim_execution_comparison.json").write_text(
+        json.dumps({"secret": "wrong run"}),
+        encoding="utf-8",
+    )
+
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/safe_run/execution-comparison")
+
+    assert response.status_code == 404
+
+
 def test_execution_markers_endpoint_filters_by_symbol(tmp_path):
     run_dir = tmp_path / "run_markers"
     run_dir.mkdir()

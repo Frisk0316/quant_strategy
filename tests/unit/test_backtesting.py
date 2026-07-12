@@ -14,7 +14,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from backtesting.artifacts import _build_indicator_series_df, save_backtest_artifacts
+from backtesting.artifacts import _build_indicator_series_df, build_run_id, save_backtest_artifacts
 from backtesting.cpcv import CPCV
 from backtesting.data_loader import compute_returns, load_funding, load_trade_ticks
 from backtesting.replay import (
@@ -35,6 +35,12 @@ from backtesting.walk_forward import WalkForward
 from okx_quant.core.events import MarketPayload
 from okx_quant.core.config import AppConfig, OKXSecrets, RiskConfig, StrategiesConfig, SystemConfig, load_config
 from okx_quant.portfolio.positions import PositionLedger
+
+
+@pytest.mark.parametrize("run_id", ["", ".", "..", "../outside", "..\\outside", "C:outside"])
+def test_custom_run_id_is_rejected_in_artifact_writer(run_id):
+    with pytest.raises(ValueError, match="run_id"):
+        build_run_id(["ma_crossover"], "2024-01-01", "2024-02-01", "1H", run_id)
 
 
 def _use_okx_registry(cfg: AppConfig) -> AppConfig:

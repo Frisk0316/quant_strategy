@@ -1,5 +1,5 @@
 ---
-status: draft
+status: accepted
 type: design
 owner: claude
 created: 2026-07-12
@@ -71,8 +71,9 @@ return sources.
 against `F-FUNDING-XS-DISPERSION` or `F-OI-POSITIONING` (fold per I27), or
 the DVOL data-integrity check below flags a frozen/degenerate feed.
 
-**User sign-off:** PENDING (this spec requires explicit user approval before
-any Stage-2 probe or Stage-3 implementation).
+**User sign-off:** APPROVED 2026-07-12 through the explicit request to implement
+`tasks/2026-07-12-claude-p0-review.md`. This authorizes the separately scoped
+Stage-2 probe; it does not authorize a Stage-3 grid or promotion work.
 
 ## Hypothesis (falsifiable)
 
@@ -201,7 +202,7 @@ No idealized fill (I17). Stop at checkpoint ① per
   probe; the Stage-3 run gets a new experiment id at run time per existing
   convention.
 
-## Hand-off to Stage 3 (Codex) — blocked on user sign-off
+## Hand-off to Stage 3 (Codex) — Stage 2 is the next separately scoped task
 
 1. **Stage-2 preflight:** run the standard feasibility probe over
    `dvol_deribit_{btc,eth}_1h` + canonical candles (coverage, staleness,
@@ -224,6 +225,6 @@ No idealized fill (I17). Stop at checkpoint ① per
 
 ## Scope / role
 
-This spec is research/design output, Claude-authored, docs-only. Stage-2/3
-execution is Codex's responsibility after explicit user sign-off. No gate,
-ledger verdict, or trading-core file is changed by this document.
+This spec is research/design output, Claude-authored, docs-only. Stage-2 is now
+approved as a separate task; Stage-3 still depends on Stage-2 and family-minting
+evidence. No gate or trading-core file is changed by this sign-off.

@@ -17,6 +17,8 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
+from backtesting.artifact_rows import validate_artifact_id
+
 
 WINDOW_PARAMS = ("enter_term_sys1", "enter_term_sys2", "leave_term_sys1", "leave_term_sys2")
 SWEEP_METRICS = ("mdd", "win_rate", "final_whole_asset", "profit_loss_ratio", "expectancy")
@@ -873,8 +875,11 @@ def run_turtle_sweep(
 ) -> dict[str, Any]:
     base_params = base_params or TurtleParams()
     started = time.time()
+    sweep_id = validate_artifact_id(
+        sweep_id if sweep_id is not None else f"turtle_sweep_{int(started)}",
+        "sweep_id",
+    )
     combos, skipped = expand_turtle_grid(spec, max_combinations=max_combinations)
-    sweep_id = sweep_id or f"turtle_sweep_{int(started)}"
     output_dir = Path(output_dir) if output_dir is not None else None
     if output_dir and (output_dir / "summary.json").exists():
         existing_summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))

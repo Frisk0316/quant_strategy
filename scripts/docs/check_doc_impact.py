@@ -13,6 +13,8 @@ untracked files, and optionally relative to a base ref via ``DOC_IMPACT_BASE``.
 Default mode is advisory: violations are printed as warnings and the script
 exits 0, so it never blocks an unrelated ``make`` run. Pass ``--strict`` (used
 for merge gating) to turn violations into errors and exit 1.
+Failure to inspect Git state is always an error; it must not look like a clean
+changeset.
 """
 
 from __future__ import annotations
@@ -40,6 +42,10 @@ class Rule:
     manifest: bool
     note: str = ""
     extra_manifest_paths: tuple[str, ...] = field(default_factory=tuple)
+
+
+class GitInspectionError(RuntimeError):
+    """Git state could not be inspected reliably."""
 
 
 # Keep in sync with docs/DOC_IMPACT_MATRIX.md.
@@ -115,22 +121,65 @@ RULES: tuple[Rule, ...] = (
         manifest=False,
         note="frontend",
     ),
+    Rule(
+        "A9",
+        (
+            "backtesting/cpcv.py",
+            "backtesting/differential_validation.py",
+            "backtesting/pipeline_checkpoint1.py",
+            "backtesting/replay.py",
+            "backtesting/research_controls.py",
+            "backtesting/walk_forward.py",
+            "src/okx_quant/analytics/dsr.py",
+            "scripts/recheck_dsr.py",
+            "scripts/run_differential_validation.py",
+            "scripts/run_pipeline_checkpoint1_check.py",
+            "scripts/run_source_provenance_validation.py",
+        ),
+        (
+            "docs/DOMAIN_RULES.md",
+            "docs/ai_collaboration.md",
+            "docs/ADR/0005-replay-validation-gates.md",
+            "docs/INVARIANTS.md",
+        ),
+        manifest=True,
+        note="validation / promotion gates",
+    ),
+    Rule(
+        "A10",
+        (
+            "AGENTS.md",
+            "CLAUDE.md",
+            "AI_CONTEXT.md",
+            "docs/AI_OUTPUT_CONTRACT.md",
+            "docs/AI_WORKFLOW.md",
+            "docs/BRANCH_VERSIONING.md",
+            "docs/DOC_IMPACT_MATRIX.md",
+            "docs/DOC_LIFECYCLE.md",
+            "docs/ai_collaboration.md",
+            "scripts/docs/check_doc_impact.py",
+        ),
+        ("docs/README.md", "docs/DOC_LIFECYCLE.md", "docs/DOC_IMPACT_MATRIX.md"),
+        manifest=False,
+        note="AI governance",
+    ),
 )
 
 
 def _git_lines(args: list[str]) -> list[str]:
     try:
         out = subprocess.run(
-            ["git", *args],
+            ["git", "-c", f"safe.directory={REPO_ROOT.as_posix()}", *args],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             check=False,
         )
-    except FileNotFoundError:
-        return []
+    except FileNotFoundError as exc:
+        raise GitInspectionError("git executable not found") from exc
     if out.returncode != 0:
-        return []
+        detail = out.stderr.strip() or f"exit code {out.returncode}"
+        raise GitInspectionError(f"git {' '.join(args)} failed: {detail}")
     return [line.strip() for line in out.stdout.splitlines() if line.strip()]
 
 
@@ -198,7 +247,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    changed = changed_files()
+    try:
+        changed = changed_files()
+    except GitInspectionError as exc:
+        print(f"ERROR doc impact check could not inspect changed files: {exc}")
+        return 1
     if not changed:
         print("doc impact check: no changed files detected; nothing to verify")
         return 0

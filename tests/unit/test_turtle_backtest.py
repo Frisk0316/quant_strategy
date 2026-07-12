@@ -54,6 +54,13 @@ SWEEP_INT_COLUMNS = {
     "final_win_count",
     "final_loss_count",
 }
+
+
+def test_turtle_sweep_rejects_empty_explicit_id_before_grid_work():
+    with pytest.raises(ValueError, match="sweep_id"):
+        run_turtle_sweep(pd.DataFrame(), {}, sweep_id="")
+
+
 REFERENCE_SWEEP_GOLDEN = [
     {
         "enter_term_sys1": 6,

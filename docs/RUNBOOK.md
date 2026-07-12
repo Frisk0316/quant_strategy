@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -32,6 +32,10 @@ python scripts/run_server.py
 ```
 
 Open the frontend at the server URL, normally `http://localhost:8080`.
+This standalone entrypoint includes the backtest/data APIs, Progress panel, and
+in-dashboard user manual; it does not start the trading engine. Progress document
+links are clickable only on the default loopback bind. A non-loopback bind shows
+paths without exposing repository files.
 
 ## No-DB Mode
 
@@ -294,6 +298,19 @@ The forward option-flow path fetches the recent live window from
 history backfill script with explicit UTC `--start`/`--end` bounds and
 `--resume`. Keep all tasks at hourly cadence or slower to stay within the
 project's <=5 req/s Deribit rule.
+
+Daily DVOL (`dvol_deribit_btc`/`dvol_deribit_eth`) is manual-update only by the
+2026-07-12 user decision (no scheduled task). Update it with explicit bounds —
+Deribit's `get_volatility_index_data` returns 400 when `--start` is passed
+without `--end`, and end-of-day exclusive `--end` avoids ingesting today's
+partial daily bar:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset dvol_deribit_btc --dataset dvol_deribit_eth --start <last_ingested_date> --end <today>T00:00:00
+```
+
+History 2021-03-24 through 2026-07-11 (1,936 rows per symbol, gap-free) was
+backfilled 2026-07-12.
 
 ## Deribit Option Flow Backfill
 

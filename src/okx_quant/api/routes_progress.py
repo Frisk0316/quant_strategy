@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 _VALID_STATUS = {"active", "blocked", "done", "shelved"}
 
@@ -93,12 +94,29 @@ def build_progress_payload(repo_dir: Path) -> dict[str, Any]:
     }
 
 
-def make_progress_router(repo_dir: Path | None = None) -> APIRouter:
+def make_progress_router(repo_dir: Path | None = None, *, serve_files: bool = False) -> APIRouter:
     router = APIRouter()
     root = (repo_dir or Path(__file__).resolve().parents[3]).resolve()
 
     @router.get("")
     def progress() -> dict[str, Any]:
-        return build_progress_payload(root)
+        payload = build_progress_payload(root)
+        payload["file_links_enabled"] = serve_files
+        return payload
+
+    if serve_files:
+        @router.get("/file", response_class=FileResponse)
+        def progress_file(path: str) -> FileResponse:
+            workstreams, _ = _load_workstreams(root)
+            allowed = {link for card in workstreams for link in card.get("links", [])}
+            target = (root / path).resolve()
+            if (
+                path not in allowed
+                or not target.is_relative_to(root)
+                or target.suffix.lower() != ".md"
+                or not target.is_file()
+            ):
+                raise HTTPException(status_code=404, detail="unknown progress file")
+            return FileResponse(target)
 
     return router

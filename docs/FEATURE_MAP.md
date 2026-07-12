@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -18,7 +18,8 @@ implementation exists.
 
 - User-facing behavior: configure a strategy, symbols/universe, bar, date range,
   execution exchange, capital, validation mode, risk overrides, and optional
-  parameter sweep; queue a run and poll job status.
+  parameter sweep; queue a run and poll job status. An omitted exchange uses
+  `config/settings.yaml` primary exchange; an explicit unknown venue returns 400.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, `frontend/view-config.js`,
   `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -38,6 +39,7 @@ implementation exists.
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_backtesting.py`, `tests/unit/test_parameter_sweep.py`,
   `tests/unit/test_backtest_request_exchange.py`,
+  `tests/unit/test_artifact_rows.py`,
   `tests/unit/test_multi_venue_convergence.py`,
   `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py`,
   `tests/integration/test_replay_engine.py`.
@@ -122,7 +124,7 @@ implementation exists.
 - Frontend files: `frontend/app.js`, `frontend/index.html`,
   `frontend/view-manual.js`.
 - Backend/API files: `src/okx_quant/api/routes_manual.py`,
-  `src/okx_quant/api/server.py`.
+  `src/okx_quant/api/server.py`, `scripts/run_server.py`.
 - Manual content files: `docs/manual/manual.json`, `docs/manual/*.md`.
 - Tests: `tests/unit/test_manual_manifest.py`,
   `tests/unit/test_routes_manual.py`.
@@ -138,7 +140,11 @@ implementation exists.
 - Frontend files: `frontend/app.js`, `frontend/index.html`,
   `frontend/view-progress.js`, `frontend/data.js`, `frontend/styles.css`.
 - Backend/API files: `src/okx_quant/api/routes_progress.py`,
-  `src/okx_quant/api/server.py`.
+  `src/okx_quant/api/server.py`, `scripts/run_server.py`. Only markdown paths
+  explicitly listed in `config/workstreams.yaml` are exposed by the read-only
+  progress-file endpoint; containment checks prevent serving arbitrary repo files.
+  File serving is disabled in the network-facing engine app and enabled only by
+  the standalone server when it binds to a loopback host.
 - Data / docs files: `config/workstreams.yaml`; linked plan files are only
   surfaced as card links.
 - Tests: `tests/unit/test_routes_progress.py`, `make frontend-check`,
@@ -528,13 +534,14 @@ implementation exists.
   `frontend/view-trades.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`.
 - Backtesting files: `backtesting/artifacts.py`, `backtesting/result_utils.py`,
-  `backtesting/replay.py`.
+  `backtesting/replay.py`; shared artifact-ID validation and contained child
+  resolution live in `backtesting/artifact_rows.py`.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
   runtime `result`, `metrics`, `config`, `price_series`, `indicator_series`, `fills`,
   `orders`, `trades`, `funding`, `risk_events`, and coverage artifacts.
 - Config files: `config/settings.yaml`, `config/risk.yaml`, `config/strategies.yaml`.
 - Tests: `tests/unit/test_backtest_artifact_schema.py`,
-  `tests/unit/test_backtesting.py`.
+  `tests/unit/test_backtesting.py`, `tests/unit/test_artifact_rows.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`,
   `docs/results_validation_manifest.md`, `docs/DATA_FLOW.md`.
 - Do-not-touch notes: do not edit frozen historical result artifacts; schema changes
@@ -558,7 +565,12 @@ implementation exists.
   `config/instrument_specs.yaml`.
 - Tests: `tests/unit/test_differential_validation.py`,
   `tests/unit/test_engine_consistency_smoke.py`,
-  `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`.
+  `tests/unit/test_parameter_sweep.py`, `tests/unit/test_backtesting.py`,
+  `tests/unit/test_all_strategy_signal_validation.py`,
+  `tests/unit/test_source_provenance_validation.py`.
+- Trust boundary: caller-controlled run, sweep, fixture, strategy, validation,
+  and validation-artifact identifiers are rejected unless they are safe single
+  path components; every filesystem child is resolved below its intended root.
 - Docs to update: `docs/ai_collaboration.md`, `docs/backtest_live_parity_plan.md`,
   `docs/results_validation_manifest.md`, `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: validation harness/interface changes must not alter strategy,

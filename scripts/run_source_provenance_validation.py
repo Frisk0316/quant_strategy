@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from backtesting.differential_validation import ENGINE_NAMES, run_differential_validation
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
 
 
 def _status(value: Any) -> str:
@@ -122,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
             summary = _load_validation_result(result_path)
         else:
             engines = _parse_engines(args.engines)
-            run_dir = Path(args.results_dir) / Path(args.run_id).name
+            run_id = validate_artifact_id(args.run_id, "run_id")
+            run_dir = resolve_artifact_child(args.results_dir, run_id, "run_id")
             summary = run_differential_validation(
                 run_dir=run_dir,
                 engines=engines,

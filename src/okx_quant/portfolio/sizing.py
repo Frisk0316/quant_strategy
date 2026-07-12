@@ -6,23 +6,21 @@ All functions are pure (no I/O, no state).
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
 
 def validate_ct_val(ct_val: float, inst_id: str = "") -> float:
     """
-    Validate OKX contract face value before sizing or fee calculations.
+    Validate a contract multiplier's numeric domain before money calculations.
 
-    ``ctVal`` must come from instrument metadata. Values above 1 are treated as
-    suspicious for the small-contract OKX perp/spot universe this project
-    targets and should be reviewed instead of silently used.
+    Venue/source authority is enforced separately by the replay provenance path.
     """
     value = float(ct_val)
-    if value <= 0:
-        raise ValueError(f"ct_val must be positive for {inst_id or 'instrument'}")
-    if value > 1:
-        raise ValueError(f"ct_val is outside expected range for {inst_id or 'instrument'}: {value}")
+    if not math.isfinite(value) or not 0 < value <= 10_000_000:
+        raise ValueError(f"ct_val is outside the finite (0, 1e7] range for {inst_id or 'instrument'}: {value}")
     return value
 
 

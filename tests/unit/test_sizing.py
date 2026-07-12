@@ -8,11 +8,12 @@ import pandas as pd
 import pytest
 
 from okx_quant.portfolio.sizing import (
-    vol_target_size,
-    quarter_kelly,
     fixed_fractional,
+    quarter_kelly,
     round_to_lot,
     size_in_contracts,
+    validate_ct_val,
+    vol_target_size,
 )
 
 
@@ -109,16 +110,21 @@ def test_size_in_contracts_ct_val_one_does_not_use_swap_fallback():
     assert result == "10"
 
 
-@pytest.mark.parametrize("ct_val", [0.0, -0.01, 1.01])
-def test_size_in_contracts_rejects_invalid_ct_val(ct_val):
+@pytest.mark.parametrize("ct_val", [100.0, 1_000_000.0, 10_000_000.0])
+def test_validate_ct_val_accepts_numeric_multiplier_range(ct_val):
+    assert validate_ct_val(ct_val) == ct_val
+
+
+@pytest.mark.parametrize("ct_val", [0.0, -0.01, float("nan"), float("inf"), 10_000_001.0])
+def test_validate_ct_val_rejects_non_finite_non_positive_or_over_cap(ct_val):
     with pytest.raises(ValueError, match="ct_val"):
-        size_in_contracts(
-            notional_usd=1_000.0,
-            ct_val=ct_val,
-            price=100.0,
-            lot_sz=1.0,
-            min_sz=1.0,
-        )
+        validate_ct_val(ct_val)
+
+
+@pytest.mark.parametrize("ct_val", [float("nan"), 10_000_001.0])
+def test_size_in_contracts_enforces_ct_val_validation(ct_val):
+    with pytest.raises(ValueError, match="ct_val"):
+        size_in_contracts(notional_usd=1_000.0, ct_val=ct_val, price=100.0)
 
 
 def test_vol_target_single_return_zero():

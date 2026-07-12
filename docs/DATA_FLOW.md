@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -264,6 +264,9 @@ Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
 momentum has a separate research-only vectorized runner and is not wired into
 the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
 does not yet run a tiny frozen replay fixture.
+Run and sweep requests use `config/settings.yaml` primary exchange only when the
+field is omitted/blank; any explicit unknown exchange returns HTTP 400 before a
+background job is queued.
 
 Research-only `fill_all_signals` replay raises capacity and stop thresholds
 inside the copied run config before replay starts: order notional, position
@@ -294,6 +297,9 @@ ReplayBacktestResult -> backtesting.artifacts.save_backtest_artifacts -> files, 
 
 Current: artifact mode is controlled by environment and DSN availability. Do not
 edit existing historical artifacts as part of code or docs cleanup.
+Caller-controlled artifact IDs are validate-and-reject ASCII path components;
+writers and readers resolve each child below the intended artifact root instead
+of truncating a supplied path to its basename.
 
 Fast-read path: `save_backtest_artifacts` keeps writing the compatibility
 `backtest_artifacts.payload` rows/files, then best-effort writes derived
@@ -355,6 +361,7 @@ strategy signals, risk/drawdown blocking, or execution/fill conversion gaps.
 
 ```text
 config/workstreams.yaml -> routes_progress.py -> GET /api/progress -> frontend/data.js -> frontend/view-progress.js
+                         -> allow-listed .md path -> GET /api/progress/file -> browser tab
 ```
 
 Current: the Progress panel is a read-only operations surface. It does not read
@@ -362,6 +369,10 @@ from git, DB, or the network, write repository state, alter strategy/config/gate
 behavior, or modify result artifacts. Missing `config/workstreams.yaml` returns
 HTTP 200 with an empty `workstreams` list; malformed YAML returns HTTP 200 with
 an `error` field so the panel can show an unavailable state.
+Progress file reads are limited to existing markdown paths explicitly present in
+the workstream config and resolved inside the repository; the repo root is not
+mounted as static content. File reads are disabled in the engine app and for a
+standalone server bound to a non-loopback host.
 
 ## Validation Artifact Flow
 
@@ -390,3 +401,6 @@ Run-scoped differential validation CSV artifacts may be indexed in
 `backtest_artifact_rows` as `validation/{validation_id}/{artifact_name}` for
 faster artifact detail reads. Strategy-validation artifacts stay file-backed
 because they are not keyed by `backtest_runs.run_id`.
+Run, fixture, strategy, validation and validation-artifact identifiers use the
+same reject-not-truncate helper across API, library and CLI entrypoints; invalid
+IDs fail before validation evidence is read or written.

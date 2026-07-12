@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-03
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,59 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-12 - P0 artifact, ct_val, and venue hardening
+
+- Implemented the user-ratified Claude P0 review. One shared validate-and-reject
+  path contract now covers caller-controlled artifact IDs across API, library,
+  writers/readers, sweeps, differential/strategy validation, and CLIs; fixed
+  namespace and final derived paths are resolved against their true root.
+- Changed the numeric `ct_val` guard to finite `0 < value <= 1e7`, preserving all
+  sizing/PnL/funding formulas. Numeric acceptance remains separate from
+  promotion-grade provenance under R1.4/I16.
+- Changed run/sweep venue requests so omitted/blank resolves to configured
+  primary and any explicit unknown venue returns HTTP 400 before queue mutation;
+  the daily-winner CLI uses the same supported venue allow-list.
+- Recorded H-012 as shelved/no-retry after hygiene found F36 (turnover cost on
+  signal day while position/funding begin t+1); E-037 remains immutable
+  non-promotion evidence. Accepted H-013 Stage-1; E-038 stays reserved-only and
+  no probe/grid/adapter ran.
+- Added three Change Manifests and synchronized rules, invariants, failure modes,
+  maps, current state, Progress, task plan, ledger/spec, and Human Review
+  Overview. No research file, existing result, schema, deployment gate, commit,
+  push, or merge changed.
+- Final verification: P0 target suite `306 passed, 1 skipped`; full unit
+  `768 passed, 1 skipped`; integration `38 passed`; full Ruff, docs metadata/
+  links/overview, `docs-impact --strict`, config, backtest smoke and 12 frontend
+  syntax checks passed. API smoke explicitly skipped without `API_BASE_URL`;
+  optional local `validate-data` remained advisory-fail because its legacy
+  parquet fixture is absent. Claude implementation review approved all P0s.
+
+## 2026-07-12 - Whole-project audit and baseline repair
+
+- Rebuilt project status from collaboration docs, accepted ADRs, maps, Git, and
+  executable checks. Replaced stale uncommitted-work claims, deprecated the old
+  branch board, corrected XS Momentum to shelved, and added a current Progress
+  hardening stream plus a human review entry.
+- Fixed the RUNBOOK standalone server's missing Manual router, hid lifecycle
+  frontmatter from rendered chapters, and replaced broken Progress repo links
+  with a read-only route limited to configured, repo-contained markdown files.
+  File serving is enabled only for loopback standalone binds; the engine and
+  non-loopback views expose no repository-file endpoint.
+- Removed the reintroduced Turtle fixed-input unit guess and corrected the stale
+  integration test to exercise unknown OKX metadata instead of valid Binance
+  base-unit contracts.
+- Made `docs-impact` fail closed on Git inspection errors, supplied invocation-
+  scoped safe-directory handling, added A9/A10 executable rules, and documented
+  why A11 needs a dedicated ledger validator rather than a diff heuristic.
+- Recorded new blockers F30-F32/I32-I34 (artifact path containment, invalid-
+  venue fallback, `ct_val` metadata validation) without changing their protected
+  code paths. Full scope/order is in
+  `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
+- Verification: 666 unit passed; 38 integration passed; Ruff, all frontend Node
+  syntax checks, docs metadata/links/overview/doc-impact, config validation,
+  backtest smoke, live API smoke on temporary port 8081, and Playwright Manual /
+  Progress allow-list checks passed. No backtest result artifact was changed.
 
 ## 2026-07-04 - Turtle Manual Pass + F-FUNDING-XS-DISPERSION Checkpoint Verdict
 

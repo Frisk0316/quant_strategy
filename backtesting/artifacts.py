@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
+
 
 # ---------------------------------------------------------------------------
 # Fixed column schemas — ensures every CSV has the correct header even when
@@ -195,14 +197,17 @@ def build_run_id(
     bar: str,
     run_id: Optional[str] = None,
 ) -> str:
-    if run_id:
-        return re.sub(r'[<>:"/\\|?*]', "_", run_id)
+    if run_id is not None:
+        return validate_artifact_id(run_id, "run_id")
     strat = "_".join(sorted(strategy_names)) if strategy_names else "unknown"
     start_s = (start or "nostart").replace("-", "")[:8]
     end_s = (end or "noend").replace("-", "")[:8]
     bar_s = bar.replace(":", "")
     now_s = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return f"replay_{strat}_{start_s}_{end_s}_{bar_s}_{now_s}"
+    return validate_artifact_id(
+        f"replay_{strat}_{start_s}_{end_s}_{bar_s}_{now_s}",
+        "run_id",
+    )
 
 
 def _display_slug(value: Any, fallback: str = "unknown") -> str:
@@ -1190,7 +1195,7 @@ def save_backtest_artifacts(
     dsn: Optional[str] = getattr(getattr(cfg, "storage", None), "timescale_dsn", None) or os.environ.get("DATABASE_URL")
     artifact_mode = _artifact_mode(dsn=dsn)
     write_files = artifact_mode in {"files", "both"}
-    run_dir = Path(output_dir) / run_id_final
+    run_dir = resolve_artifact_child(output_dir, run_id_final, "run_id")
     if write_files:
         run_dir.mkdir(parents=True, exist_ok=True)
 

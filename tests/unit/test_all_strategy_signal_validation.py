@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 import scripts.run_all_strategy_signal_validation as runner
 
 
@@ -18,6 +20,24 @@ def test_strategy_list_rejects_contract_without_fixture_builder():
 
     assert "No fixture builder" in message
     assert "s5_residual_meanrev" in message
+
+
+@pytest.mark.parametrize(
+    "batch_id",
+    ["", ".", "..", "../outside", "..\\outside", "/tmp/outside", "C:outside", "x" * 129, "..∕outside"],
+)
+def test_main_rejects_unsafe_batch_id_before_creating_results(tmp_path, batch_id):
+    results_dir = tmp_path / "results"
+
+    with pytest.raises(ValueError, match="batch_id"):
+        runner.main([
+            "--results-dir", str(results_dir),
+            "--strategies", "ma_crossover",
+            "--batch-id", batch_id,
+            "--engines", "vectorbt",
+        ])
+
+    assert not results_dir.exists()
 
 
 def test_main_passes_selected_engines_to_strategy_validation(tmp_path, monkeypatch, capsys):

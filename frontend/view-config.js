@@ -169,7 +169,7 @@ function turtleFixedInvestPctParam(params = {}) {
   const text = String(raw).trim().replace(/%$/, "").trim();
   const n = Number(text);
   if (!isFinite(n) || n <= 0) return "";
-  return String(n > 1 ? n / 100 : n);
+  return String(n);
 }
 const fmtInvestPct = (v, d = 2) => {
   const n = Number(v);

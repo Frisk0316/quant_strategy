@@ -13,6 +13,7 @@ from backtesting.parameter_sweep import (
     estimate_sweep_runtime,
     expand_parameter_grid,
     rank_sweep_rows,
+    run_parameter_sweep,
 )
 from backtesting.research_controls import (
     EXECUTION_PROFILE_DUAL_OUTPUT,
@@ -69,6 +70,33 @@ def test_expand_parameter_grid_filters_fast_slow_invalid_combinations():
             "reason": "fast parameter must be smaller than slow parameter",
         }
     ]
+
+
+@pytest.mark.parametrize("sweep_id", ["", "../outside", "C:outside", "x" * 129, "..∕outside"])
+def test_parameter_sweep_rejects_unsafe_explicit_id_before_io(tmp_path, sweep_id):
+    with pytest.raises(ValueError, match="sweep_id"):
+        run_parameter_sweep(
+            strategy="ma_crossover",
+            parameter_grid={"fast_window": [7], "slow_window": [21]},
+            symbols=["BTC-USDT-SWAP"],
+            sweep_id=sweep_id,
+            output_dir=tmp_path / "sweeps",
+        )
+
+    assert not (tmp_path / "sweeps").exists()
+
+
+def test_parameter_sweep_rejects_overlong_derived_finalist_id_before_io(tmp_path):
+    with pytest.raises(ValueError, match="finalist_run_id"):
+        run_parameter_sweep(
+            strategy="ma_crossover",
+            parameter_grid={"fast_window": [7], "slow_window": [21]},
+            symbols=["BTC-USDT-SWAP"],
+            sweep_id="x" * 120,
+            output_dir=tmp_path / "sweeps",
+        )
+
+    assert not (tmp_path / "sweeps").exists()
 
 
 def test_rank_sweep_rows_prefers_sharpe_then_return_then_drawdown():

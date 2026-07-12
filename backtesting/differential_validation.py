@@ -26,6 +26,7 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from backtesting.artifact_rows import resolve_artifact_child, resolve_artifact_path, validate_artifact_id
 from okx_quant.analytics.performance import max_drawdown, sharpe
 TECHNICAL_STRATEGIES = {"ma_crossover", "ema_crossover", "macd_crossover"}
 ENGINE_NAMES = {"vectorbt", "backtrader", "nautilus"}
@@ -2800,6 +2801,8 @@ def run_differential_validation(
     output_dir: str | Path | None = None,
     validation_id: str | None = None,
 ) -> dict[str, Any]:
+    if validation_id is not None:
+        validation_id = validate_artifact_id(validation_id, "validation_id")
     bundle = load_artifact_bundle(run_dir)
     selected_engines = [name.strip().lower() for name in (engines or ENGINE_NAMES) if name]
     unknown = sorted(set(selected_engines) - ENGINE_NAMES)
@@ -2807,8 +2810,19 @@ def run_differential_validation(
         raise ValueError(f"Unsupported differential validation engine(s): {', '.join(unknown)}")
 
     created_at_dt = datetime.now(timezone.utc)
-    validation_id = validation_id or _build_validation_id(bundle, created_at_dt)
-    out_dir = Path(output_dir) if output_dir else bundle.run_dir / "validation" / validation_id
+    validation_id = validate_artifact_id(
+        validation_id or _build_validation_id(bundle, created_at_dt),
+        "validation_id",
+    )
+    out_dir = (
+        Path(output_dir).resolve()
+        if output_dir
+        else resolve_artifact_path(
+            bundle.run_dir,
+            ("validation", "artifact_namespace"),
+            (validation_id, "validation_id"),
+        )
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     tolerances = ValidationTolerances.from_initial_equity(bundle.initial_equity)
     reference_contract = strategy_reference_validation_contract(bundle.primary_strategy)
@@ -2858,7 +2872,10 @@ def run_differential_validation(
         for name, rows in all_mismatches.items()
     }
     for name, rows in all_mismatches.items():
-        _write_csv(out_dir / f"mismatches_{name}.csv", pd.DataFrame(rows))
+        _write_csv(
+            resolve_artifact_child(out_dir, f"mismatches_{name}.csv", "artifact_name"),
+            pd.DataFrame(rows),
+        )
 
     source_data_validation = _source_data_validation(
         bundle,
@@ -2971,7 +2988,8 @@ def run_differential_validation(
         }),
         "tolerances": tolerances.__dict__,
     }
-    (out_dir / "validation_result.json").write_text(
+    validation_result_path = resolve_artifact_child(out_dir, "validation_result.json", "artifact_name")
+    validation_result_path.write_text(
         json.dumps(_json_safe(summary), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -2986,14 +3004,28 @@ def run_strategy_differential_validation(
     output_dir: str | Path | None = None,
     validation_id: str | None = None,
 ) -> dict[str, Any]:
-    root = Path(results_dir)
-    clean_strategy = Path(strategy).name
-    if not clean_strategy:
-        raise ValueError("strategy is required")
+    root = Path(results_dir).resolve()
+    clean_strategy = validate_artifact_id(strategy, "strategy")
+    if fixture_run_id is not None:
+        fixture_run_id = validate_artifact_id(fixture_run_id, "fixture_run_id")
+    if validation_id is not None:
+        validation_id = validate_artifact_id(validation_id, "validation_id")
     fixture_dir = _resolve_strategy_fixture(root, clean_strategy, fixture_run_id)
     fixture_row = _strategy_fixture_row(fixture_dir, clean_strategy)
-    validation_id = validation_id or _build_validation_id(load_artifact_bundle(fixture_dir))
-    out_dir = Path(output_dir) if output_dir else root / STRATEGY_VALIDATION_DIR / clean_strategy / validation_id
+    validation_id = validate_artifact_id(
+        validation_id or _build_validation_id(load_artifact_bundle(fixture_dir)),
+        "validation_id",
+    )
+    out_dir = (
+        Path(output_dir).resolve()
+        if output_dir
+        else resolve_artifact_path(
+            root,
+            (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+            (clean_strategy, "strategy"),
+            (validation_id, "validation_id"),
+        )
+    )
     summary = run_differential_validation(
         run_dir=fixture_dir,
         engines=engines,
@@ -3007,9 +3039,9 @@ def run_strategy_differential_validation(
         "fixture_display_name": _fixture_display_name(fixture_row, fixture_dir.name),
         "source_run_result_mutated": False,
         "result_json_mutation": "none",
-        "evidence_path": str(out_dir / "validation_result.json"),
+        "evidence_path": str(resolve_artifact_child(out_dir, "validation_result.json", "artifact_name")),
     })
-    (out_dir / "validation_result.json").write_text(
+    resolve_artifact_child(out_dir, "validation_result.json", "artifact_name").write_text(
         json.dumps(_json_safe(summary), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -4004,11 +4036,26 @@ def neutral_metrics(equity_curve: pd.DataFrame, periods: int) -> dict[str, float
 
 
 def list_validation_results(run_dir: str | Path) -> list[dict[str, Any]]:
-    root = Path(run_dir) / "validation"
+    root = resolve_artifact_path(run_dir, ("validation", "artifact_namespace"))
     if not root.exists():
         return []
     rows = []
-    for path in sorted(root.glob("*/validation_result.json"), reverse=True):
+    paths: list[Path] = []
+    for validation_dir in root.iterdir():
+        if not validation_dir.is_dir():
+            continue
+        try:
+            path = resolve_artifact_path(
+                run_dir,
+                ("validation", "artifact_namespace"),
+                (validation_dir.name, "validation_id"),
+                ("validation_result.json", "artifact_name"),
+            )
+        except ValueError:
+            continue
+        if path.is_file():
+            paths.append(path)
+    for path in sorted(paths, reverse=True):
         try:
             payload = _read_json(path)
         except Exception:
@@ -4034,15 +4081,21 @@ def list_validation_results(run_dir: str | Path) -> list[dict[str, Any]]:
 
 
 def list_strategy_validation_fixtures(results_dir: str | Path, strategy: str | None = None) -> list[dict[str, Any]]:
-    root = Path(results_dir)
-    clean_strategy = Path(strategy).name if strategy else ""
+    root = Path(results_dir).resolve()
+    clean_strategy = validate_artifact_id(strategy, "strategy") if strategy else ""
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     if not root.exists():
         return rows
-    for run_dir in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True):
-        if not run_dir.is_dir() or run_dir.name == STRATEGY_VALIDATION_DIR:
+    run_dirs: list[Path] = []
+    for candidate in root.iterdir():
+        if not candidate.is_dir() or candidate.name == STRATEGY_VALIDATION_DIR:
             continue
+        try:
+            run_dirs.append(resolve_artifact_child(root, candidate.name, "run_id"))
+        except ValueError:
+            continue
+    for run_dir in sorted(run_dirs, key=lambda p: p.stat().st_mtime, reverse=True):
         row = _strategy_fixture_row(run_dir, clean_strategy)
         if row is not None:
             seen.add(str(row["run_id"]))
@@ -4056,15 +4109,50 @@ def list_strategy_validation_fixtures(results_dir: str | Path, strategy: str | N
 
 
 def list_strategy_validation_results(results_dir: str | Path, strategy: str | None = None) -> list[dict[str, Any]]:
-    root = Path(results_dir) / STRATEGY_VALIDATION_DIR
+    results_root = Path(results_dir).resolve()
+    root = resolve_artifact_path(results_root, (STRATEGY_VALIDATION_DIR, "artifact_namespace"))
     if not root.exists():
         return []
-    strategy_dirs = [root / Path(strategy).name] if strategy else [path for path in root.iterdir() if path.is_dir()]
+    if strategy:
+        strategy_dirs = [resolve_artifact_path(
+            results_root,
+            (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+            (strategy, "strategy"),
+        )]
+    else:
+        strategy_dirs = []
+        for candidate in root.iterdir():
+            if not candidate.is_dir():
+                continue
+            try:
+                strategy_dirs.append(resolve_artifact_path(
+                    results_root,
+                    (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+                    (candidate.name, "strategy"),
+                ))
+            except ValueError:
+                continue
     rows: list[dict[str, Any]] = []
     for strategy_dir in strategy_dirs:
         if not strategy_dir.exists():
             continue
-        for path in sorted(strategy_dir.glob("*/validation_result.json"), reverse=True):
+        paths: list[Path] = []
+        for validation_dir in strategy_dir.iterdir():
+            if not validation_dir.is_dir():
+                continue
+            try:
+                path = resolve_artifact_path(
+                    results_root,
+                    (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+                    (strategy_dir.name, "strategy"),
+                    (validation_dir.name, "validation_id"),
+                    ("validation_result.json", "artifact_name"),
+                )
+            except ValueError:
+                continue
+            if path.is_file():
+                paths.append(path)
+        for path in sorted(paths, reverse=True):
             try:
                 payload = _read_json(path)
             except Exception:
@@ -4093,26 +4181,37 @@ def list_strategy_validation_results(results_dir: str | Path, strategy: str | No
 
 
 def read_validation_result(run_dir: str | Path, validation_id: str) -> dict[str, Any]:
-    safe_id = Path(validation_id).name
-    path = Path(run_dir) / "validation" / safe_id / "validation_result.json"
+    path = resolve_artifact_path(
+        run_dir,
+        ("validation", "artifact_namespace"),
+        (validation_id, "validation_id"),
+        ("validation_result.json", "artifact_name"),
+    )
     if not path.exists():
         raise FileNotFoundError(str(path))
     return _read_json(path)
 
 
 def read_strategy_validation_result(results_dir: str | Path, strategy: str, validation_id: str) -> dict[str, Any]:
-    safe_strategy = Path(strategy).name
-    safe_id = Path(validation_id).name
-    path = Path(results_dir) / STRATEGY_VALIDATION_DIR / safe_strategy / safe_id / "validation_result.json"
+    path = resolve_artifact_path(
+        results_dir,
+        (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+        (strategy, "strategy"),
+        (validation_id, "validation_id"),
+        ("validation_result.json", "artifact_name"),
+    )
     if not path.exists():
         raise FileNotFoundError(str(path))
     return _read_json(path)
 
 
 def read_validation_artifact(run_dir: str | Path, validation_id: str, artifact_name: str) -> list[dict[str, Any]]:
-    safe_id = Path(validation_id).name
-    safe_name = Path(artifact_name).name
-    path = Path(run_dir) / "validation" / safe_id / safe_name
+    path = resolve_artifact_path(
+        run_dir,
+        ("validation", "artifact_namespace"),
+        (validation_id, "validation_id"),
+        (artifact_name, "artifact_name"),
+    )
     if not path.exists():
         raise FileNotFoundError(str(path))
     try:
@@ -4127,10 +4226,13 @@ def read_strategy_validation_artifact(
     validation_id: str,
     artifact_name: str,
 ) -> list[dict[str, Any]]:
-    safe_strategy = Path(strategy).name
-    safe_id = Path(validation_id).name
-    safe_name = Path(artifact_name).name
-    path = Path(results_dir) / STRATEGY_VALIDATION_DIR / safe_strategy / safe_id / safe_name
+    path = resolve_artifact_path(
+        results_dir,
+        (STRATEGY_VALIDATION_DIR, "artifact_namespace"),
+        (strategy, "strategy"),
+        (validation_id, "validation_id"),
+        (artifact_name, "artifact_name"),
+    )
     if not path.exists():
         raise FileNotFoundError(str(path))
     try:
@@ -7162,13 +7264,17 @@ def _is_finite_number(value: Any) -> bool:
 
 
 def _write_reference_artifacts(out_dir: Path, ref: ReferenceResult) -> None:
-    _write_csv(out_dir / f"reference_{ref.engine}_indicator_series.csv", ref.indicator_series)
-    _write_csv(out_dir / f"reference_{ref.engine}_signals.csv", ref.signals)
-    _write_csv(out_dir / f"reference_{ref.engine}_trades.csv", ref.trades)
-    _write_csv(out_dir / f"reference_{ref.engine}_equity_curve.csv", ref.equity_curve)
+    _write_csv(resolve_artifact_child(out_dir, f"reference_{ref.engine}_indicator_series.csv", "artifact_name"), ref.indicator_series)
+    _write_csv(resolve_artifact_child(out_dir, f"reference_{ref.engine}_signals.csv", "artifact_name"), ref.signals)
+    _write_csv(resolve_artifact_child(out_dir, f"reference_{ref.engine}_trades.csv", "artifact_name"), ref.trades)
+    _write_csv(resolve_artifact_child(out_dir, f"reference_{ref.engine}_equity_curve.csv", "artifact_name"), ref.equity_curve)
     export_manifest = ref.metadata.get("export_manifest") if isinstance(ref.metadata, dict) else None
     if isinstance(export_manifest, dict):
-        (out_dir / f"reference_{ref.engine}_export_manifest.json").write_text(
+        resolve_artifact_child(
+            out_dir,
+            f"reference_{ref.engine}_export_manifest.json",
+            "artifact_name",
+        ).write_text(
             json.dumps(_json_safe(export_manifest), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -7407,7 +7513,7 @@ def _normalize_embedded_daily_winner(result: dict[str, Any]) -> dict[str, Any]:
 
 def _resolve_strategy_fixture(results_dir: Path, strategy: str, fixture_run_id: str | None) -> Path:
     if fixture_run_id:
-        safe_id = Path(fixture_run_id).name
+        safe_id = validate_artifact_id(fixture_run_id, "fixture_run_id")
         candidate = _resolve_fixture_candidate(results_dir, safe_id)
         if candidate is None or _strategy_fixture_row(candidate, strategy) is None:
             materialized = _materialize_sweep_fixture(results_dir, strategy, safe_id)
@@ -7565,8 +7671,8 @@ def _parameter_sweep_fixture_rows_for_listing(results_dir: Path, clean_strategy:
 
 def _resolve_fixture_candidate(results_dir: Path, fixture_run_id: str) -> Path | None:
     root = results_dir.resolve()
-    safe_id = Path(fixture_run_id).name
-    direct = results_dir / safe_id
+    safe_id = validate_artifact_id(fixture_run_id, "fixture_run_id")
+    direct = resolve_artifact_child(root, safe_id, "fixture_run_id")
     if _is_existing_fixture_path(direct, root):
         return direct
     for candidate in _parameter_sweep_fixture_candidates(results_dir, safe_id):
@@ -7616,7 +7722,7 @@ def _find_sweep_fixture_record(results_dir: Path, strategy: str, fixture_run_id:
     sweep_dir = results_dir / "parameter_sweeps"
     if not sweep_dir.is_dir():
         return None
-    safe_id = Path(fixture_run_id).name
+    safe_id = validate_artifact_id(fixture_run_id, "fixture_run_id")
     for path in sorted(sweep_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             payload = _read_json(path)
@@ -7737,7 +7843,7 @@ def _rerun_sweep_fixture_artifact(
             cfg=combo_cfg,
             args=SimpleNamespace(strategy=[strategy], start=start, end=end, bar=bar, validate=validation_mode),
             output_dir=str(artifact_root),
-            run_id=Path(fixture_run_id).name,
+            run_id=validate_artifact_id(fixture_run_id, "fixture_run_id"),
             strategy_names=[strategy],
             start=start,
             end=end,
@@ -7766,16 +7872,27 @@ def _materialized_from_sweep_summary(result: dict[str, Any]) -> bool:
 
 
 def _sweep_row_run_id(row: dict[str, Any]) -> str:
-    return Path(str(row.get("run_id") or row.get("finalist_run_id") or "")).name
+    try:
+        return validate_artifact_id(
+            str(row.get("run_id") or row.get("finalist_run_id") or ""),
+            "run_id",
+        )
+    except ValueError:
+        return ""
 
 
 def _sweep_artifact_path(results_dir: Path, row: dict[str, Any], run_id: str) -> Path:
+    run_id = validate_artifact_id(run_id, "run_id")
     artifact_dir = row.get("artifact_dir") or row.get("finalist_artifact_dir")
-    candidate = Path(str(artifact_dir)) if artifact_dir else results_dir / run_id
+    candidate = (
+        Path(str(artifact_dir))
+        if artifact_dir
+        else resolve_artifact_child(results_dir, run_id, "run_id")
+    )
     if not candidate.is_absolute():
         candidate = results_dir / candidate
     if not _path_within_root(candidate, results_dir):
-        return results_dir / Path(run_id).name
+        return resolve_artifact_child(results_dir, run_id, "run_id")
     return candidate
 
 

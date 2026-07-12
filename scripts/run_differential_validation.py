@@ -15,6 +15,7 @@ from backtesting.differential_validation import (
     run_differential_validation,
     run_strategy_differential_validation,
 )
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -51,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
             validation_id=args.validation_id,
         )
     elif args.run_id:
-        run_dir = Path(args.results_dir) / Path(args.run_id).name
+        run_id = validate_artifact_id(args.run_id, "run_id")
+        run_dir = resolve_artifact_child(args.results_dir, run_id, "run_id")
         summary = run_differential_validation(
             run_dir=run_dir,
             engines=engines,

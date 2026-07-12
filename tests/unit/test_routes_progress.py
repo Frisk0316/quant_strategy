@@ -98,8 +98,34 @@ def test_progress_route_returns_200_with_workstreams_shape(tmp_path: Path):
     payload = resp.json()
     assert payload["workstreams"] == []
     assert payload["error"] is None
+    assert payload["file_links_enabled"] is False
     assert "timeline" not in payload
     assert "branches" not in payload
+    assert TestClient(app).get("/api/progress/file", params={"path": "docs/plan.md"}).status_code == 404
+
+
+def test_progress_route_serves_only_configured_files(tmp_path: Path):
+    _write(tmp_path, """
+workstreams:
+  - name: Docs
+    status: done
+    milestones: [verify]
+    current: verify
+    links: [docs/plan.md, docs/missing.md, docs/raw.txt, ../outside.md]
+""")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "plan.md").write_text("# Plan", encoding="utf-8")
+    (docs / "raw.txt").write_text("raw", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("secret", encoding="utf-8")
+    (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
+    app = FastAPI()
+    app.include_router(make_progress_router(tmp_path, serve_files=True), prefix="/api/progress")
+    client = TestClient(app)
+
+    assert client.get("/api/progress/file", params={"path": "docs/plan.md"}).text == "# Plan"
+    for path in ("secret.txt", "docs/missing.md", "docs/raw.txt", "../outside.md"):
+        assert client.get("/api/progress/file", params={"path": path}).status_code == 404
 
 
 def test_shipped_workstreams_yaml_is_valid():

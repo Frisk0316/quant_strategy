@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -75,8 +75,10 @@ Main app views in `frontend/app.js`:
 - Parameter sweep defaults/specs live in `SWEEP_PARAM_DEFAULTS` and
   `SWEEP_PARAM_SPECS`.
 - `frontend/view-config.js` owns the run-level Exchange selector. It sends
-  `exchange` on both run-backtest and parameter-sweep payloads; the API stores it
-  as `cfg.storage.primary_exchange`.
+  `exchange` on both run-backtest and parameter-sweep payloads. If an API client
+  omits or sends a blank value, the request resolves to the configured primary
+  exchange; an explicit unknown value is rejected with HTTP 400 rather than
+  substituted with Binance. The request does not rewrite configuration.
 - `frontend/view-config.js` owns the execution-profile selector. It shows only
   `Strategy Fill` (`execution_profile=strategy_fill`) and `Dual Output`
   (`execution_profile=dual_output`); dual jobs open the strategy-fill child run
@@ -119,6 +121,10 @@ Main app views in `frontend/app.js`:
   when status is blocked) plus state/next lines and doc links.
 - Backend endpoint is implemented in `src/okx_quant/api/routes_progress.py`; it
   reads `config/workstreams.yaml` only, with no git, DB, or network access.
+- Doc links use `GET /api/progress/file?path=...`; only existing `.md` paths
+  explicitly listed by a workstream are served, after repo-containment checks.
+  This file route is enabled only by a loopback-bound standalone server. The
+  engine app and non-loopback standalone binds render paths as non-clickable chips.
 
 ## User Manual
 
@@ -128,7 +134,9 @@ Main app views in `frontend/app.js`:
   `marked`.
 - Stub chapters render a visible `待補` placeholder instead of a blank page.
 - Backend endpoints are implemented in `src/okx_quant/api/routes_manual.py` and
-  registered in `src/okx_quant/api/server.py` before the static file mount.
+  registered by both `src/okx_quant/api/server.py` and the RUNBOOK-recommended
+  standalone `scripts/run_server.py` before the static file mount. Lifecycle
+  frontmatter is removed from chapter responses before markdown rendering.
 
 ## API Calls Used By Frontend
 
@@ -166,6 +174,7 @@ Main app views in `frontend/app.js`:
 - `fetch manual manifest/chapter`: `GET /api/manual`,
   `GET /api/manual/{slug}`.
 - `fetchProgress`: `GET /api/progress`.
+- Progress file links: `GET /api/progress/file?path=<configured markdown path>`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight
 cache in `frontend/data.js` to dedupe repeated UI requests while preserving fresh

@@ -34,6 +34,12 @@ Adopt the three-role workflow defined in `docs/AI_WORKFLOW.md` and `docs/ai_coll
 
 Every task must have a GitHub issue (using the `ai_task` template) with an explicit permitted-files list and out-of-scope list before Codex begins.
 
+**Amendment (user-approved 2026-07-12):** a local task file under `tasks/`
+carrying the same content (explicit permitted-files list, out-of-scope list,
+acceptance criteria) is an accepted substitute for the GitHub issue. This
+ratifies the workflow the repo has actually used since 2026-06; the issue
+template remains available for tasks that need external tracking.
+
 `docs/AI_HANDOFF.md` is the cross-session long-term memory. It must be updated before every session ends.
 
 ## Enforcement

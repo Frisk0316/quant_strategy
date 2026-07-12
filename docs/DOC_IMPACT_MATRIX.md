@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
@@ -34,9 +34,14 @@ Legend:
 | A6 | `sql/`, DB schema / migrations | `docs/DATA_FLOW.md`, ADR-0002, `docs/KNOWN_ISSUES.md` | Yes | Yes |
 | A7 | `src/okx_quant/api/` | `docs/UI_MAP.md`, `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md` | No | If schema contract changes |
 | A8 | `frontend/` | `docs/UI_MAP.md`, `docs/FEATURE_MAP.md` | No | No |
-| A9 | Validation / gates (`backtesting/differential_validation.py`, gate logic, DSR/PSR audit tooling) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md`; n_trials provenance changes must also review `docs/EXPERIMENT_REGISTRY.md` | Yes | Yes |
-| A10 | Governance docs, `AGENTS.md`, `CLAUDE.md`, `AI_CONTEXT.md` | `docs/README.md`, `docs/DOC_LIFECYCLE.md`, this matrix | No | If authority order changes |
+| A9 | Validation / gates (replay/WF/CPCV, differential/source-provenance validation, research execution controls, pipeline checkpoint, DSR/PSR audit tooling) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md`; n_trials provenance changes must also review `docs/EXPERIMENT_REGISTRY.md` | Yes | Yes |
+| A10 | Core governance contracts/tooling (`AGENTS.md`, `CLAUDE.md`, `AI_CONTEXT.md`, workflow/lifecycle/branch/output/collaboration/impact docs, `check_doc_impact.py`) | `docs/README.md`, `docs/DOC_LIFECYCLE.md`, this matrix | No | If authority order changes |
 | A11 | Experiments / research runs | `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` | No | No |
+
+A11 is not represented as a changed-file rule in `check_doc_impact.py`: research
+artifacts may be gitignored or external, so a diff-only rule would create false
+assurance. Ledger cross-consistency needs a dedicated validator; until that task
+lands, A11 remains an explicit review requirement.
 
 ## Rules of use
 

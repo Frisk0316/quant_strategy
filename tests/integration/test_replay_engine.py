@@ -218,8 +218,9 @@ def test_fill_all_signals_keeps_later_signals_after_drawdown_stop(minimal_cfg, t
     )
 
 
-def test_replay_default_specs_reject_non_btc_eth_pairs_without_metadata(minimal_cfg):
+def test_replay_default_specs_reject_unknown_okx_pairs_without_metadata(minimal_cfg):
     cfg = minimal_cfg.model_copy(deep=True)
+    cfg.storage = cfg.storage.model_copy(update={"primary_exchange": "okx"})
     cfg.strategies = StrategiesConfig(
         pairs_trading={
             "enabled": True,
