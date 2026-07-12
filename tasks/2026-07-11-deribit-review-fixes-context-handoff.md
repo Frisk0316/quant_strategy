@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-11
+last_reviewed: 2026-07-11
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: Deribit Review Fixes and D4 Backfill - 2026-07-11
 
 ## Goal (one sentence)

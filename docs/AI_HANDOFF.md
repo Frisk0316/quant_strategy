@@ -115,8 +115,16 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    `docs-impact --strict` pass. Two minor findings, none blocking.
 2. DONE 2026-07-12: P0.4 Option B executed by Claude (user-authorized) —
    integration commit `a950025`, PR #9 open for Codex review.
-3. Codex P1 work per the recorded decisions: liquidation unattended mode,
-   lifecycle checker (new tasks/ files only), A11 validator, lab test target.
+3. DONE 2026-07-12 (Claude, user-authorized; Codex review pending on branch
+   `claude/p1-governance-docs`): P1.1 — `make test-lab` wired into `verify`,
+   A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,
+   fixed missing F-VRP-TIMING K-budget row), tasks/ lifecycle frontmatter
+   enforced for dated files ≥2026-07-01 (28 files migrated, 4 templates
+   updated, legacy exempt), overview coverage documented as a manual review
+   step. P1.2 — README 897→101 lines with operational detail moved verbatim to
+   RUNBOOK, two completed 2026-06-25 plans archived, CHANGELOG backfilled
+   07-05/07-07/07-11.
+   Remaining Codex P1 work: liquidation unattended mode; review both PRs.
 4. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
 5. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
    symbol, 2021-03-24→2026-07-11, values cross-checked against the hourly

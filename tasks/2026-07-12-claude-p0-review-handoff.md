@@ -1,5 +1,5 @@
 ---
-status: superseded
+status: deprecated
 type: handoff
 owner: claude
 created: 2026-07-12

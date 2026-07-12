@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-02
+last_reviewed: 2026-07-02
+expires: none
+superseded_by: null
+---
+
 # Session Handoff: Literature Keyword Scorer - 2026-07-02
 
 ## Implementation summary

@@ -57,6 +57,7 @@ Machine-readable: rows start with `| F-` (the `| E-` registry parser ignores the
 | F-XVENUE-LEADLAG | 0 | 2 | E-029/E-035 are 0-trial Stage-2 data probes; no validation yet |
 | F-OI-POSITIONING | 0 | 2 | E-037 original first validation (E-034/E-036 were 0-trial Stage-2 data probes); user-shelved 2026-07-12 with no retry |
 | F-TURTLE-REFERENCE-PARITY | 0 | 2 | deterministic runner parity validation; not an alpha retry family |
+| F-VRP-TIMING | 0 | 2 | E-038 reserved-only Stage-2 probe; no validation run yet |
 
 ## Registry
 

@@ -15,99 +15,65 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025` (integration merge),
-  tracking the matching origin branch; working tree is clean. The audit repair
-  plus approved P0 implementation are committed as `c84f5a1`; `origin/main` was
-  merged in with zero content delta and no conflicts. PR #9 (integration
-  exception, branch → main) is open awaiting Codex review; do not force-push.
+- Branch `codex/pipeline-batch1-stage3` at `f1aac94` holds the committed P0
+  hardening (`c84f5a1`) plus the zero-delta `origin/main` integration merge
+  (`a950025`). PR #9 (documented integration exception, branch → main) is open
+  awaiting Codex review; do not force-push.
+- Branch `claude/p1-governance-docs` (off `f1aac94`) holds the P1.1/P1.2 work
+  below, PR pending Codex review.
 - No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
   `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
   authority in the documented order.
 - Do not modify research, existing results, strategy/signal/risk/execution
-  behavior, DB schema, or deployment gates unless a dedicated approved task
-  explicitly permits it. P0 authorized only artifact containment inside
-  differential validation and the shared `ct_val` validation contract; no
-  strategy/PnL formula changed.
+  behavior, DB schema, or deployment gates without a dedicated approved task.
 
 ## Completed and usable
 
-- Turtle standalone research runner, golden parity, UI, and resumable large
-  sweeps are implemented. The 2026-07-12 audit restored the fraction-unit UI
-  contract; it remains research-only.
-- Deribit D1-D5 ingestion/API/frontend work and R1-R5 fixes are accepted. D4
-  history is backfilled through 2026-07-10 23:00Z; forward scheduled tasks are
-  not registered.
-- Funding XS Dispersion H-009/E-031 completed its first cycle and remains
-  `testing` after DSR=PSR 0.9346 failed the 0.95 gate.
-- OI Positioning H-012/E-037 is user-ratified `shelved`, no retry: WF 0.6034,
-  CPCV 0.7240, DSR 0.7220, PSR 0.8484. Hygiene also found F36: positions and
-  funding use t+1, but turnover cost is posted on signal day. The immutable
-  E-037 artifact remains non-promotion evidence and was not edited.
-- Batch 2 C1/C2/C3 and XS Momentum are refuted/shelved. Multi-venue ADR-0007 P1
-  and the user-manual content are implemented.
-- The standalone local server now exposes the manual; manual frontmatter is
-  hidden. Progress document links use an allow-listed contained markdown route
-  only on loopback standalone binds; engine/non-loopback views do not expose files.
-- P0.1-P0.3 are implemented: artifact identifiers reject unsafe components and
-  remain contained under their roots; explicit unknown venues fail with HTTP 400
-  while omitted/blank values use the configured primary exchange; the numeric
-  `ct_val` guard accepts only finite positive values through `1e7`, with
-  provenance still enforced separately by R1.4/I16. PnL formulas and existing
-  result artifacts are unchanged.
+- P0.1-P0.3 hardening implemented and Claude-review APPROVED: artifact-ID
+  containment, `ct_val` finite-positive `<=1e7`, venue fail-closed. No PnL
+  formula or existing artifact changed.
+- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): zero-delta merge,
+  integration commit verified (unit 768/1 skip, integration 38, Ruff/docs/
+  frontend/config/backtest-smoke pass; api-smoke SKIP no server; validate-data
+  FAIL is the pre-existing thin local parquet mirror), PR #9 open.
+- P1.1 governance enforcement DONE 2026-07-12 (Claude, Codex review pending):
+  `make test-lab` runs the crypto-alpha-lab suite separately and is wired into
+  `verify`; A11 ledger validator `scripts/docs/check_ledger_consistency.py` is
+  in `docs-check` with unit tests (it found and fixed the missing F-VRP-TIMING
+  K-budget row); new dated `tasks/` files (≥2026-07-01) require lifecycle
+  frontmatter — checker enforces, 28 July files migrated, 4 templates updated,
+  legacy exempt; overview coverage is a documented manual review step in
+  `docs/human_overviews/README.md`.
+- P1.2 documentation cleanup DONE 2026-07-12: README slimmed 897→101 lines with
+  operational detail moved verbatim into `docs/RUNBOOK.md` (521→1237 lines,
+  gate wording unchanged); completed 2026-06-25 pipeline/manual plans archived;
+  CHANGELOG_AI backfilled with compressed 07-05/07-07/07-11 entries; ADR-0001
+  amendment and ADR-0006 status were already fixed by the audit session.
+- Turtle research runner, Deribit D1-D5 + R1-R5, manual/Progress routes, and
+  daily DVOL backfill (2021-03-24→2026-07-11, gap-free) remain accepted.
 
 ## Active / blocked
 
-- H-013/F-VRP-TIMING Stage-1 is user-signed-off and remains `proposed`. E-038 is
-  reserved-only and absent from the registry until a separately scoped Stage-2
-  probe runs; no probe, grid, adapter, or promotion work ran in this task.
-- H-010 cross-venue lead/lag is blocked on missing OKX BTC/ETH 1m candles.
-- Demo engine mode is blocked by OKX `60005 Invalid apiKey`. Use the standalone
-  server for frontend/backtest/data review; never switch to live as a workaround.
-- Port `127.0.0.1:8080` is abandoned per the 2026-07-12 user decision (the hung
-  user-owned PID 23696 stays untouched); run servers on another port.
-- Operations decided 2026-07-12: Deribit schedulers stay unregistered
-  (stale accepted, manual RUNBOOK updates only), OKX liquidation collection
-  moves to unattended mode (Codex task). Daily DVOL is backfilled and gap-free:
-  2021-03-24 through 2026-07-11, 1,936 rows per symbol, daily close matches the
-  hourly series; manual-update command is in `docs/RUNBOOK.md`.
-
-## Remaining engineering work from the audit
-
-- P0.1-P0.3 are implemented and Claude-review APPROVED 2026-07-12 with the full
-  verification rerun: full unit `768 passed, 1 skipped` (Windows symlink
-  privilege), integration `38 passed`, Ruff and `docs-impact --strict` pass.
-  The `delete_run` indentation minor is fixed; the symlink regression still
-  skips on Windows without privilege and remains active for CI/Linux.
-- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
-  merged into the branch (zero delta — main's PR #1–#8 content was already in
-  branch history), integration commit `a950025`, PR #9 opened with the
-  documented exception. verify-full equivalent on the integration commit: Ruff,
-  docs, frontend, config, unit 768/1 skip, integration 38, backtest smoke all
-  pass; api-smoke SKIP (no server); validate-data FAIL is the pre-existing thin
-  local parquet mirror (no `candles_1H`/`funding` parquet), not merge-caused.
-- Governance follow-ups: separate lab test in `verify`, A11 ledger validator,
-  task lifecycle scope, stale README/ADR/overview cleanup.
-- The shelved OI research runner has the F36 cost-lag bug class. It is not fixed
-  in this task because no retry/reuse is authorized; any future reuse requires a
-  code fix, guarding test, new ex-ante rationale, and a new experiment record.
+- H-013/F-VRP-TIMING Stage-1 signed off, `proposed`; E-038 reserved-only until
+  a separately scoped Stage-2 probe. Stage 3 unauthorized.
+- H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
+  H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 blocked on OKX
+  BTC/ETH 1m backfill.
+- Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
+  later. Port 8080 abandoned; use another port.
+- Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
+  updates). OKX liquidation unattended mode is an approved Codex task.
+- F36: the shelved OI runner posts turnover cost on signal day; any reuse needs
+  a fix, guarding test, ex-ante rationale, and a new experiment record.
 
 ## Next actions, in order
 
-All 2026-07-12 audit decisions are recorded ("Human decisions recorded
-2026-07-12" in the follow-up task file): P0.1–P0.3 ratified (P0.2: finite
-positive, cap ≤1e7), P0.4 = Option B merge-exception after the P0s, H-012
-shelved (F36 turnover-cost-timing logged), H-013 approved, ADR-0001/0006
-resolved, P1.4 operations decided.
-
-P0.1–P0.3 are CLOSED: Claude review approved all three on 2026-07-12 and reran
-the blocked verification (full unit 768/1 skipped, integration 38, Ruff,
-docs-impact strict — all pass).
-
 1. Codex reviews/merges PR #9 (P0.4 integration exception).
-2. Complete P1.1 governance enforcement and P1.2 documentation cleanup
-   (Claude executing per 2026-07-12 user authorization; Codex reviews).
-3. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 remains unauthorized.
-4. Pending fact: the user creates the OKX Demo key.
+2. Codex reviews the `claude/p1-governance-docs` PR (P1.1 + P1.2).
+3. Codex P1.4 implementation: OKX liquidation unattended mode.
+4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
+5. Pending fact: the user creates the OKX Demo key.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`,
-`config/workstreams.yaml`.
+`config/workstreams.yaml`,
+`tasks/2026-07-12-project-diagnosis-followup-tasks.md`.

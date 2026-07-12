@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-03
+last_reviewed: 2026-07-03
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: Project Maintenance M1-M5 - 2026-07-03
 
 ## Goal (one sentence)

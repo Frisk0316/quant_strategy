@@ -1,3 +1,13 @@
+---
+status: current
+type: handoff
+owner: human
+created: 2026-07-07
+last_reviewed: 2026-07-07
+expires: none
+superseded_by: null
+---
+
 # Context Handoff: F-OI-POSITIONING Stage-3 Task B - 2026-07-07
 
 ## Goal (one sentence)

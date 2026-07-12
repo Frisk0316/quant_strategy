@@ -1,13 +1,16 @@
 ---
-status: current
+status: archived
 type: plan
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-12
 expires: none
 superseded_by: null
 ---
 
+> **Archived 2026-07-12:** the manual is implemented (all chapters written,
+> `/api/manual` wired, frontmatter hidden). Current state lives in
+> `docs/CURRENT_STATE.md` and `docs/UI_MAP.md`; this plan is historical record only.
 # In-Dashboard User Manual Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
