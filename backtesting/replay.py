@@ -950,8 +950,10 @@ class ReplayBacktestEngine:
             # overrides — this is the same trust level as a DB-backed value.
             for sym, spec in instrument_specs.items():
                 ct_val = spec.get("ctVal") if isinstance(spec, dict) else None
+                # R1.5/I34: never record an unvalidated multiplier under an
+                # authoritative source label, even if no trade consumes it.
                 self._ct_val_sources[sym] = {
-                    "value": float(ct_val) if ct_val is not None else None,
+                    "value": validate_ct_val(ct_val, sym) if ct_val is not None else None,
                     "source": "config_override",
                     "exchange": exchange,
                 }

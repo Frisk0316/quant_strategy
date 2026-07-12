@@ -38,6 +38,22 @@ A2 portfolio/sizing.
 - `docs/ADR/0003-position-pnl-accounting.md` — dated contract amendment.
 - `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md` — rule,
   I34 and F32 closure.
+
+## Addendum 2026-07-13 (Codex PR #9 review fix)
+
+Two enforcement gaps let unvalidated multipliers bypass the shared contract:
+
+- `src/okx_quant/portfolio/positions.py` `_fill_ct_val()` parsed fill metadata
+  itself: `inf`/`>1e7` entered positions and PnL, `NaN` silently became `1.0`.
+  Now an explicitly provided `ct_val` must pass `validate_ct_val()`; only a
+  truly absent value uses the existing fallback.
+- `backtesting/replay.py` recorded caller-supplied `instrument_specs` under the
+  authoritative `config_override` source without validation. Now validated
+  before the provenance label is assigned.
+- Regressions: `tests/unit/test_position_pnl_accounting.py` (reject
+  inf/NaN/1e8/0/-1; missing/None uses fallback) and
+  `tests/unit/test_backtesting.py` (invalid caller ctVal raises before an
+  authoritative label exists). No PnL formula changed.
 - `docs/change_manifests/2026-07-12-ct-val-validation-contract.md` — this audit
   record.
 

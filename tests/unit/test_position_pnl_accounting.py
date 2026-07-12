@@ -57,3 +57,31 @@ def test_swap_realized_pnl_uses_ct_val_on_close():
     assert close_trade["realized_pnl"] == pytest.approx(2.5)
     assert close_trade["net_realized_pnl"] == pytest.approx(2.5)
     assert ledger.get_equity() == pytest.approx(10_002.5)
+
+
+@pytest.mark.parametrize("bad_ct_val", [float("inf"), float("nan"), 1e8, 0.0, -1.0])
+def test_on_fill_rejects_invalid_explicit_ct_val(bad_ct_val):
+    """R1.5/I34: explicitly provided ct_val must pass the shared validator."""
+    ledger = PositionLedger(initial_equity=10_000.0)
+
+    with pytest.raises(ValueError):
+        ledger.on_fill(
+            "BTC-USDT-SWAP",
+            "buy",
+            fill_px=40_000.0,
+            fill_sz=0.25,
+            fee=0.0,
+            metadata={"ct_val": bad_ct_val},
+        )
+
+
+def test_on_fill_missing_ct_val_uses_fallback():
+    ledger = PositionLedger(initial_equity=10_000.0)
+
+    ledger.on_fill("BTC-USDT-SWAP", "buy", fill_px=100.0, fill_sz=1.0, fee=0.0)
+    ledger.on_fill("BTC-USDT-SWAP", "buy", fill_px=100.0, fill_sz=1.0, fee=0.0, metadata={})
+    ledger.on_fill(
+        "BTC-USDT-SWAP", "buy", fill_px=100.0, fill_sz=1.0, fee=0.0, metadata={"ct_val": None}
+    )
+
+    assert ledger.get_position("BTC-USDT-SWAP").ct_val == pytest.approx(1.0)

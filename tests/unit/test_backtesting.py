@@ -182,6 +182,19 @@ def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
     assert engine._ct_val_sources["BAR-USDT-SWAP"]["value"] == pytest.approx(2.0)
 
 
+@pytest.mark.parametrize("bad_ct_val", [float("inf"), float("nan"), 1e8, 0.0, -1.0])
+def test_replay_engine_rejects_invalid_caller_ctval_before_authoritative_label(minimal_cfg, bad_ct_val):
+    """R1.5/I34: an unvalidated multiplier must never be recorded under the
+    authoritative `config_override` source, even if no trade consumes it."""
+    cfg = _use_okx_registry(minimal_cfg)
+    override = {
+        "FOO-USDT-SWAP": {"ctVal": bad_ct_val, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+    }
+
+    with pytest.raises(ValueError):
+        ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"], instrument_specs=override)
+
+
 def test_load_config_reads_backtest_execution_defaults():
     cfg = load_config(require_secrets=False)
 

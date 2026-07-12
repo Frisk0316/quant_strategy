@@ -12,6 +12,8 @@ from typing import Optional
 
 from loguru import logger
 
+from okx_quant.portfolio.sizing import validate_ct_val
+
 
 @dataclass
 class Position:
@@ -278,9 +280,10 @@ class PositionLedger:
 
 
 def _fill_ct_val(metadata: dict | None, fallback: float = 1.0) -> float:
-    raw = (metadata or {}).get("ct_val", fallback)
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
+    # R1.5/I34: an explicitly provided multiplier must pass the shared
+    # validator; only a truly absent value may use the fallback.
+    meta = metadata or {}
+    raw = meta.get("ct_val")
+    if raw is None:
         return float(fallback or 1.0)
-    return value if value > 0 else float(fallback or 1.0)
+    return validate_ct_val(raw)
