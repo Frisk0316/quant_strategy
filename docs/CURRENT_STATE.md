@@ -17,8 +17,9 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 - PR #9 is merged to `main` at `b378e16`; its PR head was `00c7a51`. Branch
   `codex/pipeline-batch1-stage3` now has five post-merge review-fix commits
-  (`6129f94` through `037b15f`) plus the verified repair work. None of those
-  follow-up changes were part of PR #9; they require a separate PR.
+  (`6129f94` through `037b15f`) plus local verified repair commit `df53f73`.
+  None of those follow-up changes were part of PR #9; they require a separate
+  PR. The remote branch remains at `037b15f` because push was environment-blocked.
 - No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
   `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
   authority in the documented order.
@@ -56,7 +57,8 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 - PR #9 follow-up repair is verified: unit `841 passed, 1 skipped`, integration
   `38 passed`, lab `18 passed`, Ruff/docs/config/backtest smoke PASS, and strict
-  doc impact from `00c7a51` PASS. A separate PR is not yet open.
+  doc impact from `00c7a51` PASS. Commit `df53f73` is local; push and the separate
+  PR are still pending.
 - H-013/F-VRP-TIMING Stage-1 signed off, `proposed`; E-038 reserved-only until
   a separately scoped Stage-2 probe. Stage 3 unauthorized.
 - H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
@@ -71,8 +73,8 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Next actions, in order
 
-1. Open and review a separate follow-up PR for the five post-merge commits plus
-   the verified repair; human performs the merge.
+1. Push `codex/pipeline-batch1-stage3` when GitHub access is available, then open
+   and review its separate follow-up PR; human performs the merge.
 2. Codex P1.4 implementation: OKX liquidation unattended mode.
 3. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
 4. Pending fact: the user creates the OKX Demo key.

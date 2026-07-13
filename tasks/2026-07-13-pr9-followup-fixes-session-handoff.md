@@ -78,6 +78,9 @@ reflect that PR #9 already merged and these changes require a separate PR.
 - API smoke was not required by this code/config shape and no server was
   started. Full replay against TimescaleDB/data was not run; the deterministic
   backtest smoke passed.
+- Repair commit `df53f73` is local only. The sandbox could not reach GitHub and
+  escalation was rejected by the tool usage limit, so push/PR creation remain
+  external follow-up steps.
 - No strategy is promotion/demo/shadow/live ready as a result of this repair.
 
 ## Rollback plan
@@ -99,8 +102,9 @@ reflect that PR #9 already merged and these changes require a separate PR.
 
 ## Next recommended task
 
-- Open and review the separate follow-up PR; after merge, return to the already
-  recorded OKX liquidation unattended-mode P1 task.
+- Push `codex/pipeline-batch1-stage3`, then open and review the separate follow-up
+  PR; after merge, return to the recorded OKX liquidation unattended-mode P1
+  task.
 
 ## Human Learning Notes (required)
 

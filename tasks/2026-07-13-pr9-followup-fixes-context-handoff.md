@@ -18,15 +18,16 @@ human-reviewed follow-up PR.
 
 ## Current state
 
-- Branch: `codex/pipeline-batch1-stage3`, tracking origin.
-- Last known good base: `037b15f`; the current working tree contains the
-  follow-up repair and its documentation.
+- Branch: `codex/pipeline-batch1-stage3`; local repair commit `df53f73`, while
+  origin remains at `037b15f`.
+- Last known good state: `df53f73` plus the final environment-blocked-push
+  handoff synchronization.
 - Verified repair scope: replay `ct_val` resolution, position fill atomicity,
   documentation checkers/tests, current-state records, and handoffs.
 - What works: explicit DB/registry/caller multipliers fail closed through the
   shared validator; rejected fills do not mutate the ledger; governance rows
   and lifecycle metadata fail closed under adversarial tests.
-- Unfinished: commit/push and creation of the separate GitHub PR.
+- Unfinished: push and creation of the separate GitHub PR.
 
 ## Decisions made (and why)
 
@@ -41,8 +42,10 @@ human-reviewed follow-up PR.
 ## Open questions / unverified assumptions
 
 - Human/Claude review must confirm the separate follow-up diff before merge.
-- GitHub CLI authentication is unavailable locally; PR creation may require the
-  user to authenticate or open the pushed branch in GitHub.
+- Push was attempted once and failed because the sandbox could not reach GitHub;
+  escalation was rejected by the tool usage limit. Do not work around it.
+- GitHub CLI authentication is unavailable locally; PR creation requires the
+  user or a later authenticated environment after the branch is pushed.
 
 ## Rules in play (preserve verbatim)
 
@@ -84,8 +87,8 @@ human-reviewed follow-up PR.
 
 ## Next action (single, concrete)
 
-- Open and review a separate PR from the pushed
-  `codex/pipeline-batch1-stage3` branch to `main`; human performs the merge.
+- Run `git push origin codex/pipeline-batch1-stage3` when GitHub access is
+  available, then open its separate PR to `main`; human performs the merge.
 
 ## Human Learning Notes
 

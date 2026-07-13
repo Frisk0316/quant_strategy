@@ -7,8 +7,8 @@ workstreams:
     status: active
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
     current: followup_repair
-    state: "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) were created after that head and are not on main. The remaining ct_val provenance/fill-atomicity and governance-checker gaps are repaired and fully verified; no strategy or deployment readiness follows."
-    next: "Open and review a separate follow-up PR for the five post-merge commits plus the verified repair; human performs the merge. After that, remaining Codex P1 work is OKX liquidation unattended mode."
+    state: "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) were created after that head and are not on main. The remaining gaps are repaired and fully verified in local commit df53f73; origin remains at 037b15f because GitHub push was environment-blocked. No strategy or deployment readiness follows."
+    next: "Push codex/pipeline-batch1-stage3 when GitHub access is available, then open and review its separate follow-up PR; human performs the merge. After that, remaining Codex P1 work is OKX liquidation unattended mode."
     links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
     updated: 2026-07-13
 

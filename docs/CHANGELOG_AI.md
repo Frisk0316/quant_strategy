@@ -34,6 +34,8 @@ on current state, current goal, do-not-touch constraints, and next actions.
 - Final verification: unit `841 passed, 1 skipped`; integration `38 passed`;
   lab `18 passed`; full Ruff, docs metadata/links/ledger/overview, config,
   backtest smoke, and strict doc impact from `00c7a51` passed.
+- Repair committed locally as `df53f73`. Push did not occur: the sandbox could
+  not reach GitHub, and escalation was rejected by the tool usage limit.
 
 ## 2026-07-13 - Codex review fixes for PR #9/#10
 

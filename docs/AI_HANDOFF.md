@@ -22,8 +22,10 @@ demo, shadow, or live work is authorized by this handoff.
 
 ## Branch and working tree
 
-- Branch: `codex/pipeline-batch1-stage3`, tracking origin. The verified repair
-  sits on top of `037b15f`, the fifth post-merge review-fix commit.
+- Branch: `codex/pipeline-batch1-stage3`. Verified repair commit `df53f73` is
+  local; `origin/codex/pipeline-batch1-stage3` remains at `037b15f` because the
+  sandbox could not reach GitHub and the escalation was rejected by the tool's
+  usage limit.
 - PR #9 merged to `main` at `b378e16`; its PR head was `00c7a51`. Commits
   `6129f94` through `037b15f` and the current repairs were not in PR #9 and
   require a separate follow-up PR. No force-push or history rewrite.
@@ -120,8 +122,9 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
 3. DONE 2026-07-13: repaired the remaining review findings. Final verification:
    unit `841 passed, 1 skipped`, integration `38 passed`, lab `18 passed`, full
    Ruff/docs/config/backtest smoke PASS, and strict doc impact from `00c7a51`
-   PASS across 131 changed files. Next: open a separate follow-up PR for commits
-   `6129f94` through `037b15f` plus this repair.
+   PASS across 131 changed files. Local repair commit: `df53f73`. Next: push the
+   branch when network/tool access is available, then open a separate follow-up
+   PR for commits `6129f94` through `037b15f` plus this repair.
 4. DONE 2026-07-12 (Claude, user-authorized): P1.1 — `make test-lab` wired into `verify`,
    A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,
    fixed missing F-VRP-TIMING K-budget row), lifecycle frontmatter enforced for

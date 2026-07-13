@@ -33,7 +33,8 @@ lifecycle 強制、overview 覆蓋人工步驟）與 P1.2 文件清理（README 
 文件/工具漏洞，第一輪修補處理了共用 `ct_val` 驗證、RUNBOOK gate 條文、handoff
 生命週期、A11 驗證器與 tasks checker。其後複審發現的 DB/registry/caller-spec
 provenance、failed-fill atomicity、ledger parser 與 template 豁免漏洞均已修復並完成
-全量驗證；follow-up PR 尚未建立。
+全量驗證並提交為本地 commit `df53f73`；環境無法連線 GitHub，尚未 push 或建立
+follow-up PR。
 
 ## 2. 為什麼要做？
 
@@ -102,6 +103,6 @@ README 不再是第二真相源。
 
 ## 10. 下一步
 
-從 `codex/pipeline-batch1-stage3` 為五個 post-merge commits 加上本輪已驗證修補另開
-follow-up PR，由人類審核與合併。之後：OKX liquidation unattended mode（Codex）、
-E-038 Stage-2（獨立任務）、user 建立 OKX Demo key。
+GitHub 存取恢復後先 push `codex/pipeline-batch1-stage3`，再為五個 post-merge commits
+加上本輪已驗證修補另開 follow-up PR，由人類審核與合併。之後：OKX liquidation
+unattended mode（Codex）、E-038 Stage-2（獨立任務）、user 建立 OKX Demo key。
