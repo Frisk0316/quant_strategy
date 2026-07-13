@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260713_taxonomy_003",
+  "family_id": "F-ONCHAIN-FLOW",
+  "hypothesis_id": "H-019",
+  "experiment_id": "E-048",
+  "window": [
+    "2024-01-01",
+    "2026-07-11"
+  ],
+  "n_trials": 4,
+  "n_trials_provenance": "caller_declared",
+  "grid_combos": [
+    "fast=14|slow=60",
+    "fast=14|slow=90",
+    "fast=30|slow=60",
+    "fast=30|slow=90"
+  ],
+  "default_combo_for_minting": "fast=14|slow=60",
+  "nonzero_grid_activity": true,
+  "leak_shift_path_live": true,
+  "idealized_fill": false,
+  "costs": {
+    "fee_bps": 2.0,
+    "slippage_bps": 2.0,
+    "funding_cashflow": true
+  },
+  "vol_target": {
+    "annual": 0.175,
+    "window_days": 28,
+    "lev_cap": 3.0
+  },
+  "validation": {
+    "validation_mode": "fold_refit_param_selection",
+    "wf_oos_sharpe": -0.21583985963088437,
+    "cpcv_oos_sharpe": 0.6669923848420864,
+    "dsr": 0.7970644318117422,
+    "psr": 0.8523936903694868,
+    "wf_selected_param_counts": {
+      "fast=14|slow=60": 4,
+      "fast=14|slow=90": 2
+    },
+    "cpcv_selected_param_counts": {
+      "fast=14|slow=60": 4,
+      "fast=14|slow=90": 11
+    },
+    "cpcv": {
+      "n_splits": 6,
+      "k_test": 2,
+      "embargo_pct": 0.02,
+      "purge_size": 1,
+      "n_combinations": 15,
+      "n_paths": 5,
+      "path_sharpes": [
+        0.6411375796375964,
+        0.6278732595850419,
+        0.5274920454598809,
+        0.8819456999123194,
+        0.6565133396155939
+      ]
+    }
+  },
+  "family_minting": {
+    "schema_version": 1,
+    "batch_id": "idea_batch_20260713_taxonomy_003",
+    "candidate_id": "f-onchain-flow",
+    "claimed_family_id_or_NEW": "NEW",
+    "claimed_mechanism": "hash-ribbon miner-capitulation long/flat (BTC only)",
+    "max_abs_corr": 0.03900008880774674,
+    "nearest_family_id": "F-OI-POSITIONING",
+    "nearest_family_status": "checkpoint / statistical-fail / promotion-blocked",
+    "nearest_family_cumulative_n_trials": 4,
+    "decision": "MINT",
+    "inherited_n_trials": 0,
+    "k_used": 0,
+    "k_limit": 2,
+    "at_k_limit": false,
+    "provisional_new_family": true,
+    "human_review_items": [
+      "mechanism_novelty"
+    ],
+    "reason": "low correlation with supplied reference families; provisional new-family candidate"
+  },
+  "statistical_gate_passed": false,
+  "promotion_gate_passed": false,
+  "portable_validation_gate": false,
+  "portable_block_reason": "research-grade Claude runner; adapter-required/absent",
+  "runner": "research/probes/taxonomy003_stage3.py"
+}

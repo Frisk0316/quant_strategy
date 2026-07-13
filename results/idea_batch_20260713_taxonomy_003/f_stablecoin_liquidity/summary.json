@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260713_taxonomy_003",
+  "family_id": "F-STABLECOIN-LIQUIDITY",
+  "hypothesis_id": "H-017",
+  "experiment_id": "E-046",
+  "window": [
+    "2024-01-01",
+    "2026-07-11"
+  ],
+  "n_trials": 4,
+  "n_trials_provenance": "caller_declared",
+  "grid_combos": [
+    "G=14|z_min=0.0",
+    "G=14|z_min=0.5",
+    "G=28|z_min=0.0",
+    "G=28|z_min=0.5"
+  ],
+  "default_combo_for_minting": "G=14|z_min=0.0",
+  "nonzero_grid_activity": true,
+  "leak_shift_path_live": true,
+  "idealized_fill": false,
+  "costs": {
+    "fee_bps": 2.0,
+    "slippage_bps": 2.0,
+    "funding_cashflow": true
+  },
+  "vol_target": {
+    "annual": 0.175,
+    "window_days": 28,
+    "lev_cap": 3.0
+  },
+  "validation": {
+    "validation_mode": "fold_refit_param_selection",
+    "wf_oos_sharpe": -0.9055577645563525,
+    "cpcv_oos_sharpe": 0.3883789369013991,
+    "dsr": 0.6891857171516371,
+    "psr": 0.7306755662744482,
+    "wf_selected_param_counts": {
+      "G=14|z_min=0.5": 1,
+      "G=28|z_min=0.0": 2,
+      "G=28|z_min=0.5": 3
+    },
+    "cpcv_selected_param_counts": {
+      "G=14|z_min=0.0": 4,
+      "G=28|z_min=0.0": 5,
+      "G=28|z_min=0.5": 6
+    },
+    "cpcv": {
+      "n_splits": 6,
+      "k_test": 2,
+      "embargo_pct": 0.02,
+      "purge_size": 1,
+      "n_combinations": 15,
+      "n_paths": 5,
+      "path_sharpes": [
+        0.27995471410115574,
+        0.464846077929864,
+        0.3626911267009386,
+        0.3914825196076871,
+        0.4429202461673499
+      ]
+    }
+  },
+  "family_minting": {
+    "schema_version": 1,
+    "batch_id": "idea_batch_20260713_taxonomy_003",
+    "candidate_id": "f-stablecoin-liquidity",
+    "claimed_family_id_or_NEW": "NEW",
+    "claimed_mechanism": "aggregate stablecoin supply growth risk-on/off long/flat",
+    "max_abs_corr": 0.027964817087747153,
+    "nearest_family_id": "F-FUNDING-XS-DISPERSION",
+    "nearest_family_status": "checkpoint / statistical-fail / promotion-blocked",
+    "nearest_family_cumulative_n_trials": 4,
+    "decision": "MINT",
+    "inherited_n_trials": 0,
+    "k_used": 0,
+    "k_limit": 2,
+    "at_k_limit": false,
+    "provisional_new_family": true,
+    "human_review_items": [
+      "mechanism_novelty"
+    ],
+    "reason": "low correlation with supplied reference families; provisional new-family candidate"
+  },
+  "statistical_gate_passed": false,
+  "promotion_gate_passed": false,
+  "portable_validation_gate": false,
+  "portable_block_reason": "research-grade Claude runner; adapter-required/absent",
+  "runner": "research/probes/taxonomy003_stage3.py"
+}

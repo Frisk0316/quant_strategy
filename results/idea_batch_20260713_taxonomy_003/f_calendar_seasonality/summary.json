@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260713_taxonomy_003",
+  "family_id": "F-CALENDAR-SEASONALITY",
+  "hypothesis_id": "H-020",
+  "experiment_id": "E-049",
+  "window": [
+    "2024-01-01",
+    "2026-07-11"
+  ],
+  "n_trials": 2,
+  "n_trials_provenance": "caller_declared",
+  "grid_combos": [
+    "cell=weekdays",
+    "cell=weekends"
+  ],
+  "default_combo_for_minting": "cell=weekdays",
+  "nonzero_grid_activity": true,
+  "leak_shift_path_live": true,
+  "idealized_fill": false,
+  "costs": {
+    "fee_bps": 2.0,
+    "slippage_bps": 2.0,
+    "funding_cashflow": true
+  },
+  "vol_target": {
+    "annual": 0.175,
+    "window_days": 28,
+    "lev_cap": 3.0
+  },
+  "validation": {
+    "validation_mode": "fold_refit_param_selection",
+    "wf_oos_sharpe": -2.0903314356572373,
+    "cpcv_oos_sharpe": -0.3385783685384852,
+    "dsr": 0.22916335467204257,
+    "psr": 0.35069080764547117,
+    "wf_selected_param_counts": {
+      "cell=weekdays": 3,
+      "cell=weekends": 3
+    },
+    "cpcv_selected_param_counts": {
+      "cell=weekdays": 4,
+      "cell=weekends": 11
+    },
+    "cpcv": {
+      "n_splits": 6,
+      "k_test": 2,
+      "embargo_pct": 0.02,
+      "purge_size": 1,
+      "n_combinations": 15,
+      "n_paths": 5,
+      "path_sharpes": [
+        0.38579948685009874,
+        -0.6966107591537161,
+        -0.9862467268877906,
+        0.38579948685009885,
+        -0.781633330351117
+      ]
+    }
+  },
+  "family_minting": {
+    "schema_version": 1,
+    "batch_id": "idea_batch_20260713_taxonomy_003",
+    "candidate_id": "f-calendar-seasonality",
+    "claimed_family_id_or_NEW": "NEW",
+    "claimed_mechanism": "weekday-vs-weekend two-cell holding contrast",
+    "max_abs_corr": 0.03530557928549031,
+    "nearest_family_id": "F-OI-POSITIONING",
+    "nearest_family_status": "checkpoint / statistical-fail / promotion-blocked",
+    "nearest_family_cumulative_n_trials": 4,
+    "decision": "MINT",
+    "inherited_n_trials": 0,
+    "k_used": 0,
+    "k_limit": 2,
+    "at_k_limit": false,
+    "provisional_new_family": true,
+    "human_review_items": [
+      "mechanism_novelty"
+    ],
+    "reason": "low correlation with supplied reference families; provisional new-family candidate"
+  },
+  "statistical_gate_passed": false,
+  "promotion_gate_passed": false,
+  "portable_validation_gate": false,
+  "portable_block_reason": "research-grade Claude runner; adapter-required/absent",
+  "runner": "research/probes/taxonomy003_stage3.py"
+}
