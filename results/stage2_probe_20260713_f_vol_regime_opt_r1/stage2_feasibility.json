@@ -1,0 +1,161 @@
+{
+  "schema_version": 2,
+  "experiment_id": "E-041",
+  "supersedes_experiment_id": "E-040",
+  "hypothesis_id": "H-014",
+  "family_id": "F-VOL-REGIME-OPT",
+  "generated_at": "2026-07-13T12:42:06.950427+00:00",
+  "command": "C:\\Users\\woody\\AppData\\Local\\Programs\\Python\\Python312\\python.exe research\\probes\\f_vol_regime_opt_stage2.py",
+  "command_argv": [
+    "C:\\Users\\woody\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "research\\probes\\f_vol_regime_opt_stage2.py"
+  ],
+  "trials": 0,
+  "k_consumed": 0,
+  "sampling": [
+    {
+      "symbol": "BTC",
+      "candidate_count": 52,
+      "rule": "three lowest and three highest IVP classified month-first dates; ties by date",
+      "selected": [
+        {
+          "date": "2022-04-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 1,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2023-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 2,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2025-07-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 3,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2024-04-01",
+          "ivp": "93.98907103825137",
+          "regime": "NORMAL",
+          "selection_rank": 50,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-03-01",
+          "ivp": "96.17486338797814",
+          "regime": "NORMAL",
+          "selection_rank": 51,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-01-01",
+          "ivp": "98.08743169398907",
+          "regime": "RICH",
+          "selection_rank": 52,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        }
+      ]
+    },
+    {
+      "symbol": "ETH",
+      "candidate_count": 52,
+      "rule": "three lowest and three highest IVP classified month-first dates; ties by date",
+      "selected": [
+        {
+          "date": "2022-04-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 1,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2023-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 2,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2026-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 3,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2022-07-01",
+          "ivp": "96.44808743169399",
+          "regime": "NORMAL",
+          "selection_rank": 50,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-01-01",
+          "ivp": "96.72131147540983",
+          "regime": "RICH",
+          "selection_rank": 51,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-04-01",
+          "ivp": "96.72131147540983",
+          "regime": "NORMAL",
+          "selection_rank": 52,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        }
+      ]
+    }
+  ],
+  "method": {
+    "source": "Tardis.dev free first-of-month Deribit options_chain CSV",
+    "snapshot": "as-of chain at the global local_timestamp nearest 08:00 UTC",
+    "expiry": "listed expiry nearest 30 calendar days",
+    "legs": [
+      "call_25d",
+      "put_25d",
+      "put_10d",
+      "atm_call",
+      "atm_put"
+    ],
+    "synthetic": "E-039 vanilla Black-Scholes r=0, IV=latest hourly DVOL with published_at <= the day's 08:00 UTC snapshot, actual listed strike/tenor, coin premium=USD premium/underlying, haircut=0",
+    "max_daily_download_bytes": 2147483648,
+    "download_guard": "compressed bytes read; Content-Length is recorded but not used as a pre-check",
+    "behavior_deltas_from_e040": [
+      "Content-Length pre-check replaced by the same fixed 2 GiB compressed bytes-read guard",
+      "synthetic denominator uses hourly DVOL published as-of 08:00 UTC and fails closed without DB",
+      "probe_status is separate from verdict.status, which exists only when evaluated=true"
+    ]
+  },
+  "downloads": [],
+  "probe_status": "FAIL_CLOSED",
+  "processed_day_symbol_pairs": 0,
+  "per_day_csv": "per_day_legs.csv",
+  "aggregates": {},
+  "verdict": {
+    "evaluated": false,
+    "threshold": 0.8,
+    "reason": "fail_closed_before_complete sample; no substitute data used"
+  },
+  "error": {
+    "type": "ValueError",
+    "message": "2022-04-01 BTC: no hourly DVOL published by 08:00 UTC"
+  }
+}

@@ -1,0 +1,534 @@
+{
+  "schema_version": 1,
+  "experiment_id": "E-040",
+  "hypothesis_id": "H-014",
+  "family_id": "F-VOL-REGIME-OPT",
+  "generated_at": "2026-07-13T08:18:18.566486+00:00",
+  "command": "C:\\Users\\woody\\AppData\\Local\\Programs\\Python\\Python312\\python.exe research\\probes\\f_vol_regime_opt_stage2.py",
+  "command_argv": [
+    "C:\\Users\\woody\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "research\\probes\\f_vol_regime_opt_stage2.py"
+  ],
+  "trials": 0,
+  "k_consumed": 0,
+  "sampling": [
+    {
+      "symbol": "BTC",
+      "candidate_count": 52,
+      "rule": "three lowest and three highest IVP classified month-first dates; ties by date",
+      "selected": [
+        {
+          "date": "2022-04-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 1,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2023-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 2,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2025-07-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 3,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2024-04-01",
+          "ivp": "93.98907103825137",
+          "regime": "NORMAL",
+          "selection_rank": 50,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-03-01",
+          "ivp": "96.17486338797814",
+          "regime": "NORMAL",
+          "selection_rank": 51,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-01-01",
+          "ivp": "98.08743169398907",
+          "regime": "RICH",
+          "selection_rank": 52,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        }
+      ]
+    },
+    {
+      "symbol": "ETH",
+      "candidate_count": 52,
+      "rule": "three lowest and three highest IVP classified month-first dates; ties by date",
+      "selected": [
+        {
+          "date": "2022-04-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 1,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2023-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 2,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2026-01-01",
+          "ivp": "0.0",
+          "regime": "NORMAL",
+          "selection_rank": 3,
+          "ivp_quartile": "Q1",
+          "selection_bucket": "bottom_3_ivp"
+        },
+        {
+          "date": "2022-07-01",
+          "ivp": "96.44808743169399",
+          "regime": "NORMAL",
+          "selection_rank": 50,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-01-01",
+          "ivp": "96.72131147540983",
+          "regime": "RICH",
+          "selection_rank": 51,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        },
+        {
+          "date": "2024-04-01",
+          "ivp": "96.72131147540983",
+          "regime": "NORMAL",
+          "selection_rank": 52,
+          "ivp_quartile": "Q4",
+          "selection_bucket": "top_3_ivp"
+        }
+      ]
+    }
+  ],
+  "method": {
+    "source": "Tardis.dev free first-of-month Deribit options_chain CSV",
+    "snapshot": "as-of chain at the global local_timestamp nearest 08:00 UTC",
+    "expiry": "listed expiry nearest 30 calendar days",
+    "legs": [
+      "call_25d",
+      "put_25d",
+      "put_10d",
+      "atm_call",
+      "atm_put"
+    ],
+    "synthetic": "E-039 vanilla Black-Scholes r=0, IV=DVOL, actual listed strike/tenor, coin premium=USD premium/underlying, haircut=0",
+    "max_daily_download_bytes": 2147483648
+  },
+  "downloads": [
+    {
+      "date": "2022-04-01",
+      "url": "https://datasets.tardis.dev/v1/deribit/options_chain/2022/04/01/OPTIONS.csv.gz",
+      "content_length": 995386852,
+      "compressed_bytes_read": 325451786,
+      "snapshot_timestamp": "2022-04-01T07:59:59.915851Z",
+      "snapshot_offset_seconds": -0.084149,
+      "contracts_in_state": 954
+    },
+    {
+      "date": "2022-07-01",
+      "url": "https://datasets.tardis.dev/v1/deribit/options_chain/2022/07/01/OPTIONS.csv.gz",
+      "content_length": 1955245754,
+      "compressed_bytes_read": 687210506,
+      "snapshot_timestamp": "2022-07-01T08:00:00.001039Z",
+      "snapshot_offset_seconds": 0.001039,
+      "contracts_in_state": 616
+    },
+    {
+      "date": "2023-01-01",
+      "url": "https://datasets.tardis.dev/v1/deribit/options_chain/2023/01/01/OPTIONS.csv.gz",
+      "content_length": 708138577,
+      "compressed_bytes_read": 240648202,
+      "snapshot_timestamp": "2023-01-01T07:59:59.396735Z",
+      "snapshot_offset_seconds": -0.603265,
+      "contracts_in_state": 1050
+    },
+    {
+      "date": "2024-01-01",
+      "url": "https://datasets.tardis.dev/v1/deribit/options_chain/2024/01/01/OPTIONS.csv.gz",
+      "content_length": 1865291660,
+      "compressed_bytes_read": 591003658,
+      "snapshot_timestamp": "2024-01-01T08:00:00.013145Z",
+      "snapshot_offset_seconds": 0.013145,
+      "contracts_in_state": 1812
+    }
+  ],
+  "stage2_status": "FAIL_CLOSED",
+  "processed_day_symbol_pairs": 7,
+  "per_day_csv": "per_day_legs.csv",
+  "aggregates": {
+    "by_leg": {
+      "atm_call": {
+        "n": 7,
+        "ratio_mean": 0.9323246766716949,
+        "ratio_median": 0.9363339487165175,
+        "ratio_min": 0.8315269800596642,
+        "ratio_max": 0.9826488370861132,
+        "spread_pct_mid_mean": 2.3815881232158094,
+        "spread_pct_mid_median": 2.2813688212927774
+      },
+      "atm_put": {
+        "n": 7,
+        "ratio_mean": 0.9241191858795059,
+        "ratio_median": 0.9402185587250141,
+        "ratio_min": 0.8408877299775205,
+        "ratio_max": 0.9824619773681125,
+        "spread_pct_mid_mean": 2.2903494326545437,
+        "spread_pct_mid_median": 2.371541501976287
+      },
+      "call_25d": {
+        "n": 7,
+        "ratio_mean": 0.8159943829393237,
+        "ratio_median": 0.8768870542739842,
+        "ratio_min": 0.6375849776647219,
+        "ratio_max": 0.964931168625924,
+        "spread_pct_mid_mean": 5.400720348368972,
+        "spread_pct_mid_median": 4.444444444444448
+      },
+      "put_10d": {
+        "n": 7,
+        "ratio_mean": 1.72355715858472,
+        "ratio_median": 1.6008846912160355,
+        "ratio_min": 1.0389395918480133,
+        "ratio_max": 3.2990855276781565,
+        "spread_pct_mid_mean": 7.047149763044634,
+        "spread_pct_mid_median": 6.060606060606066
+      },
+      "put_25d": {
+        "n": 7,
+        "ratio_mean": 0.9866940649780934,
+        "ratio_median": 1.027418965983882,
+        "ratio_min": 0.9062489148441552,
+        "ratio_max": 1.0687380108969309,
+        "spread_pct_mid_mean": 3.9086587551499865,
+        "spread_pct_mid_median": 3.5087719298245643
+      }
+    },
+    "by_ivp_quartile": {
+      "Q1": {
+        "n": 20,
+        "ratio_mean": 1.1264943920581252,
+        "ratio_median": 0.9650355828367123,
+        "ratio_min": 0.6375849776647219,
+        "ratio_max": 3.2990855276781565,
+        "spread_pct_mid_mean": 4.909088121574294,
+        "spread_pct_mid_median": 3.7952022914428962
+      },
+      "Q4": {
+        "n": 15,
+        "ratio_mean": 1.009929229480724,
+        "ratio_median": 0.9441256764313566,
+        "ratio_min": 0.6711000981417706,
+        "ratio_max": 1.9144401651543712,
+        "spread_pct_mid_mean": 3.267833501703448,
+        "spread_pct_mid_median": 3.5087719298245643
+      }
+    },
+    "by_leg_and_ivp_quartile": {
+      "atm_call/Q1": {
+        "n": 4,
+        "ratio_mean": 0.9289594694286281,
+        "ratio_median": 0.9508310302843673,
+        "ratio_min": 0.8315269800596642,
+        "ratio_max": 0.9826488370861132,
+        "spread_pct_mid_mean": 2.5398129204385107,
+        "spread_pct_mid_median": 2.5012286283334646
+      },
+      "atm_call/Q4": {
+        "n": 3,
+        "ratio_mean": 0.9368116196624507,
+        "ratio_median": 0.9322399751123002,
+        "ratio_min": 0.922819873950456,
+        "ratio_max": 0.955375009924596,
+        "spread_pct_mid_mean": 2.1706217269188737,
+        "spread_pct_mid_median": 2.1660649819494604
+      },
+      "atm_put/Q1": {
+        "n": 4,
+        "ratio_mean": 0.9179265132249114,
+        "ratio_median": 0.9241781727770062,
+        "ratio_min": 0.8408877299775205,
+        "ratio_max": 0.9824619773681125,
+        "spread_pct_mid_mean": 2.7415382797400554,
+        "spread_pct_mid_median": 2.773072338289732
+      },
+      "atm_put/Q4": {
+        "n": 3,
+        "ratio_mean": 0.9323760827522989,
+        "ratio_median": 0.9402185587250141,
+        "ratio_min": 0.9127840131005258,
+        "ratio_max": 0.9441256764313566,
+        "spread_pct_mid_mean": 1.6887643032071955,
+        "spread_pct_mid_median": 1.3513513513513526
+      },
+      "call_25d/Q1": {
+        "n": 4,
+        "ratio_mean": 0.7785277138847816,
+        "ratio_median": 0.7642756070945649,
+        "ratio_min": 0.6375849776647219,
+        "ratio_max": 0.9479746636852749,
+        "spread_pct_mid_mean": 6.40847247990105,
+        "spread_pct_mid_median": 4.653679653679649
+      },
+      "call_25d/Q4": {
+        "n": 3,
+        "ratio_mean": 0.865949941678713,
+        "ratio_median": 0.9618185582684445,
+        "ratio_min": 0.6711000981417706,
+        "ratio_max": 0.964931168625924,
+        "spread_pct_mid_mean": 4.057050839659534,
+        "spread_pct_mid_median": 3.9999999999999893
+      },
+      "put_10d/Q1": {
+        "n": 4,
+        "ratio_mean": 1.9938159374979694,
+        "ratio_median": 1.6020904458545626,
+        "ratio_min": 1.4719973306045953,
+        "ratio_max": 3.2990855276781565,
+        "spread_pct_mid_mean": 8.471479500891268,
+        "spread_pct_mid_median": 8.030303030303038
+      },
+      "put_10d/Q4": {
+        "n": 3,
+        "ratio_mean": 1.3632121200337206,
+        "ratio_median": 1.1362566030987777,
+        "ratio_min": 1.0389395918480133,
+        "ratio_max": 1.9144401651543712,
+        "spread_pct_mid_mean": 5.148043445915786,
+        "spread_pct_mid_median": 5.128205128205133
+      },
+      "put_25d/Q1": {
+        "n": 4,
+        "ratio_mean": 1.013242326254336,
+        "ratio_median": 1.0372275524133459,
+        "ratio_min": 0.9097761892937211,
+        "ratio_max": 1.0687380108969309,
+        "spread_pct_mid_mean": 4.384137426900589,
+        "spread_pct_mid_median": 3.9766081871345063
+      },
+      "put_25d/Q4": {
+        "n": 3,
+        "ratio_mean": 0.9512963832764368,
+        "ratio_median": 0.9202212690012732,
+        "ratio_min": 0.9062489148441552,
+        "ratio_max": 1.027418965983882,
+        "spread_pct_mid_mean": 3.2746871928158505,
+        "spread_pct_mid_median": 3.5087719298245643
+      }
+    },
+    "by_symbol_leg_and_ivp_quartile": {
+      "BTC/atm_call/Q1": {
+        "n": 2,
+        "ratio_mean": 0.9594913929013154,
+        "ratio_median": 0.9594913929013154,
+        "ratio_min": 0.9363339487165175,
+        "ratio_max": 0.9826488370861132,
+        "spread_pct_mid_mean": 2.7667006708089916,
+        "spread_pct_mid_median": 2.7667006708089916
+      },
+      "BTC/atm_call/Q4": {
+        "n": 1,
+        "ratio_mean": 0.955375009924596,
+        "ratio_median": 0.955375009924596,
+        "ratio_min": 0.955375009924596,
+        "ratio_max": 0.955375009924596,
+        "spread_pct_mid_mean": 2.1660649819494604,
+        "spread_pct_mid_median": 2.1660649819494604
+      },
+      "BTC/atm_put/Q1": {
+        "n": 2,
+        "ratio_mean": 0.9330376345504587,
+        "ratio_median": 0.9330376345504587,
+        "ratio_min": 0.883613291732805,
+        "ratio_max": 0.9824619773681125,
+        "spread_pct_mid_mean": 2.773072338289732,
+        "spread_pct_mid_median": 2.773072338289732
+      },
+      "BTC/atm_put/Q4": {
+        "n": 1,
+        "ratio_mean": 0.9441256764313566,
+        "ratio_median": 0.9441256764313566,
+        "ratio_min": 0.9441256764313566,
+        "ratio_max": 0.9441256764313566,
+        "spread_pct_mid_mean": 2.3904382470119545,
+        "spread_pct_mid_median": 2.3904382470119545
+      },
+      "BTC/call_25d/Q1": {
+        "n": 2,
+        "ratio_mean": 0.7998194118002102,
+        "ratio_median": 0.7998194118002102,
+        "ratio_min": 0.6516641599151455,
+        "ratio_max": 0.9479746636852749,
+        "spread_pct_mid_mean": 8.39517625231911,
+        "spread_pct_mid_median": 8.39517625231911
+      },
+      "BTC/call_25d/Q4": {
+        "n": 1,
+        "ratio_mean": 0.9618185582684445,
+        "ratio_median": 0.9618185582684445,
+        "ratio_min": 0.9618185582684445,
+        "ratio_max": 0.9618185582684445,
+        "spread_pct_mid_mean": 3.9999999999999893,
+        "spread_pct_mid_median": 3.9999999999999893
+      },
+      "BTC/put_10d/Q1": {
+        "n": 2,
+        "ratio_mean": 1.5364410109103153,
+        "ratio_median": 1.5364410109103153,
+        "ratio_min": 1.4719973306045953,
+        "ratio_max": 1.6008846912160355,
+        "spread_pct_mid_mean": 8.912655971479499,
+        "spread_pct_mid_median": 8.912655971479499
+      },
+      "BTC/put_10d/Q4": {
+        "n": 1,
+        "ratio_mean": 1.1362566030987777,
+        "ratio_median": 1.1362566030987777,
+        "ratio_min": 1.1362566030987777,
+        "ratio_max": 1.1362566030987777,
+        "spread_pct_mid_mean": 5.128205128205133,
+        "spread_pct_mid_median": 5.128205128205133
+      },
+      "BTC/put_25d/Q1": {
+        "n": 2,
+        "ratio_mean": 1.0525839314269212,
+        "ratio_median": 1.0525839314269212,
+        "ratio_min": 1.0364298519569113,
+        "ratio_max": 1.0687380108969309,
+        "spread_pct_mid_mean": 5.347222222222227,
+        "spread_pct_mid_median": 5.347222222222227
+      },
+      "BTC/put_25d/Q4": {
+        "n": 1,
+        "ratio_mean": 0.9202212690012732,
+        "ratio_median": 0.9202212690012732,
+        "ratio_min": 0.9202212690012732,
+        "ratio_max": 0.9202212690012732,
+        "spread_pct_mid_mean": 3.84615384615385,
+        "spread_pct_mid_median": 3.84615384615385
+      },
+      "ETH/atm_call/Q1": {
+        "n": 2,
+        "ratio_mean": 0.8984275459559407,
+        "ratio_median": 0.8984275459559407,
+        "ratio_min": 0.8315269800596642,
+        "ratio_max": 0.9653281118522171,
+        "spread_pct_mid_mean": 2.3129251700680293,
+        "spread_pct_mid_median": 2.3129251700680293
+      },
+      "ETH/atm_call/Q4": {
+        "n": 2,
+        "ratio_mean": 0.9275299245313781,
+        "ratio_median": 0.9275299245313781,
+        "ratio_min": 0.922819873950456,
+        "ratio_max": 0.9322399751123002,
+        "spread_pct_mid_mean": 2.1729000994035808,
+        "spread_pct_mid_median": 2.1729000994035808
+      },
+      "ETH/atm_put/Q1": {
+        "n": 2,
+        "ratio_mean": 0.902815391899364,
+        "ratio_median": 0.902815391899364,
+        "ratio_min": 0.8408877299775205,
+        "ratio_max": 0.9647430538212074,
+        "spread_pct_mid_mean": 2.710004221190378,
+        "spread_pct_mid_median": 2.710004221190378
+      },
+      "ETH/atm_put/Q4": {
+        "n": 2,
+        "ratio_mean": 0.9265012859127699,
+        "ratio_median": 0.9265012859127699,
+        "ratio_min": 0.9127840131005258,
+        "ratio_max": 0.9402185587250141,
+        "spread_pct_mid_mean": 1.3379273313048161,
+        "spread_pct_mid_median": 1.3379273313048161
+      },
+      "ETH/call_25d/Q1": {
+        "n": 2,
+        "ratio_mean": 0.757236015969353,
+        "ratio_median": 0.757236015969353,
+        "ratio_min": 0.6375849776647219,
+        "ratio_max": 0.8768870542739842,
+        "spread_pct_mid_mean": 4.42176870748299,
+        "spread_pct_mid_median": 4.42176870748299
+      },
+      "ETH/call_25d/Q4": {
+        "n": 2,
+        "ratio_mean": 0.8180156333838473,
+        "ratio_median": 0.8180156333838473,
+        "ratio_min": 0.6711000981417706,
+        "ratio_max": 0.964931168625924,
+        "spread_pct_mid_mean": 4.085576259489306,
+        "spread_pct_mid_median": 4.085576259489306
+      },
+      "ETH/put_10d/Q1": {
+        "n": 2,
+        "ratio_mean": 2.451190864085623,
+        "ratio_median": 2.451190864085623,
+        "ratio_min": 1.60329620049309,
+        "ratio_max": 3.2990855276781565,
+        "spread_pct_mid_mean": 8.030303030303038,
+        "spread_pct_mid_median": 8.030303030303038
+      },
+      "ETH/put_10d/Q4": {
+        "n": 2,
+        "ratio_mean": 1.4766898785011922,
+        "ratio_median": 1.4766898785011922,
+        "ratio_min": 1.0389395918480133,
+        "ratio_max": 1.9144401651543712,
+        "spread_pct_mid_mean": 5.157962604771113,
+        "spread_pct_mid_median": 5.157962604771113
+      },
+      "ETH/put_25d/Q1": {
+        "n": 2,
+        "ratio_mean": 0.9739007210817509,
+        "ratio_median": 0.9739007210817509,
+        "ratio_min": 0.9097761892937211,
+        "ratio_max": 1.0380252528697806,
+        "spread_pct_mid_mean": 3.4210526315789505,
+        "spread_pct_mid_median": 3.4210526315789505
+      },
+      "ETH/put_25d/Q4": {
+        "n": 2,
+        "ratio_mean": 0.9668339404140185,
+        "ratio_median": 0.9668339404140185,
+        "ratio_min": 0.9062489148441552,
+        "ratio_max": 1.027418965983882,
+        "spread_pct_mid_mean": 2.988953866146851,
+        "spread_pct_mid_median": 2.988953866146851
+      }
+    }
+  },
+  "verdict": {
+    "status": "FAIL",
+    "evaluated": false,
+    "threshold": 0.8,
+    "reason": "fail_closed_before_complete sample; no substitute data used"
+  },
+  "error": {
+    "type": "SizeLimitError",
+    "message": "daily gzip Content-Length 3053462495 exceeds limit 2147483648: https://datasets.tardis.dev/v1/deribit/options_chain/2024/03/01/OPTIONS.csv.gz"
+  }
+}
