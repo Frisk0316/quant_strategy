@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -185,6 +185,23 @@ options-volatility signal is tradable on this repo's perp execution track
 remains a research-layer question, not an ingestion-layer gate change. Adding
 these datasets makes future Stage-2 data-availability probes possible; it does
 not create strategies, families, or promotion evidence.
+
+E-040/E-041 are intentionally outside the option-chain DB ingestion path:
+
+```text
+immutable E-039 series_{btc,eth}.csv -> deterministic month-first IVP extremes
+  + (E-041) external_observations hourly DVOL published as-of 08:00 UTC
+  + Tardis.dev free Deribit options_chain daily gzip -> nearest-08:00 UTC as-of chain
+  -> results/stage2_probe_*_f_vol_regime_opt*/{per_day_legs.csv,stage2_feasibility.json}
+```
+
+The probe streams gzip input without retaining vendor source files, stops on the
+first network/schema/size failure, records the command and error, and never
+substitutes DB option-surface snapshots or another vendor. Its artifacts are
+research diagnostics only, not option-chain ingestion or promotion evidence.
+E-041 keeps the 2 GiB ceiling as a compressed bytes-read guard, never falls back
+from missing hourly to daily DVOL, and writes `probe_status=FAIL_CLOSED` without
+a pricing `verdict.status` when the complete fixed sample cannot be evaluated.
 
 ## Point-In-Time Universe Membership Flow
 
