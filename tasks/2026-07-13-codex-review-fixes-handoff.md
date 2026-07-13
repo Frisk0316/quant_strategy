@@ -34,7 +34,7 @@ commit dates corrected).
 
 ## Diff scope
 
-- Commits `6129f94` (money-path fix), `48fb9d3` (R1.5/I34 docs), `2c3ba18`
+- Commits `6129f94` (money-path fix), `77bbf3a` (R1.5/I34 docs), `2c3ba18`
   (governance/docs fixes) on `codex/pipeline-batch1-stage3`, pushed.
 - Added: `tests/unit/test_doc_metadata_tasks.py`,
   `docs/human_overviews/2026-07-13-p0-p1-governance-overview.md`, this file.
