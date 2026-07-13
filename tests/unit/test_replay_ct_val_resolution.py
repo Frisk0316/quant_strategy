@@ -26,6 +26,44 @@ def test_db_override_wins_for_binance():
     assert E._resolve_swap_ct_val("X", "binance", db) == (1000.0, "db")
 
 
+@pytest.mark.parametrize("bad_ct_val", [float("inf"), float("nan"), 1e8, 0.0, -1.0])
+def test_invalid_db_ct_val_fails_instead_of_falling_back(bad_ct_val):
+    db = {"BTC-USDT-SWAP": {"ct_val": bad_ct_val}}
+
+    with pytest.raises(ValueError, match="ct_val"):
+        E._resolve_swap_ct_val("BTC-USDT-SWAP", "okx", db)
+
+
+@pytest.mark.parametrize("bad_spec", [{}, {"ct_val": None}, None, []])
+def test_incomplete_db_spec_fails_instead_of_falling_back(bad_spec):
+    with pytest.raises(ValueError, match="DB instrument spec"):
+        E._resolve_swap_ct_val("BTC-USDT-SWAP", "okx", {"BTC-USDT-SWAP": bad_spec})
+
+
+@pytest.mark.parametrize("bad_ct_val", [float("inf"), float("nan"), 1e8, 0.0, -1.0])
+def test_invalid_okx_registry_ct_val_fails_instead_of_falling_back(monkeypatch, bad_ct_val):
+    monkeypatch.setattr(
+        E,
+        "_load_instrument_spec_registry",
+        staticmethod(lambda: {"BTC-USDT-SWAP": {"ct_val": bad_ct_val}}),
+    )
+
+    with pytest.raises(ValueError, match="ct_val"):
+        E._resolve_swap_ct_val("BTC-USDT-SWAP", "okx", None)
+
+
+@pytest.mark.parametrize("bad_spec", [{}, {"ct_val": None}, None, []])
+def test_incomplete_okx_registry_spec_fails_instead_of_falling_back(monkeypatch, bad_spec):
+    monkeypatch.setattr(
+        E,
+        "_load_instrument_spec_registry",
+        staticmethod(lambda: {"BTC-USDT-SWAP": bad_spec}),
+    )
+
+    with pytest.raises(ValueError, match="registry instrument spec"):
+        E._resolve_swap_ct_val("BTC-USDT-SWAP", "okx", None)
+
+
 def test_binance_multiplier_contract_requires_db_row():
     with pytest.raises(ValueError):
         E._resolve_swap_ct_val("1000SHIB-USDT-SWAP", "binance", None)

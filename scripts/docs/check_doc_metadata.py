@@ -81,6 +81,12 @@ TASKS_LEGACY_EXEMPT = frozenset({
     "2026-06-30-xs-trials-and-idea-probe-context-handoff.md",
     "2026-06-30-xs-trials-and-idea-probe-session-handoff.md",
 })
+TASK_TEMPLATE_EXEMPT = frozenset({
+    "BUGFIX_TEMPLATE.md",
+    "CONTEXT_HANDOFF_TEMPLATE.md",
+    "FEATURE_SPEC_TEMPLATE.md",
+    "SESSION_HANDOFF_TEMPLATE.md",
+})
 
 REQUIRED_FIELDS = {
     "status",
@@ -109,6 +115,18 @@ def _repo_rel(path: Path) -> Path:
     return path.resolve().relative_to(REPO_ROOT)
 
 
+def _scalar_value(raw: str, *, allow_null: bool = False) -> str:
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1].strip()
+    value = re.sub(r"(?:^|\s+)#.*$", "", value).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1].strip()
+    if value.lower() == "null" or value == "~":
+        return "null" if allow_null and value.lower() == "null" else ""
+    return value
+
+
 def _metadata_block(text: str) -> dict[str, str] | None:
     if not text.startswith("---"):
         return None
@@ -127,7 +145,10 @@ def _metadata_block(text: str) -> dict[str, str] | None:
     for line in lines[1:end]:
         match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$", line)
         if match:
-            meta[match.group(1)] = match.group(2).strip()
+            field = match.group(1)
+            meta[field] = _scalar_value(
+                match.group(2), allow_null=field == "superseded_by"
+            )
     return meta
 
 
@@ -140,12 +161,12 @@ def _markdown_files() -> list[Path]:
 
 
 def _task_files() -> list[Path]:
-    """All tasks/ markdown recursively; templates and frozen legacy exempt."""
+    """All tasks/ markdown recursively; four templates and frozen legacy exempt."""
     if not TASKS_DIR.is_dir():
         return []
     selected = []
     for path in sorted(TASKS_DIR.rglob("*.md")):
-        if "TEMPLATE" in path.name:
+        if path.parent == TASKS_DIR and path.name in TASK_TEMPLATE_EXEMPT:
             continue
         if path.parent == TASKS_DIR and path.name in TASKS_LEGACY_EXEMPT:
             continue
@@ -175,6 +196,7 @@ def main() -> int:
             continue
 
         missing = sorted(REQUIRED_FIELDS.difference(meta))
+        empty = sorted(field for field in REQUIRED_FIELDS if field in meta and not meta[field])
         status = meta.get("status", "")
         if missing:
             message = f"{rel}: missing metadata fields: {', '.join(missing)}"
@@ -182,7 +204,13 @@ def main() -> int:
                 errors.append(message)
             else:
                 warnings.append(message)
-        if status and status not in KNOWN_STATUSES:
+        if empty:
+            message = f"{rel}: empty metadata fields: {', '.join(empty)}"
+            if is_required_new or is_task:
+                errors.append(message)
+            else:
+                warnings.append(message)
+        if status not in KNOWN_STATUSES:
             errors.append(f"{rel}: unknown lifecycle status {status!r}")
         if is_required_new and status not in CURRENT_STATUSES:
             errors.append(f"{rel}: new durable docs must use current/accepted status")

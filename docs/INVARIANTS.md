@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -53,10 +53,11 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I31 | Turtle S1/S2 reference semantics stay isolated to the research-only Turtle runner: shifted rolling thresholds, strict cash gate, S1 skip-after-win, and no forced end liquidation must not leak into replay/live semantics | R5.5, R7.1 | `tests/unit/test_turtle_backtest.py`, `tests/unit/test_routes_backtest_turtle.py` |
 | I32 | Every caller-controlled artifact identifier is a safe single path component, and its resolved read/write target remains inside the intended artifact root | — | `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtesting.py`, `tests/unit/test_differential_validation.py`, API/CLI regressions |
 | I33 | An unknown execution venue fails closed; it is never silently substituted with Binance or another venue | R6.4 | `tests/unit/test_backtest_request_exchange.py` |
-| I34 | Numeric `ct_val` validation rejects non-finite/non-positive values and values above `1e7` at every explicit input point (fill metadata, replay caller specs, DB/config paths); a missing value may fall back, an invalid explicit value must raise before entering positions, PnL, or an authoritative provenance label | R1.5 | `tests/unit/test_sizing.py`, `tests/unit/test_position_pnl_accounting.py`, `tests/unit/test_backtesting.py` |
+| I34 | Numeric `ct_val` validation rejects non-finite/non-positive values and values above `1e7` at every explicit input point (fill metadata, replay caller specs, DB/config paths); a missing fill value may reuse validated position state, while an invalid or incomplete explicit instrument spec must raise before entering positions, PnL, or an authoritative provenance label | R1.5 | `tests/unit/test_sizing.py`, `tests/unit/test_position_pnl_accounting.py`, `tests/unit/test_backtesting.py`, `tests/unit/test_replay_ct_val_resolution.py` |
 | I35 | Both supported FastAPI app factories expose the documented Manual and Progress routes | — | `tests/unit/test_routes_manual.py`, `tests/unit/test_routes_progress.py` |
 | I36 | Progress file reads serve only existing markdown paths explicitly listed in `config/workstreams.yaml` and resolved inside the repository | — | `tests/unit/test_routes_progress.py::test_progress_route_serves_only_configured_files` |
 | I37 | A research artifact that claims t+1 execution must delay every signal-dependent return component, including turnover cost, until that execution point | R5.3, R6.1 | Known gap: E-037 spot-check; `docs/KNOWN_ISSUES.md` |
+| I38 | Governance checks fail closed: H↔E links agree in both directions, only an explicit per-ID `reserved` annotation exempts a missing experiment, valid Markdown table spacing cannot hide rows, and every non-exempt task document has non-empty lifecycle metadata | — | `tests/unit/test_ledger_consistency.py`, `tests/unit/test_doc_metadata_tasks.py` |
 
 ## Usage
 

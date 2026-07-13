@@ -62,12 +62,42 @@ def test_frozen_legacy_name_is_exempt(monkeypatch, tmp_path):
     assert _run(monkeypatch, tmp_path, {name: "# no fm"}) == 0
 
 
-def test_template_files_are_exempt(monkeypatch, tmp_path):
-    assert _run(monkeypatch, tmp_path, {"NEW_THING_TEMPLATE.md": "# no fm"}) == 0
+def test_exact_template_files_are_exempt(monkeypatch, tmp_path):
+    files = {name: "# no fm" for name in mod.TASK_TEMPLATE_EXEMPT}
+    assert _run(monkeypatch, tmp_path, files) == 0
+
+
+def test_template_substring_is_not_an_exemption(monkeypatch, tmp_path):
+    assert _run(monkeypatch, tmp_path, {"NEW_THING_TEMPLATE.md": "# no fm"}) == 1
 
 
 def test_task_with_valid_frontmatter_passes(monkeypatch, tmp_path):
     assert _run(monkeypatch, tmp_path, {"2026-07-13-good.md": VALID_FM}) == 0
+
+
+def test_task_metadata_fields_must_be_non_empty(monkeypatch, tmp_path, capsys):
+    empty_fm = "---\n" + "\n".join(f"{field}:" for field in mod.REQUIRED_FIELDS) + "\n---\n"
+    assert _run(monkeypatch, tmp_path, {"empty-fields.md": empty_fm}) == 1
+    out = capsys.readouterr().out
+    assert all(field in out for field in mod.REQUIRED_FIELDS)
+
+
+def test_yaml_empty_metadata_scalars_fail(monkeypatch, tmp_path):
+    for index, value in enumerate(('""', "''", "# comment only", "null", "~")):
+        invalid = VALID_FM.replace("owner: human", f"owner: {value}")
+        case_dir = tmp_path / str(index)
+        case_dir.mkdir()
+        assert _run(monkeypatch, case_dir, {"empty-owner.md": invalid}) == 1
+
+
+def test_quoted_valid_status_is_normalized(monkeypatch, tmp_path):
+    quoted = VALID_FM.replace("status: current", 'status: "current"')
+    assert _run(monkeypatch, tmp_path, {"quoted-status.md": quoted}) == 0
+
+
+def test_task_status_must_be_known(monkeypatch, tmp_path):
+    invalid = VALID_FM.replace("status: current", "status: invented")
+    assert _run(monkeypatch, tmp_path, {"invalid-status.md": invalid}) == 1
 
 
 def test_frozen_list_matches_repo_reality():
@@ -76,6 +106,6 @@ def test_frozen_list_matches_repo_reality():
     for name in mod.TASKS_LEGACY_EXEMPT:
         assert (tasks / name).exists(), f"frozen entry missing on disk: {name}"
     for path in tasks.rglob("*.md"):
-        if "TEMPLATE" in path.name or path.name in mod.TASKS_LEGACY_EXEMPT:
+        if path.parent == tasks and path.name in mod.TASK_TEMPLATE_EXEMPT | mod.TASKS_LEGACY_EXEMPT:
             continue
         assert path.read_text(encoding="utf-8").startswith("---"), path

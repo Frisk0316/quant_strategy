@@ -1,14 +1,18 @@
 ---
-status: current
+status: archived
 type: handoff
 owner: human
 created: 2026-07-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
-superseded_by: null
+superseded_by: tasks/2026-07-13-pr9-followup-fixes-session-handoff.md
 ---
 
 # Session Handoff: P0.4 Option B integration — 2026-07-12
+
+Archived after PR #9 merged to `main` at `b378e16` from PR head `00c7a51`.
+Current follow-up state is in
+`tasks/2026-07-13-pr9-followup-fixes-session-handoff.md`.
 
 ## Goal (one sentence)
 
@@ -91,9 +95,10 @@ follow-up task file P0.4 status.
 - Question for Codex: confirm zero-delta merge claim (`git diff a950025^1
   a950025` is empty) and the exception wording in PR #9.
 
-## Next action (single, concrete)
+## Historical next action (completed)
 
-Codex reviews/merges PR #9; Claude proceeds to P1.1/P1.2 on a new branch.
+PR #9 was reviewed and merged. Later review-fix commits were created after the
+PR head and therefore require a separate follow-up PR.
 
 ## Context to load next
 

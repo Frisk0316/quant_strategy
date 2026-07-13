@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -51,8 +51,11 @@ current/target/known-gap distinction — do not silently "fix" either side.
   R1.4 venue-matched provenance. Enforcement points (closed 2026-07-13):
   every explicitly provided multiplier — fill metadata in
   `PositionLedger.on_fill`, caller-supplied replay `instrument_specs`, and the
-  DB/config replay paths — goes through the shared `validate_ct_val()`; the
-  `1.0` fallback applies only when no value is provided at all.
+  DB/config replay paths — goes through the shared `validate_ct_val()` before
+  position state or an authoritative provenance label is written. A missing
+  fill metadata value may reuse the position's already-validated multiplier;
+  a caller override or DB/config row that claims to supply an instrument spec
+  must contain a valid multiplier and otherwise fail closed.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

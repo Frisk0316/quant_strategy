@@ -107,3 +107,43 @@ def test_negative_k_used_fails(monkeypatch, tmp_path, capsys):
     registry = REGISTRY_OK.replace("| F-A | 1 | 2 |", "| F-A | -1 | 2 |")
     assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
     assert "negative" in capsys.readouterr().out
+
+
+def test_hypothesis_cannot_claim_another_hypothesis_experiment(monkeypatch, tmp_path, capsys):
+    ledger = LEDGER_OK + "| H-002 | F-A | 1 | hyp | src | testing | E-001 | notes |\n"
+    assert _run(monkeypatch, tmp_path, ledger, REGISTRY_OK) == 1
+    assert "E-001, which belongs to H-001" in capsys.readouterr().out
+
+
+def test_reserved_negations_do_not_exempt_missing_experiment(monkeypatch, tmp_path):
+    for annotation in ("not reserved", "unreserved"):
+        ledger = LEDGER_OK.replace("reserved, probe", annotation)
+        assert _run(monkeypatch, tmp_path, ledger, REGISTRY_OK) == 1
+
+
+def test_compact_indented_markdown_rows_are_parsed(monkeypatch, tmp_path):
+    ledger = "  |H-001|F-A|4|hyp|src|testing|E-001; E-002 (reserved)|notes|\n"
+    registry = (
+        "  |E-001|2026-07-01|H-001|F-A|setup|4|artifact|outcome|notes|\n  |F-A|1|2|one retry|\n"
+    )
+    assert _run(monkeypatch, tmp_path, ledger, registry) == 0
+
+
+def test_malformed_or_contradictory_ledger_ids_fail(monkeypatch, tmp_path, capsys):
+    for row_id in ("H-01", "H001", "H -001", "H–001", "E-009"):
+        ledger = LEDGER_OK.replace("H-001", row_id, 1)
+        assert _run(monkeypatch, tmp_path, ledger, REGISTRY_OK) == 1
+        assert "invalid hypothesis ID" in capsys.readouterr().out
+
+
+def test_malformed_experiment_reference_fails(monkeypatch, tmp_path, capsys):
+    for experiment_ref in ("E002", "E 002"):
+        ledger = LEDGER_OK.replace("E-002 (reserved, probe)", experiment_ref)
+        assert _run(monkeypatch, tmp_path, ledger, REGISTRY_OK) == 1
+        assert "malformed experiment reference" in capsys.readouterr().out
+
+
+def test_orphan_k_budget_family_fails(monkeypatch, tmp_path, capsys):
+    registry = REGISTRY_OK + "| F-ORPHAN | 0 | 2 | unused |\n"
+    assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
+    assert "no hypothesis or experiment" in capsys.readouterr().out

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from itertools import combinations
@@ -945,15 +946,18 @@ class ReplayBacktestEngine:
         self._ct_val_sources: dict[str, dict] = {}
         exchange = str(getattr(self._cfg.storage, "primary_exchange", "okx") or "okx").lower()
         if instrument_specs:
-            self._instrument_specs = instrument_specs
+            self._instrument_specs = {}
             # Caller-supplied specs are treated as per-symbol authoritative
             # overrides — this is the same trust level as a DB-backed value.
             for sym, spec in instrument_specs.items():
-                ct_val = spec.get("ctVal") if isinstance(spec, dict) else None
+                if not isinstance(spec, Mapping) or spec.get("ctVal") is None:
+                    raise ValueError(f"instrument_specs[{sym!r}] must be a mapping with a non-null ctVal")
+                ct_val = validate_ct_val(spec["ctVal"], sym)
                 # R1.5/I34: never record an unvalidated multiplier under an
                 # authoritative source label, even if no trade consumes it.
+                self._instrument_specs[sym] = {**spec, "ctVal": ct_val}
                 self._ct_val_sources[sym] = {
-                    "value": validate_ct_val(ct_val, sym) if ct_val is not None else None,
+                    "value": ct_val,
                     "source": "config_override",
                     "exchange": exchange,
                 }
@@ -1011,7 +1015,7 @@ class ReplayBacktestEngine:
         Empty dict when DSN is missing, unreachable, or query fails — caller falls
         through to the bundled YAML registry for OKX only. Errors are warnings, not
         exceptions, because the DB-primary architecture must degrade gracefully to
-        parquet.
+        parquet. An invalid explicit DB ct_val raises instead of falling back.
         """
         dsn = getattr(self._cfg.storage, "timescale_dsn", None)
         if not dsn:
@@ -1052,12 +1056,11 @@ class ReplayBacktestEngine:
             ct_val = get("ct_val")
             symbol = get("symbol")
             if ct_val is None:
-                continue
+                raise ValueError(f"DB instrument spec for {symbol!r} must contain a non-null ct_val")
+            spec = {"ct_val": validate_ct_val(ct_val, symbol)}
             try:
-                spec = {"ct_val": float(ct_val)}
-                # Sizing-relevant specs are NOT NULL in the table, but stay
-                # defensive: only carry through values that parse cleanly so
-                # _default_instrument_specs falls back to its hardcoded defaults.
+                # Keep the existing fallback behavior for malformed ancillary
+                # sizing fields; ct_val above deliberately fails loud.
                 for col in ("lot_size", "min_size", "tick_size"):
                     val = get(col)
                     if val is not None:
@@ -1107,13 +1110,18 @@ class ReplayBacktestEngine:
             db_specs = exchange
             exchange = "okx"
         exchange = str(exchange or "okx").lower()
-        if db_specs and db_specs.get(symbol, {}).get("ct_val") is not None:
-            return float(db_specs[symbol]["ct_val"]), "db"
+        if db_specs and symbol in db_specs:
+            spec = db_specs[symbol]
+            if not isinstance(spec, Mapping) or spec.get("ct_val") is None:
+                raise ValueError(f"DB instrument spec for {symbol!r} must contain a non-null ct_val")
+            return validate_ct_val(spec["ct_val"], symbol), "db"
         if exchange == "okx":
             registry = ReplayBacktestEngine._load_instrument_spec_registry()
-            spec = registry.get(symbol)
-            if spec and spec.get("ct_val") is not None:
-                return float(spec["ct_val"]), "registry"
+            if symbol in registry:
+                spec = registry[symbol]
+                if not isinstance(spec, Mapping) or spec.get("ct_val") is None:
+                    raise ValueError(f"registry instrument spec for {symbol!r} must contain a non-null ct_val")
+                return validate_ct_val(spec["ct_val"], symbol), "registry"
             if symbol.startswith(("BTC-", "ETH-")):
                 logger.warning(
                     "Instrument ctVal missing; falling back to known OKX BTC/ETH swap ctVal=0.01",

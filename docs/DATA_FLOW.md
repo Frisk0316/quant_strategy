@@ -80,6 +80,10 @@ Binance/Bybit USDT-M perps can use the authoritative `exchange_base_unit`
 structural identity (`ct_val = 1.0`) without a DB row; canonical `1000...`
 multiplier contracts still require explicit `venue_instrument_specs` rows, now
 created automatically for Binance symbols that pass through the fetch flow.
+Every DB, registry, or caller-supplied multiplier is validated as finite
+`0 < ct_val <= 1e7` before it enters replay specs or receives a provenance
+label. A malformed or incomplete explicit instrument spec fails closed; it is
+not converted into a fallback or an authoritative `None` value.
 
 ## Funding Ingestion Flow
 

@@ -4,18 +4,20 @@ type: human_review_overview
 owner: human
 created: 2026-07-13
 last_reviewed: 2026-07-13
-topic: "P0.4 integration, P1.1 governance tooling, P1.2 docs cleanup, and Codex review fixes"
+topic: "P0.4 integration, P1 governance, and the post-merge PR #9 follow-up"
 source_docs:
   - tasks/2026-07-12-p04-integration-handoff.md
   - tasks/2026-07-12-p1-governance-docs-handoff.md
   - docs/change_manifests/2026-07-12-ct-val-validation-contract.md
   - docs/RUNBOOK.md
   - docs/DOC_IMPACT_MATRIX.md
+  - tasks/2026-07-13-pr9-followup-fixes-session-handoff.md
 decision_required: true
-risk_level: medium
+risk_level: high
 human_must_read:
   - docs/change_manifests/2026-07-12-ct-val-validation-contract.md
   - docs/RUNBOOK.md
+  - tasks/2026-07-13-pr9-followup-fixes-session-handoff.md
 superseded_by: null
 expires: none
 ---
@@ -28,9 +30,10 @@ expires: none
 回 main；同時完成 P1.1 治理工具（lab 測試分離目標、A11 ledger 驗證器、tasks/
 lifecycle 強制、overview 覆蓋人工步驟）與 P1.2 文件清理（README 瘦身、歷史
 文件歸檔、CHANGELOG 補歷史）。Codex 審核後回報一個 money-path blocker 與多個
-文件/工具漏洞，本批已全部修正：明確提供的 `ct_val` 一律過共用驗證器、RUNBOOK
-錯誤 gate 條文修正、歷史 handoff 全部降為 archived、A11 驗證器堵住 fail-open
-漏洞、tasks checker 改用凍結豁免名單。
+文件/工具漏洞，第一輪修補處理了共用 `ct_val` 驗證、RUNBOOK gate 條文、handoff
+生命週期、A11 驗證器與 tasks checker。其後複審發現的 DB/registry/caller-spec
+provenance、failed-fill atomicity、ledger parser 與 template 豁免漏洞均已修復並完成
+全量驗證；follow-up PR 尚未建立。
 
 ## 2. 為什麼要做？
 
@@ -52,7 +55,8 @@ lifecycle 強制、overview 覆蓋人工步驟）與 P1.2 文件清理（README 
 
 ## 4. 這次真正的決策點
 
-1. PR #9（integration exception merge 到 main）是否批准合併 —— 需要人類拍板。
+1. PR #9 已由 PR head `00c7a51` 合併到 `main` 的 `b378e16`。五個後續修補
+   commits 不在 PR #9，必須另開 follow-up PR；人類決策點改為審核該 follow-up。
 2. K_limit 驗證器現在硬性要求 `== 2`；未來若要放寬 retry 政策，必須先改
    `docs/EXPERIMENT_REGISTRY.md` 條文與驗證器，屬 user 決策。
 3. 歷史 tasks/ 文件全部標 `archived` —— 若有任何一份你認為仍是現行授權文件，
@@ -61,7 +65,8 @@ lifecycle 強制、overview 覆蓋人工步驟）與 P1.2 文件清理（README 
 ## 5. 主要風險
 
 - money-path 變更：`ct_val` 非法值現在會 raise 而非靜默通過/fallback。任何
-  依賴舊行為的呼叫端會開始報錯 —— 全套 787 unit ＋ 38 integration 綠燈，
+  依賴舊行為的呼叫端會開始報錯 —— 全套 841 unit passed / 1 skipped ＋
+  38 integration 綠燈，
   但線上/腳本呼叫端若餵髒值會 fail loud（這是設計目的）。
 - RUNBOOK gate 條文改為指向 `docs/ai_collaboration.md`，刪除了 bar-proxy
   gate 與過時 `ctVal > 1` 說法；若有人依 README/RUNBOOK 舊條文操作，行為會
@@ -84,10 +89,10 @@ lifecycle 強制、overview 覆蓋人工步驟）與 P1.2 文件清理（README 
 
 ## 8. 測試與檢查狀態
 
-Full unit 787 passed / 1 skipped（Windows symlink 權限）；integration 38；
-lab 18（分離執行）；Ruff、docs metadata/links/ledger、`docs-impact --strict`、
-`check_human_overview`、frontend node --check ×12、config check、backtest
-smoke 全部通過。
+Follow-up 最終驗證：unit 841 passed / 1 skipped（既有 Windows symlink 權限）；
+integration 38；lab 18；Ruff、docs metadata/links/ledger、Human Overview、config
+check、backtest smoke 全部通過；`DOC_IMPACT_BASE=00c7a51` strict 檢查 131 個變更
+檔案通過。API smoke 未啟動 server，未作 live/deployment readiness 聲明。
 
 ## 9. 對現有系統的影響
 
@@ -97,5 +102,6 @@ README 不再是第二真相源。
 
 ## 10. 下一步
 
-Codex 複審 PR #9（含本批修正 commits）；通過後合併。之後：OKX liquidation
-unattended mode（Codex）、E-038 Stage-2（獨立任務）、user 建立 OKX Demo key。
+從 `codex/pipeline-batch1-stage3` 為五個 post-merge commits 加上本輪已驗證修補另開
+follow-up PR，由人類審核與合併。之後：OKX liquidation unattended mode（Codex）、
+E-038 Stage-2（獨立任務）、user 建立 OKX Demo key。

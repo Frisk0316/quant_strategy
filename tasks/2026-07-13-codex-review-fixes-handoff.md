@@ -1,14 +1,20 @@
 ---
-status: current
+status: archived
 type: handoff
 owner: human
 created: 2026-07-13
 last_reviewed: 2026-07-13
 expires: none
-superseded_by: null
+superseded_by: tasks/2026-07-13-pr9-followup-fixes-session-handoff.md
 ---
 
 # Session Handoff: Codex PR #9/#10 review fixes — 2026-07-13
+
+Superseded after a second review found remaining `ct_val` provenance,
+failed-fill atomicity, ledger-validator, and metadata-template gaps. PR #9 had
+already merged to `main` at `b378e16` from PR head `00c7a51`; the five commits
+recorded here were post-merge and require a separate follow-up PR. Current state
+is in `tasks/2026-07-13-pr9-followup-fixes-session-handoff.md`.
 
 ## Goal (one sentence)
 
@@ -28,7 +34,8 @@ corrected to `<=1e7`); all completed June+July tasks/ docs demoted to
 A11 validator hardened (reverse H-row listing required, per-ID reserved
 scoping, empty-table failure, `K_used >= 0`, `K_limit == 2`); task metadata
 checker scans tasks/ recursively with a frozen 65-name legacy allowlist
-(undated/backdated/nested enforced); doc sync (new Human Review Overview +
+(all new undated/backdated/nested files enforced; only four exact templates
+exempt); doc sync (new Human Review Overview +
 review_index row, branch-ref staleness, 8080-abandoned wording, CHANGELOG
 commit dates corrected).
 
@@ -68,10 +75,10 @@ validate-data remain SKIP/environment-FAIL as before.
   enforcement (acceptable; rename = new file).
 - Rollback: revert the three commits; no data/artifacts touched.
 
-## Approvals / next action
+## Historical outcome
 
-PR #9 re-review by Codex is the single next action; merge needs the user's
-explicit approval per P0.4.
+PR #9 subsequently merged, but these five commits were not in its PR head.
+Their remaining findings are being repaired and verified for a separate PR.
 
 ## Human Learning Notes (required)
 

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,28 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-13 - PR #9 follow-up repair closure
+
+- Re-reviewed the already-merged PR #9 head (`00c7a51`) plus its five
+  post-merge repair commits and closed the remaining `ct_val` boundary gaps:
+  DB, registry, caller overrides, and ledger fallbacks now share the same
+  finite `0 < ct_val <= 1e7` validator before authoritative provenance or
+  position state is written. Invalid fills are atomic and leave no ghost
+  position. No PnL formula, strategy assumption, or promotion gate changed.
+- Hardened governance checks so H↔E evidence links must agree in both
+  directions, only explicit per-ID reservation is exempt, valid Markdown table
+  spacing cannot hide ledger rows, lifecycle metadata must be non-empty, and
+  only the four exact task templates are exempt.
+- Corrected collaboration state: PR #9 is merged at `b378e16`; this closure is
+  delivered from `codex/pipeline-batch1-stage3` as a separate follow-up change
+  for human review and merge.
+- Synchronized R1.5, I34/I38, F32/F37/F38, the data flow, Change Manifest,
+  current-state/handoff records, review index, and workstream status. No
+  research file or existing result artifact changed.
+- Final verification: unit `841 passed, 1 skipped`; integration `38 passed`;
+  lab `18 passed`; full Ruff, docs metadata/links/ledger/overview, config,
+  backtest smoke, and strict doc impact from `00c7a51` passed.
 
 ## 2026-07-13 - Codex review fixes for PR #9/#10
 

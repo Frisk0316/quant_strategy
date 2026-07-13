@@ -5,12 +5,12 @@
 workstreams:
   - name: Project audit and hardening
     status: active
-    milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration]
-    current: integration
-    state: "2026-07-12 P0.1-P0.3 implemented and Claude-review APPROVED (tasks/2026-07-12-claude-p0-review.md). P0.4 Option B EXECUTED (Claude, user-authorized): P0 work committed as c84f5a1, origin/main merged with zero content delta and no conflicts, integration commit a950025 pushed, PR #9 opened with the documented integration exception. verify-full equivalent on a950025: unit 768 passed/1 Windows symlink skip, integration 38 passed, Ruff/docs/frontend/config/backtest-smoke green; api-smoke SKIP (no running server); validate-data FAIL is the pre-existing thin local parquet mirror (missing candles_1H/funding parquet), not merge-caused."
-    next: "Codex reviews/merges PR #9, then reviews branch claude/p1-governance-docs (P1.1 governance enforcement: test-lab in verify, A11 ledger validator in docs-check, tasks/ lifecycle frontmatter enforcement, overview coverage manual step; P1.2 docs cleanup: README 897->101 with detail moved verbatim to RUNBOOK, completed plans archived, CHANGELOG backfilled 07-05/07-07/07-11). Remaining Codex P1: liquidation unattended mode."
+    milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
+    current: followup_repair
+    state: "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) were created after that head and are not on main. The remaining ct_val provenance/fill-atomicity and governance-checker gaps are repaired and fully verified; no strategy or deployment readiness follows."
+    next: "Open and review a separate follow-up PR for the five post-merge commits plus the verified repair; human performs the merge. After that, remaining Codex P1 work is OKX liquidation unattended mode."
     links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
-    updated: 2026-07-12
+    updated: 2026-07-13
 
   - name: Local runtime reliability
     status: blocked
@@ -44,9 +44,9 @@ workstreams:
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
     current: checkpoint_review
     state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
-    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. P0 blockers are closed locally, so F-VRP-TIMING/H-013 E-038 may proceed only as a separately scoped Stage-2 probe; Stage 3 remains unauthorized. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
+    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. The verified PR #9 follow-up still awaits a separate human-reviewed PR, so F-VRP-TIMING/H-013 E-038 remains queued for a separately scoped Stage-2 probe; Stage 3 remains unauthorized. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Do not schedule the orchestrator or claim promotion/live readiness."
     links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
-    updated: 2026-07-12
+    updated: 2026-07-13
 
   - name: Deribit derivatives data
     status: active

@@ -171,11 +171,13 @@ def test_replay_engine_records_config_override_ctval_source(minimal_cfg):
         }
     )
     override = {
-        "FOO-USDT-SWAP": {"ctVal": 0.5, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
+        "FOO-USDT-SWAP": {"ctVal": "0.5", "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
         "BAR-USDT-SWAP": {"ctVal": 2.0, "minSz": 0.01, "lotSz": 0.01, "tickSz": 0.001, "tdMode": "cross"},
     }
     engine = ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"], instrument_specs=override)
 
+    assert engine._instrument_specs["FOO-USDT-SWAP"]["ctVal"] == 0.5
+    assert isinstance(engine._instrument_specs["FOO-USDT-SWAP"]["ctVal"], float)
     assert engine._ct_val_sources["FOO-USDT-SWAP"]["source"] == "config_override"
     assert engine._ct_val_sources["FOO-USDT-SWAP"]["value"] == pytest.approx(0.5)
     assert engine._ct_val_sources["BAR-USDT-SWAP"]["source"] == "config_override"
@@ -193,6 +195,18 @@ def test_replay_engine_rejects_invalid_caller_ctval_before_authoritative_label(m
 
     with pytest.raises(ValueError):
         ReplayBacktestEngine(cfg, strategy_names=["pairs_trading"], instrument_specs=override)
+
+
+@pytest.mark.parametrize("bad_spec", [{}, {"ctVal": None}, None, []])
+def test_replay_engine_rejects_missing_or_non_mapping_caller_spec(minimal_cfg, bad_spec):
+    cfg = _use_okx_registry(minimal_cfg)
+
+    with pytest.raises(ValueError, match="mapping with a non-null ctVal"):
+        ReplayBacktestEngine(
+            cfg,
+            strategy_names=["pairs_trading"],
+            instrument_specs={"FOO-USDT-SWAP": bad_spec},
+        )
 
 
 def test_load_config_reads_backtest_execution_defaults():
@@ -1046,6 +1060,38 @@ def test_default_instrument_specs_uses_db_lot_and_min_size(minimal_cfg, monkeypa
     eth = engine._instrument_specs.get("ETH-USDT-SWAP")
     if eth is not None:
         assert eth["lotSz"] == 0.01
+
+
+@pytest.mark.parametrize("bad_ct_val", [float("nan"), None])
+def test_db_loader_rejects_invalid_ct_val_instead_of_omitting_row(
+    minimal_cfg, monkeypatch, bad_ct_val
+):
+    cfg = _use_okx_registry(minimal_cfg)
+    cfg.storage = cfg.storage.model_copy(update={"timescale_dsn": "postgresql://unit-test"})
+
+    class FakeConnection:
+        async def fetch(self, *_args):
+            return [{
+                "symbol": "BTC-USDT-SWAP",
+                "ct_val": bad_ct_val,
+                "lot_size": 0.001,
+                "min_size": 0.001,
+                "tick_size": 0.5,
+            }]
+
+        async def close(self):
+            return None
+
+    async def connect(_dsn):
+        return FakeConnection()
+
+    monkeypatch.setattr("backtesting.data_loader._dsn_reachable", lambda _dsn: True)
+    monkeypatch.setitem(sys.modules, "asyncpg", SimpleNamespace(connect=connect))
+    engine = ReplayBacktestEngine.__new__(ReplayBacktestEngine)
+    engine._cfg = cfg
+
+    with pytest.raises(ValueError, match="ct_val"):
+        engine._load_db_instrument_specs("okx")
 
 
 def test_replay_terminal_liquidation_can_be_disabled(minimal_cfg):
