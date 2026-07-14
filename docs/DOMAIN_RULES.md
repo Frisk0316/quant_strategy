@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -48,7 +48,14 @@ current/target/known-gap distinction — do not silently "fix" either side.
   promotion-grade evidence for other venues.
 - **R1.5** `ct_val` validation accepts only finite values in
   `0 < ct_val <= 1e7`. The cap is a corruption guard, not a replacement for
-  R1.4 venue-matched provenance.
+  R1.4 venue-matched provenance. Enforcement points (closed 2026-07-13):
+  every explicitly provided multiplier — fill metadata in
+  `PositionLedger.on_fill`, caller-supplied replay `instrument_specs`, and the
+  DB/config replay paths — goes through the shared `validate_ct_val()` before
+  position state or an authoritative provenance label is written. A missing
+  fill metadata value may reuse the position's already-validated multiplier;
+  a caller override or DB/config row that claims to supply an instrument spec
+  must contain a valid multiplier and otherwise fail closed.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

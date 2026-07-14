@@ -12,6 +12,8 @@ from typing import Optional
 
 from loguru import logger
 
+from okx_quant.portfolio.sizing import validate_ct_val
+
 
 @dataclass
 class Position:
@@ -134,13 +136,13 @@ class PositionLedger:
     ) -> None:
         """Update position on fill. side: 'buy' | 'sell'."""
         pos = self._positions.get(inst_id)
+        ct_val = _fill_ct_val(metadata, pos.ct_val if pos is not None else 1.0)
         if pos is None:
             pos = Position(inst_id=inst_id, strategy=strategy)
             self._positions[inst_id] = pos
 
         size_before = pos.size
         avg_entry_before = pos.avg_entry
-        ct_val = _fill_ct_val(metadata, pos.ct_val)
         ct_val_before = pos.ct_val
         cash_before = self._cash_equity
 
@@ -278,9 +280,10 @@ class PositionLedger:
 
 
 def _fill_ct_val(metadata: dict | None, fallback: float = 1.0) -> float:
-    raw = (metadata or {}).get("ct_val", fallback)
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return float(fallback or 1.0)
-    return value if value > 0 else float(fallback or 1.0)
+    # R1.5/I34: an explicitly provided multiplier must pass the shared
+    # validator; only a truly absent value may use the fallback.
+    meta = metadata or {}
+    raw = meta.get("ct_val")
+    if raw is None:
+        return validate_ct_val(fallback)
+    return validate_ct_val(raw)

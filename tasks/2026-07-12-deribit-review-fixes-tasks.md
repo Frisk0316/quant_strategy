@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: task
 owner: codex
 created: 2026-07-12

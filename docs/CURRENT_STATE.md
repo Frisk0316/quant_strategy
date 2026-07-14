@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -15,12 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Branch `codex/pipeline-batch1-stage3` at `f1aac94` holds the committed P0
-  hardening (`c84f5a1`) plus the zero-delta `origin/main` integration merge
-  (`a950025`). PR #9 (documented integration exception, branch → main) is open
-  awaiting Codex review; do not force-push.
-- Branch `claude/p1-governance-docs` (off `f1aac94`) holds the P1.1/P1.2 work
-  below, PR pending Codex review.
+- PR #9 is merged to `main` at `b378e16`; its PR head was `00c7a51`. Branch
+  `codex/pipeline-batch1-stage3` now has five post-merge review-fix commits
+  (`6129f94` through `037b15f`) plus local verified repair commit `df53f73`.
+  None of those follow-up changes were part of PR #9; they require a separate
+  PR. The remote branch remains at `037b15f` because push was environment-blocked.
 - No strategy is promotion/demo/shadow/live ready. Config, accepted ADRs,
   `research/strategy_synthesis.md`, and `docs/ai_collaboration.md` remain the
   authority in the documented order.
@@ -29,21 +28,23 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Completed and usable
 
-- P0.1-P0.3 hardening implemented and Claude-review APPROVED: artifact-ID
-  containment, `ct_val` finite-positive `<=1e7`, venue fail-closed. No PnL
-  formula or existing artifact changed.
+- P0.1-P0.3 rules were implemented and Claude-review APPROVED: artifact-ID
+  containment, `ct_val` finite-positive `<=1e7`, and venue fail-closed. No PnL
+  formula or existing artifact changed. Post-merge DB/registry/caller-spec and
+  failed-fill mutation gaps are repaired and covered by fail-closed regressions.
 - P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): zero-delta merge,
   integration commit verified (unit 768/1 skip, integration 38, Ruff/docs/
   frontend/config/backtest-smoke pass; api-smoke SKIP no server; validate-data
-  FAIL is the pre-existing thin local parquet mirror), PR #9 open.
-- P1.1 governance enforcement DONE 2026-07-12 (Claude, Codex review pending):
+  FAIL is the pre-existing thin local parquet mirror). PR #9 merged to `main`
+  at `b378e16` with PR head `00c7a51`.
+- P1.1 governance enforcement DONE 2026-07-12:
   `make test-lab` runs the crypto-alpha-lab suite separately and is wired into
   `verify`; A11 ledger validator `scripts/docs/check_ledger_consistency.py` is
   in `docs-check` with unit tests (it found and fixed the missing F-VRP-TIMING
-  K-budget row); new dated `tasks/` files (≥2026-07-01) require lifecycle
-  frontmatter — checker enforces, 28 July files migrated, 4 templates updated,
-  legacy exempt; overview coverage is a documented manual review step in
-  `docs/human_overviews/README.md`.
+  K-budget row); every new Markdown file under `tasks/` requires lifecycle
+  frontmatter recursively. Only the frozen legacy filename allowlist and the
+  four exact task templates are exempt; overview coverage is a documented
+  manual review step in `docs/human_overviews/README.md`.
 - P1.2 documentation cleanup DONE 2026-07-12: README slimmed 897→101 lines with
   operational detail moved verbatim into `docs/RUNBOOK.md` (521→1237 lines,
   gate wording unchanged); completed 2026-06-25 pipeline/manual plans archived;
@@ -54,6 +55,10 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Active / blocked
 
+- PR #9 follow-up repair is verified: unit `841 passed, 1 skipped`, integration
+  `38 passed`, lab `18 passed`, Ruff/docs/config/backtest smoke PASS, and strict
+  doc impact from `00c7a51` PASS. Commit `df53f73` is local; push and the separate
+  PR are still pending.
 - H-013/F-VRP-TIMING Stage-1 signed off, `proposed`; E-038 reserved-only until
   a separately scoped Stage-2 probe. Stage 3 unauthorized.
 - H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
@@ -68,11 +73,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Next actions, in order
 
-1. Codex reviews/merges PR #9 (P0.4 integration exception).
-2. Codex reviews the `claude/p1-governance-docs` PR (P1.1 + P1.2).
-3. Codex P1.4 implementation: OKX liquidation unattended mode.
-4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
-5. Pending fact: the user creates the OKX Demo key.
+1. Push `codex/pipeline-batch1-stage3` when GitHub access is available, then open
+   and review its separate follow-up PR; human performs the merge.
+2. Codex P1.4 implementation: OKX liquidation unattended mode.
+3. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 unauthorized.
+4. Pending fact: the user creates the OKX Demo key.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`,
 `config/workstreams.yaml`,

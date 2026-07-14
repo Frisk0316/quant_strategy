@@ -3,7 +3,7 @@ status: current
 type: task
 owner: human
 created: 2026-07-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -18,7 +18,7 @@ changing strategy, risk, execution, or deployment policy by accident.
 
 ## Baseline and boundaries
 
-- Audited HEAD: `7636dd9` on `codex/pipeline-batch1-stage3`; upstream branch was
+- Audit-time HEAD: `7636dd9` on `codex/pipeline-batch1-stage3`; upstream branch was
   clean before this audit and is 96 commits ahead / 5 behind `origin/main`.
 - No current strategy is promotion/demo/shadow/live ready.
 - Truth sources remain `research/strategy_synthesis.md`, `config/`, accepted
@@ -120,9 +120,10 @@ substitution path remains; the Change Manifest and `docs-impact --strict` pass.
 ### P0.4 — Integrate or split the long-running feature branch
 
 **Status:** [x] EXECUTED 2026-07-12 by Claude under explicit user authorization
-(Codex to review). P0 work committed (`c84f5a1`); `origin/main` merged with
+and merged through PR #9 at `b378e16` from PR head `00c7a51`. P0 work committed
+(`c84f5a1`); `origin/main` merged with
 zero content delta and no conflicts (main's PR #1–#8 content was already in
-branch history); integration commit `a950025` pushed; PR #9 opened with the
+branch history); integration commit `a950025` pushed; PR #9 used the
 documented integration exception. verify-full equivalent on `a950025`: unit
 768 passed/1 skipped, integration 38 passed, Ruff/docs/frontend/config/
 backtest-smoke pass; api-smoke SKIP (no server); validate-data FAIL is the
@@ -130,8 +131,8 @@ pre-existing thin local parquet mirror, not merge-caused. No force-push.
 
 **Owner:** human; Codex supplies evidence only unless asked to perform Git actions.
 
-**Evidence:** current branch is 96 commits ahead and 5 behind `origin/main`, far
-beyond the one-issue/short-lived branch policy.
+**Evidence:** at audit time the branch was 96 commits ahead and 5 behind
+`origin/main`, far beyond the one-issue/short-lived branch policy.
 
 **Do:** inspect the five main-only commits; inventory the branch by workstream;
 split reviewable PRs or approve a documented integration exception; run full CI
@@ -143,14 +144,18 @@ instruction.
 
 ### P1.1 — Finish governance-harness enforcement
 
+**Status:** [x] Completed in the merged P1 batch; post-merge parser and exact
+template-exemption hardening is part of the current follow-up repair.
+
 **Owner:** Codex tooling; Claude governance review.
 
 - Add the separate crypto-alpha-lab test target required by the original M1
   acceptance criteria and wire it into `verify` without mixing package imports.
 - Build an honest A11 ledger consistency validator (H↔E IDs, family and K-budget
   relations); do not pretend a Git diff can detect ignored experiment artifacts.
-- Decide whether lifecycle metadata applies to `tasks/`; update the four
-  templates/checker first, then migrate old handoffs incrementally.
+- Require lifecycle metadata for every new Markdown file under `tasks/`
+  recursively. Exempt only the frozen legacy filename allowlist and the four
+  exact task templates; backdated and template-like filenames remain enforced.
 - Add Human Review Overview coverage checks or a documented manual review step;
   the current checker validates format only.
 
@@ -158,6 +163,9 @@ instruction.
 machine-visible; lifecycle scope is unambiguous; docs checks stay green.
 
 ### P1.2 — Remove remaining documentation double truths
+
+**Status:** [x] Completed in the merged P1 batch; stale PR/lifecycle state is
+being corrected in the current follow-up repair.
 
 **Owner:** Claude narrative/review; Codex checks links and commands; human decides
 policy changes.
@@ -233,10 +241,10 @@ failures.
   issues (amendment added to the ADR).
 - **P1.2 ADR-0006:** user confirmed it was approved; body status corrected to
   Accepted.
-- **P1.1 tasks/ lifecycle metadata (Claude judgment, delegated by user):** new
-  `tasks/` files require lifecycle frontmatter; existing pre-2026-07 handoffs
-  are NOT migrated (historical records). Codex updates the four templates and
-  the checker accordingly; checker must not fail on legacy files.
+- **P1.1 tasks/ lifecycle metadata (Claude judgment, delegated by user):** every
+  new Markdown file under `tasks/` requires lifecycle frontmatter recursively.
+  Only the frozen legacy filename allowlist and four exact task templates are
+  exempt; backdated, nested, undated, and template-like new files are enforced.
 - **P1.3 H-012:** SHELVE ratified; recorded in `docs/HYPOTHESIS_LEDGER.md`
   (including the F36 turnover-cost-timing finding from the leak-lag check).
 - **P1.3 H-013:** Stage-1 approved as written; E-038 probe queues behind P0s.
@@ -263,9 +271,10 @@ failures.
 
 1. [x] Complete, verify, and obtain Claude approval for P0.1 → P0.2 → P0.3;
    keep external API exposure conservative until the diff is integrated.
-2. Execute approved P0.4 Option B as a separate Git task before adding another
-   large workstream.
-3. Run P1.1/P1.2 to make governance evidence trustworthy.
+2. [x] Execute approved P0.4 Option B as a separate Git task before adding
+   another large workstream; PR #9 merged at `b378e16`.
+3. [x] Run P1.1/P1.2 to make governance evidence trustworthy; remaining
+   post-merge findings are now a separate repair/verification task and PR.
 4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 is not authorized.
 5. Implement the recorded P1.4 operations decisions.
 6. Add P2 browser/noise coverage only after the green baseline is stable.

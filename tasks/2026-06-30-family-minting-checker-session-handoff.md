@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: session_handoff
 owner: codex
 created: 2026-06-30

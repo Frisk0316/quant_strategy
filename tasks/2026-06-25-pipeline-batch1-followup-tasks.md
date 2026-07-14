@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: task
 owner: claude
 created: 2026-06-25

@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: handoff
 owner: codex
 created: 2026-06-24

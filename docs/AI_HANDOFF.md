@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -16,18 +16,19 @@ durable backlog.
 
 ## Current goal
 
-Review/integrate the implemented 2026-07-12 P0 hardening safely, then continue
-the ordered P1 governance/docs backlog. Preserve every strategy, research, and
-deployment gate. No retry, adapter, promotion, demo, shadow, or live work is
-authorized by this handoff.
+Deliver the verified post-merge repairs through a separate follow-up PR. Preserve
+every strategy, research, and deployment gate. No retry, adapter, promotion,
+demo, shadow, or live work is authorized by this handoff.
 
 ## Branch and working tree
 
-- Branch/HEAD: `codex/pipeline-batch1-stage3` at `a950025`, tracking origin;
-  tree clean. P0 work committed as `c84f5a1` and pushed.
-- P0.4 Option B EXECUTED 2026-07-12 (Claude, user-authorized): `origin/main`
-  merged (zero content delta, no conflicts); PR #9 open — documented
-  integration-exception merge to main, awaiting Codex review. No force-push.
+- Branch: `codex/pipeline-batch1-stage3`. Verified repair commit `df53f73` is
+  local; `origin/codex/pipeline-batch1-stage3` remains at `037b15f` because the
+  sandbox could not reach GitHub and the escalation was rejected by the tool's
+  usage limit.
+- PR #9 merged to `main` at `b378e16`; its PR head was `00c7a51`. Commits
+  `6129f94` through `037b15f` and the current repairs were not in PR #9 and
+  require a separate follow-up PR. No force-push or history rewrite.
 
 ## Current implementation state
 
@@ -44,11 +45,10 @@ authorized by this handoff.
 - Runtime: the pre-existing listener on 127.0.0.1:8080 (PID 23696 during audit)
   timed out and was left untouched; temporary 8081 smoke was healthy and cleaned
   up. Demo engine login still needs a valid key.
-- P0 hardening: shared artifact-ID rejection/containment covers API, artifact
-  writers, differential-validation paths, sweeps, and caller-facing CLIs;
-  omitted/blank venues use configured primary while explicit unknown values
-  fail before queueing; shared `ct_val` validation is finite-positive through
-  `1e7`. No PnL formula or existing result changed.
+- P0 hardening: artifact-ID containment and venue fail-closed behavior remain
+  closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
+  DB/registry/caller-spec boundaries, and rejected fills leave ledger state
+  unchanged. No PnL formula or existing result changed.
 - Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
   with no retry and E-037 remains immutable non-promotion evidence. H-010 is
   data-blocked. H-013 Stage-1 is user-signed-off; E-038 is reserved-only and has
@@ -61,17 +61,21 @@ authorized by this handoff.
 1. **Closed - artifact containment (F30/I32):** one reject-not-truncate
    helper and resolved-root containment cover read/write API, library, sweep,
    artifact-writer and caller-facing CLI boundaries.
-2. **Closed - `ct_val` contract (F32/I34):** the approved finite-positive
-   `<=1e7` contract, ADR-0003 amendment, Change Manifest and regressions agree;
-   position/PnL formulas are unchanged.
+2. **Closed - `ct_val` enforcement (F32/F37/I34):** DB, registry, caller-spec,
+   fill, and existing-position fallback values share the finite-positive
+   `<=1e7` validator before provenance or ledger mutation.
 3. **Closed - venue fail closed (F31/I33):** omitted/blank uses config
    primary; any explicit unknown venue returns 400 before the job queue.
-4. **Closed - integration (P0.4):** Option B executed 2026-07-12; PR #9 carries
-   the documented exception. verify-full equivalent on `a950025`: unit 768/1
+4. **Closed - integration (P0.4):** Option B executed 2026-07-12; PR #9 merged
+   to `main` at `b378e16` with PR head `00c7a51`. verify-full equivalent on
+   `a950025`: unit 768/1
    skip, integration 38, Ruff/docs/frontend/config/backtest-smoke pass;
    api-smoke SKIP (no server); validate-data FAIL is the pre-existing thin
-   parquet mirror, not merge-caused. Codex review/merge of PR #9 pending.
-5. **Open - F36:** the shelved OI runner posts turnover cost on signal day even
+   parquet mirror, not merge-caused.
+5. **Closed - follow-up governance checks (F38/I38):** H↔E ownership, explicit
+   reservation, malformed/compact rows, exact template exemptions, and populated
+   lifecycle metadata now fail closed under adversarial tests.
+6. **Open - F36:** the shelved OI runner posts turnover cost on signal day even
    though positions/funding start t+1. Do not reuse E-037 as promotion evidence.
 
 Full evidence and binary acceptance criteria are in the follow-up task file;
@@ -113,27 +117,32 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    and reran the blocked verification: full unit `768 passed, 1 skipped`
    (Windows symlink privilege), integration `38 passed`, Ruff pass,
    `docs-impact --strict` pass. Two minor findings, none blocking.
-2. DONE 2026-07-12: P0.4 Option B executed by Claude (user-authorized) —
-   integration commit `a950025`, PR #9 open for Codex review.
-3. DONE 2026-07-12 (Claude, user-authorized; Codex review pending on branch
-   `claude/p1-governance-docs`): P1.1 — `make test-lab` wired into `verify`,
+2. DONE: P0.4 Option B was executed at integration commit `a950025`; PR #9
+   merged to `main` at `b378e16` from PR head `00c7a51`.
+3. DONE 2026-07-13: repaired the remaining review findings. Final verification:
+   unit `841 passed, 1 skipped`, integration `38 passed`, lab `18 passed`, full
+   Ruff/docs/config/backtest smoke PASS, and strict doc impact from `00c7a51`
+   PASS across 131 changed files. Local repair commit: `df53f73`. Next: push the
+   branch when network/tool access is available, then open a separate follow-up
+   PR for commits `6129f94` through `037b15f` plus this repair.
+4. DONE 2026-07-12 (Claude, user-authorized): P1.1 — `make test-lab` wired into `verify`,
    A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,
-   fixed missing F-VRP-TIMING K-budget row), tasks/ lifecycle frontmatter
-   enforced for dated files ≥2026-07-01 (28 files migrated, 4 templates
-   updated, legacy exempt), overview coverage documented as a manual review
-   step. P1.2 — README 897→101 lines with operational detail moved verbatim to
+   fixed missing F-VRP-TIMING K-budget row), lifecycle frontmatter enforced for
+   every new Markdown file under `tasks/` recursively, with only the frozen
+   legacy filename allowlist and four exact templates exempt. Overview coverage
+   remains a documented manual review step. P1.2 — README 897→101 lines with
+   operational detail moved verbatim to
    RUNBOOK, two completed 2026-06-25 plans archived, CHANGELOG backfilled
    07-05/07-07/07-11.
-   Remaining Codex P1 work: liquidation unattended mode; review both PRs.
-4. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
-5. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
+   Remaining Codex P1 work: liquidation unattended mode.
+5. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
+6. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
    symbol, 2021-03-24→2026-07-11, values cross-checked against the hourly
    series; manual-update command recorded in `docs/RUNBOOK.md` (must pass
    `--start` AND `--end`). User creates the OKX Demo key later.
 
 ## Open decisions
 
-- None. ADR-0001 local-task exception approved; ADR-0006 confirmed accepted;
-  E-038 stays reserved-only; H-012 shelved; P0.4 = Option B; P1.4 operations
-  decided (schedulers accepted-stale with manual updates, liquidation goes
-  unattended, port 8080 abandoned, Demo key later).
+- Human review/merge decision for the separate PR #9 follow-up remains pending.
+  ADR-0001 local-task exception is approved; ADR-0006 accepted; E-038 stays
+  reserved-only; H-012 shelved; P1.4 operations decided.
