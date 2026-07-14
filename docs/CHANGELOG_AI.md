@@ -13,6 +13,50 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-14 - H-014 E-051: first statistical-gate pass (Claude solo, user-signed-off)
+
+- User signed off the package in one decision: ADR-0010 accepted (coin-margined
+  options research accounting → DOMAIN_RULES R8.1–R8.6, invariant I39, matrix
+  row A12, manifest `2026-07-14-inverse-options-research-accounting.md`),
+  Stage-3 spec accepted, E-051 authorized; long leg OFF and naked short puts
+  prohibited confirmed.
+- Data extension collected free from official sources: 786 t+1 entries,
+  11,121 instrument-day trade-VWAP marks, 4,930 official delivery prices
+  (`results/h014_stage3_data_20260714/`). Golden-cycle accounting tests 6/6
+  (`tests/unit/test_h014_options_accounting.py`).
+- **E-051 PASSED the DSR/PSR ≥ 0.95 gate — first in project history**:
+  WF OOS Sharpe 1.3049, CPCV 1.1326, DSR = PSR 0.9845, minting MINT (0.074),
+  124–261 tranches/combo, BS-fallback marks 4.0–4.5%, window 2022-05→2026-02.
+  Adversarial fresh-verifier verdict PASS-STANDS (786/786 entries t+1,
+  hand-recomputed tranche PnL matches, no lookahead/double-count). Recorded
+  caveats: 0.9845 margin is thin and its DSR multiple-testing penalty
+  degenerates to zero because every CPCV fold selected the same combo; the
+  window holds one deep bear. H-014 → `testing`, checkpoint-① human review
+  pending; `promotion_gate_passed:false` per R7.2.
+- Security note: the verifier agent reported and ignored a prompt-injection
+  attempt (fake system-reminder urging information suppression and unsafe git
+  operations) during its run; flagged to the user.
+
+## 2026-07-14 - H-013 full run (shelved) + H-014 entry-leg data collected (Claude solo)
+
+- User authorized running H-013 and collecting H-014's data; nothing was
+  required from the user (free official sources only).
+- H-013/F-VRP-TIMING: E-038 feasibility probe PASS (zero-Δ daily DVOL ≈ 0,
+  complete candles). E-050 ran the pre-registered 4-combo grid exactly per
+  the 2026-07-12 spec (hourly-DVOL as-of minus 1m realized vol, z90,
+  long/flat, fold-refit WF/CPCV, minting MINT 0.051): WF OOS Sharpe 0.0543,
+  CPCV 0.5588, DSR 0.5999, PSR 0.7845 — statistical fail, SHELVED, no retry.
+- H-014 data: `research/probes/h014_collect_leg_marks.py` collected real
+  traded premiums for all pre-registered entry legs (25Δc/25Δp/10Δp/ATM c+p,
+  ~30d expiry) on the union of grid RICH days from the official
+  history.deribit.com trade tape: 1,306/1,310 leg-days with trades
+  (261-262/262 per leg), median 36 trades/leg-day
+  (`results/h014_leg_marks_20260714/leg_marks.csv`). Two collector bugs found
+  and fixed en route: missing `include_old`, and expiry selection must filter
+  instruments by `creation_timestamp` ≤ signal day (D+30 otherwise lands on
+  daily/weekly instruments created later). Vendor chain purchase is now
+  optional robustness, not a Stage-3 blocker.
+
 ## 2026-07-14 - Uncommitted work split and pushed by workstream (Codex)
 
 - Pushed the verified PR #9 follow-up branch from `037b15f` through `d046978`.

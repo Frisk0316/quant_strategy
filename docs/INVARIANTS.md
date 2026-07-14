@@ -58,6 +58,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I36 | Progress file reads serve only existing markdown paths explicitly listed in `config/workstreams.yaml` and resolved inside the repository | — | `tests/unit/test_routes_progress.py::test_progress_route_serves_only_configured_files` |
 | I37 | A research artifact that claims t+1 execution must delay every signal-dependent return component, including turnover cost, until that execution point | R5.3, R6.1 | Known gap: E-037 spot-check; `docs/KNOWN_ISSUES.md` |
 | I38 | Governance checks fail closed: H↔E links agree in both directions, only an explicit per-ID `reserved` annotation exempts a missing experiment, valid Markdown table spacing cannot hide rows, and every non-exempt task document has non-empty lifecycle metadata | — | `tests/unit/test_ledger_consistency.py`, `tests/unit/test_doc_metadata_tasks.py` |
+| I39 | Coin-denominated options research PnL settles on official Deribit delivery prices, allows bounded-coin-loss structures only (no naked short puts), and every daily mark records its source with BS-fallback usage counted | R8.1–R8.6 | `tests/unit/test_h014_options_accounting.py` (golden cycle) |
 
 ## Usage
 
