@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -660,6 +660,40 @@ make validate-data
 
 This may require local data files or DB-backed data, depending on configuration and
 environment.
+
+## H-014 Deribit Options Shadow (manual only)
+
+ADR-0011 v1 has no credentials and no order method. It reads DB signals, then
+uses only Deribit public instruments/order-book/trade/delivery methods. Run one
+cycle at or after 08:00 UTC; the process exits after the cycle:
+
+```powershell
+python scripts/run_h014_shadow.py
+```
+
+The cycle fails closed if either BTC or ETH lacks the exact prior research-day
+DVOL/canonical-close pair. Refresh the existing ingestion data first; do not
+override the date or frozen `ivp_min=85` / `z_min=0.5` parameters. Build the
+ADR-0011 bias report from the append-only journal with:
+
+```powershell
+python scripts/run_h014_shadow.py --report
+```
+
+Runtime files are `results/shadow_h014/journal.jsonl` and
+`bias_report.json`. Do not truncate or edit the journal. No task is registered
+by this implementation. A manual cycle leaves no resident process, so stopping
+means simply not running another cycle. If the user later approves and creates
+a Windows task, the reversible kill switch is:
+
+```powershell
+Disable-ScheduledTask -TaskName "quant_h014_deribit_shadow"
+# Permanent removal remains a separate human-approved action:
+Unregister-ScheduledTask -TaskName "quant_h014_deribit_shadow" -Confirm
+```
+
+Eight weeks plus a complete bias report unlock only a live ADR discussion;
+live execution still requires R7.2 and a separate explicit user approval.
 
 ## Scheduled External Ingest (OKX liquidation)
 

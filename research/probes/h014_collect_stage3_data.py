@@ -36,9 +36,12 @@ LEGS = ("call_25d", "put_25d", "put_10d")
 DAY_MS = 86_400_000
 
 
+SERIES_PREFIX = "series_"
+
+
 def signal_days(symbol: str) -> list[dict]:
     rows = []
-    with (SERIES / f"series_{symbol.lower()}.csv").open(newline="", encoding="utf-8") as fh:
+    with (SERIES / f"{SERIES_PREFIX}{symbol.lower()}.csv").open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             try:
                 if float(row["ivp"]) >= IVP_MIN and float(row["z"]) >= Z_MIN:
@@ -81,20 +84,40 @@ def instrument_trades_daily(name: str, start_ms: int, end_ms: int) -> dict[str, 
 
 
 def delivery_prices(index_name: str) -> list[dict]:
-    out, offset = [], 0
-    while True:
-        res = get("get_delivery_prices",
-                  {"index_name": index_name, "offset": offset, "count": 1000})
+    """Main API host only (history host 400s on this endpoint); 100/page."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+
+    def _get(params: dict):
+        url = ("https://www.deribit.com/api/v2/public/get_delivery_prices?"
+               + urllib.parse.urlencode(params))
+        req = urllib.request.Request(url, headers={"User-Agent": "quant-h014/1"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return _json.loads(r.read())["result"]
+
+    out, offset, total = [], 0, None
+    while total is None or offset < total:
+        res = _get({"index_name": index_name, "offset": offset, "count": 100})
+        total = res.get("records_total", 0)
         recs = res.get("data", [])
-        out.extend({"date": r["date"], "price": r["delivery_price"]} for r in recs)
-        if len(recs) < 1000:
+        if not recs:
             break
+        out.extend({"date": r["date"], "price": r["delivery_price"]} for r in recs)
         offset += len(recs)
-        time.sleep(0.05)
+        time.sleep(0.1)
     return out
 
 
 def main() -> None:
+    import argparse
+    global SERIES, SERIES_PREFIX, OUT
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--series-dir", type=Path, default=SERIES)
+    ap.add_argument("--series-prefix", default=SERIES_PREFIX)
+    ap.add_argument("--out", type=Path, default=OUT)
+    args = ap.parse_args()
+    SERIES, SERIES_PREFIX, OUT = args.series_dir, args.series_prefix, args.out
     OUT.mkdir(parents=True, exist_ok=True)
     entries: list[dict] = []
     needed: dict[str, tuple[int, int]] = {}  # instrument -> (first_entry_ms, expiry_ms)

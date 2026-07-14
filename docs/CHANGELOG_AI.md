@@ -13,6 +13,54 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-14 - ADR-0011 H-014 shadow-only implementation (Codex)
+
+- Implemented manual, public-only Deribit shadow execution for the frozen
+  H-014 combination (`ivp=85`, `z=0.5`): DB as-of signals reuse the research
+  sequence builder and strike selector, hypothetical sells hit bid and buys
+  lift ask, and R8 accounting functions are imported from the accepted
+  research implementation. There is no broker, private endpoint, credential,
+  order submission, scheduler, DB write, schema change, or `risk.yaml` change.
+- Added fail-closed R8.3 intent validation: any naked short-put intent is
+  rejected and each coin is capped at 1.0 unit. The append-only JSONL journal
+  has deterministic event IDs; the report covers fill bias, missed-entry rate,
+  mark tracking error, weekly coverage, and keeps both discussion and live
+  approval gates closed until at least 8 valid weeks and later approvals.
+- A real DB smoke exposed F39: selecting the latest common date can silently
+  reuse stale candles, and its same-day ID can block the corrected append-only
+  rerun. The runner now requires the exact prior research day, uses the research
+  08:00 UTC boundary, and qualifies intent IDs by signal day. The two pre-fix
+  records are retained but ignored. After bounded refreshes through the existing
+  public ingestion paths, the first valid cycle recorded BTC/ETH as `not_rich`.
+- Verification includes the existing R8 golden tests, new signal/intent/fill/
+  report tests, five-day DB parity within the task tolerances, and a successful
+  credentials-free Deribit public order-book smoke. The current report has one
+  valid day in one distinct week, no RICH opportunity, and both live gates closed. This is shadow
+  evidence, not live-trading or deployment approval. Final parent unit result:
+  861 passed, 1 skipped; config/docs/strict impact checks passed.
+
+## 2026-07-14 - H-014 E-052 extended-window pass + shadow layer authorized (Claude)
+
+- Checkpoint-① RATIFIED by the user → H-014 `supported`; governance commit
+  `22bdf48` pushed the E-051/ADR-0010 record with evidence-chain scripts.
+- E-052 (user-authorized K-consuming retry, spec pre-registered): pre-DVOL IV
+  proxy from the 2019-04+ trade tape — v1 (tenor 20-40d) honestly FAILED
+  CLOSED on the staleness rule (monthly-expiry gaps, runs 16/24d; archived);
+  v2 (tenor 10-60d, ±15% moneyness, spec-amended first) gave BTC 0% / ETH
+  3.8% carry; splice corr 0.964/0.984, bias −10.1/−11.5 pts, sensitivity
+  artifact shows RICH-day Jaccard 0.972–1.000 under ±3 pts. **Extended
+  window (2020-05→2026-02, three stress episodes) PASSED the gate**:
+  WF 0.8818, CPCV 1.0098, DSR 0.9746 < PSR 0.9904 (real penalty — fold
+  selections varied), n_trials=8, K 1/2. Adversarial verifier's one MAJOR
+  (in-session-only sensitivity check) resolved by persisting the artifact;
+  both E-051 caveats (degenerate penalty, single bear) are closed.
+- ADR-0011 accepted (user: "先授權 deribit 執行層"): shadow-only execution
+  layer — live public data, hypothetical fills, R8.3 naked-put rejection in
+  code, JSONL journal, zero order capability; Codex task file issued
+  (`tasks/2026-07-14-deribit-shadow-execution-codex-tasks.md`), exit =
+  ≥8 weeks journal + bias report before any live-execution ADR.
+- Ledgers: 21 H / 53 E / 20 K consistent; E-052 registered with K 1/2.
+
 ## 2026-07-14 - H-014 E-051: first statistical-gate pass (Claude solo, user-signed-off)
 
 - User signed off the package in one decision: ADR-0010 accepted (coin-margined

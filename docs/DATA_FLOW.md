@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -202,6 +202,28 @@ research diagnostics only, not option-chain ingestion or promotion evidence.
 E-041 keeps the 2 GiB ceiling as a compressed bytes-read guard, never falls back
 from missing hourly to daily DVOL, and writes `probe_status=FAIL_CLOSED` without
 a pricing `verdict.status` when the complete fixed sample cannot be evaluated.
+
+## H-014 Deribit Shadow-Execution Flow
+
+```text
+external_observations hourly DVOL (published_at as-of/F26)
+  + Binance canonical 1m closes aligned to the research 08:00 UTC day
+  -> research/probes/f_vol_regime_opt_probe.py::build_series (imported)
+  -> frozen ivp 85 / z 0.5 decision
+  -> current Deribit public option instruments + public top-of-book
+  -> atomic three-leg hypothetical fill (sell bid / buy ask)
+  -> imported ADR-0010/R8 accounting helpers
+  -> results/shadow_h014/journal.jsonl
+  -> scripts/run_h014_shadow.py --report
+```
+
+Current: this is a separate credential-free, manual, one-cycle shadow path. It
+does not use the engine broker, private endpoints, DB writes, schema changes, or
+scheduler registration. A signal requires the exact prior common BTC/ETH day;
+stale canonical data fails closed. JSONL event ids dedupe reruns without
+rewriting history. The report exposes fill bias, missed-entry rate, mark
+tracking error, coin equity curves, stale-record exclusions, and the eight-week
+ADR-0011 exit gate. It never marks live as approved.
 
 ## Point-In-Time Universe Membership Flow
 

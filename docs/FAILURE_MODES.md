@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -60,6 +60,7 @@ failure modes say how it silently breaks.
 | F36 | Turnover cost is posted before the claimed execution lag | A day-t target affects day-t research returns through cost even though position PnL/funding begin at t+1, so leak checks can look green while return timing is inconsistent | E-037 manual leak-lag spot-check; known-gap review before reusing `oi_positioning_backtest.py` | R5.3, R6.1 |
 | F37 | Fill validation mutates ledger state before rejection | An invalid multiplier raises, but a zero-size ghost position remains and can affect later state inspection | `tests/unit/test_position_pnl_accounting.py` asserts positions, trade log and equity are unchanged after rejection | R1.5, R5.2 |
 | F38 | Governance parser silently skips or misclassifies malformed evidence | Contradictory H↔E links, negated `reserved` text, compact table rows, or blank task metadata pass `docs-check` | I38 adversarial tests for both documentation checkers | — |
+| F39 | H-014 shadow silently classifies a stale or wrong-boundary signal day | A plausible `not_rich`/`rich` record is written even though canonical candles lag or DVOL/candle dates use midnight instead of the research 08:00 UTC boundary; a stale same-day ID can also block the corrected rerun | I40 exact-prior-day rejection, signal-day-qualified intent IDs, F26 SQL assertion, five-day DB-vs-E-039 parity sample, and report count of ignored stale records | R6.1, R8.7 |
 
 ## How to add a failure mode
 

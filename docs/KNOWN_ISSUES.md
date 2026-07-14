@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -33,6 +33,15 @@ over time.
 
 ## Research and operations state
 
+- ADR-0011's first H-014 DB smoke found stale canonical/DVOL inputs. A bounded
+  refresh through the existing public Binance and Deribit ingestion paths
+  restored the exact prior-day signal on 2026-07-14, but freshness remains an
+  operational prerequisite because no scheduler was authorized. The runner
+  now raises before journaling rather than reusing a stale date (F39/I40), and
+  its signal-day-qualified intent ID lets a corrected rerun coexist with audit
+  history. Two pre-guard stale records remain in append-only JSONL; the report
+  counts and excludes them from the 8-week gate. Do not substitute a new data
+  source or schedule refreshes silently.
 - H-009 remains a non-passing `testing` candidate with no chase-the-gate retry.
   H-012 is user-ratified `shelved`, no retry; its E-037 spot-check also found
   F36: turnover cost is posted on signal day while position/funding begin at

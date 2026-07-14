@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -49,6 +49,7 @@ superseded_by: null
 | Module | Brief | Path |
 |---|---|---|
 | Backtesting engine | [backtesting-engine.md](backtesting-engine.md) | `backtesting/` |
+| H-014 Deribit shadow execution | [deribit-shadow-execution.md](deribit-shadow-execution.md) | `src/okx_quant/execution/deribit_shadow/` |
 | Portfolio | [portfolio.md](portfolio.md) | `src/okx_quant/portfolio/` |
 
 Add a brief when you first do non-trivial work in a module that lacks one. Keep

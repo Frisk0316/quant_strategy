@@ -73,8 +73,13 @@ def short_call_cycle_pnl(entry_premium: float, s_t: float, k: float) -> float:
 
 
 # --------------------------------------------------------------- data layer
+SERIES_PREFIX = "series_"
+N_TRIALS = 4
+EXPERIMENT_ID = "E-051"
+
+
 def load_series(symbol: str) -> pd.DataFrame:
-    df = pd.read_csv(SERIES / f"series_{symbol.lower()}.csv", parse_dates=["date"])
+    df = pd.read_csv(SERIES / f"{SERIES_PREFIX}{symbol.lower()}.csv", parse_dates=["date"])
     return df.set_index("date")
 
 
@@ -188,6 +193,18 @@ def run_combo(entries, mark_map, deliv_map, series_by_sym, ivp_min, z_min):
 
 
 def main() -> None:
+    import argparse
+    global DATA, SERIES, SERIES_PREFIX, OUT, N_TRIALS, EXPERIMENT_ID
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", type=Path, default=DATA)
+    ap.add_argument("--series-dir", type=Path, default=SERIES)
+    ap.add_argument("--series-prefix", default=SERIES_PREFIX)
+    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--n-trials", type=int, default=N_TRIALS)
+    ap.add_argument("--experiment-id", default=EXPERIMENT_ID)
+    args = ap.parse_args()
+    DATA, SERIES, SERIES_PREFIX = args.data, args.series_dir, args.series_prefix
+    OUT, N_TRIALS, EXPERIMENT_ID = args.out, args.n_trials, args.experiment_id
     OUT.mkdir(parents=True, exist_ok=True)
     entries, mark_map, deliv_map = load_inputs()
     series_by_sym = {s: load_series(s) for s in ("BTC", "ETH")}
@@ -217,7 +234,7 @@ def main() -> None:
     idx = pd.date_range(common_start, common_end, freq="D")
     combos = {k: v.reindex(idx).fillna(0.0) for k, v in combos.items()}
 
-    validation = refit_validation(combos, n_trials=4)
+    validation = refit_validation(combos, n_trials=N_TRIALS)
     default_key = sorted(combos)[0]
     candidate_signal = {ts.date().isoformat(): float(v) for ts, v in combos[default_key].items()}
     refs = {fam: json.load(open(p, encoding="utf-8"))["signal"]
@@ -232,11 +249,11 @@ def main() -> None:
             and validation["dsr"] >= 0.95 and validation["psr"] >= 0.95)
     summary = {
         "schema_version": 1,
-        "experiment_id": "E-051",
+        "experiment_id": EXPERIMENT_ID,
         "hypothesis_id": "H-014",
         "family_id": "F-VOL-REGIME-OPT",
         "window": [str(common_start.date()), str(common_end.date())],
-        "n_trials": 4,
+        "n_trials": N_TRIALS,
         "n_trials_provenance": "caller_declared",
         "grid_combos": sorted(combos),
         "default_combo_for_minting": default_key,

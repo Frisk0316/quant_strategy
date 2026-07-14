@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -140,11 +140,12 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   `n_trials` as the multiple-trial penalty. For the same series, DSR must not
   exceed PSR(0).
 
-## R8. Options (research) — ADR-0010, research scope only
+## R8. Options (research + shadow) — ADR-0010 / ADR-0011
 
-These rules govern coin-margined (inverse) options RESEARCH backtests
-(currently H-014/F-VOL-REGIME-OPT). They do not touch engine, live, demo, or
-USDT-perp accounting; promotion toward the engine requires a new ADR.
+These rules govern coin-margined (inverse) options research backtests and the
+credential-free ADR-0011 H-014 shadow path. They do not authorize engine,
+live/demo, private-endpoint, or USDT-perp accounting changes; promotion toward
+real execution requires a new ADR and R7.2 approval.
 
 - **R8.1** Unit of account is the coin (BTC/ETH). Gate statistics are computed
   on coin-denominated returns; USD series are context only.
@@ -154,16 +155,24 @@ USDT-perp accounting; promotion toward the engine requires a new ADR.
 - **R8.3** Only bounded-coin-loss structures are allowed (covered call;
   25Δ/10Δ put spread). Naked short puts are prohibited (user-confirmed
   2026-07-14). This bound is what licenses the absence of a margin model;
-  any unbounded structure first needs a margin-model ADR.
+  any unbounded structure first needs a margin-model ADR. The ADR-0011 shadow
+  path rejects an unpaired short-put intent before quote/fill handling and caps
+  aggregate open tranches at `1.0` unit per symbol.
 - **R8.4** Fees per Deribit's published schedule: trade fee
   `min(0.0003 coin, 12.5% × premium)` per leg; settlement fee
   `min(0.00015 coin, 12.5% × premium)` on expiring ITM options. Entry price
-  is the real traded VWAP (spread embedded); no synthetic haircut on top.
+  is the real traded VWAP in research. ADR-0011 shadow sells at live bid and
+  buys at live ask; no additional synthetic haircut is added.
 - **R8.5** Daily marks: same-instrument trade-tape VWAP first; fallback =
   BS mark at day DVOL plus the instrument's last observed IV offset. Fallback
   usage is counted; a combo above 30% fallback position-days is unreliable.
 - **R8.6** Every mark row records its source, instrument, and timestamps;
   collected mark/leg files are immutable inputs.
+- **R8.7** ADR-0011 v1 is append-only JSONL shadow evidence using DB F26 as-of
+  signals and allow-listed Deribit public market-data methods only. It has no
+  credential or order capability. At least eight weeks of fresh daily records
+  plus fill-bias, missed-entry, and mark-tracking metrics unlock only a future
+  live-ADR discussion; live still requires R7.2 and explicit user approval.
 
 ---
 

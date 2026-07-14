@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -588,6 +588,31 @@ implementation exists.
   risk, portfolio, execution, DB schema, existing result artifacts, or reference
   adapter tolerances unless the task explicitly permits it. Advisory validation
   output is not live-readiness evidence.
+
+## H-014 Deribit Options Shadow Execution
+
+- User-facing behavior: manually run one credential-free daily H-014 cycle;
+  reproduce the accepted research signal from F26-safe DB inputs, select the
+  current nearest-30d option chain, atomically simulate sells at bid/buys at
+  ask, append R8 records, and generate the ADR-0011 bias report.
+- Frontend/API files: none.
+- Execution files: `src/okx_quant/execution/deribit_shadow/`,
+  `scripts/run_h014_shadow.py`.
+- Data / artifacts: reads `external_observations` and `canonical_candles`, then
+  Deribit allow-listed public REST data; appends runtime JSONL under
+  `results/shadow_h014/`. No DB write or schema change.
+- Config: `config/h014_shadow.yaml` freezes `ivp_min=85`, `z_min=0.5`,
+  1/30-unit tranches, and the 1.0-unit cap; `config/risk.yaml` is untouched.
+- Research imports (read-only): `research/probes/f_vol_regime_opt_probe.py`,
+  `research/probes/h014_collect_leg_marks.py`,
+  `research/probes/h014_stage3_backtest.py`.
+- Tests: `tests/unit/test_h014_shadow.py`,
+  `tests/unit/test_h014_options_accounting.py`.
+- Docs: ADR-0011, `docs/DOMAIN_RULES.md` R8, `docs/DATA_FLOW.md`, this map,
+  `docs/RUNBOOK.md`, and the change manifest.
+- Do-not-touch notes: no private/authenticated endpoint, broker/order path,
+  credential, scheduler registration, strategy/risk/portfolio module, DB
+  schema, live gate, or frozen parameter change is allowed.
 
 ## Shadow / Demo / Live Deployment Gate
 

@@ -3,7 +3,7 @@ status: current
 type: index
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -22,6 +22,7 @@ conflicts with its source docs, the source docs win. See
 
 | Date | Topic | Overview | Status | Risk | Decision required | Human decision |
 |---|---|---|---|---|---|---|
+| 2026-07-14 | ADR-0011 H-014 shadow-only implementation | [docs/human_overviews/2026-07-14-adr0011-shadow-execution-overview.md](human_overviews/2026-07-14-adr0011-shadow-execution-overview.md) | current | high | yes | pending |
 | 2026-07-13 | P0.4 integration + P1 governance batch + post-merge follow-up | [docs/human_overviews/2026-07-13-p0-p1-governance-overview.md](human_overviews/2026-07-13-p0-p1-governance-overview.md) | current | high | yes | PR #9 merged; follow-up pending |
 | 2026-07-12 | Whole-project diagnosis and P0 closure | [docs/human_overviews/2026-07-12-project-diagnosis-overview.md](human_overviews/2026-07-12-project-diagnosis-overview.md) | current | high | no | approved |
 | 2026-06-25 | Strategy Research Pipeline Stage 1 | [docs/human_overviews/2026-06-25-strategy-research-pipeline-overview.md](human_overviews/2026-06-25-strategy-research-pipeline-overview.md) | deprecated | medium | yes | superseded |
