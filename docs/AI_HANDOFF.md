@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -16,16 +16,18 @@ durable backlog.
 
 ## Current goal
 
-Deliver the verified post-merge repairs through a separate follow-up PR. Preserve
-every strategy, research, and deployment gate. No retry, adapter, promotion,
-demo, shadow, or live work is authorized by this handoff.
+Open and review the pushed follow-up and stacked research branches as separate
+PRs. Preserve every strategy, research, and deployment gate. No retry, adapter,
+promotion, demo, shadow, or live work is authorized by this handoff.
 
 ## Branch and working tree
 
-- Branch: `codex/pipeline-batch1-stage3`. Verified repair commit `df53f73` is
-  local; `origin/codex/pipeline-batch1-stage3` remains at `037b15f` because the
-  sandbox could not reach GitHub and the escalation was rejected by the tool's
-  usage limit.
+- Current branch: `feature/taxonomy003-stage3`, stacked on
+  `feature/f-vol-regime-opt-stage2`, which is stacked on
+  `codex/pipeline-batch1-stage3`.
+- Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
+  F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
+  `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
 - PR #9 merged to `main` at `b378e16`; its PR head was `00c7a51`. Commits
   `6129f94` through `037b15f` and the current repairs were not in PR #9 and
   require a separate follow-up PR. No force-push or history rewrite.
@@ -52,7 +54,12 @@ demo, shadow, or live work is authorized by this handoff.
 - Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
   with no retry and E-037 remains immutable non-promotion evidence. H-010 is
   data-blocked. H-013 Stage-1 is user-signed-off; E-038 is reserved-only and has
-  not run.
+  not run. H-014/F-VOL-REGIME-OPT (Deribit inverse-options vol regime, Claude
+  2026-07-13): registered with a pre-probe 4-combo grid; E-039 synthetic probe
+  DONE (short-premium separation confirmed, cheap-bucket long straddle negative
+  → long leg OFF). E-040 failed closed on Tardis `Content-Length`; the authorized
+  E-041 rerun failed closed before download because fixed 2022 samples predate
+  the DB hourly-DVOL range (2024 onward). Stage-3 remains blocked.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -122,9 +129,9 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
 3. DONE 2026-07-13: repaired the remaining review findings. Final verification:
    unit `841 passed, 1 skipped`, integration `38 passed`, lab `18 passed`, full
    Ruff/docs/config/backtest smoke PASS, and strict doc impact from `00c7a51`
-   PASS across 131 changed files. Local repair commit: `df53f73`. Next: push the
-   branch when network/tool access is available, then open a separate follow-up
-   PR for commits `6129f94` through `037b15f` plus this repair.
+   PASS across 131 changed files. Repair commit `df53f73` and handoff commit
+   `d046978` were pushed 2026-07-14. Next: open a separate follow-up PR for
+   commits `6129f94` through `d046978`.
 4. DONE 2026-07-12 (Claude, user-authorized): P1.1 — `make test-lab` wired into `verify`,
    A11 validator `check_ledger_consistency.py` in `docs-check` (+8 unit tests,
    fixed missing F-VRP-TIMING K-budget row), lifecycle frontmatter enforced for
@@ -140,9 +147,28 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    symbol, 2021-03-24→2026-07-11, values cross-checked against the hourly
    series; manual-update command recorded in `docs/RUNBOOK.md` (must pass
    `--start` AND `--end`). User creates the OKX Demo key later.
+7. Taxonomy_003 CLOSED 2026-07-14 (user-authorized Stage-3 sweep, Claude
+   solo, E-044..E-049, verifier clean): all six MINT, all six FAIL the
+   DSR/PSR ≥ 0.95 gate — H-015 refuted, H-016 shelved (best 0.70/0.80),
+   H-017 inconclusive, H-018 refuted, H-019 shelved, H-020 refuted. See
+   `tasks/2026-07-14-taxonomy003-stage3-handoff.md`; no retries without
+   ex-ante rationale + K.
+8. H-014/E-039 done 2026-07-13 (`tasks/2026-07-13-vol-regime-opt-handoff.md`).
+   Stage-2 handed to Codex: `tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md`
+   (T1 Tardis calibration/E-040, T2 vendor report; T3 NOT authorized). Claude
+   is the reviewer for this workstream from 2026-07-13 on (user ruling).
+   E-040 ran and FAILED CLOSED (2 GiB guard at 2024-03-01); Claude review
+   ACCEPTED it (`tasks/2026-07-13-e040-stage2-claude-review.md`) — Stage 2 not
+   passed at that point. UPDATE 2026-07-14: after the user-authorized
+   hourly-DVOL backfill (2021→2024, 46,440 rows/symbol), E-043 completed all
+   12 pairs — **Stage 2 PASS**, real/synthetic RICH-leg ratios 0.88–1.03 ≥
+   the ex-ante 0.8 bar. Next gate is the user's: chain-history purchase and
+   Stage-3/engine authorization (coin-accounting manifest + ADR first).
 
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.
   ADR-0001 local-task exception is approved; ADR-0006 accepted; E-038 stays
   reserved-only; H-012 shelved; P1.4 operations decided.
+- H-014 pre-2024 hourly-DVOL backfill and E-043 are complete. Any chain-history
+  purchase or Stage-3 engine/accounting work still needs explicit human approval.

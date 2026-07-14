@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "batch_id": "idea_batch_20260713_taxonomy_003",
+  "family_id": "F-XS-ILLIQUIDITY",
+  "hypothesis_id": "H-016",
+  "experiment_id": "E-045",
+  "window": [
+    "2024-01-01",
+    "2026-07-11"
+  ],
+  "n_trials": 4,
+  "n_trials_provenance": "caller_declared",
+  "grid_combos": [
+    "W=14|q=0.2",
+    "W=14|q=0.3",
+    "W=28|q=0.2",
+    "W=28|q=0.3"
+  ],
+  "default_combo_for_minting": "W=14|q=0.2",
+  "nonzero_grid_activity": true,
+  "leak_shift_path_live": true,
+  "idealized_fill": false,
+  "costs": {
+    "fee_bps": 2.0,
+    "slippage_bps": 2.0,
+    "funding_cashflow": true
+  },
+  "vol_target": {
+    "annual": 0.175,
+    "window_days": 28,
+    "lev_cap": 3.0
+  },
+  "validation": {
+    "validation_mode": "fold_refit_param_selection",
+    "wf_oos_sharpe": 0.9662077900915259,
+    "cpcv_oos_sharpe": 0.5398213455433055,
+    "dsr": 0.7041804624689434,
+    "psr": 0.7980531548181606,
+    "wf_selected_param_counts": {
+      "W=28|q=0.3": 6
+    },
+    "cpcv_selected_param_counts": {
+      "W=14|q=0.2": 3,
+      "W=28|q=0.2": 1,
+      "W=28|q=0.3": 11
+    },
+    "cpcv": {
+      "n_splits": 6,
+      "k_test": 2,
+      "embargo_pct": 0.02,
+      "purge_size": 1,
+      "n_combinations": 15,
+      "n_paths": 5,
+      "path_sharpes": [
+        0.8380017552142117,
+        0.4278174504827092,
+        0.5947273308572851,
+        0.41930077949469013,
+        0.41925941166763125
+      ]
+    }
+  },
+  "family_minting": {
+    "schema_version": 1,
+    "batch_id": "idea_batch_20260713_taxonomy_003",
+    "candidate_id": "f-xs-illiquidity",
+    "claimed_family_id_or_NEW": "NEW",
+    "claimed_mechanism": "XS Amihud illiquidity premium, long illiquid short liquid",
+    "max_abs_corr": 0.0992717803956732,
+    "nearest_family_id": "F-FUNDING-XS-DISPERSION",
+    "nearest_family_status": "checkpoint / statistical-fail / promotion-blocked",
+    "nearest_family_cumulative_n_trials": 4,
+    "decision": "MINT",
+    "inherited_n_trials": 0,
+    "k_used": 0,
+    "k_limit": 2,
+    "at_k_limit": false,
+    "provisional_new_family": true,
+    "human_review_items": [
+      "mechanism_novelty"
+    ],
+    "reason": "low correlation with supplied reference families; provisional new-family candidate"
+  },
+  "statistical_gate_passed": false,
+  "promotion_gate_passed": false,
+  "portable_validation_gate": false,
+  "portable_block_reason": "research-grade Claude runner; adapter-required/absent",
+  "runner": "research/probes/taxonomy003_stage3.py"
+}

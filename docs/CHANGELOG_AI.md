@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,90 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-14 - Uncommitted work split and pushed by workstream (Codex)
+
+- Pushed the verified PR #9 follow-up branch from `037b15f` through `d046978`.
+- Split the mixed working tree into stacked, reviewable deliveries without
+  rewriting history: F-VOL specs/probes/tests/artifacts at `d66f08a`, followed
+  by Taxonomy_003 specs/probes/data/results at `821f761`; shared ledgers, state,
+  Progress mirror, and session handoffs remain a separate final commit on the
+  Taxonomy_003 branch.
+- Pre-commit checks: F-VOL target pytest `3 passed`; Ruff, docs metadata,
+  feature-map links, ledger consistency (21 H / 49 E / 20 K), docs impact, and
+  config validation passed. No `.env`, secret, strategy/risk/execution, DB
+  schema, deployment-gate, or existing tracked result file was staged.
+
+## 2026-07-14 - Taxonomy_003 Stage-3 sweep + H-014 Stage-2 PASS (Claude solo)
+
+- User authorized: (a) pre-2024 hourly-DVOL backfill (done, adding 24,312
+  rows/symbol; both series now 46,440 gap-free 2021-03-24→2026-07-10); (b) performance
+  backtests for all six taxonomy_003 candidates, Claude end-to-end.
+- Pre-registered `docs/superpowers/specs/2026-07-14-taxonomy003-stage3-specs.md`
+  (grids/directions frozen before first run), registered H-016..H-020, fetched
+  DefiLlama/Coinbase/blockchain.info data, then ran E-044..E-049 through the
+  repo fold-refit WF/CPCV harness (921 daily bars, t+1, 2+2 bps, funding,
+  vol-target). Family minting: all six MINT (max abs corr ≤ 0.099).
+  **All six FAIL the DSR/PSR ≥ 0.95 gate**: H-015 optflow refuted
+  (WF −1.12); H-016 XS-illiquidity shelved (best: WF 0.97/DSR 0.70/PSR 0.80);
+  H-017 stablecoin inconclusive (one-regime window); H-018 coinbase refuted;
+  H-019 hash-ribbon shelved (breadth-1); H-020 calendar refuted. Fresh-verifier
+  pass: no leakage; minor cap-binding + double-lag conservatisms annotated.
+- E-043 (H-014 calibration rerun with hourly DVOL): probe COMPLETE 12/12,
+  verdict **PASS** (RICH-leg real/synthetic ratios 0.88–1.03 ≥ 0.8 bar) —
+  Stage 2 passed; E-040's low call ratio was the daily-close-DVOL mismatch.
+  Checkers pass (21 H / 49 E / 20 K).
+
+## 2026-07-13 - Idea batch taxonomy_003 + H-015 F-OPTFLOW-POSITIONING (Claude solo)
+
+- User instructed Claude to run a new ideation round end-to-end without Codex,
+  downloading any needed data itself. Output:
+  `results/idea_batch_20260713_taxonomy_003/` (schema-conforming, 6 selected /
+  4 skipped, cap 15) with `feasibility.json` availability probes — DB optflow
+  coverage 0.9999 with 100% bucket-end `published_at` and zero frozen-feed;
+  Amihud breadth 29–33 complete symbols; DefiLlama stablecoins daily since
+  2017-11; Coinbase candles and blockchain.info hashrate reachable.
+- Top pick registered: H-015/F-OPTFLOW-POSITIONING — Deribit put/call
+  taker-buy premium imbalance (D4 data, mechanism reserved by the Deribit
+  research doc §3 C2) as a BTC/ETH long/flat risk-off book; direction fixed
+  ex-ante (follow put-flow extremes, Pan-Poteshman); grid {L ∈ [1,3],
+  z_cut ∈ [1.0,1.5]} = 4 pre-registered; E-042 Stage-2 data probe PASS
+  (0 trials, no K). Skipped as blocked: liquidation cascade, DVOL skew,
+  ETF flow, DVOL momentum.
+- Stage 3 gated on user ratification of the ranking; per the user ruling
+  Claude (not Codex) implements the runner when authorized. Checkers pass
+  (16 H / 42 E / 15 K families).
+
+## 2026-07-13 - H-014 Stage 2 E-040/E-041 calibration (Codex)
+
+- E-040 implemented the deterministic 12-pair Tardis real-premium calibration
+  and failed closed after 7 pairs at the fixed 2 GiB `Content-Length` guard;
+  Claude accepted the fail-closed record. The three-vendor purchase report
+  recommends Tardis Business at the published $3,000/month, with no purchase.
+- The user-authorized E-041 bounded rerun changed only the guard to compressed
+  bytes read, the denominator to DB hourly DVOL published as-of 08:00 UTC, and
+  completion/pricing status separation. It failed closed before download: the
+  fixed sample starts 2022-04-01, but DB hourly DVOL starts 2024-01-01.
+- E-041 has 0 trials, no K, no fallback, no pricing verdict, and no promotion
+  evidence. Stage 3 remains unauthorized and blocked.
+
+## 2026-07-13 - H-014 F-VOL-REGIME-OPT Stage 1 + E-039 probe (Claude)
+
+- User request: Deribit BTC/ETH coin-margined options vol-regime strategy
+  (covered call; sell premium when vol is "super high", buy when "super low").
+  User rulings: new family vs F-VRP-TIMING; probe approved; final target is
+  the two-sided switch (Option C) with the put side as a spread.
+- Registered H-014 with a 4-combo grid pre-registered BEFORE the probe
+  (`docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md`, with
+  the literature/data survey). E-039 synthetic-pricing probe (BS on DVOL,
+  Deribit public API, 2021-03→2026-07, 0 trials, no K): RICH-regime short
+  premium strongly positive vs ≈0 unfiltered (covered call BTC +2.35%/30d
+  coin vs −0.09%); CHEAP-bucket long ATM straddle negative on both symbols,
+  so the long leg stays OFF by default. Mechanism support only, not edge
+  evidence (RICH bucket ≈2–4 non-overlapping cycles).
+- Stage 3 blocked on: option-chain history (Tardis/Amberdata), an options
+  backtest engine, a Deribit trade adapter, and a coin-accounting
+  DOMAIN_RULES Change Manifest + ADR. Ledger/metadata checkers pass.
 
 ## 2026-07-13 - PR #9 follow-up repair closure
 

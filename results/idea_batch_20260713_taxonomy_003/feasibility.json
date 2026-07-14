@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-07-13T12:45:01.116528+00:00",
+  "purpose": "data-availability only; 0 trials, no K, no signal metrics",
+  "probes": {
+    "c1_optflow": {
+      "optflow_deribit_btc": {
+        "rows": 22126,
+        "first": "2024-01-01T00:00:00+00:00",
+        "last": "2026-07-10T23:00:00+00:00",
+        "coverage": 0.9999096167751266,
+        "gap_count_gt1h": 2,
+        "max_gap_hours": 2.0,
+        "published_at_bucket_end_ratio": 1.0,
+        "daily_zero_delta_ratio": 0.0
+      },
+      "optflow_deribit_eth": {
+        "rows": 22125,
+        "first": "2024-01-01T00:00:00+00:00",
+        "last": "2026-07-10T23:00:00+00:00",
+        "coverage": 0.9998644251626898,
+        "gap_count_gt1h": 3,
+        "max_gap_hours": 2.0,
+        "published_at_bucket_end_ratio": 1.0,
+        "daily_zero_delta_ratio": 0.0
+      }
+    },
+    "c4_amihud_breadth": {
+      "sample_days": {
+        "2024-03-15": {
+          "symbols_any": 29,
+          "symbols_complete_with_dollar_vol": 29
+        },
+        "2025-03-14": {
+          "symbols_any": 31,
+          "symbols_complete_with_dollar_vol": 31
+        },
+        "2026-06-16": {
+          "symbols_any": 33,
+          "symbols_complete_with_dollar_vol": 33
+        }
+      }
+    },
+    "c3_defillama_stablecoins": {
+      "points": 3149,
+      "first": "2017-11-29",
+      "last": "2026-07-13",
+      "daily_granularity": true,
+      "fields_sample": [
+        "date",
+        "totalBridgedToUSD",
+        "totalCirculating",
+        "totalCirculatingUSD",
+        "totalMintedUSD",
+        "totalUnreleased"
+      ]
+    },
+    "c5_coinbase_candles": {
+      "rows_2021_sample": 274,
+      "note": "public, 300 candles/request, paginated backfill required"
+    },
+    "c2_blockchain_info_hashrate": {
+      "points_5y": 1822,
+      "first": "2021-07-14",
+      "last": "2026-07-12"
+    }
+  }
+}

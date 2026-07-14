@@ -1,0 +1,10 @@
+{
+  "retrieved_at": "2026-07-13T16:35:04.652472+00:00",
+  "pit_convention": "value stamped date D usable no earlier than D+1 00:00 UTC",
+  "sources": {
+    "stablecoins.csv": "https://stablecoins.llama.fi/stablecoincharts/all",
+    "coinbase_btc.csv": "https://api.exchange.coinbase.com/products/BTC-USD/candles",
+    "coinbase_eth.csv": "https://api.exchange.coinbase.com/products/ETH-USD/candles",
+    "hashrate.csv": "https://api.blockchain.info/charts/hash-rate"
+  }
+}

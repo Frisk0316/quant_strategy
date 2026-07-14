@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 expires: none
 superseded_by: null
 ---
@@ -471,7 +471,12 @@ implementation exists.
   (E-036). E-037 then ran the signed-off Stage-3 Task B checkpoint with
   family-minting vs F-FUNDING-XS-DISPERSION and the pre-registered 4-combo
   fold-refit WF/CPCV grid; checkpoint1 fails the DSR/PSR threshold, so
-  promotion remains blocked.
+  promotion remains blocked. F-VOL-REGIME-OPT E-040/E-041 are separate one-off
+  Stage-2 calibrations: they deterministically sample E-039 month-first rows,
+  stream free Tardis Deribit option chains to the 08:00 UTC as-of snapshot,
+  and write real-vs-BS premium diagnostics or a fail-closed record. E-041 uses
+  DB hourly DVOL published as-of 08:00 for the synthetic denominator and stops
+  before Tardis acquisition when that DB input is unavailable.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
@@ -484,10 +489,15 @@ implementation exists.
   `scripts/run_pipeline_literature_ideas.py`,
   `scripts/run_pipeline_orchestrator.py`,
   `scripts/run_pipeline_funnel_report.py`,
-  `scripts/literature_keyword_scorer.py`.
+  `scripts/literature_keyword_scorer.py`;
+  E-040/E-041 use `research/probes/f_vol_regime_opt_stage2.py`.
 - Data / DB / artifact files: reads `docs/EXPERIMENT_REGISTRY.md` and
   `docs/HYPOTHESIS_LEDGER.md`; writes advisory sidecars under new
   `results/<batch_id>/` directories without mutating existing artifacts.
+  E-040/E-041 read immutable
+  `results/stage1_probe_20260713_f_vol_regime_opt/series_*.csv`; E-041 also
+  reads `dvol_deribit_{btc,eth}_1h` from `external_observations`. Each run
+  writes only its new `results/stage2_probe_*_f_vol_regime_opt*/` directory.
 - Config files: `config/pipeline_feedback_tags.yaml` for Claude/human-owned
   feedback ranking tags. This is not a strategy, risk, settings, or deployment
   gate config.
@@ -499,7 +509,8 @@ implementation exists.
   `tests/unit/test_pipeline_literature_ideas.py`,
   `tests/unit/test_literature_keyword_scorer.py`,
   `tests/unit/test_pipeline_orchestrator.py`,
-  `tests/unit/test_pipeline_funnel_report.py`.
+  `tests/unit/test_pipeline_funnel_report.py`,
+  `tests/unit/test_f_vol_regime_opt_stage2.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.
