@@ -37,7 +37,7 @@ Legend:
 | A9 | Validation / gates (replay/WF/CPCV, differential/source-provenance validation, research execution controls, pipeline checkpoint, DSR/PSR audit tooling) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md`; n_trials provenance changes must also review `docs/EXPERIMENT_REGISTRY.md` | Yes | Yes |
 | A10 | Core governance contracts/tooling (`AGENTS.md`, `CLAUDE.md`, `AI_CONTEXT.md`, workflow/lifecycle/branch/output/collaboration/impact docs, `check_doc_impact.py`) | `docs/README.md`, `docs/DOC_LIFECYCLE.md`, this matrix | No | If authority order changes |
 | A11 | Experiments / research runs | `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` | No | No |
-| A12 | Options research/shadow accounting and safety (coin-margined premium/settlement/fee/mark rules, bounded-loss intents, shadow evidence; `research/probes/h014_*` and `src/okx_quant/execution/deribit_shadow/`) | `docs/DOMAIN_RULES.md` (R8), ADR-0010/0011, `docs/INVARIANTS.md` (I39/I40) | Yes | If accounting, bounded-loss, fill, or shadow-boundary rules change |
+| A12 | Coin-margined derivatives research/shadow accounting and safety (options premium/settlement/fee/mark rules, bounded-loss intents, shadow evidence, inverse-perpetual PnL/funding/pair-unit rules; `research/probes/h014_*`, `src/okx_quant/execution/deribit_shadow/`, future `h021` Stage-3 runner) | `docs/DOMAIN_RULES.md` (R8/R9), ADR-0010/0011/0012, `docs/INVARIANTS.md` (I39/I40) | Yes | If accounting, bounded-loss, fill, or shadow-boundary rules change |
 
 A11 is not represented as a changed-file rule in `check_doc_impact.py`: research
 artifacts may be gitignored or external, so a diff-only rule would create false

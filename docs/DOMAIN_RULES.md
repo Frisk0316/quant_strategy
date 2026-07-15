@@ -177,6 +177,28 @@ real execution requires a new ADR and R7.2 approval.
   missed-entry, and mark-tracking metrics unlock only a future live-ADR
   discussion; live still requires R7.2 and explicit user approval.
 
+## R9. Coin-margined perpetuals (research) — ADR-0012
+
+Research-backtest accounting for Deribit inverse perpetuals (currently only
+H-021's cross-venue funding-spread pair). No engine/live surface.
+
+- **R9.1** Inverse-perp PnL is exact, in coin: long over a bar
+  `= N_usd × (1/P_prev − 1/P_now)`; short is the negation. No linear
+  approximation of the 1/P convexity.
+- **R9.2** A cross-venue delta-neutral PAIR aggregates in USD: the coin leg
+  converts at the same-bar venue-scoped mark, mark-to-market, never smoothed.
+  (Deliberate split vs R8.1's coin unit for coin-collateral overlays.)
+- **R9.3** Deribit funding: `interest_1h` on USD notional settles in coin
+  (`rate × N / P`), long pays positive (R3.1 sign); interval summation per
+  the frozen hypothesis contract with F41/I41 ≤1s canonicalization.
+- **R9.4** The no-margin/no-liquidation assumption is admissible ONLY for
+  unlevered, bounded-gross, delta-neutral books; anything levered or
+  directional first needs a margin-model ADR.
+- **R9.5** Costs follow the hypothesis's pre-registered per-leg bps model
+  (base + stress); no idealized maker fills.
+- **R9.6** Deribit legs price only from `source_primary='deribit'` canonical
+  candles (I19; no index substitution).
+
 ---
 
 ## How to use this file
