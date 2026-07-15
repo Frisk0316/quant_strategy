@@ -132,3 +132,30 @@ the Deribit index price or call this a backtest.
 
 **Verdict:** Stage-2 `FAIL`; H-021 is inconclusive/data-blocked. No Stage 3,
 retune, CPCV, checkpoint, promotion, or deployment work may cite this round.
+
+## Stage-3 addendum (pre-registered 2026-07-15)
+
+This addendum supersedes only the Stage-3 stop condition above after E-055
+passed the venue-scoped Deribit perpetual-price data gate and ADR-0012 fixed
+the inverse-perpetual research accounting contract. All Stage-1/Stage-2 signal,
+entry, exit, sizing, timing, data-provenance, and cost rules remain frozen.
+
+- **Grid and trial provenance:** reuse exactly `{L in [3, 9], entry_bps in
+  [1, 2]}` = 4 cells. No new cell is permitted. Family-cumulative
+  `n_trials = 12` (prior 8 plus this grid's 4), caller-declared per I23.
+- **Primary gate:** run `backtesting.pipeline_refit.refit_validation` on the
+  base-cost (`fee_bps=2`, `slippage_bps=2`) UTC-daily return series. Pass only
+  if DSR >= 0.95 and PSR >= 0.95, using fold-refit WF 365/90 and CPCV
+  6/2/2%/1.
+- **Robustness:** every fold-selected cell must remain net-positive in
+  aggregate PnL after re-costing the identical positions at the 5+2 bps
+  stress. Persist and report both base-cost and stress-cost series; stress is
+  a robustness requirement, not a second selection grid.
+- **Daily aggregation:** sum all complete 8h-event PnL within each UTC day to
+  form the daily returns used by WF/CPCV. Missing 8h events fail closed and are
+  never compressed.
+
+Stage 3 stops at checkpoint ① after this single four-cell run. Regardless of
+the statistical outcome, artifacts must keep `idealized_fill:false` and
+`promotion_gate_passed:false`; no retry, retune, promotion, demo, shadow, or
+live claim is authorized.
