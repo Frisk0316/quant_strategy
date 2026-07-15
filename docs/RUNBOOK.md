@@ -196,6 +196,35 @@ python scripts/market_data/ingest.py \
     --end now
 ```
 
+Deribit BTC/ETH inverse-perpetual 1m history uses the public TradingView candle
+endpoint, native canonical ids, and forward checkpoints. Initial backfill:
+
+```powershell
+python scripts\market_data\ingest.py `
+    --exchange deribit `
+    --dataset klines_1m `
+    --symbols BTC-PERPETUAL,ETH-PERPETUAL `
+    --start 2024-01-01T00:00:00Z `
+    --end now `
+    --direction forward
+```
+
+Forward top-up uses the same command; the per-symbol checkpoint resumes from
+the last successful cursor and idempotent canonical upserts make reruns safe.
+Verify the venue scope before using the data:
+
+```sql
+SELECT inst_id, source_primary, quality_status, COUNT(*) AS rows,
+       MIN(ts) AS first_ts, MAX(ts) AS last_ts
+FROM canonical_candles
+WHERE inst_id IN ('BTC-PERPETUAL', 'ETH-PERPETUAL')
+  AND bar = '1m'
+GROUP BY inst_id, source_primary, quality_status;
+```
+
+Require `source_primary='deribit'`, no suspect rows, and at least 99% 1m
+coverage for the requested window. Never substitute Deribit index-price data.
+
 Check ingestion progress:
 
 ```sql

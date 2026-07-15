@@ -13,6 +13,25 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-15 - Deribit perpetual candles and H-021 E-055 reprobe (Codex)
+
+- Added a credential-free, throttled Deribit TradingView-chart client and the
+  existing checkpointed candle-ingest path for native `BTC-PERPETUAL` and
+  `ETH-PERPETUAL` 1m bars. The canonical rows retain exact
+  `source_primary='deribit'` provenance; no index or cross-venue substitution
+  is allowed.
+- Backfilled 2024-01-01 through the current closed minute, then ran the same
+  command as a forward top-up. Both instruments are continuous through
+  2026-07-15 08:04Z at 1,333,925 rows, with zero missing minutes, null OHLC,
+  or suspect rows. Six fixed API/DB OHLC spot checks matched exactly.
+- Registered E-055 after rerunning the frozen H-021 Stage-2 probe without a
+  retune. Gate 1 flipped to PASS at 1,314,720/1,314,720 Deribit price rows per
+  leg and distinctness remained PASS; the robust cost gate remained FAIL
+  because no cell passed the conservative scenario on both BTC and ETH.
+  Family trials remain 8 and K remains 0/2. The stop condition was applied:
+  no Stage 3, basis/inverse-collateral PnL, gate, strategy, risk, shadow, or
+  deployment work ran.
+
 ## 2026-07-15 - Taxonomy_004 cross-venue funding Stage 2 (Codex)
 
 - The strategy ideator selected the only new research-authorized frontier:

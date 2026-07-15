@@ -185,6 +185,9 @@ implementation exists.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
+  The checkpointed CLI also backfills and forward-tops-up Deribit public
+  BTC/ETH-PERPETUAL 1m candles under native canonical ids with venue-scoped
+  `source_primary='deribit'`; index prices are never a fallback.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -192,6 +195,7 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `src/okx_quant/data/exchange_clients/deribit_public.py`,
   `src/okx_quant/data/external_clients/deribit_dvol.py`,
   `src/okx_quant/data/external_clients/deribit_funding.py`,
   `src/okx_quant/data/external_clients/deribit_option_surface.py`,
@@ -208,6 +212,7 @@ implementation exists.
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
+  `tests/unit/test_deribit_public_client.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
   `tests/unit/test_routes_data_delete.py`,
   `tests/unit/test_deribit_dvol_client.py`,

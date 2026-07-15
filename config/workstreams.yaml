@@ -61,9 +61,9 @@ workstreams:
     status: blocked
     milestones: [taxonomy, stage1_spec, stage2_probe, stage3_backtest]
     current: stage2_probe
-    state: "F-XVENUE-FUNDING-SPREAD H-021 is inconclusive after E-053/E-054. The corrected reprobe has 2739/2739 aligned funding events per symbol and provisional distinctness PASS, but Stage 2 FAILS because Deribit perpetual 1m price coverage is 0% and no frozen cell passes both repo-default and conservative two-leg costs on BTC and ETH. Family proxy n_trials=8; K=0/2."
-    next: "STOP. Do not retune or run Stage 3. Reopen only after real venue-scoped Deribit perpetual prices, reviewed inverse-contract/fee specs, and a new ex-ante rationale are available."
-    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md]
+    state: "F-XVENUE-FUNDING-SPREAD H-021 remains inconclusive after E-055. D6 supplied continuous venue-scoped Deribit BTC/ETH perpetual 1m candles and Gate 1 now PASSES at 1314720/1314720 rows per leg; distinctness also passes. Stage 2 still FAILS because the frozen conservative two-leg cost scenario has no common positive BTC/ETH cell. Family proxy n_trials=8; K=0/2."
+    next: "STOP. Do not retune or run Stage 3/PnL. Any inverse-perpetual accounting or basis-PnL work needs a separate user-approved decision and task; E-055 is not promotion evidence."
+    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, tasks/2026-07-15-deribit-perpetual-d6-e055-context-handoff.md, tasks/2026-07-15-deribit-perpetual-d6-e055-session-handoff.md]
     updated: 2026-07-15
 
   - name: Multi-venue instrument specs (ADR-0007 P1)

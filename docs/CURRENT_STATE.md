@@ -67,12 +67,13 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 - H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
   H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 blocked on OKX
   BTC/ETH 1m backfill.
-- H-021/F-XVENUE-FUNDING-SPREAD is `inconclusive` after taxonomy_004 E-053/E-054.
-  Corrected funding alignment is complete (2,739/2,739 per symbol) and the
-  feature-distinctness proxy passes, but Stage 2 fails: Deribit venue-scoped
-  perpetual 1m prices are absent and conservative two-leg costs leave no common
-  positive BTC/ETH cell. Family proxy n_trials=8, K=0/2. Do not retune or run
-  Stage 3 without real Deribit prices/specs and a new ex-ante rationale.
+- H-021/F-XVENUE-FUNDING-SPREAD is `inconclusive` after taxonomy_004 E-055.
+  D6 backfilled continuous venue-scoped Deribit BTC/ETH perpetual 1m candles;
+  E-055 Gate 1 passes at 1,314,720/1,314,720 rows per leg and distinctness still
+  passes. Stage 2 nevertheless fails because the frozen conservative two-leg
+  cost scenario has no common positive BTC/ETH cell. Family proxy n_trials=8,
+  K=0/2. Stop: do not retune or run Stage 3/PnL without a separately authorized
+  inverse-perpetual accounting decision and Stage-3 task.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK

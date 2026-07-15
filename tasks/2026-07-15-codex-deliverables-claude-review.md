@@ -66,6 +66,20 @@ correction), and modified `backtesting/pipeline_stage2_registry.py`.
   prompts bound the *minimum* deliverable, not the maximum initiative.
   Stage-3 for H-021 still requires its own Stage-1 sign-off per the pipeline.
 
+## 4. D6 Deribit perpetual ingestion + E-055 (later same day) — **PASS**
+
+Independently verified: `deribit_public.py` client + `ingest.py` wiring exist
+with unit tests (22 tests green incl. shadow suite); DB has 1,333,925
+1m rows per leg, `source_primary='deribit'`, 2024-01-01 → 2026-07-15 08:04,
+100% coverage over the spec window (E-055 gate 1: 1,314,720/1,314,720);
+RUNBOOK backfill/top-up/verification commands added. E-055 correctly reports:
+data gate PASS, distinctness PASS (0.29/0.17), **frozen conservative cost
+gate still FAIL** (BTC negative in all 5+2 bps cells) — and Codex applied the
+prompt's stop condition verbatim: no retune, no Stage 3. Exactly right: the
+cost-gate persistence was expected ex-ante (E-055 re-runs the same
+funding-only proxy; the registered rationale lives in Stage-3's basis PnL,
+which is now unblocked by D6 data + ADR-0012 accounting + I44 golden gate).
+
 ## Checks run (fresh)
 
 Shadow suite 13 + goldens 6 + registry/probe tests 6 all pass; mutation check

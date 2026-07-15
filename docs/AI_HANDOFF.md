@@ -59,11 +59,11 @@ promotion, demo, shadow, or live work is authorized by this handoff.
   data-blocked on OKX 1m. H-013/E-050 is shelved after statistical failure.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
-  ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-053/E-054
-  is inconclusive at Stage 2: corrected funding coverage is complete and the
-  distinctness proxy passes, but Deribit perpetual 1m prices are absent and the
-  conservative two-leg cost gate fails. Family proxy n_trials=8, K=0/2; no
-  retune, Stage 3, full-PnL, or promotion claim.
+  ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-055
+  remains inconclusive at Stage 2: D6 supplied continuous venue-scoped Deribit
+  perpetual 1m prices and Gate 1 now passes, but the frozen conservative
+  two-leg cost gate still has no common positive BTC/ETH cell. Family proxy
+  n_trials=8, K=0/2; stop with no retune, Stage 3, full-PnL, or promotion claim.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 

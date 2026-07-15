@@ -37,6 +37,14 @@ substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
 
+Deribit BTC/ETH inverse-perpetual 1m candles use the credential-free
+`public/get_tradingview_chart_data` endpoint through
+`exchange_clients/deribit_public.py` and the checkpointed `ingest.py` forward
+path. They are stored under native canonical ids `BTC-PERPETUAL` and
+`ETH-PERPETUAL`, with `quality_status='raw'` and
+`source_primary='deribit'`, so the venue series coexists with Binance/OKX
+canonical ids and cannot replace or be replaced by an index-price series.
+
 ## Market Data Fetch Queue Flow
 
 ```text
@@ -282,6 +290,10 @@ raw exchange rows -> CandleStore upsert and canonicalize methods -> raw_candles,
 ```
 
 Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
+Deribit inverse-perpetual candles take the direct canonical CandleStore path
+under their native ids because the legacy market-instrument schema has no
+Deribit venue enum; ingestion checkpoints, raw quality flags, and exact
+`source_primary='deribit'` provenance remain mandatory.
 The Market Data Coverage API reads OHLCV list rows from `instrument_bars`
 metadata first, not from a full `canonical_candles` aggregation. That keeps the
 UI responsive while large 1m backfills are running; the displayed OHLCV row count
