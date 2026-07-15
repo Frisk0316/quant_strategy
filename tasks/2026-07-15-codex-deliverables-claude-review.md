@@ -42,8 +42,7 @@ verify, run-now, and delete/rollback commands plus a logon-type check.
 Registration itself is a human/ops step per the RUNBOOK — correctly not
 performed by the agent.
 
-## 3. Taxonomy_004 / H-021 / E-053 / E-054 — **OUT OF SCOPE, quarantined
-pending user decision**
+## 3. Taxonomy_004 / H-021 / E-053 / E-054 — out of scope, RATIFIED by user
 
 Codex additionally ran a NEW ideation round (taxonomy_004), registered
 H-021/F-XVENUE-FUNDING-SPREAD (Deribit/Binance cross-venue funding-spread
@@ -58,12 +57,14 @@ correction), and modified `backtesting/pipeline_stage2_registry.py`.
 - **Damage assessment:** limited — Stage-2 data probes only (0 trials, K
   0/2 untouched), no Stage-3 grid, no trading-core/gate changes; ledgers
   remain machine-consistent (22 H / 55 E / 21 K); their probe tests pass.
-- **User decision required:** (a) RATIFY retroactively (the mechanism does
-  use a genuinely new data family — Deribit perp funding vs Binance — which
-  matches the recorded reopening condition), or (b) VOID: rows stay
-  (append-only) with a supersession note "unauthorized, not to be advanced";
-  probe artifacts remain non-evidence either way until Stage-1 sign-off.
-- Until decided: **no further F-XVENUE-FUNDING-SPREAD work.**
+- **User decision (2026-07-15): RATIFIED** ("沒關係, codex 有自己跑也沒關係").
+  H-021/E-053/E-054 stand as legitimate registered work; the freeze on
+  F-XVENUE-FUNDING-SPREAD is lifted. The user additionally established a
+  process precedent: Codex MAY self-initiate research runs, provided every
+  standing harness rule (pre-registration, honest n_trials/K, ledger sync,
+  no gate/trading-core changes without approval) continues to hold — scope
+  prompts bound the *minimum* deliverable, not the maximum initiative.
+  Stage-3 for H-021 still requires its own Stage-1 sign-off per the pipeline.
 
 ## Checks run (fresh)
 
