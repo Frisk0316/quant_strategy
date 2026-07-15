@@ -25,9 +25,16 @@ superseded_by: null
   research helpers imported by the runner.
 - **Tests:** `tests/unit/test_h014_shadow.py`,
   `tests/unit/test_h014_options_accounting.py`.
-- **Gotchas:** The research price day ends at 08:00 UTC, while the last hourly
+- **Gotchas:** The shadow price day ends at 08:00 UTC, while the last hourly
   DVOL bucket is observed at 23:00 and becomes F26-safe at 00:00. Any missing
   exact prior common day must reject the cycle, never silently use the last row.
+
+The close series intentionally uses the Deribit-aligned 08:00 UTC session
+(`ts - INTERVAL '8 hours'`) rather than E-039's midnight-UTC close. Claude's
+review measured 1,570 common days: IVP was identical, mean/max absolute z drift
+was 0.03/0.30, and RICH(85/0.5) flipped on 0/1,570 BTC days and 3/1,570 ETH
+days. This measured-immaterial convention is explicit and guarded by the
+recorded DB-shape fixture test.
 
 Related: `docs/ADR/0011-deribit-options-shadow-execution.md` ·
 [[../DOMAIN_RULES]] · [[../DATA_FLOW]].

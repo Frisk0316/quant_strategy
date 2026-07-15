@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,39 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-15 - Taxonomy_004 cross-venue funding Stage 2 (Codex)
+
+- The strategy ideator selected the only new research-authorized frontier:
+  C4/F-XVENUE-FUNDING-SPREAD, after H-013 and H-015 satisfied its activation
+  condition. The Stage-1 contract froze four BTC/ETH funding-proxy cells and
+  counted every inspected cell.
+- E-053 exposed F41: exact timestamp equality retained only 1,782/2,739
+  settlement events. Its artifact is retained as invalid evidence. E-054 used
+  the orchestrator reprobe with <=1 second boundary canonicalization and
+  restored 2,739/2,739 aligned events per symbol; family proxy trials total 8,
+  K remains 0/2 because both rows stopped at Stage 2.
+- E-054 remains `stage2_fail`: provisional feature distinctness passes (max
+  abs corr 0.292), but Deribit venue-scoped perpetual 1m price coverage is 0%,
+  and no frozen cell is positive on both symbols under both repo-default and
+  conservative two-leg costs. No Stage 3, full price/basis PnL, CPCV,
+  checkpoint, config, strategy, shadow/live, or promotion work ran.
+- Added F41-I41 settlement-boundary, F42-I42 undefined-correlation, and
+  F43-I43 missing-interval guards with focused unit tests. The corrected E-054
+  advisory is preserved as an immutable SHA-256-addressed snapshot.
+
+## 2026-07-15 - P1.4 OKX liquidation unattended-mode support (Codex)
+
+- Kept the existing `quant_liq_okx_ingest` action and two-hour cadence; the
+  wrapper now uses the verified Python 3.12 executable so non-interactive runs
+  do not depend on a logged-on user's PATH.
+- Documented a least-privilege `woody` S4U (`/NP`) task with `LIMITED` run level,
+  including create, verification, manual run, status, rollback, and removal.
+  SYSTEM was deliberately rejected because the repository is user-writable.
+- Host activation remains pending: the existing task still reports
+  `Interactive`; Task Scheduler updates from this session returned Access
+  Denied without Administrator rights. No ingestion schema/data semantics,
+  strategy, risk, execution, H-014/shadow file, or gate changed.
 
 ## 2026-07-14 - ADR-0011 H-014 shadow-only implementation (Codex)
 

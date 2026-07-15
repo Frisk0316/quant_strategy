@@ -170,9 +170,12 @@ real execution requires a new ADR and R7.2 approval.
   collected mark/leg files are immutable inputs.
 - **R8.7** ADR-0011 v1 is append-only JSONL shadow evidence using DB F26 as-of
   signals and allow-listed Deribit public market-data methods only. It has no
-  credential or order capability. At least eight weeks of fresh daily records
-  plus fill-bias, missed-entry, and mark-tracking metrics unlock only a future
-  live-ADR discussion; live still requires R7.2 and explicit user approval.
+  credential or order capability. Chain-construction failures journal as
+  `missed_entry`; R8.3 intent-set failures journal as `rejected`, which is
+  counted separately from and excluded from the missed-entry denominator like
+  `cap_rejected`. At least eight weeks of fresh daily records plus fill-bias,
+  missed-entry, and mark-tracking metrics unlock only a future live-ADR
+  discussion; live still requires R7.2 and explicit user approval.
 
 ---
 

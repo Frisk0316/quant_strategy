@@ -54,6 +54,8 @@ A2 execution and A12 options research/shadow accounting and safety.
 - `scripts/run_h014_shadow.py` — one-cycle/manual report CLI.
 - `config/h014_shadow.yaml` — approved frozen constants only.
 - `tests/unit/test_h014_shadow.py` — I39/I40/F39 regression coverage.
+- `tests/fixtures/h014_shadow_db_signal.json` — recorded SQL-return rows and
+  immutable E-039 expectations for five BTC/ETH signal days.
 - `docs/ADR/README.md`, `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`,
   `docs/FAILURE_MODES.md`, `docs/GOLDEN_CASES.md`,
   `docs/DOC_IMPACT_MATRIX.md` — decision/rule/invariant registry sync.
@@ -67,7 +69,10 @@ A2 execution and A12 options research/shadow accounting and safety.
 - Before: no Deribit option shadow surface or in-code R8.3 intent rejection.
 - After: a manual process can append what H-014 would do against public books;
   all three legs must be fillable, naked puts/over-cap intents reject, and stale
-  DB dates reject before journaling.
+  DB dates reject before journaling. The Claude-review follow-up replaces the
+  self-delegation signal test with recorded DB-shape parity and journals sparse
+  chain failures as `missed_entry` or R8.3 failures as `rejected` without
+  aborting the sibling currency.
 - Money/risk impact: no capital or order path. Shadow PnL uses imported R8
   accounting and is evidence only.
 
@@ -82,7 +87,8 @@ A2 execution and A12 options research/shadow accounting and safety.
 
 - [x] `docs/DOMAIN_RULES.md` — R8 shadow scope.
 - [x] `docs/INVARIANTS.md` — I39 strengthened, I40 added.
-- [x] `docs/FAILURE_MODES.md` — F39 added after the real-DB stale/day-boundary bug.
+- [x] `docs/FAILURE_MODES.md` — F39 guards stale/day-boundary drift; F40 guards
+  unjournaled intent-chain aborts.
 - [x] ADR-0011 — accepted source unchanged; index updated.
 - [x] `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/RUNBOOK.md` — flow/ops.
 - [x] `docs/backtest_live_parity_plan.md` — reviewed, unchanged: this path is
@@ -105,6 +111,10 @@ A2 execution and A12 options research/shadow accounting and safety.
   written with `order_capability=false` and `credentials_used=false`.
 - Report smoke: one valid day in one distinct week (0.14-week span), two
   ignored stale audit records, all exit/live gates false as expected.
+- Claude-review follow-up: recorded BTC/ETH DB-shape fixture matches five E-039
+  days within `|Δivp| < 0.5` and `|Δz| < 0.05`, including RICH and not-rich;
+  one-line DVOL as-of and 08:00 boundary mutations each fail the fixture test.
+  Sparse-chain and R8.3 rejection regressions journal and continue to ETH.
 
 ## Risks and rollback
 

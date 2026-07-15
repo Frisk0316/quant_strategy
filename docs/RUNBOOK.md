@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -700,14 +700,34 @@ live execution still requires R7.2 and a separate explicit user approval.
 OKX's public liquidation-orders REST endpoint only retains a few hours of
 events (measured 2026-07-03: BTC ~14h, ETH ~5h at the 1,600-row cap), so
 `liq_okx_btc` / `liq_okx_eth` forward accumulation runs as a Windows scheduled
-task every 2 hours (user-approved 2026-07-03):
+task every 2 hours. P1.4's unattended mode uses the same `woody` account with
+an S4U (`/NP`) logon and `LIMITED` run level; it stores no password and does not
+grant SYSTEM or administrator privileges. Run this once from an Administrator
+PowerShell to create or replace the previous Interactive-only task:
 
-```text
-Task name : quant_liq_okx_ingest  (schtasks, Interactive only — runs while logged on)
-Wrapper   : scripts/market_data/run_liq_ingest_task.cmd
-Log       : logs/liq_okx_ingest.log (gitignored)
-Manual run: schtasks /Run /TN quant_liq_okx_ingest
-Remove    : schtasks /Delete /TN quant_liq_okx_ingest /F
+```powershell
+schtasks /Create /TN quant_liq_okx_ingest /TR "C:\quant_strategy\scripts\market_data\run_liq_ingest_task.cmd" /SC HOURLY /MO 2 /ST 00:05 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+(Get-ScheduledTask -TaskName "quant_liq_okx_ingest").Principal | Format-List UserId,LogonType,RunLevel
+# Expected: woody / S4U / Limited
+```
+
+The wrapper pins the verified Python 3.12 executable because an S4U session
+must not depend on an interactive PATH. Update that path if Python is moved.
+S4U has no delegated network credentials; this task needs only public HTTPS,
+the local repository, and the configured localhost TimescaleDB.
+
+Manual run, status, and permanent removal:
+
+```powershell
+schtasks /Run /TN quant_liq_okx_ingest
+Get-ScheduledTaskInfo -TaskName "quant_liq_okx_ingest" | Format-List LastRunTime,LastTaskResult,NextRunTime,NumberOfMissedRuns
+schtasks /Delete /TN quant_liq_okx_ingest /F
+```
+
+Rollback to the former logged-on-only behavior, if needed:
+
+```powershell
+schtasks /Create /TN quant_liq_okx_ingest /TR "C:\quant_strategy\scripts\market_data\run_liq_ingest_task.cmd" /SC HOURLY /MO 2 /ST 00:05 /RU "MAXWEL_FRIEDMAN\woody" /IT /RL LIMITED /F
 ```
 
 The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if

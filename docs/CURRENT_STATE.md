@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -67,10 +67,18 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 - H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
   H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 blocked on OKX
   BTC/ETH 1m backfill.
+- H-021/F-XVENUE-FUNDING-SPREAD is `inconclusive` after taxonomy_004 E-053/E-054.
+  Corrected funding alignment is complete (2,739/2,739 per symbol) and the
+  feature-distinctness proxy passes, but Stage 2 fails: Deribit venue-scoped
+  perpetual 1m prices are absent and conservative two-leg costs leave no common
+  positive BTC/ETH cell. Family proxy n_trials=8, K=0/2. Do not retune or run
+  Stage 3 without real Deribit prices/specs and a new ex-ante rationale.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
-  updates). OKX liquidation unattended mode is an approved Codex task.
+  updates). OKX liquidation P1.4 repo support is implemented with an explicit
+  Python path and documented S4U/Limited task lifecycle, but the host task still
+  reports `Interactive`; Administrator activation and a manual-run check remain.
 - F36: the shelved OI runner posts turnover cost on signal day; any reuse needs
   a fix, guarding test, ex-ante rationale, and a new experiment record.
 - ADR-0011/H-014 shadow completed its first valid real-DB manual cycle after a
@@ -86,7 +94,8 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 2. Continue the manual H-014 shadow cycle and obtain Claude's execution/risk
    review. Eight-week counting includes only valid exact-prior-day signals;
    scheduling remains unapproved.
-3. Codex P1.4 implementation: OKX liquidation unattended mode.
+3. From Administrator PowerShell, apply the P1.4 RUNBOOK `/NP` registration;
+   verify `S4U`/`Limited`, run the task once, and require result `0`.
 4. Pending fact: the user creates the OKX Demo key.
 5. Taxonomy_003 and H-013 are closed (all failed the gate); next ideation
    round only with new data families or materially longer history.

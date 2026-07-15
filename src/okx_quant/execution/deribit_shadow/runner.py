@@ -468,6 +468,14 @@ def validate_record(record: dict[str, Any]) -> None:
         for key in ("signal", "status", "legs"):
             if key not in record:
                 raise ValueError(f"intent record missing {key}")
+        if record["status"] not in {
+            "not_rich",
+            "cap_rejected",
+            "missed_entry",
+            "rejected",
+            "filled",
+        }:
+            raise ValueError(f"unsupported intent status {record['status']!r}")
 
 
 class Journal:
@@ -699,13 +707,37 @@ def _intent_record(
             "status": "cap_rejected",
             "intent": {"units": FROZEN_TRANCHE_UNITS, "open_units": open_units},
         }
-    legs = build_intent_legs(currency, signal, client.instruments(currency), now)
-    validate_intent_set(
-        legs,
-        tranche_units=FROZEN_TRANCHE_UNITS,
-        open_units=open_units,
-        unit_cap=FROZEN_UNIT_CAP,
-    )
+    try:
+        legs = build_intent_legs(currency, signal, client.instruments(currency), now)
+    except ValueError as exc:
+        return {
+            **common,
+            "status": "missed_entry",
+            "intent": None,
+            "error": str(exc),
+        }
+    intent = {
+        "entry_date": now.date().isoformat(),
+        "expiry": legs[0]["expiry"],
+        "units": FROZEN_TRANCHE_UNITS,
+        "open_units_before": open_units,
+        "unit_cap": FROZEN_UNIT_CAP,
+    }
+    try:
+        validate_intent_set(
+            legs,
+            tranche_units=FROZEN_TRANCHE_UNITS,
+            open_units=open_units,
+            unit_cap=FROZEN_UNIT_CAP,
+        )
+    except ValueError as exc:
+        return {
+            **common,
+            "status": "rejected",
+            "intent": intent,
+            "legs": legs,
+            "error": str(exc),
+        }
     filled: list[dict[str, Any]] = []
     fill_error = None
     for leg in legs:
@@ -730,14 +762,6 @@ def _intent_record(
                 "fees": {"trade_fee_coin": fee, "rule": "R8.4 imported"},
             }
         )
-    expiry = legs[0]["expiry"]
-    intent = {
-        "entry_date": now.date().isoformat(),
-        "expiry": expiry,
-        "units": FROZEN_TRANCHE_UNITS,
-        "open_units_before": open_units,
-        "unit_cap": FROZEN_UNIT_CAP,
-    }
     if fill_error or any("fill" not in leg for leg in filled):
         return {**common, "status": "missed_entry", "intent": intent, "legs": filled, "error": fill_error}
     return {
@@ -802,7 +826,7 @@ def build_bias_report(path: str | Path) -> dict[str, Any]:
     records = Journal(path).records
     intent_days: list[date] = []
     ignored_stale_signal_records = 0
-    rich = {"filled": 0, "missed_entry": 0, "cap_rejected": 0}
+    rich = {"filled": 0, "missed_entry": 0, "cap_rejected": 0, "rejected": 0}
     pnl_by_currency_day: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     valid_intent_events: set[str] = set()
     valid_positions: set[str] = set()
@@ -884,6 +908,7 @@ def build_bias_report(path: str | Path) -> dict[str, Any]:
         "missed_entry_rate": missed_rate,
         "rich_opportunities_with_book_test": fillable_denominator,
         "cap_rejections_excluded_from_missed_rate": rich["cap_rejected"],
+        "intent_rejections_excluded_from_missed_rate": rich["rejected"],
         "ignored_stale_signal_records": ignored_stale_signal_records,
         "mark_tracking_error_coin": _metric(tracking),
         "bias_metrics_complete": metrics_complete,

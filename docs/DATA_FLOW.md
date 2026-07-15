@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -90,6 +90,7 @@ not converted into a fallback or an authoritative `None` value.
 ```text
 OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market_data/import_parquet_funding.py -> funding_rates -> backtesting.data_loader.load_funding -> ReplayBacktestEngine funding cashflow path -> funding artifacts and validation fields -> backtest API and review docs
 Binance funding history + PIT universe -> scripts/market_data/backfill_universe_funding.py -> funding_rates plus local coverage report -> advisory Stage2 data reprobe
+Deribit hourly BTC/ETH funding + Binance 8h BTC/ETH funding + venue-scoped Deribit perpetual prices -> backtesting/xvenue_funding_spread_probe.py -> taxonomy_004 Stage2/reprobe sidecars (fail closed when the Deribit price leg is absent)
 ```
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
@@ -104,6 +105,12 @@ breadth minimum from `START + breadth_warmup_days` (30, mirroring
 `config/universe.yaml` warmup) because PIT eligibility cannot exist during
 warmup; warmup days stay recorded in probe details for audit (user-approved
 2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
+The C4 cross-venue probe canonicalizes only settlement timestamps within one
+second of the hourly boundary (F41/I41), sums eight non-overlapping Deribit
+`interest_1h` rows per Binance settlement, and never substitutes Deribit index
+prices for venue-scoped perpetual marks. Its lagged funding/cost grid is proxy
+evidence only; basis, inverse-collateral, margin, and executable-price PnL remain
+unavailable until a separate Stage-3 contract is approved.
 
 ## External Observations Ingestion Flow
 

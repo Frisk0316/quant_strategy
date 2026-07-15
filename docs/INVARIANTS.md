@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -58,8 +58,11 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I36 | Progress file reads serve only existing markdown paths explicitly listed in `config/workstreams.yaml` and resolved inside the repository | — | `tests/unit/test_routes_progress.py::test_progress_route_serves_only_configured_files` |
 | I37 | A research artifact that claims t+1 execution must delay every signal-dependent return component, including turnover cost, until that execution point | R5.3, R6.1 | Known gap: E-037 spot-check; `docs/KNOWN_ISSUES.md` |
 | I38 | Governance checks fail closed: H↔E links agree in both directions, only an explicit per-ID `reserved` annotation exempts a missing experiment, valid Markdown table spacing cannot hide rows, and every non-exempt task document has non-empty lifecycle metadata | — | `tests/unit/test_ledger_consistency.py`, `tests/unit/test_doc_metadata_tasks.py` |
-| I39 | Coin-denominated options PnL settles on official Deribit delivery prices, allows bounded-coin-loss structures only, and every daily mark records its source. ADR-0011 additionally rejects naked short-put intents before fill handling and caps each symbol at 1.0 open unit. | R8.1–R8.6 | `tests/unit/test_h014_options_accounting.py`, `tests/unit/test_h014_shadow.py` |
+| I39 | Coin-denominated options PnL settles on official Deribit delivery prices, allows bounded-coin-loss structures only, and every daily mark records its source. ADR-0011 additionally rejects naked short-put intents before fill handling, caps each symbol at 1.0 open unit, and journals chain failures/rejections without aborting the sibling currency cycle. | R8.1–R8.7 | `tests/unit/test_h014_options_accounting.py`, `tests/unit/test_h014_shadow.py` |
 | I40 | H-014 shadow signals delegate to the research `build_series` definition, use hourly DVOL only after F26 `published_at`, align canonical closes to the research 08:00 UTC day, require the exact prior common day, and expose no private/order method. | R6.1, R8.7 | `tests/unit/test_h014_shadow.py`; five-day real-DB parity check |
+| I41 | Funding settlement rows may be canonicalized to their nearest hourly boundary only when source jitter is at most one second; exact timestamp equality must not manufacture gaps, and larger offsets fail closed rather than being rounded into a valid event. | R6.1 | `tests/unit/test_xvenue_funding_spread_probe.py` |
+| I42 | A quantitative family-distinctness check must fail closed when any required candidate/reference correlation is undefined because observations are insufficient or either series has zero variance; undefined is never equivalent to zero correlation. | R6.3 | `tests/unit/test_xvenue_funding_spread_probe.py` |
+| I43 | A funding proxy that claims next-settlement execution must verify every adjacent evaluated event is exactly one contractual interval apart; missing intervals fail the cost gate instead of being compressed into a false t+1 transition. | R6.1, R6.3 | `tests/unit/test_xvenue_funding_spread_probe.py` |
 
 ## Usage
 

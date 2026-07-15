@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -61,9 +61,13 @@ over time.
 - The existing `127.0.0.1:8080` listener (PID 23696 during the audit) timed out
   and was not stopped because it was not owned by this session. The user has
   abandoned that port; use another port and do not kill the user process.
-- `quant_liq_okx_ingest` remains Interactive-only while measured public REST
-  retention is hours-scale. The user approved unattended/service mode; Codex
-  implementation remains a separate P1.4 task.
+- P1.4 repo support is implemented: the liquidation wrapper pins the verified
+  Python executable, and the RUNBOOK records least-privilege S4U registration,
+  verification, run, rollback, and removal commands. Host activation remains
+  blocked: `quant_liq_okx_ingest` still reported `Interactive` on 2026-07-15
+  because this session could not obtain Administrator Task Scheduler rights.
+  Run the documented `/NP` command from Administrator PowerShell, then require
+  `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
 
 ## Governance follow-ups
 

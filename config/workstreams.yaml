@@ -8,18 +8,18 @@ workstreams:
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
     current: followup_repair
     state: "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) plus verified repair df53f73 and handoff d046978 were created after that head and are not on main. The follow-up branch was pushed through d046978 on 2026-07-14. No strategy or deployment readiness follows."
-    next: "Open and review the separate codex/pipeline-batch1-stage3 follow-up PR; human performs the merge. After that, remaining Codex P1 work is OKX liquidation unattended mode."
+    next: "Open and review the separate codex/pipeline-batch1-stage3 follow-up PR; human performs the merge. P1.4 repo support is implemented; run the RUNBOOK command from Administrator PowerShell to activate and verify woody/S4U/Limited unattended liquidation ingest."
     links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
-    updated: 2026-07-14
+    updated: 2026-07-15
 
   - name: Local runtime reliability
     status: blocked
     milestones: [coverage_query, single_server, private_ws_auth]
     current: private_ws_auth
-    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. The pre-existing 127.0.0.1:8080 listener (PID 23696 during audit) timed out and was left untouched; temporary 8081 smoke passed. Demo private WS still returns OKX 60005 Invalid apiKey."
-    next: "Port 8080 is abandoned per the 2026-07-12 user decision (leave the user-owned PID untouched; run servers on another port). Configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
+    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. P1.4 repo support pins the liquidation Python path and documents S4U/Limited task lifecycle; host activation is pending Administrator rights. The pre-existing 127.0.0.1:8080 listener was left untouched. Demo private WS still returns OKX 60005 Invalid apiKey."
+    next: "Run the P1.4 RUNBOOK /NP command from Administrator PowerShell, verify S4U/Limited and result 0. Port 8080 stays abandoned; configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-12
+    updated: 2026-07-15
 
   - name: XS momentum
     status: shelved
@@ -56,6 +56,15 @@ workstreams:
     next: "E-052 extended-window retry PASSED 2026-07-14 (WF 0.8818/CPCV 1.0098/DSR 0.9746/PSR 0.9904, real penalty, K 1/2, n_trials 8; verifier surfaces resolved incl. persisted splice-sensitivity artifact). H-014 supported on double-passed evidence; both E-051 caveats closed. Next gate: ADR-0011 shadow-execution v1 (Codex implements tasks/2026-07-14-deribit-shadow-execution-codex-tasks.md, Claude reviews; >=8 weeks journal + bias report before any live-execution ADR). Promotion still blocked per R7.2. No promotion/live claim."
     links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md, docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md, tasks/2026-07-13-vol-regime-opt-handoff.md, tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md, tasks/2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md]
     updated: 2026-07-14
+
+  - name: Strategy research pipeline — taxonomy_004 C4
+    status: blocked
+    milestones: [taxonomy, stage1_spec, stage2_probe, stage3_backtest]
+    current: stage2_probe
+    state: "F-XVENUE-FUNDING-SPREAD H-021 is inconclusive after E-053/E-054. The corrected reprobe has 2739/2739 aligned funding events per symbol and provisional distinctness PASS, but Stage 2 FAILS because Deribit perpetual 1m price coverage is 0% and no frozen cell passes both repo-default and conservative two-leg costs on BTC and ETH. Family proxy n_trials=8; K=0/2."
+    next: "STOP. Do not retune or run Stage 3. Reopen only after real venue-scoped Deribit perpetual prices, reviewed inverse-contract/fee specs, and a new ex-ante rationale are available."
+    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md]
+    updated: 2026-07-15
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -14,15 +15,62 @@ from okx_quant.execution.deribit_shadow.runner import (
     Journal,
     build_bias_report,
     build_intent_legs,
-    compute_signal_rows,
     load_config,
     run_cycle,
     validate_intent_set,
 )
-from research.probes.f_vol_regime_opt_probe import build_series
 
 
 CONFIG = Path("config/h014_shadow.yaml")
+DB_SIGNAL_FIXTURE = Path("tests/fixtures/h014_shadow_db_signal.json")
+
+
+class FakeConnection:
+    def __init__(self, fixture: dict) -> None:
+        self.fixture = fixture
+        self.queries = []
+
+    async def fetch(self, query, *args):
+        self.queries.append((query, args))
+        as_of = args[-1]
+        if "external_observations" in query:
+            assert "published_at <= $2" in query
+            assert "PARTITION BY (observed_at AT TIME ZONE 'UTC')::date" in query
+            currency = next(
+                key
+                for key, value in self.fixture["symbols"].items()
+                if value["dataset_id"] == args[0]
+            )
+            columns = self.fixture["dvol_columns"]
+            rows = [
+                dict(zip(columns, row, strict=True))
+                for row in self.fixture["symbols"][currency]["dvol_rows"]
+            ]
+            for row in rows:
+                row["day"] = date.fromisoformat(row["day"])
+                row["published_at"] = datetime.fromisoformat(
+                    row["published_at"].replace("Z", "+00:00")
+                )
+            return [row for row in rows if row["published_at"] <= as_of]
+
+        assert "((ts AT TIME ZONE 'UTC') - INTERVAL '8 hours')::date AS day" in query
+        assert "GROUP BY ((ts AT TIME ZONE 'UTC') - INTERVAL '8 hours')::date" in query
+        currency = next(
+            key
+            for key, value in self.fixture["symbols"].items()
+            if value["instrument"] == args[0]
+        )
+        columns = self.fixture["close_columns"]
+        rows = [
+            dict(zip(columns, row, strict=True))
+            for row in self.fixture["symbols"][currency]["close_rows"]
+        ]
+        for row in rows:
+            row["day"] = date.fromisoformat(row["day"])
+            row["source_ts"] = datetime.fromisoformat(
+                row["source_ts"].replace("Z", "+00:00")
+            )
+        return [row for row in rows if row["source_ts"] < as_of]
 
 
 def _signal(currency: str, *, rich: bool = True) -> dict:
@@ -114,19 +162,34 @@ def test_config_is_shadow_only_and_frozen(tmp_path: Path):
         load_config(path)
 
 
-def test_signal_reproduces_research_series_on_five_days():
-    start = date(2024, 1, 1)
-    days = [(start + timedelta(days=i)).isoformat() for i in range(430)]
-    dvol = {day: 60 + 8 * math.sin(i / 17) + 0.01 * i for i, day in enumerate(days)}
-    closes = {day: 40_000 * math.exp(0.0005 * i + 0.02 * math.sin(i / 11)) for i, day in enumerate(days)}
-    expected = build_series(dvol, closes)
-    actual = compute_signal_rows(dvol, closes)
-    samples = [row for row in expected if "ivp" in row and "z" in row][-5:]
-    by_day = {row["date"]: row for row in actual}
-    assert len(samples) == 5
-    for row in samples:
-        assert abs(by_day[row["date"]]["ivp"] - row["ivp"]) < 0.5
-        assert abs(by_day[row["date"]]["z"] - row["z"]) < 0.05
+@pytest.mark.asyncio
+async def test_db_fixture_reproduces_e039_series_on_five_days():
+    fixture = json.loads(DB_SIGNAL_FIXTURE.read_text(encoding="utf-8"))
+    expected = {
+        currency: {row["date"]: row for row in values["expected"]}
+        for currency, values in fixture["symbols"].items()
+    }
+    sample_days = sorted(expected["BTC"])
+    assert len(sample_days) >= 5
+    assert all(set(rows) == set(sample_days) for rows in expected.values())
+
+    rich_flags = set()
+    for sample_day in sample_days:
+        as_of = datetime.combine(
+            date.fromisoformat(sample_day) + timedelta(days=1),
+            datetime.min.time(),
+            tzinfo=timezone.utc,
+        ) + timedelta(hours=8)
+        signals = await runner._signals_from_connection(
+            FakeConnection(fixture), load_config(CONFIG), as_of
+        )
+        for currency, signal in signals.items():
+            reference = expected[currency][sample_day]
+            assert abs(signal["ivp"] - reference["ivp"]) < 0.5
+            assert abs(signal["z"] - reference["z"]) < 0.05
+            assert signal["rich"] is reference["rich"]
+            rich_flags.add(signal["rich"])
+    assert rich_flags == {False, True}
 
 
 @pytest.mark.asyncio
@@ -224,6 +287,79 @@ async def test_cycle_fills_sells_at_bid_buys_at_ask_and_dedupes(tmp_path: Path, 
         prices = {leg["side"]: leg["fill"]["price_coin"] for leg in intent["legs"]}
         assert prices == {"sell": 0.010, "buy": 0.012}
         assert {leg["book"]["spread"] for leg in intent["legs"]} == {0.002}
+
+
+@pytest.mark.asyncio
+async def test_sparse_chain_is_journaled_as_missed_entry_and_cycle_continues(
+    tmp_path: Path, monkeypatch
+):
+    now = datetime(2026, 7, 14, 9, tzinfo=timezone.utc)
+    config = load_config(CONFIG)
+    config["journal_path"] = str(tmp_path / "journal.jsonl")
+
+    async def fake_signals(*_args, **_kwargs):
+        return {currency: _signal(currency) for currency in ("BTC", "ETH")}
+
+    class SparseChainClient(FakePublicClient):
+        def instruments(self, currency: str) -> list[dict]:
+            return [] if currency == "BTC" else super().instruments(currency)
+
+    monkeypatch.setattr(runner, "load_signals", fake_signals)
+    summary = await run_cycle(config, "unused", now=now, client=SparseChainClient(now))
+    assert {row["currency"]: row["status"] for row in summary["intents"]} == {
+        "BTC": "missed_entry",
+        "ETH": "filled",
+    }
+    intents = {
+        row["currency"]: row
+        for row in Journal(config["journal_path"]).records
+        if row["event_type"] == "intent"
+    }
+    assert "no listed option expiry" in intents["BTC"]["error"]
+    assert intents["ETH"]["status"] == "filled"
+    assert build_bias_report(config["journal_path"])["exit_criteria"][
+        "missed_entry_rate"
+    ] == pytest.approx(0.5)
+
+
+@pytest.mark.asyncio
+async def test_r83_rejection_is_journaled_and_cycle_continues(
+    tmp_path: Path, monkeypatch
+):
+    now = datetime(2026, 7, 14, 9, tzinfo=timezone.utc)
+    config = load_config(CONFIG)
+    config["journal_path"] = str(tmp_path / "journal.jsonl")
+
+    async def fake_signals(*_args, **_kwargs):
+        return {currency: _signal(currency) for currency in ("BTC", "ETH")}
+
+    class InvertedSpreadClient(FakePublicClient):
+        def instruments(self, currency: str) -> list[dict]:
+            rows = super().instruments(currency)
+            if currency != "BTC":
+                return rows
+            calls = [row for row in rows if row["option_type"] == "call"]
+            put = next(row for row in rows if row["option_type"] == "put")
+            return [*calls, put]
+
+    monkeypatch.setattr(runner, "load_signals", fake_signals)
+    summary = await run_cycle(
+        config, "unused", now=now, client=InvertedSpreadClient(now)
+    )
+    assert {row["currency"]: row["status"] for row in summary["intents"]} == {
+        "BTC": "rejected",
+        "ETH": "filled",
+    }
+    intents = {
+        row["currency"]: row
+        for row in Journal(config["journal_path"]).records
+        if row["event_type"] == "intent"
+    }
+    assert "R8.3 naked short put rejected" in intents["BTC"]["error"]
+    assert intents["ETH"]["status"] == "filled"
+    criteria = build_bias_report(config["journal_path"])["exit_criteria"]
+    assert criteria["missed_entry_rate"] == 0.0
+    assert criteria["intent_rejections_excluded_from_missed_rate"] == 1
 
 
 @pytest.mark.asyncio

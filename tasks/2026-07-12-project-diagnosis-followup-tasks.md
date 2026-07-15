@@ -3,7 +3,7 @@ status: current
 type: task
 owner: human
 created: 2026-07-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -200,6 +200,12 @@ policy changes.
 
 **Owner:** human operations; Codex implements only the approved option.
 
+**Status:** Repo support implemented 2026-07-15: the OKX liquidation wrapper
+pins the verified Python executable and the RUNBOOK documents least-privilege
+S4U create/verify/run/rollback/remove commands. Host activation remains pending
+because this session could not obtain Administrator Task Scheduler rights; the
+existing task still reports `Interactive`.
+
 - Register the documented Deribit D3 snapshot and forward-ingest scheduled tasks,
   or explicitly accept stale series.
 - Ingest or retire the empty daily `dvol_deribit_*` config datasets.
@@ -261,7 +267,7 @@ failures.
      Manual-update command (requires both `--start` and `--end`) is recorded
      in `docs/RUNBOOK.md`.
   3. OKX liquidation collection: approved to move to unattended/service mode
-     (Codex implements).
+     (repo implementation done; Administrator host activation pending).
   4. The hung `127.0.0.1:8080` listener/port is abandoned; use another port,
      do not kill the user process.
   5. User will create a valid OKX Demo key later; engine mode stays blocked
@@ -276,7 +282,8 @@ failures.
 3. [x] Run P1.1/P1.2 to make governance evidence trustworthy; remaining
    post-merge findings are now a separate repair/verification task and PR.
 4. Run H-013/E-038 Stage-2 only as a separate task; Stage 3 is not authorized.
-5. Implement the recorded P1.4 operations decisions.
+5. [ ] Apply and verify the recorded P1.4 S4U host task; repo support is done,
+   but the task remains Interactive until the Administrator RUNBOOK command runs.
 6. Add P2 browser/noise coverage only after the green baseline is stable.
 
 No step above authorizes promotion, demo, shadow, live, a gate relaxation, or

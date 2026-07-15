@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -46,20 +46,24 @@ promotion, demo, shadow, or live work is authorized by this handoff.
   Engine and non-loopback views render those paths without a file endpoint.
 - Runtime: the pre-existing listener on 127.0.0.1:8080 (PID 23696 during audit)
   timed out and was left untouched; temporary 8081 smoke was healthy and cleaned
-  up. Demo engine login still needs a valid key.
+  up. Demo engine login still needs a valid key. P1.4 repo support now pins the
+  liquidation task's Python executable and documents least-privilege S4U task
+  registration/run/removal; the host task still reports `Interactive` until the
+  user runs the Administrator PowerShell registration and verifies result `0`.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
   unchanged. No PnL formula or existing result changed.
 - Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
   with no retry and E-037 remains immutable non-promotion evidence. H-010 is
-  data-blocked. H-013 Stage-1 is user-signed-off; E-038 is reserved-only and has
-  not run. H-014/F-VOL-REGIME-OPT (Deribit inverse-options vol regime, Claude
-  2026-07-13): registered with a pre-probe 4-combo grid; E-039 synthetic probe
-  DONE (short-premium separation confirmed, cheap-bucket long straddle negative
-  → long leg OFF). E-040 failed closed on Tardis `Content-Length`; the authorized
-  E-041 rerun failed closed before download because fixed 2022 samples predate
-  the DB hourly-DVOL range (2024 onward). Stage-3 remains blocked.
+  data-blocked on OKX 1m. H-013/E-050 is shelved after statistical failure.
+  Taxonomy_003 E-044..E-049 completed and all six candidates failed their
+  statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
+  ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-053/E-054
+  is inconclusive at Stage 2: corrected funding coverage is complete and the
+  distinctness proxy passes, but Deribit perpetual 1m prices are absent and the
+  conservative two-leg cost gate fails. Family proxy n_trials=8, K=0/2; no
+  retune, Stage 3, full-PnL, or promotion claim.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -141,19 +145,25 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    operational detail moved verbatim to
    RUNBOOK, two completed 2026-06-25 plans archived, CHANGELOG backfilled
    07-05/07-07/07-11.
-   Remaining Codex P1 work: liquidation unattended mode.
+   P1.4 repo implementation is complete; host S4U activation remains an
+   Administrator PowerShell operation.
 5. E-038 Stage-2 is a separate task; Stage 3 remains unauthorized.
-6. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
+6. P1.4 repo support DONE 2026-07-15: the OKX liquidation wrapper uses the
+   verified Python 3.12 executable, and RUNBOOK documents S4U/Limited create,
+   verify, run, rollback, and removal. Host activation is not yet done because
+   non-elevated Task Scheduler updates returned Access Denied; the current task
+   remains Interactive.
+7. Daily `dvol_deribit_*` backfill DONE 2026-07-12: 1,936 gap-free rows per
    symbol, 2021-03-24→2026-07-11, values cross-checked against the hourly
    series; manual-update command recorded in `docs/RUNBOOK.md` (must pass
    `--start` AND `--end`). User creates the OKX Demo key later.
-7. Taxonomy_003 CLOSED 2026-07-14 (user-authorized Stage-3 sweep, Claude
+8. Taxonomy_003 CLOSED 2026-07-14 (user-authorized Stage-3 sweep, Claude
    solo, E-044..E-049, verifier clean): all six MINT, all six FAIL the
    DSR/PSR ≥ 0.95 gate — H-015 refuted, H-016 shelved (best 0.70/0.80),
    H-017 inconclusive, H-018 refuted, H-019 shelved, H-020 refuted. See
    `tasks/2026-07-14-taxonomy003-stage3-handoff.md`; no retries without
    ex-ante rationale + K.
-8. H-014/E-039 done 2026-07-13 (`tasks/2026-07-13-vol-regime-opt-handoff.md`).
+9. H-014/E-039 done 2026-07-13 (`tasks/2026-07-13-vol-regime-opt-handoff.md`).
    Stage-2 handed to Codex: `tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md`
    (T1 Tardis calibration/E-040, T2 vendor report; T3 NOT authorized). Claude
    is the reviewer for this workstream from 2026-07-13 on (user ruling).

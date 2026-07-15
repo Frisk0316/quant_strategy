@@ -1,6 +1,8 @@
 mode: shadow_only
 public_api_url: https://www.deribit.com/api/v2/public
 journal_path: results/shadow_h014/journal.jsonl
+# Close signals use 08:00 UTC sessions. Claude's 1,570-day E-039 comparison found
+# identical IVP; RICH(85/0.5) flipped 0/1,570 BTC days and 3/1,570 ETH days.
 price_source: binance
 
 symbols:
