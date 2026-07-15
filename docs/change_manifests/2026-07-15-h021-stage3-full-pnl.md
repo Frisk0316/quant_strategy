@@ -38,7 +38,8 @@ coin-margined-derivatives research accounting.
 - `docs/GOLDEN_CASES.md`, `docs/INVARIANTS.md` — enforce G-005/I44.
 - `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` — E-056 result
   record after the one run.
-- Session/context handoffs — result and Claude review boundary.
+- `tasks/2026-07-15-h021-stage3-{context,session}-handoff.md` — result and
+  Claude review boundary.
 
 ## Behavior delta
 
@@ -78,7 +79,12 @@ coin-margined-derivatives research accounting.
 - I44 targeted test — 2 passed before any grid.
 - Stage-3 registry + I44 targeted tests — 7 passed.
 - Full unit suite — 874 passed, 1 skipped before any grid.
-- Remaining run/artifact/docs checks are filled in after E-056.
+- Final full unit rerun after the SQL boundary fix — 874 passed, 1 skipped.
+- DB preflight — 2,739 complete events per symbol before the grid.
+- E-056 single grid — completed once; WF -0.2158, CPCV -0.0375, DSR 0.2357,
+  PSR 0.4818; statistical and stress-robustness gates failed.
+- Artifact audit — n_trials/path retention/minting/stress fields present;
+  `checkpoint1_auto.json` FAIL only at the DSR/PSR threshold.
 
 ## Risks and rollback
 

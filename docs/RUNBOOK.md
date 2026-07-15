@@ -690,7 +690,7 @@ existing `summary.json`; do not delete or overwrite it to retry. After recording
 E-056 with family-cumulative `n_trials=12`, generate the checkpoint sidecar:
 
 ```powershell
-& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' scripts\run_pipeline_checkpoint1_check.py --summary results\h021_stage3_20260715\summary.json
+& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m scripts.run_pipeline_checkpoint1_check --summary results\h021_stage3_20260715\summary.json
 ```
 
 Any missing 8h event, required reference signal, Binance canonical mark, or
