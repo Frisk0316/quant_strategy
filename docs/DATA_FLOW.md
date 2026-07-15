@@ -113,12 +113,27 @@ breadth minimum from `START + breadth_warmup_days` (30, mirroring
 `config/universe.yaml` warmup) because PIT eligibility cannot exist during
 warmup; warmup days stay recorded in probe details for audit (user-approved
 2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
-The C4 cross-venue probe canonicalizes only settlement timestamps within one
+The C4 cross-venue path canonicalizes only settlement timestamps within one
 second of the hourly boundary (F41/I41), sums eight non-overlapping Deribit
 `interest_1h` rows per Binance settlement, and never substitutes Deribit index
-prices for venue-scoped perpetual marks. Its lagged funding/cost grid is proxy
-evidence only; basis, inverse-collateral, margin, and executable-price PnL remain
-unavailable until a separate Stage-3 contract is approved.
+prices for venue-scoped perpetual marks. E-053/E-054/E-055 remain Stage-2 proxy
+evidence. The separately authorized H-021 Stage-3 runner reads Binance and
+Deribit `source_primary`-scoped canonical 1m candles, collapses each to the last
+pre-settlement event mark, applies ADR-0012 exact inverse 1/P coin PnL with
+same-bar USD conversion, sums complete 8h PnL into UTC days, and sends the four
+frozen daily series through fold-refit WF/CPCV plus stress re-costing:
+
+```text
+Binance funding + Deribit hourly funding + venue-scoped Binance/Deribit 1m marks
+  -> backtesting/xvenue_funding_spread_backtest.py
+  -> exact R9 event PnL + t+1 positions + base/stress costs
+  -> UTC-daily combo returns -> pipeline_refit + family minting
+  -> results/h021_stage3_<date> checkpoint artifacts
+```
+
+Missing 8h events or venue marks fail closed without time compression. The
+runner assumes adequate coin collateral for the unlevered gross-1 pair and has
+no margin/liquidation, index-price, engine, demo, shadow, or live path.
 
 ## External Observations Ingestion Flow
 

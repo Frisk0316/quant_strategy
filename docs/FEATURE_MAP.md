@@ -487,17 +487,21 @@ implementation exists.
   and write real-vs-BS premium diagnostics or a fail-closed record. E-041 uses
   DB hourly DVOL published as-of 08:00 for the synthetic denominator and stops
   before Tardis acquisition when that DB input is unavailable. Taxonomy_004
-  adds the research-only F-XVENUE-FUNDING-SPREAD Stage-2 probe: it aligns
-  Deribit hourly and Binance 8h BTC/ETH funding, checks feature distinctness and
-  gross-normalized two-leg costs, and fails closed because venue-scoped Deribit
-  perpetual 1m prices are absent. E-053 is retained as F41-invalid evidence;
-  E-054 is the bounded settlement-timestamp reprobe. Neither is a full backtest.
+  adds the research-only F-XVENUE-FUNDING-SPREAD path: E-053 is retained as
+  F41-invalid evidence, E-054 is the bounded settlement-timestamp reprobe, and
+  E-055 verifies complete venue-scoped Deribit perpetual 1m prices. The
+  separately authorized Stage-3 runner uses the identical frozen four-cell
+  signal grid, ADR-0012 exact inverse-perpetual accounting, base-cost fold-refit
+  WF/CPCV, stress re-costing, and checkpoint-only artifacts. It is not wired to
+  any UI/API or deployment surface.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
   `backtesting/pipeline_checkpoint1.py`, `backtesting/pipeline_family_minting.py`,
-  `backtesting/pipeline_idea_generator.py`,
-  `backtesting/xvenue_funding_spread_probe.py`.
+  `backtesting/pipeline_idea_generator.py`, `backtesting/pipeline_refit.py`,
+  `backtesting/pipeline_stage3_registry.py`,
+  `backtesting/xvenue_funding_spread_probe.py`,
+  `backtesting/xvenue_funding_spread_backtest.py`.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
@@ -530,7 +534,8 @@ implementation exists.
   `tests/unit/test_pipeline_orchestrator.py`,
   `tests/unit/test_pipeline_funnel_report.py`,
   `tests/unit/test_f_vol_regime_opt_stage2.py`,
-  `tests/unit/test_xvenue_funding_spread_probe.py`.
+  `tests/unit/test_xvenue_funding_spread_probe.py`,
+  `tests/unit/test_h021_inverse_perp_accounting.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.
@@ -538,6 +543,9 @@ implementation exists.
   They must not append durable ledger rows, change `research/strategy_synthesis.md`,
   enable strategies, run backtests, change CPCV/DSR/gate semantics, alter
   config gates, or touch demo/shadow/live behavior without explicit approval.
+  H-021 is a one-run explicit exception limited to E-056 checkpoint ①; its
+  runner refuses to overwrite an existing summary and never substitutes an
+  index price.
 
 ## Strategy Registry / Strategy Selection
 

@@ -673,6 +673,31 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/backtest/sweep/can
 full rows live in `rows.csv`. `/api/backtest/sweep/result/{sweep_id}` only
 inlines small 2D/invest artifacts; large CSVs stay behind artifact links.
 
+## H-021 Stage-3 Research Checkpoint (one run only)
+
+This standalone E-056 path is research-only and stops at checkpoint ①. Confirm
+the pre-registration commit exists, then run I44 and the full unit suite before
+the first and only grid execution:
+
+```powershell
+& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m pytest tests\unit\test_h021_inverse_perp_accounting.py -q -p no:cacheprovider
+& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m pytest tests\unit -q -p no:cacheprovider
+& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' -m backtesting.xvenue_funding_spread_backtest
+```
+
+The run writes a new `results/h021_stage3_<date>/` directory and refuses an
+existing `summary.json`; do not delete or overwrite it to retry. After recording
+E-056 with family-cumulative `n_trials=12`, generate the checkpoint sidecar:
+
+```powershell
+& 'C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe' scripts\run_pipeline_checkpoint1_check.py --summary results\h021_stage3_20260715\summary.json
+```
+
+Any missing 8h event, required reference signal, Binance canonical mark, or
+native Deribit `source_primary='deribit'` mark is a fail-closed stop. This path
+does not authorize an index fallback, retry, promotion, demo, shadow, or live
+step.
+
 ## Config Validation
 
 ```bash
