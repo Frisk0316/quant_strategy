@@ -681,8 +681,22 @@ python scripts/run_h014_shadow.py --report
 ```
 
 Runtime files are `results/shadow_h014/journal.jsonl` and
-`bias_report.json`. Do not truncate or edit the journal. No task is registered
-by this implementation. A manual cycle leaves no resident process, so stopping
+`bias_report.json`. Do not truncate or edit the journal.
+
+USER-APPROVED SCHEDULE (2026-07-15, after the review conditions cleared):
+`quant_h014_shadow_daily` runs `scripts\run_h014_shadow_task.cmd` daily at
+16:10 local (08:10 UTC) — the wrapper tops up DVOL + Binance 1m candles via
+`research\probes\h014_daily_shadow_ops.py --no-wait`, runs one cycle, and
+refreshes the bias report (log: `logs\h014_shadow_daily.log`). Manage with:
+
+```powershell
+schtasks /Query /TN quant_h014_shadow_daily /FO LIST
+schtasks /Run /TN quant_h014_shadow_daily
+schtasks /Delete /TN quant_h014_shadow_daily /F   # kill switch
+```
+
+Journal event-id dedupe makes an accidental double-run a no-op. A manual
+cycle leaves no resident process, so stopping
 means simply not running another cycle. If the user later approves and creates
 a Windows task, the reversible kill switch is:
 
