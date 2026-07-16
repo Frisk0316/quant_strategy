@@ -8,18 +8,18 @@ workstreams:
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
     current: followup_repair
     state: "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) plus verified repair df53f73 and handoff d046978 were created after that head and are not on main. The follow-up branch was pushed through d046978 on 2026-07-14. No strategy or deployment readiness follows."
-    next: "Open and review the separate codex/pipeline-batch1-stage3 follow-up PR; human performs the merge. After that, remaining Codex P1 work is OKX liquidation unattended mode."
+    next: "Open and review the separate codex/pipeline-batch1-stage3 follow-up PR; human performs the merge. P1.4 repo support is implemented; run the RUNBOOK command from Administrator PowerShell to activate and verify woody/S4U/Limited unattended liquidation ingest."
     links: [tasks/2026-07-12-project-diagnosis-followup-tasks.md, tasks/2026-07-12-claude-p0-review.md, docs/change_manifests/2026-07-12-artifact-id-containment.md, docs/change_manifests/2026-07-12-ct-val-validation-contract.md, docs/change_manifests/2026-07-12-venue-fail-closed.md, docs/human_overviews/2026-07-12-project-diagnosis-overview.md]
-    updated: 2026-07-14
+    updated: 2026-07-15
 
   - name: Local runtime reliability
     status: blocked
     milestones: [coverage_query, single_server, private_ws_auth]
     current: private_ws_auth
-    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. The pre-existing 127.0.0.1:8080 listener (PID 23696 during audit) timed out and was left untouched; temporary 8081 smoke passed. Demo private WS still returns OKX 60005 Invalid apiKey."
-    next: "Port 8080 is abandoned per the 2026-07-12 user decision (leave the user-owned PID untouched; run servers on another port). Configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
+    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. P1.4 repo support pins the liquidation Python path and documents S4U/Limited task lifecycle; host activation is pending Administrator rights. The pre-existing 127.0.0.1:8080 listener was left untouched. Demo private WS still returns OKX 60005 Invalid apiKey."
+    next: "Run the P1.4 RUNBOOK /NP command from Administrator PowerShell, verify S4U/Limited and result 0. Port 8080 stays abandoned; configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-12
+    updated: 2026-07-15
 
   - name: XS momentum
     status: shelved
@@ -44,7 +44,7 @@ workstreams:
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
     current: checkpoint_review
     state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
-    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. The verified PR #9 follow-up still awaits a separate human-reviewed PR, so F-VRP-TIMING/H-013 E-038 remains queued for a separately scoped Stage-2 probe; Stage 3 remains unauthorized. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Taxonomy_003 Stage-3 sweep COMPLETE 2026-07-14 (user-authorized, Claude solo, E-044..E-049, fresh-verifier clean): all six candidates minted as new families but ALL FAILED the DSR/PSR >= 0.95 gate - H-015 optflow refuted, H-016 XS-illiquidity shelved (best, WF 0.97/DSR 0.70/PSR 0.80), H-017 stablecoin inconclusive, H-018 coinbase-premium refuted, H-019 hash-ribbon shelved, H-020 calendar refuted. No retries without ex-ante rationale + K accounting. Do not schedule the orchestrator or claim promotion/live readiness."
+    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. F-VRP-TIMING/H-013 ran in full 2026-07-14 (user-authorized): E-038 probe PASS, E-050 pre-registered 4-combo grid FAILED the gate (WF 0.05, CPCV 0.56, DSR 0.60, PSR 0.78, minting MINT 0.051) - SHELVED, no retry. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Taxonomy_003 Stage-3 sweep COMPLETE 2026-07-14 (user-authorized, Claude solo, E-044..E-049, fresh-verifier clean): all six candidates minted as new families but ALL FAILED the DSR/PSR >= 0.95 gate - H-015 optflow refuted, H-016 XS-illiquidity shelved (best, WF 0.97/DSR 0.70/PSR 0.80), H-017 stablecoin inconclusive, H-018 coinbase-premium refuted, H-019 hash-ribbon shelved, H-020 calendar refuted. No retries without ex-ante rationale + K accounting. Do not schedule the orchestrator or claim promotion/live readiness."
     links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
     updated: 2026-07-14
 
@@ -52,10 +52,19 @@ workstreams:
     status: active
     milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec, stage1_review, stage2_probe]
     current: stage2_probe
-    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 Stage-1 was user-approved 2026-07-12; E-038 remains reserved-only. H-014/F-VOL-REGIME-OPT: E-039 mechanism probe passed; hourly DVOL backfilled 2021-2024 (user-authorized 2026-07-14, 46,440 rows/symbol gap-free); E-043 completed the calibration on all 12 pairs with verdict PASS (real/synthetic premium ratios 0.88-1.03, all >= the ex-ante 0.8 bar) - Stage 2 is passed."
-    next: "H-014 is the only candidate with a passed Stage 2. User decides: option-chain history purchase (Tardis Business ~USD 3k/mo or one-off quote) and Stage-3 authorization; the options-backtest MVP needs a coin-accounting Change Manifest + ADR first. Run E-038 only under its separate Stage-2 scope. Forward schedulers stay unregistered by user decision. No promotion/live claim."
+    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 SHELVED (E-050 statistical fail). H-014/F-VOL-REGIME-OPT: user signed off ADR-0010 (accepted; DOMAIN_RULES R8, I39, matrix A12) and Stage 3 on 2026-07-14; Stage-3 data collected free (786 entries, 11,121 daily marks, 4,930 official delivery prices); golden tests 6/6; E-051 PASSED the statistical gate - the project's first (WF 1.3049, CPCV 1.1326, DSR=PSR 0.9845, minting MINT 0.074, fallback marks <=4.5%); adversarial fresh-verifier verdict PASS-STANDS. Recorded caveats: thin margin with degenerate-zero DSR penalty (all CPCV folds picked the same combo), single bear cycle in window."
+    next: "E-052 extended-window retry PASSED 2026-07-14 (WF 0.8818/CPCV 1.0098/DSR 0.9746/PSR 0.9904, real penalty, K 1/2, n_trials 8; verifier surfaces resolved incl. persisted splice-sensitivity artifact). H-014 supported on double-passed evidence; both E-051 caveats closed. Next gate: ADR-0011 shadow-execution v1 (Codex implements tasks/2026-07-14-deribit-shadow-execution-codex-tasks.md, Claude reviews; >=8 weeks journal + bias report before any live-execution ADR). Promotion still blocked per R7.2. No promotion/live claim."
     links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md, docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md, tasks/2026-07-13-vol-regime-opt-handoff.md, tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md, tasks/2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md]
     updated: 2026-07-14
+
+  - name: Strategy research pipeline — taxonomy_004 C4
+    status: blocked
+    milestones: [taxonomy, stage1_spec, stage2_probe, stage3_backtest]
+    current: stage2_probe
+    state: "F-XVENUE-FUNDING-SPREAD H-021 remains inconclusive after E-055. D6 supplied continuous venue-scoped Deribit BTC/ETH perpetual 1m candles and Gate 1 now PASSES at 1314720/1314720 rows per leg; distinctness also passes. Stage 2 still FAILS because the frozen conservative two-leg cost scenario has no common positive BTC/ETH cell. Family proxy n_trials=8; K=0/2."
+    next: "STOP. Do not retune or run Stage 3/PnL. Any inverse-perpetual accounting or basis-PnL work needs a separate user-approved decision and task; E-055 is not promotion evidence."
+    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, tasks/2026-07-15-deribit-perpetual-d6-e055-context-handoff.md, tasks/2026-07-15-deribit-perpetual-d6-e055-session-handoff.md]
+    updated: 2026-07-15
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

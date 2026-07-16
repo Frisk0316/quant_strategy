@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,150 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-15 - Deribit perpetual candles and H-021 E-055 reprobe (Codex)
+
+- Added a credential-free, throttled Deribit TradingView-chart client and the
+  existing checkpointed candle-ingest path for native `BTC-PERPETUAL` and
+  `ETH-PERPETUAL` 1m bars. The canonical rows retain exact
+  `source_primary='deribit'` provenance; no index or cross-venue substitution
+  is allowed.
+- Backfilled 2024-01-01 through the current closed minute, then ran the same
+  command as a forward top-up. Both instruments are continuous through
+  2026-07-15 08:04Z at 1,333,925 rows, with zero missing minutes, null OHLC,
+  or suspect rows. Six fixed API/DB OHLC spot checks matched exactly.
+- Registered E-055 after rerunning the frozen H-021 Stage-2 probe without a
+  retune. Gate 1 flipped to PASS at 1,314,720/1,314,720 Deribit price rows per
+  leg and distinctness remained PASS; the robust cost gate remained FAIL
+  because no cell passed the conservative scenario on both BTC and ETH.
+  Family trials remain 8 and K remains 0/2. The stop condition was applied:
+  no Stage 3, basis/inverse-collateral PnL, gate, strategy, risk, shadow, or
+  deployment work ran.
+
+## 2026-07-15 - Taxonomy_004 cross-venue funding Stage 2 (Codex)
+
+- The strategy ideator selected the only new research-authorized frontier:
+  C4/F-XVENUE-FUNDING-SPREAD, after H-013 and H-015 satisfied its activation
+  condition. The Stage-1 contract froze four BTC/ETH funding-proxy cells and
+  counted every inspected cell.
+- E-053 exposed F41: exact timestamp equality retained only 1,782/2,739
+  settlement events. Its artifact is retained as invalid evidence. E-054 used
+  the orchestrator reprobe with <=1 second boundary canonicalization and
+  restored 2,739/2,739 aligned events per symbol; family proxy trials total 8,
+  K remains 0/2 because both rows stopped at Stage 2.
+- E-054 remains `stage2_fail`: provisional feature distinctness passes (max
+  abs corr 0.292), but Deribit venue-scoped perpetual 1m price coverage is 0%,
+  and no frozen cell is positive on both symbols under both repo-default and
+  conservative two-leg costs. No Stage 3, full price/basis PnL, CPCV,
+  checkpoint, config, strategy, shadow/live, or promotion work ran.
+- Added F41-I41 settlement-boundary, F42-I42 undefined-correlation, and
+  F43-I43 missing-interval guards with focused unit tests. The corrected E-054
+  advisory is preserved as an immutable SHA-256-addressed snapshot.
+
+## 2026-07-15 - P1.4 OKX liquidation unattended-mode support (Codex)
+
+- Kept the existing `quant_liq_okx_ingest` action and two-hour cadence; the
+  wrapper now uses the verified Python 3.12 executable so non-interactive runs
+  do not depend on a logged-on user's PATH.
+- Documented a least-privilege `woody` S4U (`/NP`) task with `LIMITED` run level,
+  including create, verification, manual run, status, rollback, and removal.
+  SYSTEM was deliberately rejected because the repository is user-writable.
+- Host activation remains pending: the existing task still reports
+  `Interactive`; Task Scheduler updates from this session returned Access
+  Denied without Administrator rights. No ingestion schema/data semantics,
+  strategy, risk, execution, H-014/shadow file, or gate changed.
+
+## 2026-07-14 - ADR-0011 H-014 shadow-only implementation (Codex)
+
+- Implemented manual, public-only Deribit shadow execution for the frozen
+  H-014 combination (`ivp=85`, `z=0.5`): DB as-of signals reuse the research
+  sequence builder and strike selector, hypothetical sells hit bid and buys
+  lift ask, and R8 accounting functions are imported from the accepted
+  research implementation. There is no broker, private endpoint, credential,
+  order submission, scheduler, DB write, schema change, or `risk.yaml` change.
+- Added fail-closed R8.3 intent validation: any naked short-put intent is
+  rejected and each coin is capped at 1.0 unit. The append-only JSONL journal
+  has deterministic event IDs; the report covers fill bias, missed-entry rate,
+  mark tracking error, weekly coverage, and keeps both discussion and live
+  approval gates closed until at least 8 valid weeks and later approvals.
+- A real DB smoke exposed F39: selecting the latest common date can silently
+  reuse stale candles, and its same-day ID can block the corrected append-only
+  rerun. The runner now requires the exact prior research day, uses the research
+  08:00 UTC boundary, and qualifies intent IDs by signal day. The two pre-fix
+  records are retained but ignored. After bounded refreshes through the existing
+  public ingestion paths, the first valid cycle recorded BTC/ETH as `not_rich`.
+- Verification includes the existing R8 golden tests, new signal/intent/fill/
+  report tests, five-day DB parity within the task tolerances, and a successful
+  credentials-free Deribit public order-book smoke. The current report has one
+  valid day in one distinct week, no RICH opportunity, and both live gates closed. This is shadow
+  evidence, not live-trading or deployment approval. Final parent unit result:
+  861 passed, 1 skipped; config/docs/strict impact checks passed.
+
+## 2026-07-14 - H-014 E-052 extended-window pass + shadow layer authorized (Claude)
+
+- Checkpoint-① RATIFIED by the user → H-014 `supported`; governance commit
+  `22bdf48` pushed the E-051/ADR-0010 record with evidence-chain scripts.
+- E-052 (user-authorized K-consuming retry, spec pre-registered): pre-DVOL IV
+  proxy from the 2019-04+ trade tape — v1 (tenor 20-40d) honestly FAILED
+  CLOSED on the staleness rule (monthly-expiry gaps, runs 16/24d; archived);
+  v2 (tenor 10-60d, ±15% moneyness, spec-amended first) gave BTC 0% / ETH
+  3.8% carry; splice corr 0.964/0.984, bias −10.1/−11.5 pts, sensitivity
+  artifact shows RICH-day Jaccard 0.972–1.000 under ±3 pts. **Extended
+  window (2020-05→2026-02, three stress episodes) PASSED the gate**:
+  WF 0.8818, CPCV 1.0098, DSR 0.9746 < PSR 0.9904 (real penalty — fold
+  selections varied), n_trials=8, K 1/2. Adversarial verifier's one MAJOR
+  (in-session-only sensitivity check) resolved by persisting the artifact;
+  both E-051 caveats (degenerate penalty, single bear) are closed.
+- ADR-0011 accepted (user: "先授權 deribit 執行層"): shadow-only execution
+  layer — live public data, hypothetical fills, R8.3 naked-put rejection in
+  code, JSONL journal, zero order capability; Codex task file issued
+  (`tasks/2026-07-14-deribit-shadow-execution-codex-tasks.md`), exit =
+  ≥8 weeks journal + bias report before any live-execution ADR.
+- Ledgers: 21 H / 53 E / 20 K consistent; E-052 registered with K 1/2.
+
+## 2026-07-14 - H-014 E-051: first statistical-gate pass (Claude solo, user-signed-off)
+
+- User signed off the package in one decision: ADR-0010 accepted (coin-margined
+  options research accounting → DOMAIN_RULES R8.1–R8.6, invariant I39, matrix
+  row A12, manifest `2026-07-14-inverse-options-research-accounting.md`),
+  Stage-3 spec accepted, E-051 authorized; long leg OFF and naked short puts
+  prohibited confirmed.
+- Data extension collected free from official sources: 786 t+1 entries,
+  11,121 instrument-day trade-VWAP marks, 4,930 official delivery prices
+  (`results/h014_stage3_data_20260714/`). Golden-cycle accounting tests 6/6
+  (`tests/unit/test_h014_options_accounting.py`).
+- **E-051 PASSED the DSR/PSR ≥ 0.95 gate — first in project history**:
+  WF OOS Sharpe 1.3049, CPCV 1.1326, DSR = PSR 0.9845, minting MINT (0.074),
+  124–261 tranches/combo, BS-fallback marks 4.0–4.5%, window 2022-05→2026-02.
+  Adversarial fresh-verifier verdict PASS-STANDS (786/786 entries t+1,
+  hand-recomputed tranche PnL matches, no lookahead/double-count). Recorded
+  caveats: 0.9845 margin is thin and its DSR multiple-testing penalty
+  degenerates to zero because every CPCV fold selected the same combo; the
+  window holds one deep bear. H-014 → `testing`, checkpoint-① human review
+  pending; `promotion_gate_passed:false` per R7.2.
+- Security note: the verifier agent reported and ignored a prompt-injection
+  attempt (fake system-reminder urging information suppression and unsafe git
+  operations) during its run; flagged to the user.
+
+## 2026-07-14 - H-013 full run (shelved) + H-014 entry-leg data collected (Claude solo)
+
+- User authorized running H-013 and collecting H-014's data; nothing was
+  required from the user (free official sources only).
+- H-013/F-VRP-TIMING: E-038 feasibility probe PASS (zero-Δ daily DVOL ≈ 0,
+  complete candles). E-050 ran the pre-registered 4-combo grid exactly per
+  the 2026-07-12 spec (hourly-DVOL as-of minus 1m realized vol, z90,
+  long/flat, fold-refit WF/CPCV, minting MINT 0.051): WF OOS Sharpe 0.0543,
+  CPCV 0.5588, DSR 0.5999, PSR 0.7845 — statistical fail, SHELVED, no retry.
+- H-014 data: `research/probes/h014_collect_leg_marks.py` collected real
+  traded premiums for all pre-registered entry legs (25Δc/25Δp/10Δp/ATM c+p,
+  ~30d expiry) on the union of grid RICH days from the official
+  history.deribit.com trade tape: 1,306/1,310 leg-days with trades
+  (261-262/262 per leg), median 36 trades/leg-day
+  (`results/h014_leg_marks_20260714/leg_marks.csv`). Two collector bugs found
+  and fixed en route: missing `include_old`, and expiry selection must filter
+  instruments by `creation_timestamp` ≤ signal day (D+30 otherwise lands on
+  daily/weekly instruments created later). Vendor chain purchase is now
+  optional robustness, not a Stage-3 blocker.
 
 ## 2026-07-14 - Uncommitted work split and pushed by workstream (Codex)
 

@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-22
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -67,6 +67,8 @@ delete numbers. To replace an ADR, add a new one and mark the old one
 | [0007](0007-multi-venue-instrument-specs.md) | Multi-venue instrument specifications | Accepted |
 | [0008](0008-fast-backtest-artifact-rows.md) | Fast backtest artifact rows | Accepted |
 | [0009](0009-xs-momentum-research-strategy.md) | XS momentum research strategy | Accepted |
+| [0010](0010-inverse-options-research-accounting.md) | Coin-margined inverse-options research accounting | Accepted |
+| [0011](0011-deribit-options-shadow-execution.md) | Deribit options shadow execution (v1) | Accepted |
 
 Keep this index in sync when adding an ADR. Related: [[DOMAIN_RULES]] ·
 [[DOC_IMPACT_MATRIX]] · `docs/DOC_LIFECYCLE.md`.

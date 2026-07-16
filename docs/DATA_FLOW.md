@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -36,6 +36,14 @@ An empty venue series still errors, and an internal hole below
 substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
+
+Deribit BTC/ETH inverse-perpetual 1m candles use the credential-free
+`public/get_tradingview_chart_data` endpoint through
+`exchange_clients/deribit_public.py` and the checkpointed `ingest.py` forward
+path. They are stored under native canonical ids `BTC-PERPETUAL` and
+`ETH-PERPETUAL`, with `quality_status='raw'` and
+`source_primary='deribit'`, so the venue series coexists with Binance/OKX
+canonical ids and cannot replace or be replaced by an index-price series.
 
 ## Market Data Fetch Queue Flow
 
@@ -90,6 +98,7 @@ not converted into a fallback or an authoritative `None` value.
 ```text
 OKX funding history -> scripts/market_data/backfill_funding.py or scripts/market_data/import_parquet_funding.py -> funding_rates -> backtesting.data_loader.load_funding -> ReplayBacktestEngine funding cashflow path -> funding artifacts and validation fields -> backtest API and review docs
 Binance funding history + PIT universe -> scripts/market_data/backfill_universe_funding.py -> funding_rates plus local coverage report -> advisory Stage2 data reprobe
+Deribit hourly BTC/ETH funding + Binance 8h BTC/ETH funding + venue-scoped Deribit perpetual prices -> backtesting/xvenue_funding_spread_probe.py -> taxonomy_004 Stage2/reprobe sidecars (fail closed when the Deribit price leg is absent)
 ```
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
@@ -104,6 +113,12 @@ breadth minimum from `START + breadth_warmup_days` (30, mirroring
 `config/universe.yaml` warmup) because PIT eligibility cannot exist during
 warmup; warmup days stay recorded in probe details for audit (user-approved
 2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
+The C4 cross-venue probe canonicalizes only settlement timestamps within one
+second of the hourly boundary (F41/I41), sums eight non-overlapping Deribit
+`interest_1h` rows per Binance settlement, and never substitutes Deribit index
+prices for venue-scoped perpetual marks. Its lagged funding/cost grid is proxy
+evidence only; basis, inverse-collateral, margin, and executable-price PnL remain
+unavailable until a separate Stage-3 contract is approved.
 
 ## External Observations Ingestion Flow
 
@@ -203,6 +218,28 @@ E-041 keeps the 2 GiB ceiling as a compressed bytes-read guard, never falls back
 from missing hourly to daily DVOL, and writes `probe_status=FAIL_CLOSED` without
 a pricing `verdict.status` when the complete fixed sample cannot be evaluated.
 
+## H-014 Deribit Shadow-Execution Flow
+
+```text
+external_observations hourly DVOL (published_at as-of/F26)
+  + Binance canonical 1m closes aligned to the research 08:00 UTC day
+  -> research/probes/f_vol_regime_opt_probe.py::build_series (imported)
+  -> frozen ivp 85 / z 0.5 decision
+  -> current Deribit public option instruments + public top-of-book
+  -> atomic three-leg hypothetical fill (sell bid / buy ask)
+  -> imported ADR-0010/R8 accounting helpers
+  -> results/shadow_h014/journal.jsonl
+  -> scripts/run_h014_shadow.py --report
+```
+
+Current: this is a separate credential-free, manual, one-cycle shadow path. It
+does not use the engine broker, private endpoints, DB writes, schema changes, or
+scheduler registration. A signal requires the exact prior common BTC/ETH day;
+stale canonical data fails closed. JSONL event ids dedupe reruns without
+rewriting history. The report exposes fill bias, missed-entry rate, mark
+tracking error, coin equity curves, stale-record exclusions, and the eight-week
+ADR-0011 exit gate. It never marks live as approved.
+
 ## Point-In-Time Universe Membership Flow
 
 ```text
@@ -253,6 +290,10 @@ raw exchange rows -> CandleStore upsert and canonicalize methods -> raw_candles,
 ```
 
 Current: canonical priority is centralized in `okx_quant.data.canonical_policy`.
+Deribit inverse-perpetual candles take the direct canonical CandleStore path
+under their native ids because the legacy market-instrument schema has no
+Deribit venue enum; ingestion checkpoints, raw quality flags, and exact
+`source_primary='deribit'` provenance remain mandatory.
 The Market Data Coverage API reads OHLCV list rows from `instrument_bars`
 metadata first, not from a full `canonical_candles` aggregation. That keeps the
 UI responsive while large 1m backfills are running; the displayed OHLCV row count

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -33,6 +33,15 @@ over time.
 
 ## Research and operations state
 
+- ADR-0011's first H-014 DB smoke found stale canonical/DVOL inputs. A bounded
+  refresh through the existing public Binance and Deribit ingestion paths
+  restored the exact prior-day signal on 2026-07-14, but freshness remains an
+  operational prerequisite because no scheduler was authorized. The runner
+  now raises before journaling rather than reusing a stale date (F39/I40), and
+  its signal-day-qualified intent ID lets a corrected rerun coexist with audit
+  history. Two pre-guard stale records remain in append-only JSONL; the report
+  counts and excludes them from the 8-week gate. Do not substitute a new data
+  source or schedule refreshes silently.
 - H-009 remains a non-passing `testing` candidate with no chase-the-gate retry.
   H-012 is user-ratified `shelved`, no retry; its E-037 spot-check also found
   F36: turnover cost is posted on signal day while position/funding begin at
@@ -52,9 +61,13 @@ over time.
 - The existing `127.0.0.1:8080` listener (PID 23696 during the audit) timed out
   and was not stopped because it was not owned by this session. The user has
   abandoned that port; use another port and do not kill the user process.
-- `quant_liq_okx_ingest` remains Interactive-only while measured public REST
-  retention is hours-scale. The user approved unattended/service mode; Codex
-  implementation remains a separate P1.4 task.
+- P1.4 repo support is implemented: the liquidation wrapper pins the verified
+  Python executable, and the RUNBOOK records least-privilege S4U registration,
+  verification, run, rollback, and removal commands. Host activation remains
+  blocked: `quant_liq_okx_ingest` still reported `Interactive` on 2026-07-15
+  because this session could not obtain Administrator Task Scheduler rights.
+  Run the documented `/NP` command from Administrator PowerShell, then require
+  `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
 
 ## Governance follow-ups
 

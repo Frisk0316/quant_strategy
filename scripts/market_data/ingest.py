@@ -24,6 +24,7 @@ from okx_quant.core.config import load_config
 from okx_quant.data.candle_store import CandleStore
 from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
 from okx_quant.data.exchange_clients.bybit_public import BybitPublicClient
+from okx_quant.data.exchange_clients.deribit_public import DeribitPublicClient
 from okx_quant.data.exchange_clients.okx_public import OKXPublicClient
 
 
@@ -32,6 +33,7 @@ Direction = Literal["forward", "backward"]
 
 BAR_MS = 60_000
 EIGHT_HOURS_MS = 8 * 60 * 60 * 1000
+DERIBIT_PAGE_ROWS = 5_000
 
 DEFAULT_STARTS = {
     "binance": {
@@ -45,6 +47,10 @@ DEFAULT_STARTS = {
     "bybit": {
         "klines_1m": "2020-03-25T00:00:00Z",
         "funding_rate": "2020-03-25T00:00:00Z",
+    },
+    "deribit": {
+        "klines_1m": "2024-01-01T00:00:00Z",
+        "funding_rate": "2024-01-01T00:00:00Z",
     },
 }
 
@@ -104,6 +110,10 @@ def _legacy_inst_id(exchange: str, symbol: str) -> str:
 
 
 def _ensure_usdt_perp(exchange: str, symbol: str) -> None:
+    if exchange == "deribit":
+        if symbol not in {"BTC-PERPETUAL", "ETH-PERPETUAL"}:
+            raise ValueError(f"unsupported Deribit perpetual: {symbol}")
+        return
     if exchange == "okx":
         if not symbol.endswith("-USDT-SWAP"):
             raise ValueError(f"OKX symbol must be USDT SWAP, got {symbol}")
@@ -162,6 +172,8 @@ def _make_client(exchange: str, timeout_seconds: float):
         return BinancePublicClient(timeout=timeout_seconds)
     if exchange == "bybit":
         return BybitPublicClient(timeout=timeout_seconds)
+    if exchange == "deribit":
+        return DeribitPublicClient(timeout=timeout_seconds)
     if exchange == "okx":
         return OKXPublicClient(timeout=timeout_seconds)
     raise ValueError(f"unsupported exchange: {exchange}")
@@ -230,6 +242,24 @@ def _fetch_page(
             next_cursor = min(r["ts_ms"] for r in rows) - 1
             return rows, next_cursor, next_cursor < start_ms
 
+        if exchange == "deribit":
+            if direction != "forward":
+                raise ValueError("Deribit klines_1m ingestion requires --direction forward")
+            window_end = min(cursor_ms + (DERIBIT_PAGE_ROWS - 1) * BAR_MS, end_ms - 1)
+            rows = client.get_tradingview_chart_data(
+                symbol,
+                start_ms=cursor_ms,
+                end_ms=window_end,
+                resolution=1,
+            )
+            rows = [
+                row
+                for row in rows
+                if start_ms <= row["ts_ms"] < end_ms and row.get("is_closed", True)
+            ]
+            next_cursor = rows[-1]["ts_ms"] + BAR_MS if rows else window_end + BAR_MS
+            return rows, next_cursor, next_cursor >= end_ms
+
     if dataset == "funding_rate":
         if exchange == "binance":
             window_end = min(cursor_ms + 1000 * EIGHT_HOURS_MS - 1, end_ms - 1)
@@ -277,18 +307,41 @@ async def _flush(
         return 0
 
     base_ccy = _base_ccy(symbol)
-    instrument_id = await store.register_market_instrument(
-        exchange=exchange,
-        inst_id=symbol,
-        normalized_symbol=_normalize_symbol(exchange, symbol),
-        base_asset=base_ccy,
-        quote_asset="USDT",
-        settlement_asset="USDT",
-        market_type="linear_perpetual",
-        contract_type="perpetual",
-    )
+    if exchange == "deribit":
+        if dataset != "klines_1m":
+            raise ValueError("Deribit ingestion supports klines_1m only")
+        canonical_inst_id = _legacy_inst_id(exchange, symbol)
+        await store.register_instrument(
+            inst_id=canonical_inst_id,
+            base_ccy=base_ccy,
+            quote_ccy="USD",
+            settle_ccy=base_ccy,
+            # ponytail: legacy CHECK lacks Deribit; source_primary retains exact provenance.
+            exchange="other",
+            inst_type="SWAP",
+        )
+        await store.register_instrument_bar(canonical_inst_id, "1m")
+        result = await store.upsert_canonical_candles(
+            rows,
+            inst_id=canonical_inst_id,
+            bar="1m",
+            source_primary=exchange,
+            quality_status="raw",
+        )
+        await store.update_instrument_bar_bounds(canonical_inst_id, "1m")
+    else:
+        instrument_id = await store.register_market_instrument(
+            exchange=exchange,
+            inst_id=symbol,
+            normalized_symbol=_normalize_symbol(exchange, symbol),
+            base_asset=base_ccy,
+            quote_asset="USDT",
+            settlement_asset="USDT",
+            market_type="linear_perpetual",
+            contract_type="perpetual",
+        )
 
-    if dataset == "klines_1m":
+    if dataset == "klines_1m" and exchange != "deribit":
         result = await store.upsert_market_klines(
             rows,
             instrument_id=instrument_id,
@@ -306,7 +359,7 @@ async def _flush(
             await store.upsert_raw_candles(rows, source=exchange, inst_id=symbol, bar="1m")
             await store.canonicalize_from_raw(exchange, symbol, "1m")
             await store.update_instrument_bar_bounds(symbol, "1m")
-    else:
+    elif dataset == "funding_rate":
         result = await store.upsert_market_funding_rates(
             rows,
             instrument_id=instrument_id,
@@ -502,9 +555,17 @@ async def ingest_symbol(
 
 
 @click.command()
-@click.option("--exchange", required=True, type=click.Choice(["binance", "okx", "bybit"]))
+@click.option(
+    "--exchange",
+    required=True,
+    type=click.Choice(["binance", "okx", "bybit", "deribit"]),
+)
 @click.option("--dataset", required=True, type=click.Choice(["klines_1m", "funding_rate"]))
-@click.option("--symbols", required=True, help="Comma-separated symbols, e.g. BTCUSDT,ETHUSDT")
+@click.option(
+    "--symbols",
+    required=True,
+    help="Comma-separated native symbols, e.g. BTCUSDT or BTC-PERPETUAL",
+)
 @click.option("--start", default=None, help="ISO start time. Defaults to exchange-level start.")
 @click.option("--end", default="now", show_default=True, help="ISO end time or now.")
 @click.option("--direction", default="forward", type=click.Choice(["forward", "backward"]))
@@ -536,7 +597,7 @@ def cli(
     http_backoff_seconds: float,
     config: str,
 ) -> None:
-    """Backfill public USDT perpetual OHLCV/funding with checkpointed flushing."""
+    """Backfill public perpetual OHLCV/funding with checkpointed flushing."""
     cfg = load_config(settings_path=config, require_secrets=False)
     dsn = os.environ.get("DATABASE_URL") or cfg.storage.timescale_dsn
     if not dsn:

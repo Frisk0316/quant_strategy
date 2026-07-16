@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -195,6 +195,35 @@ python scripts/market_data/ingest.py \
     --start 2020-03-25T00:00:00Z \
     --end now
 ```
+
+Deribit BTC/ETH inverse-perpetual 1m history uses the public TradingView candle
+endpoint, native canonical ids, and forward checkpoints. Initial backfill:
+
+```powershell
+python scripts\market_data\ingest.py `
+    --exchange deribit `
+    --dataset klines_1m `
+    --symbols BTC-PERPETUAL,ETH-PERPETUAL `
+    --start 2024-01-01T00:00:00Z `
+    --end now `
+    --direction forward
+```
+
+Forward top-up uses the same command; the per-symbol checkpoint resumes from
+the last successful cursor and idempotent canonical upserts make reruns safe.
+Verify the venue scope before using the data:
+
+```sql
+SELECT inst_id, source_primary, quality_status, COUNT(*) AS rows,
+       MIN(ts) AS first_ts, MAX(ts) AS last_ts
+FROM canonical_candles
+WHERE inst_id IN ('BTC-PERPETUAL', 'ETH-PERPETUAL')
+  AND bar = '1m'
+GROUP BY inst_id, source_primary, quality_status;
+```
+
+Require `source_primary='deribit'`, no suspect rows, and at least 99% 1m
+coverage for the requested window. Never substitute Deribit index-price data.
 
 Check ingestion progress:
 
@@ -661,19 +690,87 @@ make validate-data
 This may require local data files or DB-backed data, depending on configuration and
 environment.
 
+## H-014 Deribit Options Shadow (manual only)
+
+ADR-0011 v1 has no credentials and no order method. It reads DB signals, then
+uses only Deribit public instruments/order-book/trade/delivery methods. Run one
+cycle at or after 08:00 UTC; the process exits after the cycle:
+
+```powershell
+python scripts/run_h014_shadow.py
+```
+
+The cycle fails closed if either BTC or ETH lacks the exact prior research-day
+DVOL/canonical-close pair. Refresh the existing ingestion data first; do not
+override the date or frozen `ivp_min=85` / `z_min=0.5` parameters. Build the
+ADR-0011 bias report from the append-only journal with:
+
+```powershell
+python scripts/run_h014_shadow.py --report
+```
+
+Runtime files are `results/shadow_h014/journal.jsonl` and
+`bias_report.json`. Do not truncate or edit the journal.
+
+USER-APPROVED SCHEDULE (2026-07-15, after the review conditions cleared):
+`quant_h014_shadow_daily` runs `scripts\run_h014_shadow_task.cmd` daily at
+16:10 local (08:10 UTC) — the wrapper tops up DVOL + Binance 1m candles via
+`research\probes\h014_daily_shadow_ops.py --no-wait`, runs one cycle, and
+refreshes the bias report (log: `logs\h014_shadow_daily.log`). Manage with:
+
+```powershell
+schtasks /Query /TN quant_h014_shadow_daily /FO LIST
+schtasks /Run /TN quant_h014_shadow_daily
+schtasks /Delete /TN quant_h014_shadow_daily /F   # kill switch
+```
+
+Journal event-id dedupe makes an accidental double-run a no-op. A manual
+cycle leaves no resident process, so stopping
+means simply not running another cycle. If the user later approves and creates
+a Windows task, the reversible kill switch is:
+
+```powershell
+Disable-ScheduledTask -TaskName "quant_h014_deribit_shadow"
+# Permanent removal remains a separate human-approved action:
+Unregister-ScheduledTask -TaskName "quant_h014_deribit_shadow" -Confirm
+```
+
+Eight weeks plus a complete bias report unlock only a live ADR discussion;
+live execution still requires R7.2 and a separate explicit user approval.
+
 ## Scheduled External Ingest (OKX liquidation)
 
 OKX's public liquidation-orders REST endpoint only retains a few hours of
 events (measured 2026-07-03: BTC ~14h, ETH ~5h at the 1,600-row cap), so
 `liq_okx_btc` / `liq_okx_eth` forward accumulation runs as a Windows scheduled
-task every 2 hours (user-approved 2026-07-03):
+task every 2 hours. P1.4's unattended mode uses the same `woody` account with
+an S4U (`/NP`) logon and `LIMITED` run level; it stores no password and does not
+grant SYSTEM or administrator privileges. Run this once from an Administrator
+PowerShell to create or replace the previous Interactive-only task:
 
-```text
-Task name : quant_liq_okx_ingest  (schtasks, Interactive only — runs while logged on)
-Wrapper   : scripts/market_data/run_liq_ingest_task.cmd
-Log       : logs/liq_okx_ingest.log (gitignored)
-Manual run: schtasks /Run /TN quant_liq_okx_ingest
-Remove    : schtasks /Delete /TN quant_liq_okx_ingest /F
+```powershell
+schtasks /Create /TN quant_liq_okx_ingest /TR "C:\quant_strategy\scripts\market_data\run_liq_ingest_task.cmd" /SC HOURLY /MO 2 /ST 00:05 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+(Get-ScheduledTask -TaskName "quant_liq_okx_ingest").Principal | Format-List UserId,LogonType,RunLevel
+# Expected: woody / S4U / Limited
+```
+
+The wrapper pins the verified Python 3.12 executable because an S4U session
+must not depend on an interactive PATH. Update that path if Python is moved.
+S4U has no delegated network credentials; this task needs only public HTTPS,
+the local repository, and the configured localhost TimescaleDB.
+
+Manual run, status, and permanent removal:
+
+```powershell
+schtasks /Run /TN quant_liq_okx_ingest
+Get-ScheduledTaskInfo -TaskName "quant_liq_okx_ingest" | Format-List LastRunTime,LastTaskResult,NextRunTime,NumberOfMissedRuns
+schtasks /Delete /TN quant_liq_okx_ingest /F
+```
+
+Rollback to the former logged-on-only behavior, if needed:
+
+```powershell
+schtasks /Create /TN quant_liq_okx_ingest /TR "C:\quant_strategy\scripts\market_data\run_liq_ingest_task.cmd" /SC HOURLY /MO 2 /ST 00:05 /RU "MAXWEL_FRIEDMAN\woody" /IT /RL LIMITED /F
 ```
 
 The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if

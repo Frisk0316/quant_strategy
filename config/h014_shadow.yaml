@@ -1,0 +1,25 @@
+mode: shadow_only
+public_api_url: https://www.deribit.com/api/v2/public
+journal_path: results/shadow_h014/journal.jsonl
+# Close signals use 08:00 UTC sessions. Claude's 1,570-day E-039 comparison found
+# identical IVP; RICH(85/0.5) flipped 0/1,570 BTC days and 3/1,570 ETH days.
+price_source: binance
+
+symbols:
+  BTC: BTC-USDT-SWAP
+  ETH: ETH-USDT-SWAP
+
+# Frozen by ADR-0011. Any change requires explicit user approval.
+signal:
+  ivp_min: 85.0
+  z_min: 0.5
+
+limits:
+  tranche_units: 0.03333333333333333
+  unit_cap_per_symbol: 1.0
+
+# Mirrored constants; runtime validates them and imports the R8.4 fee function.
+fees:
+  trade_coin_cap: 0.0003
+  settlement_coin_cap: 0.00015
+  premium_fraction_cap: 0.125

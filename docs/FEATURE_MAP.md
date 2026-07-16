@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-15
 expires: none
 superseded_by: null
 ---
@@ -182,6 +182,12 @@ implementation exists.
   resolve multiplier contracts such as `1000SHIB-USDT-SWAP` from DB.
   External coverage rows label Exchange from the dataset provider, and external
   export downloads DB rows even when the optional refresh pre-step skips or fails.
+  OKX liquidation forward accumulation is wrapped by
+  `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
+  two-hour least-privilege S4U task registration, run, rollback, and removal.
+  The checkpointed CLI also backfills and forward-tops-up Deribit public
+  BTC/ETH-PERPETUAL 1m candles under native canonical ids with venue-scoped
+  `source_primary='deribit'`; index prices are never a fallback.
 - Frontend files: `frontend/view-config.js`, `frontend/data.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`.
 - Backtesting files: `backtesting/data_loader.py`.
@@ -189,6 +195,7 @@ implementation exists.
   `src/okx_quant/data/exchange_clients/okx_public.py`,
   `src/okx_quant/data/exchange_clients/binance_public.py`,
   `src/okx_quant/data/exchange_clients/bybit_public.py`,
+  `src/okx_quant/data/exchange_clients/deribit_public.py`,
   `src/okx_quant/data/external_clients/deribit_dvol.py`,
   `src/okx_quant/data/external_clients/deribit_funding.py`,
   `src/okx_quant/data/external_clients/deribit_option_surface.py`,
@@ -198,18 +205,21 @@ implementation exists.
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   `scripts/market_data/ingest_external.py`,
+  `scripts/market_data/run_liq_ingest_task.cmd`,
   `scripts/market_data/snapshot_deribit_options.py`,
   `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
 - Config files: `config/settings.yaml`, `config/external_data.yaml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
+  `tests/unit/test_deribit_public_client.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
   `tests/unit/test_routes_data_delete.py`,
   `tests/unit/test_deribit_dvol_client.py`,
   `tests/unit/test_deribit_funding_client.py`,
   `tests/unit/test_deribit_option_surface.py`,
   `tests/unit/test_deribit_option_flow.py`,
+  `tests/unit/test_ingest_external_liquidation.py`,
   `tests/unit/test_snapshot_deribit_options.py`,
   `tests/unit/test_routes_data_external_series.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
@@ -476,12 +486,18 @@ implementation exists.
   stream free Tardis Deribit option chains to the 08:00 UTC as-of snapshot,
   and write real-vs-BS premium diagnostics or a fail-closed record. E-041 uses
   DB hourly DVOL published as-of 08:00 for the synthetic denominator and stops
-  before Tardis acquisition when that DB input is unavailable.
+  before Tardis acquisition when that DB input is unavailable. Taxonomy_004
+  adds the research-only F-XVENUE-FUNDING-SPREAD Stage-2 probe: it aligns
+  Deribit hourly and Binance 8h BTC/ETH funding, checks feature distinctness and
+  gross-normalized two-leg costs, and fails closed because venue-scoped Deribit
+  perpetual 1m prices are absent. E-053 is retained as F41-invalid evidence;
+  E-054 is the bounded settlement-timestamp reprobe. Neither is a full backtest.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
   `backtesting/pipeline_checkpoint1.py`, `backtesting/pipeline_family_minting.py`,
-  `backtesting/pipeline_idea_generator.py`.
+  `backtesting/pipeline_idea_generator.py`,
+  `backtesting/xvenue_funding_spread_probe.py`.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
@@ -498,6 +514,9 @@ implementation exists.
   `results/stage1_probe_20260713_f_vol_regime_opt/series_*.csv`; E-041 also
   reads `dvol_deribit_{btc,eth}_1h` from `external_observations`. Each run
   writes only its new `results/stage2_probe_*_f_vol_regime_opt*/` directory.
+  E-053/E-054 read `funding_rates`, `external_observations`, and venue-scoped
+  `canonical_candles`, then write only
+  `results/idea_batch_20260715_taxonomy_004/` sidecars.
 - Config files: `config/pipeline_feedback_tags.yaml` for Claude/human-owned
   feedback ranking tags. This is not a strategy, risk, settings, or deployment
   gate config.
@@ -510,7 +529,8 @@ implementation exists.
   `tests/unit/test_literature_keyword_scorer.py`,
   `tests/unit/test_pipeline_orchestrator.py`,
   `tests/unit/test_pipeline_funnel_report.py`,
-  `tests/unit/test_f_vol_regime_opt_stage2.py`.
+  `tests/unit/test_f_vol_regime_opt_stage2.py`,
+  `tests/unit/test_xvenue_funding_spread_probe.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
   relevant Change Manifest.
@@ -588,6 +608,32 @@ implementation exists.
   risk, portfolio, execution, DB schema, existing result artifacts, or reference
   adapter tolerances unless the task explicitly permits it. Advisory validation
   output is not live-readiness evidence.
+
+## H-014 Deribit Options Shadow Execution
+
+- User-facing behavior: manually run one credential-free daily H-014 cycle;
+  reproduce the accepted research signal from F26-safe DB inputs, select the
+  current nearest-30d option chain, atomically simulate sells at bid/buys at
+  ask, append R8 records (including journaled chain misses and R8.3 rejections),
+  and generate the ADR-0011 bias report.
+- Frontend/API files: none.
+- Execution files: `src/okx_quant/execution/deribit_shadow/`,
+  `scripts/run_h014_shadow.py`.
+- Data / artifacts: reads `external_observations` and `canonical_candles`, then
+  Deribit allow-listed public REST data; appends runtime JSONL under
+  `results/shadow_h014/`. No DB write or schema change.
+- Config: `config/h014_shadow.yaml` freezes `ivp_min=85`, `z_min=0.5`,
+  1/30-unit tranches, and the 1.0-unit cap; `config/risk.yaml` is untouched.
+- Research imports (read-only): `research/probes/f_vol_regime_opt_probe.py`,
+  `research/probes/h014_collect_leg_marks.py`,
+  `research/probes/h014_stage3_backtest.py`.
+- Tests: `tests/unit/test_h014_shadow.py`,
+  `tests/unit/test_h014_options_accounting.py`.
+- Docs: ADR-0011, `docs/DOMAIN_RULES.md` R8, `docs/DATA_FLOW.md`, this map,
+  `docs/RUNBOOK.md`, and the change manifest.
+- Do-not-touch notes: no private/authenticated endpoint, broker/order path,
+  credential, scheduler registration, strategy/risk/portfolio module, DB
+  schema, live gate, or frozen parameter change is allowed.
 
 ## Shadow / Demo / Live Deployment Gate
 

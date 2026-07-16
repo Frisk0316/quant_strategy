@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -27,7 +27,7 @@ Legend:
 | # | Changed area (trigger) | Must also review / update | Manifest? | ADR? |
 |---|---|---|---|---|
 | A1 | `src/okx_quant/strategies/`, `src/okx_quant/signals/` | `research/strategy_synthesis.md`, `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If assumptions change |
-| A2 | `src/okx_quant/portfolio/`, `src/okx_quant/execution/` | `docs/DOMAIN_RULES.md` (R1–R5), `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If accounting/fill policy changes |
+| A2 | `src/okx_quant/portfolio/`, `src/okx_quant/execution/` | `docs/DOMAIN_RULES.md` (R1–R5 and R8 where applicable), `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`, relevant ADR | Yes | If accounting/fill policy changes |
 | A3 | `src/okx_quant/risk/`, `config/risk.yaml` | `docs/DOMAIN_RULES.md` (R4), `docs/INVARIANTS.md`, `docs/ai_collaboration.md`, relevant ADR | Yes | If limits/semantics change |
 | A4 | `config/strategies.yaml`, `config/settings.yaml`, `config/universe.yaml` | `docs/DOMAIN_RULES.md`, `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`, `research/strategy_synthesis.md` | Yes | If a mode/gate changes |
 | A5 | `backtesting/`, `scripts/run_backtest.py`, `scripts/run_replay_backtest.py` | `docs/DATA_FLOW.md`, `docs/FEATURE_MAP.md`, `docs/GOLDEN_CASES.md`, `docs/INVARIANTS.md`, ADR-0002/0005; CPCV result-retention/schema changes must also review `docs/KNOWN_ISSUES.md` and `docs/EXPERIMENT_REGISTRY.md` | Yes | If result schema or gates change |
@@ -37,6 +37,7 @@ Legend:
 | A9 | Validation / gates (replay/WF/CPCV, differential/source-provenance validation, research execution controls, pipeline checkpoint, DSR/PSR audit tooling) | `docs/DOMAIN_RULES.md` (R7), `docs/ai_collaboration.md`, ADR-0005, `docs/INVARIANTS.md`; n_trials provenance changes must also review `docs/EXPERIMENT_REGISTRY.md` | Yes | Yes |
 | A10 | Core governance contracts/tooling (`AGENTS.md`, `CLAUDE.md`, `AI_CONTEXT.md`, workflow/lifecycle/branch/output/collaboration/impact docs, `check_doc_impact.py`) | `docs/README.md`, `docs/DOC_LIFECYCLE.md`, this matrix | No | If authority order changes |
 | A11 | Experiments / research runs | `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` | No | No |
+| A12 | Coin-margined derivatives research/shadow accounting and safety (options premium/settlement/fee/mark rules, bounded-loss intents, shadow evidence, inverse-perpetual PnL/funding/pair-unit rules; `research/probes/h014_*`, `src/okx_quant/execution/deribit_shadow/`, future `h021` Stage-3 runner) | `docs/DOMAIN_RULES.md` (R8/R9), ADR-0010/0011/0012, `docs/INVARIANTS.md` (I39/I40) | Yes | If accounting, bounded-loss, fill, or shadow-boundary rules change |
 
 A11 is not represented as a changed-file rule in `check_doc_impact.py`: research
 artifacts may be gitignored or external, so a diff-only rule would create false

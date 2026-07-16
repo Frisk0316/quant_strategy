@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -26,6 +26,7 @@ A golden case is not a substitute for the unit/integration tests that enforce it
 | G-001 | Same BTC-SWAP MA crossover replay on OKX vs Binance venue specs | Same strategy/params on a synthetic BTC-USDT-SWAP 1H parquet fixture; OKX `ctVal=0.01`; Binance `ctVal=1.0`; both via `instrument_specs` override | Metrics match within `1e-6` because `ct_val` cancels under notional sizing; any real venue divergence should be lot-rounding/fee/funding, and run validation carries the selected `exchange` | I1, I16 | `tests/unit/test_multi_venue_convergence.py` |
 | G-002 | Binance-tagged candle load with an OKX-only/source-less fallback candidate | `load_candles(..., backend="parquet", dsn=<reachable>, exchange="binance")` with parquet close `63258.8` and canonical Binance close `63229.2`; a dated range with a missing Binance bar | Loader returns the Binance canonical close, never the parquet/OKX close; a missing Binance bar raises an explicit venue gap | I19 | `tests/unit/test_data_loader.py` |
 | G-003 | Turtle S1/S2 reference quirks plus 600-day golden parity | Tiny synthetic daily OHLCV cases plus `tests/fixtures/turtle/daily_ohlc.csv` with `expected_default.csv` and `expected_stress.csv` generated from the verbatim reference implementation | Entry thresholds exclude the current day; buys require `cost < cash`; a winning S1 exit skips exactly the next S1 breakout; final equity marks open positions with no forced liquidation; default/stress fixture outputs match ints exactly and floats within `1e-9` | I1, I2 | `tests/unit/test_turtle_backtest.py` |
+| G-004 | H-014 inverse-option cycle plus shadow intent safety | Short one call at 0.01 coin, `K=55k`, delivery `S_T=60k`; separate short-put-only and `1.0 + 1/30` intent cases | Coin PnL = premium − R8.4 trade fee − inverse payoff − settlement fee; naked put and over-cap intent both raise before quote/fill | I39 | `tests/unit/test_h014_options_accounting.py`, `tests/unit/test_h014_shadow.py` |
 
 ## What makes a good golden case
 

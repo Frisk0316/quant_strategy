@@ -11,6 +11,7 @@ from statistics import median
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
+from backtesting.xvenue_funding_spread_probe import probe_xvenue_funding_spread
 
 BATCH_ID = "idea_batch_20260701_taxonomy_002"
 START = "2024-01-01"
@@ -953,6 +954,7 @@ STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
     "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
+    "F-XVENUE-FUNDING-SPREAD": probe_xvenue_funding_spread,
 }
 
 

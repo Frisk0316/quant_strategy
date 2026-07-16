@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-13
+last_reviewed: 2026-07-14
 expires: none
 superseded_by: null
 ---
@@ -139,6 +139,65 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   non-overlapping OOS observations for its sample-size term and honest researched
   `n_trials` as the multiple-trial penalty. For the same series, DSR must not
   exceed PSR(0).
+
+## R8. Options (research + shadow) — ADR-0010 / ADR-0011
+
+These rules govern coin-margined (inverse) options research backtests and the
+credential-free ADR-0011 H-014 shadow path. They do not authorize engine,
+live/demo, private-endpoint, or USDT-perp accounting changes; promotion toward
+real execution requires a new ADR and R7.2 approval.
+
+- **R8.1** Unit of account is the coin (BTC/ETH). Gate statistics are computed
+  on coin-denominated returns; USD series are context only.
+- **R8.2** Expiry settlement uses the official Deribit delivery price; call
+  payoff `max(S_T−K,0)/S_T` coin, put payoff `max(K−S_T,0)/S_T` coin;
+  European, no early exercise.
+- **R8.3** Only bounded-coin-loss structures are allowed (covered call;
+  25Δ/10Δ put spread). Naked short puts are prohibited (user-confirmed
+  2026-07-14). This bound is what licenses the absence of a margin model;
+  any unbounded structure first needs a margin-model ADR. The ADR-0011 shadow
+  path rejects an unpaired short-put intent before quote/fill handling and caps
+  aggregate open tranches at `1.0` unit per symbol.
+- **R8.4** Fees per Deribit's published schedule: trade fee
+  `min(0.0003 coin, 12.5% × premium)` per leg; settlement fee
+  `min(0.00015 coin, 12.5% × premium)` on expiring ITM options. Entry price
+  is the real traded VWAP in research. ADR-0011 shadow sells at live bid and
+  buys at live ask; no additional synthetic haircut is added.
+- **R8.5** Daily marks: same-instrument trade-tape VWAP first; fallback =
+  BS mark at day DVOL plus the instrument's last observed IV offset. Fallback
+  usage is counted; a combo above 30% fallback position-days is unreliable.
+- **R8.6** Every mark row records its source, instrument, and timestamps;
+  collected mark/leg files are immutable inputs.
+- **R8.7** ADR-0011 v1 is append-only JSONL shadow evidence using DB F26 as-of
+  signals and allow-listed Deribit public market-data methods only. It has no
+  credential or order capability. Chain-construction failures journal as
+  `missed_entry`; R8.3 intent-set failures journal as `rejected`, which is
+  counted separately from and excluded from the missed-entry denominator like
+  `cap_rejected`. At least eight weeks of fresh daily records plus fill-bias,
+  missed-entry, and mark-tracking metrics unlock only a future live-ADR
+  discussion; live still requires R7.2 and explicit user approval.
+
+## R9. Coin-margined perpetuals (research) — ADR-0012
+
+Research-backtest accounting for Deribit inverse perpetuals (currently only
+H-021's cross-venue funding-spread pair). No engine/live surface.
+
+- **R9.1** Inverse-perp PnL is exact, in coin: long over a bar
+  `= N_usd × (1/P_prev − 1/P_now)`; short is the negation. No linear
+  approximation of the 1/P convexity.
+- **R9.2** A cross-venue delta-neutral PAIR aggregates in USD: the coin leg
+  converts at the same-bar venue-scoped mark, mark-to-market, never smoothed.
+  (Deliberate split vs R8.1's coin unit for coin-collateral overlays.)
+- **R9.3** Deribit funding: `interest_1h` on USD notional settles in coin
+  (`rate × N / P`), long pays positive (R3.1 sign); interval summation per
+  the frozen hypothesis contract with F41/I41 ≤1s canonicalization.
+- **R9.4** The no-margin/no-liquidation assumption is admissible ONLY for
+  unlevered, bounded-gross, delta-neutral books; anything levered or
+  directional first needs a margin-model ADR.
+- **R9.5** Costs follow the hypothesis's pre-registered per-leg bps model
+  (base + stress); no idealized maker fills.
+- **R9.6** Deribit legs price only from `source_primary='deribit'` canonical
+  candles (I19; no index substitution).
 
 ---
 
