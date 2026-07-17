@@ -221,6 +221,9 @@ def purge_pair(inst_id: str, confirm: str, config: str) -> None:
         try:
             click.echo(f"Purging all data for {inst_id}...")
             await conn.execute(
+                "DELETE FROM venue_canonical_candles WHERE inst_id=$1", inst_id
+            )
+            await conn.execute(
                 "DELETE FROM canonical_candles WHERE inst_id=$1", inst_id
             )
             await conn.execute(

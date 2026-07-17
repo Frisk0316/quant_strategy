@@ -851,7 +851,7 @@ async def _fetch_venue_coverage(
             COUNT(*)::bigint AS row_count,
             MIN(ts) AS first_ts,
             MAX(ts) AS last_ts
-        FROM canonical_candles
+        FROM canonical_candles_by_source
         WHERE inst_id = ANY($1::text[])
           AND source_primary = ANY($2::text[])
           AND bar = '1m'
@@ -885,7 +885,7 @@ async def _fetch_venue_coverage(
             source_primary AS venue,
             date_trunc('day', ts)::date AS day,
             COUNT(*)::bigint AS row_count
-        FROM canonical_candles
+        FROM canonical_candles_by_source
         WHERE inst_id = ANY($1::text[])
           AND source_primary = ANY($2::text[])
           AND bar = '1m'
@@ -909,8 +909,8 @@ async def _fetch_venue_coverage(
     aligned = await conn.fetch(
         """
         SELECT b.inst_id, COUNT(*)::bigint AS aligned_rows
-        FROM canonical_candles b
-        JOIN canonical_candles o
+        FROM canonical_candles_by_source b
+        JOIN canonical_candles_by_source o
           ON b.inst_id = o.inst_id
          AND b.bar = o.bar
          AND b.ts = o.ts

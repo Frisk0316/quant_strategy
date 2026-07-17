@@ -5,8 +5,9 @@ from okx_quant.data.canonical_policy import (
     canonical_conflict_where,
     should_replace_canonical,
     source_priority,
+    venue_canonical_conflict_where,
 )
-from scripts._db_writer import _should_replace_canonical, _source_priority
+from scripts._db_writer import _should_replace_canonical, _source_priority, _upsert_async
 
 
 def test_canonical_source_priority_prefers_binance_over_okx() -> None:
@@ -43,3 +44,13 @@ def test_canonical_store_paths_use_shared_priority_gate() -> None:
         source = inspect.getsource(method)
         assert "canonical_conflict_where()" in source
         assert "ON CONFLICT (inst_id, bar, ts) DO NOTHING" not in source
+
+
+def test_raw_writers_dual_write_source_aware_canonical_without_overwriting_corrections() -> None:
+    policy = venue_canonical_conflict_where()
+    assert "quality_status IN ('raw', 'suspect')" in policy
+    assert "IS DISTINCT FROM" in policy
+    for method in (CandleStore.canonicalize_from_raw, _upsert_async):
+        source = inspect.getsource(method)
+        assert "INSERT INTO venue_canonical_candles" in source
+        assert "venue_canonical_conflict_where()" in source

@@ -223,6 +223,7 @@ async def test_canonical_candles_can_filter_source_primary():
     )
 
     assert "source_primary=$3" in pool.sql
+    assert "FROM canonical_candles_by_source" in pool.sql
     assert pool.params == ("BTC-USDT-SWAP", "1H", "binance")
 
 
