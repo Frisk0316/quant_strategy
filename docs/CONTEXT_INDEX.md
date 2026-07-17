@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-06-12
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -34,8 +34,10 @@ Use `AI_CONTEXT.md` → "Source Of Truth List" as the master. Summary:
 | Understand the project at all | `AI_CONTEXT.md` |
 | Know the current state / next action | `docs/CURRENT_STATE.md`, `docs/AI_HANDOFF.md` |
 | Know the rules I must not break | `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md` |
+| Review strategy-family history and iterations | `docs/STRATEGY_HISTORY.md`, `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md` |
 | Find the owning files for a feature | `docs/FEATURE_MAP.md`, `docs/MODULE_BRIEFS/` |
 | Trace data/artifacts | `docs/DATA_FLOW.md` |
+| Understand resolved vs source-aware canonical candles | `docs/ADR/0014-source-aware-canonical-candles.md`, `tasks/2026-07-17-okx-canonical-promotion-codex-tasks.md` |
 | Trace UI/API | `docs/UI_MAP.md` |
 | Run / verify | `docs/RUNBOOK.md`, `Makefile` |
 | Design something new | `docs/DESIGN_SPACE.md`, `docs/MENTAL_MODELS.md`, `docs/QUESTION_BANK.md` |

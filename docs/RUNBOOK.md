@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -258,6 +258,81 @@ ORDER BY mi.exchange, mi.inst_id;
 | Bybit | `BASEQUOTE` | `BTCUSDT` |
 
 `--direction forward` paginates oldest→newest; `--direction backward` paginates newest→oldest (default for OKX history endpoint). Both directions are supported for Binance and Bybit.
+
+### H-010 OKX BTC/ETH 1m audit, backfill, and verification
+
+Run the read-only coverage/ROI audit first. It resolves `--dsn`, then
+`DATABASE_URL`, then the settings DSN; with none it writes explicit `SKIP`
+outputs and makes no DB or network request:
+
+```powershell
+python scripts\audit_history_coverage.py `
+    --json-out "$env:TEMP\history_coverage_audit.json" `
+    --markdown-out "$env:TEMP\history_coverage_audit.md"
+```
+
+The exact human/local network command for the frozen H-010 half-open window is:
+
+```powershell
+python scripts\market_data\ingest.py `
+    --exchange okx `
+    --dataset klines_1m `
+    --symbols BTC-USDT-SWAP,ETH-USDT-SWAP `
+    --start 2024-01-01T00:00:00Z `
+    --end 2026-06-17T00:00:00Z `
+    --direction backward
+```
+
+Do not run that fetch in a network-blocked sandbox. It is checkpointed and
+idempotent. When complete raw rows already exist, apply the additive ADR-0014
+schema and fixed-scope promotion (the command reruns idempotently):
+
+```powershell
+python scripts\promote_okx_canonical_1m.py
+```
+
+Then use this one-shot read-only verifier:
+
+```powershell
+python scripts\verify_okx_1m_backfill.py
+```
+
+The verifier reuses `pipeline_stage2_registry.probe_xvenue` over
+`[2024-01-01, 2026-06-17)` and exits nonzero unless each symbol has OKX
+`coverage_ratio >= 0.95` and Binance/OKX `alignment_ratio >= 0.95`. No alternate
+venue may fill a failed leg (I19). It also requires exact raw-to-venue OHLCV
+parity and zero OKX rows in the priority-resolved table for this window.
+
+Completed local evidence on 2026-07-17: BTC and ETH each have 1,293,120 raw and
+venue-canonical rows, zero mismatches, 1.0 OKX coverage/alignment, and zero
+resolved OKX rows. A second promotion changed zero rows. This is data-layer
+verification only; do not run H-010, edit its ledger/verdict, or claim promotion
+or deployment readiness from this result.
+
+Rollback the data rows only after stopping source-aware consumers:
+
+```sql
+DELETE FROM venue_canonical_candles
+WHERE source_primary = 'okx'
+  AND inst_id IN ('BTC-USDT-SWAP', 'ETH-USDT-SWAP')
+  AND bar = '1m'
+  AND ts >= '2024-01-01T00:00:00Z'
+  AND ts < '2026-06-17T00:00:00Z';
+```
+
+After code rollback, drop `canonical_candles_by_source` and then
+`venue_canonical_candles`. Never delete `raw_candles`, resolved
+`canonical_candles`, CAGGs, ledgers, or results for this rollback.
+
+### Stage-2 statistical-power caller inputs
+
+Active registry CLI runs require one candidate plus `--breadth`, `--n-obs`,
+`--n-trials`, and `--plausible-net-sharpe`. Funding backfill requires the same
+four flags unless `--skip-stage2-probe` or `--no-db` makes the probe inactive.
+The orchestrator accepts `--power-inputs <json>` where the root object is keyed
+by exact `candidate_id`; each value contains those four fields. Values are
+ex-ante research assertions and must not be inferred or shared globally across
+candidates. Missing fields stop before probe/artifact/status mutation.
 
 ## Promote Binance/Bybit Data into canonical_candles
 

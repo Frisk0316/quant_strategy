@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -120,11 +120,18 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   timestamped `close` values; OHLCV structure and volume-unit sanity are separate
   artifact/data-quality checks.
 - **R6.3** Trial count must be tracked; hidden trials inflate selection bias.
+  Stage-2 statistical-power triage must use the family-cumulative `n_trials`
+  recorded in `docs/EXPERIMENT_REGISTRY.md`; missing accounting fails closed.
 - **R6.4** A run that declares an execution venue must source candles only from
   provenance-tagged data for that venue. Missing venue bars are explicit
   gaps/errors; they must not be silently substituted from another venue or from
   source-less parquet. Omitting the venue selects the configured primary
   exchange; an explicit unknown venue must fail before the run is queued.
+- **R6.5** `canonical_candles` is the priority-resolved default identity.
+  A consumer that requires simultaneous exchange-native rows must use the
+  source-aware canonical identity `(source_primary, inst_id, bar, ts)`; it must
+  not reinterpret the resolved default as multi-venue storage. A same-source
+  corrected/validated resolved row takes precedence over raw venue data.
 
 ## R7. Promotion Gates
 

@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -154,6 +154,37 @@ implementation exists.
 - Do-not-touch notes: progress is ops/meta read-only; do not change DB schema,
   strategy, risk, portfolio, execution, config gates, or result artifacts.
 
+## Research Ledger Projection
+
+- User-facing behavior: browse a read-only `研究總表 / Ledger` Analysis view with
+  aggregate funnel KPIs, one row per research family, statistical evidence, K
+  usage, funnel counts, and contained links to the authoritative ledgers.
+- Current: frontend/research_funnel.json is an optional generated schema-v3
+  projection (schema-v2 family details plus isolated artifact errors). Its
+  absence produces an explicit generation command. Funnel loading
+  is independent from Progress capability discovery, so a failed `/api/progress`
+  request disables links without hiding the table.
+- Target: regenerate the static projection after pipeline or ledger updates with
+  `python scripts/run_pipeline_funnel_report.py --json-output
+  frontend/research_funnel.json`.
+- Known gap: generation is not automatic, so the projection can be absent or
+  stale. `docs/HYPOTHESIS_LEDGER.md` and `docs/EXPERIMENT_REGISTRY.md` remain the
+  source of truth; the UI is not promotion evidence.
+- Frontend files: `frontend/app.js`, `frontend/data.js`,
+  `frontend/view-ledger.js`; existing card, KPI, and table styles are reused.
+- Backend/API files: no new backend route. The static frontend serves the JSON;
+  `src/okx_quant/api/routes_progress.py` supplies the existing read-only,
+  allow-listed markdown route and its `file_links_enabled` capability flag.
+- Data / docs files: generated frontend/research_funnel.json (not checked in by
+  this task), `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`.
+- Config files: `config/workstreams.yaml` allow-lists exactly those two ledger
+  markdown files on the full-auto pipeline workstream.
+- Tests: `tests/unit/test_routes_progress.py`; syntax checks for
+  `frontend/view-ledger.js`, `frontend/data.js`, and `frontend/app.js`.
+- Docs to update: `docs/UI_MAP.md`, `docs/FEATURE_MAP.md`.
+- Do-not-touch notes: strictly read-only; do not add a write API, mutation control,
+  strategy/config gate, automatic generation, or broader repository file serving.
+
 ## Indicator Series / Indicator Chart
 
 - User-facing behavior: technical-indicator runs display per-symbol price plus
@@ -230,7 +261,10 @@ implementation exists.
 ## Canonical Candle Pipeline
 
 - User-facing behavior: use canonical, deduplicated, source-prioritized candles for
-  DB-backed backtests and coverage views.
+  DB-backed backtests and coverage views; run a read-only canonical/external
+  history audit and fail-closed H-010 cross-venue coverage verifier. ADR-0014
+  preserves that resolved default while explicit venue reads use a source-aware
+  identity; the authorized OKX frozen-window promotion is complete.
 - Frontend files: `frontend/view-config.js`.
 - Backend/API files: `src/okx_quant/api/routes_data.py`,
   `src/okx_quant/api/routes_backtest.py`.
@@ -239,11 +273,16 @@ implementation exists.
   `src/okx_quant/data/canonical_policy.py`,
   `src/okx_quant/data/migrations/001_ohlcv_pipeline_v2.sql`,
   `src/okx_quant/data/migrations/002_market_canonical_bridge.sql`,
+  `src/okx_quant/data/migrations/004_venue_canonical_candles.sql`,
   `scripts/_db_writer.py`, `scripts/market_data/canonicalize.py`,
   `scripts/market_data/import_parquet_ohlcv.py`,
-  `scripts/resample_binance_1h_canonical.py`, `sql/canonicalize_binance_to_legacy.sql`.
+  `scripts/resample_binance_1h_canonical.py`, `scripts/audit_history_coverage.py`,
+  `scripts/promote_okx_canonical_1m.py`,
+  `scripts/verify_okx_1m_backfill.py`, `sql/canonicalize_binance_to_legacy.sql`.
 - Config files: `config/settings.yaml`.
-- Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_db_writer.py`.
+- Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_db_writer.py`,
+  `tests/unit/test_audit_history_coverage.py`,
+  `tests/unit/test_venue_canonical_promotion.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/RUNBOOK.md`,
   `docs/backtest_live_parity_plan.md`.
 - Do-not-touch notes: source priority and canonicalization policy are data-quality
@@ -474,6 +513,11 @@ implementation exists.
   without automatic family minting. Pipeline improvement P1-P8 adds
   session-scoring handoff files, feedback ranking tags, advisory Stage2
   reprobe, and per-batch funnel metrics; all remain research-only sidecars.
+  ADR-0013 adds a registry-scoped, fail-closed statistical-power triage check
+  and a ledger/registry-wide derived funnel without changing Stage-3 gates.
+  Active callers require candidate-specific power inputs before probes or
+  artifacts; the orchestrator carries them on first run and reprobe, and a
+  malformed artifact is isolated rather than aborting the schema-v3 funnel.
   F-OI-POSITIONING Stage-2 data availability first read BTC/ETH Binance Vision
   5m OI (`oi_binance_hist_btc` / `oi_binance_hist_eth`, E-034), then the
   user-directed universe-wide backfill/probe generalized the dataset convention
@@ -494,11 +538,14 @@ implementation exists.
   signal grid, ADR-0012 exact inverse-perpetual accounting, base-cost fold-refit
   WF/CPCV, stress re-costing, and checkpoint-only artifacts. It is not wired to
   any UI/API or deployment surface.
-- Frontend files: none.
+- Frontend files: `frontend/app.js`, `frontend/data.js`, and
+  `frontend/view-ledger.js` provide only the read-only generated funnel projection;
+  no pipeline runner or promotion control is exposed.
 - Backend/API files: none.
 - Backtesting files: `backtesting/pipeline_feasibility.py`,
   `backtesting/pipeline_checkpoint1.py`, `backtesting/pipeline_family_minting.py`,
   `backtesting/pipeline_idea_generator.py`, `backtesting/pipeline_refit.py`,
+  `backtesting/pipeline_power_screen.py`, `backtesting/pipeline_stage2_registry.py`,
   `backtesting/pipeline_stage3_registry.py`,
   `backtesting/xvenue_funding_spread_probe.py`,
   `backtesting/xvenue_funding_spread_backtest.py`.
@@ -525,6 +572,7 @@ implementation exists.
   feedback ranking tags. This is not a strategy, risk, settings, or deployment
   gate config.
 - Tests: `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_pipeline_power_screen.py`,
   `tests/unit/test_pipeline_stage2_data_probe.py`,
   `tests/unit/test_pipeline_stage2_registry.py`,
   `tests/unit/test_pipeline_family_minting.py`,
@@ -538,7 +586,8 @@ implementation exists.
   `tests/unit/test_h021_inverse_perp_accounting.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
-  relevant Change Manifest.
+  relevant Change Manifest, and `docs/ADR/0013-stage2-statistical-power-triage.md`
+  for the Stage-2 power contract.
 - Do-not-touch notes: automation sidecars are advisory research controls only.
   They must not append durable ledger rows, change `research/strategy_synthesis.md`,
   enable strategies, run backtests, change CPCV/DSR/gate semantics, alter

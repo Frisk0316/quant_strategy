@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -65,6 +65,9 @@ failure modes say how it silently breaks.
 | F41 | Funding settlement timestamps are matched by exact datetime equality | Millisecond-scale provider jitter turns complete 8h funding history into plausible partial coverage and changes a research grid without an obvious exception | I41 bounded canonical-hour alignment plus `test_full_funding_alignment_still_fails_closed_without_deribit_prices` | R6.1 |
 | F42 | Undefined feature correlation is treated as zero | An insufficient or constant reference series appears perfectly distinct and can mint/pass a family without quantitative evidence | I42 fail-closed undefined-correlation test in `test_xvenue_funding_spread_probe.py` | R6.3 |
 | F43 | A lagged funding proxy treats rows separated by a missing settlement as adjacent | A nominal t+1 position silently jumps across a gap longer than 8h, changing capture and turnover while aggregate coverage can still exceed its threshold | I43 explicit event-gap census and fail-closed cost gate | R6.1, R6.3 |
+| F44 | A single-source canonical identity is treated as simultaneous multi-venue storage | Venue-native rows exist in raw/multi-venue tables, but source priority retains only one `(inst_id, bar, ts)` row; a cross-venue join reports zero for the secondary venue and repeated ingest cannot repair it | Closed for the authorized BTC/ETH path by ADR-0014/I47: source-aware view, exact raw-parity verifier, and unchanged resolved default | R6.2, R6.4, R6.5 |
+| F45 | Missing Stage-2 caller inputs are serialized as a candidate failure | A caller-contract error silently becomes terminal `stage2_fail`, over-rejecting a candidate and hiding the integration defect | I45 rejects missing candidate-specific inputs before probe/artifact/status mutation | R6.3, R7.4 |
+| F46 | One malformed Stage-2 artifact aborts the full funnel | Observability disappears for every valid family because one JSON file is truncated, unreadable, or not an object | I46 per-artifact error isolation and regression test | R6.3 |
 
 ## How to add a failure mode
 

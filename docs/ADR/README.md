@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -69,6 +69,9 @@ delete numbers. To replace an ADR, add a new one and mark the old one
 | [0009](0009-xs-momentum-research-strategy.md) | XS momentum research strategy | Accepted |
 | [0010](0010-inverse-options-research-accounting.md) | Coin-margined inverse-options research accounting | Accepted |
 | [0011](0011-deribit-options-shadow-execution.md) | Deribit options shadow execution (v1) | Accepted |
+| [0012](0012-inverse-perpetual-research-accounting.md) | Coin-margined inverse-perpetual research accounting | Accepted |
+| [0013](0013-stage2-statistical-power-triage.md) | Stage-2 statistical-power triage | Accepted |
+| [0014](0014-source-aware-canonical-candles.md) | Additive source-aware canonical candles | Accepted |
 
 Keep this index in sync when adding an ADR. Related: [[DOMAIN_RULES]] ·
 [[DOC_IMPACT_MATRIX]] · `docs/DOC_LIFECYCLE.md`.
