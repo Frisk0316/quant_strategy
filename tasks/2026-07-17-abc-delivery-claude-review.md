@@ -92,6 +92,40 @@ The user authorized all three pending decisions in this session ("都授權"):
    only — NO hypothesis retry, Stage-1 spec, or H-010 verdict is authorized
    by this sign-off.
 
+## Follow-up review 2026-07-17 (second pass, commits 497c7b7..0c28f95)
+
+Two fresh-context verifiers reviewed the authorized follow-up delivery.
+
+- **F1/F2/F3 fix commit `497c7b7`: APPROVE.** All three legacy callers now
+  require explicit `--breadth/--n-obs/--n-trials/--plausible-net-sharpe`
+  (live-reproduced: exit 2 with the missing flags named, no artifact
+  written; probe-inactive paths correctly skip). Orchestrator raises before
+  any artifact write. Funnel report isolates malformed artifacts into an
+  errors list. Commit split is clean; 0.95 floor and Stage-3/deployment
+  gates verified drift-free across all five commits. Tests 32/32.
+- **OKX promotion commit `4aadf4f`: APPROVE.** Migration is purely additive
+  (new `venue_canonical_candles` hypertable, PK includes source_primary,
+  OHLC CHECK constraint, `canonical_candles_by_source` UNION view);
+  `canonical_candles` and its unique index are untouched. Default reads
+  provably unchanged (binance 1m rows 93,445,900; BTC/ETH binance
+  3,436,660/leg intact; 0 okx rows in resolved table). Promotion executed:
+  1,293,120 rows/leg, exactly 1:1 with raw for the authorized frozen window
+  2024-01-01→2026-06-17; idempotent (rerun changed 0); verify script exit 0
+  with coverage=alignment=1.0, mismatch 0. SOURCE_PRIORITY (binance 90 >
+  okx 80) makes resolved-row overwrite impossible. Tests 38/38.
+
+Rulings on Codex's open questions: (1) the resolved/source-aware split is
+**confirmed preferred** over any future in-place canonical identity
+migration — it preserved CAGGs and gives precise rollback; (2) **H-010
+remains research-untouched** — the green data verifier is data readiness
+only, not edge evidence; any H-010 Stage-1 spec/retry needs new explicit
+authorization and will face the Stage-2.5 power screen.
+
+Open follow-ups (need user authorization, not started): promote the
+remaining 2020-01-01→2023-12-31 OKX raw history (same script, wider
+window) to realize the long-history benefit; two uncommitted unrelated
+H-021/E-056 handoff files remain in the tree.
+
 ## Explicitly NOT approved by this review
 
 No promotion, demo, shadow, or live readiness claim. The power screen is
