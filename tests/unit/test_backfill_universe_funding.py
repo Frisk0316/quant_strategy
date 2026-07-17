@@ -6,6 +6,7 @@ import pandas as pd
 
 from scripts.market_data.backfill_universe_funding import (
     EIGHT_HOURS_MS,
+    _run_stage2,
     backfill_universe_funding,
     build_coverage_report,
     fetch_symbol_funding,
@@ -97,3 +98,34 @@ def test_backfill_universe_funding_writes_parquet_and_skips_db_without_dsn(tmp_p
     assert summary["stage2"]["status"] == "skipped"
     assert (tmp_path / "funding.parquet").exists()
     assert (tmp_path / "coverage.json").exists()
+
+
+def test_stage2_runner_requires_and_forwards_power_inputs(tmp_path):
+    called = {}
+
+    def runner(**kwargs):
+        called.update(kwargs)
+        return []
+
+    missing = _run_stage2(
+        db_status={"status": "ok"},
+        dsn="postgresql://example",
+        membership_path=tmp_path / "universe.parquet",
+        stage2_output_root=tmp_path / "results",
+        stage2_runner=runner,
+        statistical_power=None,
+    )
+    power = {"breadth": 1, "n_obs": 900, "n_trials": 4, "plausible_net_sharpe": 2.0}
+    complete = _run_stage2(
+        db_status={"status": "ok"},
+        dsn="postgresql://example",
+        membership_path=tmp_path / "universe.parquet",
+        stage2_output_root=tmp_path / "results",
+        stage2_runner=runner,
+        statistical_power=power,
+    )
+
+    assert missing["status"] == "error"
+    assert "statistical power inputs" in missing["error"]
+    assert complete["status"] == "ok"
+    assert called["statistical_power"] == power

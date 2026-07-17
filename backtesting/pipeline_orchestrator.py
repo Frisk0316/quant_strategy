@@ -11,7 +11,11 @@ from backtesting.pipeline_checkpoint1 import evaluate_checkpoint1_result, evalua
 from backtesting.pipeline_checkpoint1 import result_to_dict as checkpoint1_to_dict
 from backtesting.pipeline_feasibility import evaluate_stage2_result
 from backtesting.pipeline_feasibility import result_to_dict as stage2_to_dict
-from backtesting.pipeline_stage2_registry import STAGE2_PROBES, Stage2Probe
+from backtesting.pipeline_stage2_registry import (
+    STAGE2_PROBES,
+    Stage2Probe,
+    require_statistical_power_inputs,
+)
 from backtesting.pipeline_stage3_registry import STAGE3_RUNNERS, Stage3Runner
 
 SCHEMA_VERSION = 1
@@ -111,6 +115,15 @@ def _append_status(candidate: MutableMapping[str, Any], status: str) -> None:
     candidate.setdefault("status_history", []).append({"status": status, "at": _now()})
 
 
+def _candidate_statistical_power(context: Mapping[str, Any], candidate_id: str) -> dict[str, Any]:
+    by_candidate = context.get("statistical_power_inputs")
+    payload = by_candidate.get(candidate_id) if isinstance(by_candidate, Mapping) else None
+    return require_statistical_power_inputs(
+        payload,
+        label=f"statistical power inputs for candidate {candidate_id!r}",
+    )
+
+
 def _stage2_metrics(payload: Mapping[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks")
     if not isinstance(checks, list):
@@ -208,6 +221,7 @@ async def advance_candidate(
         if probe is None:
             _set_status(candidate, "awaiting_stage2_implementation")
             return
+        ctx["statistical_power"] = _candidate_statistical_power(ctx, str(candidate["candidate_id"]))
         result = await probe(conn, ctx)
         stage2_path = candidate_root / "stage2_feasibility.json"
         _write_json(stage2_path, stage2_to_dict(result))
@@ -272,6 +286,7 @@ async def reprobe_stage2_failures(
         probe = stage2_probes.get(family_id)
         if probe is None:
             raise ValueError(f"missing Stage2 probe for family {family_id!r}")
+        statistical_power = _candidate_statistical_power(context, candidate_id)
         current = _jsonable(
             stage2_to_dict(
                 await probe(
@@ -282,6 +297,7 @@ async def reprobe_stage2_failures(
                         "candidate_dir": candidate_dir,
                         "family_id": family_id,
                         "hypothesis_id": hypothesis_id,
+                        "statistical_power": statistical_power,
                     },
                 )
             )
@@ -393,6 +409,7 @@ async def run_orchestrator(
     universe_path: Path,
     start: str,
     end_exclusive: str,
+    power_inputs: Mapping[str, Any] | None = None,
     reprobe: bool = False,
 ) -> Path:
     batch_dir = output_root / batch_id
@@ -420,6 +437,7 @@ async def run_orchestrator(
             "universe_path": universe_path,
             "start": _utc(start),
             "end": _utc(end_exclusive),
+            "statistical_power_inputs": power_inputs or {},
         }
         if reprobe:
             advisory = await reprobe_stage2_failures(state, conn=conn, context=context, stage2_probes=STAGE2_PROBES)

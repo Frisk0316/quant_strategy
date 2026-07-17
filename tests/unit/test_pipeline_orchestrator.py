@@ -31,6 +31,14 @@ def _candidate(candidate_id="B-f-funding-xs-dispersion", family_id="F-FUNDING-XS
     }
 
 
+def _power():
+    return {"breadth": 1, "n_obs": 900, "n_trials": 4, "plausible_net_sharpe": 2.0}
+
+
+def _power_inputs(candidate_id="B-f-funding-xs-dispersion"):
+    return {candidate_id: _power()}
+
+
 def _context(tmp_path, batch_id="idea_batch_20260701_taxonomy_002"):
     return {
         "batch_id": batch_id,
@@ -40,6 +48,7 @@ def _context(tmp_path, batch_id="idea_batch_20260701_taxonomy_002"):
         "end": datetime(2024, 1, 2, tzinfo=timezone.utc),
         "universe_path": tmp_path / "universe.parquet",
         "dsn": "postgresql://example",
+        "statistical_power_inputs": _power_inputs(),
     }
 
 
@@ -186,6 +195,7 @@ def test_reprobe_cli_does_not_require_hypothesis_ids(tmp_path, monkeypatch):
     assert result == 0
     assert called["reprobe"] is True
     assert called["hypothesis_ids_path"] is None
+    assert called["power_inputs"] == {}
 
 
 @pytest.mark.asyncio
@@ -214,7 +224,10 @@ async def test_advance_candidate_marks_missing_stage2_family_as_awaiting(tmp_pat
 
 @pytest.mark.asyncio
 async def test_advance_candidate_writes_stage2_fail_sidecar(tmp_path):
+    seen = {}
+
     async def fail_probe(_conn, _context):
+        seen.update(_context)
         return FeasibilityResult(
             "idea_batch_20260701_taxonomy_002",
             "B-f-funding-xs-dispersion",
@@ -247,6 +260,42 @@ async def test_advance_candidate_writes_stage2_fail_sidecar(tmp_path):
     assert row["status"] == "stage2_fail"
     assert row["stage2_feasibility_path"] == str(path).replace("\\", "/")
     assert payload["stage2_status"] == "FAIL"
+    assert seen["statistical_power"] == _power()
+
+
+@pytest.mark.asyncio
+async def test_advance_candidate_rejects_missing_power_inputs_before_probe_or_artifact(tmp_path):
+    called = False
+
+    async def probe(_conn, _context):
+        nonlocal called
+        called = True
+        return _failed_stage2()
+
+    state = pre_register_batch(
+        _idea_batch(_candidate()),
+        hypothesis_ids={"B-f-funding-xs-dispersion": "H-009"},
+        batch_id="idea_batch_20260701_taxonomy_002",
+        max_runtime_seconds=600,
+        created_at="2026-07-01T00:00:00+00:00",
+    )
+    row = state["candidates"][0]
+    context = _context(tmp_path)
+    context["statistical_power_inputs"] = {}
+
+    with pytest.raises(ValueError, match="statistical power inputs for candidate"):
+        await advance_candidate(
+            row,
+            conn="conn",
+            context=context,
+            stage2_probes={"F-FUNDING-XS-DISPERSION": probe},
+            stage3_runners={},
+            registry_text="",
+        )
+
+    assert called is False
+    assert row["status"] == "idea_registered"
+    assert row["stage2_feasibility_path"] is None
 
 
 @pytest.mark.asyncio
@@ -361,6 +410,7 @@ async def test_run_orchestrator_does_not_write_ledger_files_and_reuses_existing_
         universe_path=tmp_path / "universe.parquet",
         start="2024-01-01",
         end_exclusive="2024-01-02",
+        power_inputs=_power_inputs(),
     )
     first_state = json.loads(state_path.read_text(encoding="utf-8"))
 
@@ -374,6 +424,7 @@ async def test_run_orchestrator_does_not_write_ledger_files_and_reuses_existing_
         universe_path=tmp_path / "universe.parquet",
         start="2024-01-01",
         end_exclusive="2024-01-02",
+        power_inputs=_power_inputs(),
     )
     second_state = json.loads(state_path.read_text(encoding="utf-8"))
     metrics = json.loads((tmp_path / "idea_batch_20260701_taxonomy_002" / "funnel_metrics.json").read_text())
@@ -416,6 +467,7 @@ async def test_reprobe_unchanged_result_keeps_state_byte_identical_and_writes_ad
         universe_path=tmp_path / "universe.parquet",
         start="2024-01-01",
         end_exclusive="2024-01-02",
+        power_inputs=_power_inputs(),
         reprobe=True,
     ) == state_path
 
@@ -458,6 +510,7 @@ async def test_reprobe_changed_result_appends_status_only_and_does_not_run_stage
         universe_path=tmp_path / "universe.parquet",
         start="2024-01-01",
         end_exclusive="2024-01-02",
+        power_inputs=_power_inputs(),
         reprobe=True,
     )
 
