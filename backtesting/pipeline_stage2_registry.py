@@ -14,6 +14,10 @@ from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
 from backtesting.pipeline_power_screen import min_detectable_sharpe
+from backtesting.xvenue_leadlag_probe import (
+    checks_from_evidence as xvenue_leadlag_checks_from_evidence,
+    validate_calibration_evidence as validate_xvenue_leadlag_evidence,
+)
 from backtesting.xvenue_funding_spread_probe import probe_xvenue_funding_spread
 
 BATCH_ID = "idea_batch_20260701_taxonomy_002"
@@ -432,7 +436,11 @@ def build_xvenue_data_check(
     venue_coverage: Mapping[str, Mapping[str, Any]],
     thresholds: VenueThresholds,
     expected_1m_rows: int,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> FeasibilityCheck:
+    window_start = start or _utc(START)
+    window_end = end or _utc(END_EXCLUSIVE)
     normalized: dict[str, dict[str, Any]] = {}
     missing_venues: list[dict[str, Any]] = []
     alignment_failures: list[dict[str, Any]] = []
@@ -486,8 +494,8 @@ def build_xvenue_data_check(
         reason=reason,
         details={
             "window": {
-                "start": f"{START}T00:00:00+00:00",
-                "end_exclusive": f"{END_EXCLUSIVE}T00:00:00+00:00",
+                "start": window_start.isoformat(),
+                "end_exclusive": window_end.isoformat(),
                 "expected_1m_rows": expected_1m_rows,
             },
             "thresholds": asdict(thresholds),
@@ -1065,6 +1073,8 @@ async def probe_xvenue(
         venue_coverage=coverage,
         thresholds=thresholds,
         expected_1m_rows=_expected_1m_rows(start, end),
+        start=start,
+        end=end,
     )
     return build_stage2_result("xvenue", check)
 
@@ -1129,10 +1139,11 @@ async def _run_funding_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult
 
 
 async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    return _with_context_power_screen(
-        await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds()),
-        ctx,
-    )
+    result = await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
+    evidence = ctx.get("calibration_evidence")
+    if isinstance(evidence, Mapping) and result.checks:
+        result = replace(result, checks=xvenue_leadlag_checks_from_evidence(result.checks[0], evidence))
+    return _with_context_power_screen(result, ctx)
 
 
 async def _run_oi_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
@@ -1177,10 +1188,21 @@ async def run_data_probe(
     candidates: Sequence[str],
     statistical_power: Mapping[str, Any],
     experiment_registry_path: Path = EXPERIMENT_REGISTRY_PATH,
+    start: str | datetime = START,
+    end_exclusive: str | datetime = END_EXCLUSIVE,
+    calibration_evidence: Mapping[str, Any] | None = None,
 ) -> list[tuple[FeasibilityResult, Path]]:
     statistical_power = require_statistical_power_inputs(statistical_power)
-    start = _utc(START)
-    end = _utc(END_EXCLUSIVE)
+    if "xvenue" in candidates:
+        if not isinstance(calibration_evidence, Mapping):
+            raise ValueError("H-010 xvenue probe requires frozen calibration evidence")
+        calibration_evidence = validate_xvenue_leadlag_evidence(calibration_evidence)
+        evidence_power = calibration_evidence["statistical_power"]
+        for field in STATISTICAL_POWER_INPUT_FIELDS:
+            if statistical_power.get(field) != evidence_power.get(field):
+                raise ValueError(f"H-010 {field} does not match frozen calibration evidence")
+    start = _utc(str(start)) if not isinstance(start, datetime) else _utc(start.isoformat())
+    end = _utc(str(end_exclusive)) if not isinstance(end_exclusive, datetime) else _utc(end_exclusive.isoformat())
     try:
         conn = await _connect(dsn)
     except Exception as exc:
@@ -1219,6 +1241,13 @@ async def run_data_probe(
                     )
                 elif candidate_key == "xvenue":
                     result = await probe_xvenue(conn, start=start, end=end, thresholds=VenueThresholds())
+                    result = replace(
+                        result,
+                        checks=xvenue_leadlag_checks_from_evidence(
+                            result.checks[0],
+                            calibration_evidence or {},
+                        ),
+                    )
                 else:
                     raise ValueError(f"unknown candidate key {candidate_key!r}")
             except Exception as exc:
@@ -1293,21 +1322,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, default=Path("results"))
     parser.add_argument("--universe-path", type=Path, default=UNIVERSE_PATH)
     parser.add_argument("--candidate", choices=CANDIDATES, required=True)
-    parser.add_argument("--breadth", type=float, required=True)
-    parser.add_argument("--n-obs", type=int, required=True)
-    parser.add_argument("--n-trials", type=int, required=True)
-    parser.add_argument("--plausible-net-sharpe", type=float, required=True)
+    parser.add_argument("--start", default=START)
+    parser.add_argument("--end-exclusive", default=END_EXCLUSIVE)
+    parser.add_argument("--power-input", type=Path)
+    parser.add_argument("--breadth", type=float)
+    parser.add_argument("--n-obs", type=int)
+    parser.add_argument("--n-trials", type=int)
+    parser.add_argument("--plausible-net-sharpe", type=float)
     parser.add_argument("--power-override-rationale")
     parser.add_argument("--experiment-registry", type=Path, default=EXPERIMENT_REGISTRY_PATH)
     args = parser.parse_args(argv)
 
-    statistical_power = {
-        "breadth": args.breadth,
-        "n_obs": args.n_obs,
-        "n_trials": args.n_trials,
-        "plausible_net_sharpe": args.plausible_net_sharpe,
-        "override_rationale": args.power_override_rationale,
-    }
+    calibration_evidence = None
+    if args.power_input and args.candidate != "xvenue":
+        parser.error("--power-input is reserved for the H-010 xvenue calibration artifact")
+    if args.power_input and args.power_override_rationale:
+        parser.error("H-010 frozen calibration evidence cannot be power-overridden")
+    if args.power_input:
+        calibration_evidence = validate_xvenue_leadlag_evidence(
+            json.loads(args.power_input.read_text(encoding="utf-8"))
+        )
+        statistical_power = {
+            field: calibration_evidence["statistical_power"][field]
+            for field in STATISTICAL_POWER_INPUT_FIELDS
+        }
+    else:
+        statistical_power = require_statistical_power_inputs(
+            {
+                "breadth": args.breadth,
+                "n_obs": args.n_obs,
+                "n_trials": args.n_trials,
+                "plausible_net_sharpe": args.plausible_net_sharpe,
+                "override_rationale": args.power_override_rationale,
+            }
+        )
+    if args.candidate == "xvenue" and calibration_evidence is None:
+        parser.error("--candidate xvenue requires --power-input from the frozen calibration step")
 
     outputs = asyncio.run(
         run_data_probe(
@@ -1317,6 +1367,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidates=_candidate_list(args.candidate),
             statistical_power=statistical_power,
             experiment_registry_path=args.experiment_registry,
+            start=args.start,
+            end_exclusive=args.end_exclusive,
+            calibration_evidence=calibration_evidence,
         )
     )
     for result, path in outputs:

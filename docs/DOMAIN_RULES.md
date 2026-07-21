@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 expires: none
 superseded_by: null
 ---
@@ -74,6 +74,9 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
   OKX SWAP). A replay shorter than a settlement window understates funding.
 - **R3.3** Funding income/expense must be a tracked cashflow, reconcilable to
   `funding_settlement_count`.
+- **R3.4** Funding cashflow must come from the declared execution venue. Missing
+  execution-venue settlements fail closed; a signal/reference venue's funding
+  series must never be substituted.
 
 ## R4. Sizing and Risk
 

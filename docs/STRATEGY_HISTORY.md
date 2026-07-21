@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-07-17
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 expires: none
 superseded_by: null
 ---
@@ -314,30 +314,37 @@ the exact contracts.
 - **Trace:** Hypothesis Ledger `H-009`; Experiment Registry `E-028`, `E-030`,
   `E-031`.
 
-## H-010 — Binance/OKX lead-lag prerequisite (`F-XVENUE-LEADLAG`)
+## H-010 — Binance/OKX lead-lag (`F-XVENUE-LEADLAG`)
 
-- **Status:** `proposed` and data-blocked.
+- **Status:** `shelved` at Stage 2; missing OKX funding is also recorded.
 - **Ideation source:** The taxonomy_002 idea batch and mechanism taxonomy raised
   cross-venue lead/lag, while invariant I19 made simultaneous venue-scoped
   candles a prerequisite rather than allowing a proxy substitution.
-- **Strategy logic:** No directional rule is authorized yet. First prove that
-  aligned Binance and OKX `1m` candles exist for both BTC and ETH over the same
-  window with source identity preserved.
+- **Strategy logic:** Binance close is signal-only. Trade the OKX leg toward a
+  240/60-minute rolling-gap deviation at the single Stage-2 anchor; the frozen
+  Stage-3 grid would have compared lookbacks 60/240 and entry z 2/3 only after
+  every Stage-2 gate passed.
 - **Instruments / universe and window:** Binance and OKX `BTC-USDT-SWAP` and
-  `ETH-USDT-SWAP`, canonical `1m`, 2024-01-01 through 2026-06-16.
-- **Recorded results:** WF `n/a (not recorded)`; CPCV `n/a (not recorded)`; DSR
-  `n/a (not recorded)`; PSR `n/a (not recorded)`; annualized return
-  `n/a (not recorded)`; benchmark `n/a (not recorded)`. Both probes saw zero
-  aligned OKX canonical rows.
+  `ETH-USDT-SWAP`, source-aware canonical `1m`, 2020-01-01 through 2026-06-16;
+  fixed calibration-only interval 2020-Q1.
+- **Recorded results:** WF/CPCV/DSR/PSR `n/a (Stage 3 not run)`. E-057 candles
+  pass at 3,396,960 aligned rows per venue/symbol. The one zero-trial anchor
+  produced 7,376 episodes, median gross 1.3636 bps versus 8.0 bps cost, and a
+  provisional -12.7264 Sharpe that excludes unavailable OKX funding and is not
+  accepted as measured performance.
 - **Iteration chain:**
   - `E-029` (2026-07-01) — first Stage-2 probe found complete Binance but zero
     OKX canonical coverage.
   - `E-035` (2026-07-04) — repeated the same read-only check; the gap remained
     and the attempted network ingest could not run.
-- **Outcome / lesson:** Do not write a Stage-1 trading spec until the canonical
-  identity/consumer boundary can represent both venues; Binance substitution is
-  forbidden.
-- **Trace:** Hypothesis Ledger `H-010`; Experiment Registry `E-029`, `E-035`.
+  - `E-057` (2026-07-18) — full-window Stage 2 after source-aware promotion;
+    all four checks fail and the grid stop preserves cumulative trials at zero.
+- **Outcome / lesson:** Correct candle identity unlocked measurement but did not
+  create edge. The lead-lag capture is far smaller than execution cost, and
+  execution-venue funding is absent. Stop before the grid; do not substitute
+  Binance funding or tune thresholds to chase DSR.
+- **Trace:** Hypothesis Ledger `H-010`; Experiment Registry `E-029`, `E-035`,
+  `E-057`.
 
 ## H-011 — Turtle sweep reference parity (`F-TURTLE-REFERENCE-PARITY`)
 

@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 expires: none
 superseded_by: null
 ---
@@ -68,6 +68,7 @@ failure modes say how it silently breaks.
 | F44 | A single-source canonical identity is treated as simultaneous multi-venue storage | Venue-native rows exist in raw/multi-venue tables, but source priority retains only one `(inst_id, bar, ts)` row; a cross-venue join reports zero for the secondary venue and repeated ingest cannot repair it | Closed for the authorized BTC/ETH path by ADR-0014/I47: source-aware view, exact raw-parity verifier, and unchanged resolved default | R6.2, R6.4, R6.5 |
 | F45 | Missing Stage-2 caller inputs are serialized as a candidate failure | A caller-contract error silently becomes terminal `stage2_fail`, over-rejecting a candidate and hiding the integration defect | I45 rejects missing candidate-specific inputs before probe/artifact/status mutation | R6.3, R7.4 |
 | F46 | One malformed Stage-2 artifact aborts the full funnel | Observability disappears for every valid family because one JSON file is truncated, unreadable, or not an object | I46 per-artifact error isolation and regression test | R6.3 |
+| F47 | Signal-venue funding is substituted for missing execution-venue funding | A cross-venue strategy appears fully costed while charging Binance settlements to an OKX position, silently changing both provenance and PnL | I48 venue-matched funding census and fail-closed H-010 regression | R3.1–R3.4, R6.4 |
 
 ## How to add a failure mode
 
