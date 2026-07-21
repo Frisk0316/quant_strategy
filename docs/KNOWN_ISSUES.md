@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -53,10 +53,19 @@ over time.
 - **Closed data boundary — H-010/F44/I47 (2026-07-17):** ADR-0014 added an
   additive source-aware canonical identity without changing the priority-
   resolved table or its CAGGs. The authorized OKX BTC/ETH frozen-window
-  promotion has 1,293,120 rows per symbol, raw parity mismatches 0, and
-  coverage/alignment 1.0; rerun changes 0 rows. H-010 itself was not retried and
-  its ledger status/verdict remains unchanged. Binance substitution remains
-  forbidden by I19.
+  promotion plus the 2020–2023 extension has 3,396,960 rows per symbol/venue,
+  raw parity mismatches 0, and coverage/alignment 1.0; rerun changes 0 rows.
+  E-057 later consumed this boundary and passed its candle check.
+- **Open data boundary / closed strategy round — H-010/F47/I48 (2026-07-18):**
+  the DB has no OKX funding rows for the execution venue, and another venue is
+  not substituted. Independently, the frozen zero-trial calibration found only
+  1.3636 bps median gross capture versus 8.0 bps cost across 7,376 episodes, so
+  H-010 is shelved and Stage 3 is not justified even if funding is later added.
+- **Closed review defects — H-010 B1/B2 (2026-07-21):** E-057's distinctness
+  FAIL is now described honestly as an impossible 91-day/365-day contract, and
+  future contracts require satisfiable formal/reference overlap. The generic
+  orchestrator refuses missing or mismatched frozen H-010 evidence before the
+  venue probe, so it cannot skip R3.4/I48 or the frozen cost/distinctness checks.
 - **Closed caller/observability bugs — F45/F46:** active Stage-2 callers now
   reject missing candidate-specific power inputs before probe/artifact/status
   mutation, and malformed artifacts are reported per file without aborting the

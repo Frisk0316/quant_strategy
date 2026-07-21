@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 expires: none
 superseded_by: null
 ---
@@ -265,6 +265,37 @@ rewriting history. The report exposes fill bias, missed-entry rate, mark
 tracking error, coin equity curves, stale-record exclusions, and the eight-week
 ADR-0011 exit gate. It never marks live as approved.
 
+The local frontend is a thin control surface over this same path:
+
+```text
+Research Ops -> GET /api/research/h014 -> journal bias report
+Research Ops -> POST /api/research/h014/run (loopback only)
+  -> custom local-action header + cross-process cycle lock
+  -> existing run_cycle -> append-only journal -> refreshed bias report
+```
+
+It adds no broker, private endpoint, credential, scheduler, or mode change.
+
+## H-009 Research Parameter-Screen Flow
+
+```text
+Research Ops lookback_days x quantile grid (max 25)
+  -> POST /api/research/h009/sweep (loopback only)
+  -> write immutable request.json and count every submitted combination
+  -> existing PIT universe + Stage-2-good symbols + venue-scoped DB inputs
+  -> full-sample scan_funding_xs_dispersion
+  -> new results/h009_parameter_sweeps/<sweep_id>/summary.json or error.json
+  -> polled job status + ranked table
+```
+
+This is sensitivity navigation only. Its trial value is explicitly a known
+lower bound: E-031's registered baseline plus request sidecars in this UI root.
+The Experiment Registry remains authoritative for trials elsewhere. It does not
+run WF/CPCV, change H-009's `testing` verdict, or provide promotion evidence. A
+decision-relevant run still requires ex-ante experiment registration and the
+honest total family trial count. Job status is process-local and disappears on
+server restart; immutable request/result/error sidecars remain.
+
 ## Point-In-Time Universe Membership Flow
 
 ```text
@@ -381,8 +412,19 @@ additive venue layer received the closed OKX BTC/ETH 1m rows for the frozen
 window. Each source-aware leg has 1,293,120 rows; raw-to-venue OHLCV mismatches
 are zero and Binance/OKX alignment is 1.0. The resolved table still has zero OKX
 rows in-window, so its Binance priority/default CAGG behavior is unchanged. The
-verifier passes this data boundary only; H-010 was not retried and its ledger
-status/verdict did not change. I19 still forbids substitution.
+verifier passed this data boundary only. The later, separately authorized E-057
+Stage-2 run used the extended 3,396,960-row-per-leg window; its candle gate is
+PASS, but the combined data gate fails because no venue-matched OKX funding
+exists. I19/I48 forbid candle or funding substitution.
+
+```text
+source-aware Binance/OKX 1m + OKX-only funding
+  -> one frozen H-010 calibration anchor (0 grid trials)
+  -> immutable h010_power_input.json
+  -> active Stage-2 caller validates inputs/hashes before DB access
+  -> full-window candle + data/distinctness/cost/power checks
+  -> E-057 FAIL -> stop; no Stage-3 grid/WF/CPCV
+```
 
 ## Backtest Run Flow
 
