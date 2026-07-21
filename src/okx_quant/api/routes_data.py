@@ -1294,6 +1294,7 @@ def _pair_delete_statements(inst_id: str) -> list[tuple[str, list]]:
         (f"DELETE FROM market_klines WHERE {subquery}", [inst_id]),
         (f"DELETE FROM market_funding_rates WHERE {subquery}", [inst_id]),
         ("DELETE FROM market_instruments WHERE canonical_inst_id=$1 OR normalized_symbol=$1", [inst_id]),
+        ("DELETE FROM venue_canonical_candles WHERE inst_id=$1", [inst_id]),
         ("DELETE FROM canonical_candles WHERE inst_id=$1", [inst_id]),
         ("DELETE FROM raw_candles WHERE inst_id=$1", [inst_id]),
         ("DELETE FROM funding_rates WHERE inst_id=$1", [inst_id]),

@@ -25,6 +25,7 @@ def test_pair_delete_statements_order_and_keys():
     assert tables.index("market_klines") < tables.index("market_instruments")
     assert tables.index("market_funding_rates") < tables.index("market_instruments")
     for table in (
+        "venue_canonical_candles",
         "canonical_candles",
         "raw_candles",
         "funding_rates",

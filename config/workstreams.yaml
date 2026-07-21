@@ -43,10 +43,10 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
     current: checkpoint_review
-    state: "First full pipeline cycle complete for F-FUNDING-XS-DISPERSION (H-009/E-031, 2026-07-03/04): distinctness checker ran FIRST vs the real C2 reference signal (max abs corr 0.138 -> provisional MINT), then the pre-registered 4-combo fold-refit WF/CPCV: WF OOS Sharpe 1.1812, CPCV 0.9553, DSR=PSR 0.9346 -- checkpoint1 FAIL on the 0.95 statistical gate only. Claude verdict user-ratified 2026-07-04: KEEP as testing, MINT accepted, NOT refuted. F-OI-POSITIONING Task B/E-037 is now complete: family minting vs F-FUNDING-XS-DISPERSION MINT (max abs corr 0.050), 4-combo fold-refit WF/CPCV on 31 OI-good symbols, WF OOS Sharpe 0.6034, CPCV 0.7240, DSR 0.7220, PSR 0.8484; checkpoint1 FAIL on DSR/PSR threshold only, promotion blocked. F-XVENUE-LEADLAG recheck still FAILS because OKX BTC/ETH 1m rows remain 0 and sandbox network blocked the backfill attempt."
-    next: "No chase-the-gate retry for H-009. F-OI-POSITIONING/H-012 is SHELVED with no retry; F36 records signal-day turnover cost and E-037 remains non-promotion evidence. F-VRP-TIMING/H-013 ran in full 2026-07-14 (user-authorized): E-038 probe PASS, E-050 pre-registered 4-combo grid FAILED the gate (WF 0.05, CPCV 0.56, DSR 0.60, PSR 0.78, minting MINT 0.051) - SHELVED, no retry. F-XVENUE-LEADLAG still needs OKX BTC/ETH-USDT-SWAP 1m backfill outside the sandbox, then Stage-2 reprobe. Taxonomy_003 Stage-3 sweep COMPLETE 2026-07-14 (user-authorized, Claude solo, E-044..E-049, fresh-verifier clean): all six candidates minted as new families but ALL FAILED the DSR/PSR >= 0.95 gate - H-015 optflow refuted, H-016 XS-illiquidity shelved (best, WF 0.97/DSR 0.70/PSR 0.80), H-017 stablecoin inconclusive, H-018 coinbase-premium refuted, H-019 hash-ribbon shelved, H-020 calendar refuted. No retries without ex-ante rationale + K accounting. Do not schedule the orchestrator or claim promotion/live readiness."
-    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md]
-    updated: 2026-07-14
+    state: "The first pipeline cycles and taxonomy_003/004 evidence remain recorded in the ledgers. The user ratified ADR-0013 scope and the computed 1.7206 reference case; active callers now require candidate-specific power inputs and schema-v3 funnel errors are isolated. ADR-0014's separately approved data task promoted the existing OKX BTC/ETH frozen-window raw rows into an additive source-aware canonical layer: 1,293,120 rows per symbol, zero raw mismatches, coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0. No H-010 retry/verdict or deployment work ran."
+    next: "Claude reviews F45/F46, ADR-0014, and the raw-parity evidence. Do not infer H-010 research success from data availability; no hypothesis retry, Stage-1 change, ledger verdict, Stage 3, scheduling, promotion, demo, shadow, or live work is authorized."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
+    updated: 2026-07-17
 
   - name: Deribit derivatives data
     status: active
@@ -58,13 +58,13 @@ workstreams:
     updated: 2026-07-14
 
   - name: Strategy research pipeline — taxonomy_004 C4
-    status: blocked
+    status: done
     milestones: [taxonomy, stage1_spec, stage2_probe, stage3_backtest]
-    current: stage2_probe
-    state: "F-XVENUE-FUNDING-SPREAD H-021 remains inconclusive after E-055. D6 supplied continuous venue-scoped Deribit BTC/ETH perpetual 1m candles and Gate 1 now PASSES at 1314720/1314720 rows per leg; distinctness also passes. Stage 2 still FAILS because the frozen conservative two-leg cost scenario has no common positive BTC/ETH cell. Family proxy n_trials=8; K=0/2."
-    next: "STOP. Do not retune or run Stage 3/PnL. Any inverse-perpetual accounting or basis-PnL work needs a separate user-approved decision and task; E-055 is not promotion evidence."
-    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, tasks/2026-07-15-deribit-perpetual-d6-e055-context-handoff.md, tasks/2026-07-15-deribit-perpetual-d6-e055-session-handoff.md]
-    updated: 2026-07-15
+    current: stage3_backtest
+    state: "F-XVENUE-FUNDING-SPREAD H-021 is refuted after E-056, its separately authorized first Stage-3 full-PnL validation under ADR-0012. WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818; family-cumulative n_trials=12 and K=0/2. Statistical and robustness gates failed."
+    next: "STOP. No retry, retune, promotion, demo, shadow, or live work. E-056 is immutable non-promotion evidence."
+    links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, docs/ADR/0012-inverse-perpetual-research-accounting.md, tasks/2026-07-15-h021-stage3-context-handoff.md, tasks/2026-07-15-h021-stage3-session-handoff.md]
+    updated: 2026-07-16
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

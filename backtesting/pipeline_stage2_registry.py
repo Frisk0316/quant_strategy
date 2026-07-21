@@ -4,13 +4,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import asdict, dataclass
+import math
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
+from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
+from backtesting.pipeline_power_screen import min_detectable_sharpe
 from backtesting.xvenue_funding_spread_probe import probe_xvenue_funding_spread
 
 BATCH_ID = "idea_batch_20260701_taxonomy_002"
@@ -18,6 +21,13 @@ START = "2024-01-01"
 END_EXCLUSIVE = "2026-06-17"
 DSN = "postgresql://quant:changeme@localhost:5432/quant"
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
+EXPERIMENT_REGISTRY_PATH = Path("docs/EXPERIMENT_REGISTRY.md")
+STATISTICAL_POWER_INPUT_FIELDS = (
+    "breadth",
+    "n_obs",
+    "n_trials",
+    "plausible_net_sharpe",
+)
 FUNDING_SOURCE = "binance"
 OI_DATASETS = ("oi_binance_hist_btc", "oi_binance_hist_eth")
 VENUES = ("binance", "okx")
@@ -71,6 +81,13 @@ class OIThresholds:
     min_coverage: float = OI_MIN_COVERAGE
     max_stale_ratio: float = OI_MAX_STALE_RATIO
     min_good_symbols: int = OI_MIN_GOOD_SYMBOLS
+
+
+@dataclass(frozen=True)
+class StatisticalPowerThresholds:
+    psr_probability: float = 0.95
+    dsr_probability: float = 0.95
+    periods_per_year: float = 365.0
 
 
 Stage2Context = Mapping[str, Any]
@@ -179,6 +196,178 @@ def build_fail_closed_result(candidate_key: str, exc: BaseException) -> Feasibil
         },
     )
     return build_stage2_result(candidate_key, check)
+
+
+def build_statistical_power_check(
+    *,
+    breadth: float,
+    n_obs: int,
+    n_trials: int,
+    plausible_net_sharpe: float,
+    thresholds: StatisticalPowerThresholds = StatisticalPowerThresholds(),
+    skew: float = 0.0,
+    kurtosis: float = 3.0,
+    override_rationale: str | None = None,
+) -> FeasibilityCheck:
+    if not math.isfinite(float(plausible_net_sharpe)):
+        raise ValueError("plausible_net_sharpe must be finite")
+    if thresholds.psr_probability < 0.95 or thresholds.dsr_probability < 0.95:
+        raise ValueError("Stage 2 PSR/DSR probabilities cannot be below 0.95")
+    if override_rationale is not None and not isinstance(override_rationale, str):
+        raise ValueError("override_rationale must be written text")
+
+    minimum = min_detectable_sharpe(
+        breadth=breadth,
+        n_obs=n_obs,
+        n_trials=n_trials,
+        psr_probability=thresholds.psr_probability,
+        dsr_probability=thresholds.dsr_probability,
+        skew=skew,
+        kurtosis=kurtosis,
+        periods_per_year=thresholds.periods_per_year,
+    )
+    plausible = float(plausible_net_sharpe)
+    measured_pass = plausible >= minimum
+    rationale = (override_rationale or "").strip()
+    overridden = not measured_pass and bool(rationale)
+    status = "PASS" if measured_pass or overridden else "FAIL"
+    comparison = ">=" if measured_pass else "<"
+    reason = (
+        f"plausible_net_sharpe={plausible:.4f} {comparison} "
+        f"min_detectable_sharpe={minimum:.4f}"
+    )
+    if overridden:
+        reason = f"{reason}; overridden by written ex-ante rationale: {rationale}"
+    return FeasibilityCheck(
+        name="statistical_power",
+        status=status,
+        reason=reason,
+        details={
+            "breadth": float(breadth),
+            "n_obs": n_obs,
+            "effective_n_obs": float(breadth) * n_obs,
+            "n_trials": n_trials,
+            "n_trials_provenance": "caller_declared",
+            "plausible_net_sharpe": plausible,
+            "min_detectable_sharpe": minimum,
+            "psr_probability": thresholds.psr_probability,
+            "dsr_probability": thresholds.dsr_probability,
+            "periods_per_year": thresholds.periods_per_year,
+            "skew": float(skew),
+            "kurtosis": float(kurtosis),
+            "measured_status": "PASS" if measured_pass else "FAIL",
+            "overridden": overridden,
+            "override_rationale": rationale or None,
+            "grid_trials_on_unoverridden_fail": 0,
+        },
+    )
+
+
+def add_statistical_power_check(
+    result: FeasibilityResult,
+    **inputs: Any,
+) -> FeasibilityResult:
+    check = build_statistical_power_check(**inputs)
+    checks = tuple(existing for existing in result.checks if existing.name != check.name)
+    return replace(result, checks=(*checks, check))
+
+
+def _missing_statistical_power_check() -> FeasibilityCheck:
+    return FeasibilityCheck(
+        name="statistical_power",
+        status="FAIL",
+        reason="statistical power inputs missing; breadth, n_obs, n_trials, and plausible_net_sharpe are required",
+        details={"grid_trials_on_unoverridden_fail": 0},
+    )
+
+
+def require_statistical_power_inputs(
+    value: Any,
+    *,
+    label: str = "statistical power inputs",
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} must be an object containing {', '.join(STATISTICAL_POWER_INPUT_FIELDS)}")
+    missing = [field for field in STATISTICAL_POWER_INPUT_FIELDS if value.get(field) is None]
+    if missing:
+        raise ValueError(f"{label} missing required fields: {', '.join(missing)}")
+    return dict(value)
+
+
+def _ensure_statistical_power_check(result: FeasibilityResult) -> FeasibilityResult:
+    if any(check.name == "statistical_power" for check in result.checks):
+        return result
+    return replace(result, checks=(*result.checks, _missing_statistical_power_check()))
+
+
+def _failed_statistical_power_result(
+    result: FeasibilityResult,
+    reason: str,
+    *,
+    error_type: str | None = None,
+) -> FeasibilityResult:
+    checks = tuple(check for check in result.checks if check.name != "statistical_power")
+    details: dict[str, Any] = {"grid_trials_on_unoverridden_fail": 0}
+    if error_type:
+        details["error_type"] = error_type
+    return replace(
+        result,
+        checks=(*checks, FeasibilityCheck(
+            name="statistical_power",
+            status="FAIL",
+            reason=reason,
+            details=details,
+        )),
+    )
+
+
+def _with_context_power_screen(result: FeasibilityResult, ctx: Stage2Context) -> FeasibilityResult:
+    payload = ctx.get("statistical_power")
+    if payload is None:
+        return _ensure_statistical_power_check(result)
+    try:
+        if not isinstance(payload, Mapping):
+            raise ValueError("statistical_power context must be an object")
+        values = dict(payload)
+        thresholds = StatisticalPowerThresholds(
+            psr_probability=float(values.pop("psr_probability", 0.95)),
+            dsr_probability=float(values.pop("dsr_probability", 0.95)),
+            periods_per_year=float(values.pop("periods_per_year", 365.0)),
+        )
+        declared_n_trials = values.pop("n_trials", None)
+        if declared_n_trials is not None and (
+            type(declared_n_trials) is not int or declared_n_trials <= 0
+        ):
+            raise ValueError("ex-ante family cumulative n_trials must be a positive integer")
+        registry_path = Path(ctx.get("experiment_registry_path", EXPERIMENT_REGISTRY_PATH))
+        registry = family_registry_from_text(registry_path.read_text(encoding="utf-8"))
+        family = registry.get(result.family_id)
+        if family is None:
+            raise ValueError(f"family missing from {registry_path}")
+        effective_n_trials = max(family.cumulative_n_trials, int(declared_n_trials or 0))
+        if effective_n_trials <= 0:
+            raise ValueError("family cumulative n_trials must be pre-registered and positive")
+        check = build_statistical_power_check(
+            thresholds=thresholds,
+            n_trials=effective_n_trials,
+            **values,
+        )
+        check.details.update(
+            {
+                "n_trials_provenance": "max_registry_actual_and_ex_ante_declared_cumulative",
+                "n_trials_registry_path": str(registry_path).replace("\\", "/"),
+                "registry_cumulative_n_trials": family.cumulative_n_trials,
+                "caller_declared_n_trials": declared_n_trials,
+            }
+        )
+        checks = tuple(existing for existing in result.checks if existing.name != check.name)
+        return replace(result, checks=(*checks, check))
+    except Exception as exc:
+        return _failed_statistical_power_result(
+            result,
+            f"statistical power screen failed closed: {exc}",
+            error_type=type(exc).__name__,
+        )
 
 
 def build_funding_data_check(
@@ -662,7 +851,7 @@ async def _fetch_venue_coverage(
             COUNT(*)::bigint AS row_count,
             MIN(ts) AS first_ts,
             MAX(ts) AS last_ts
-        FROM canonical_candles
+        FROM canonical_candles_by_source
         WHERE inst_id = ANY($1::text[])
           AND source_primary = ANY($2::text[])
           AND bar = '1m'
@@ -696,7 +885,7 @@ async def _fetch_venue_coverage(
             source_primary AS venue,
             date_trunc('day', ts)::date AS day,
             COUNT(*)::bigint AS row_count
-        FROM canonical_candles
+        FROM canonical_candles_by_source
         WHERE inst_id = ANY($1::text[])
           AND source_primary = ANY($2::text[])
           AND bar = '1m'
@@ -720,8 +909,8 @@ async def _fetch_venue_coverage(
     aligned = await conn.fetch(
         """
         SELECT b.inst_id, COUNT(*)::bigint AS aligned_rows
-        FROM canonical_candles b
-        JOIN canonical_candles o
+        FROM canonical_candles_by_source b
+        JOIN canonical_candles_by_source o
           ON b.inst_id = o.inst_id
          AND b.bar = o.bar
          AND b.ts = o.ts
@@ -927,38 +1116,52 @@ async def probe_oi_universe(
 
 
 async def _run_funding_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    return await probe_funding(
-        conn,
-        universe_path=Path(ctx["universe_path"]),
-        start=ctx["start"],
-        end=ctx["end"],
-        thresholds=FundingThresholds(),
+    return _with_context_power_screen(
+        await probe_funding(
+            conn,
+            universe_path=Path(ctx["universe_path"]),
+            start=ctx["start"],
+            end=ctx["end"],
+            thresholds=FundingThresholds(),
+        ),
+        ctx,
     )
 
 
 async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    return await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
+    return _with_context_power_screen(
+        await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds()),
+        ctx,
+    )
 
 
 async def _run_oi_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    return await probe_oi_universe(
-        conn,
-        universe_path=Path(ctx["universe_path"]),
-        start=ctx["start"],
-        end=ctx["end"],
-        thresholds=OIThresholds(),
+    return _with_context_power_screen(
+        await probe_oi_universe(
+            conn,
+            universe_path=Path(ctx["universe_path"]),
+            start=ctx["start"],
+            end=ctx["end"],
+            thresholds=OIThresholds(),
+        ),
+        ctx,
     )
+
+
+async def _run_xvenue_funding_spread_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return _with_context_power_screen(await probe_xvenue_funding_spread(conn, ctx), ctx)
 
 
 STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
     "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
-    "F-XVENUE-FUNDING-SPREAD": probe_xvenue_funding_spread,
+    "F-XVENUE-FUNDING-SPREAD": _run_xvenue_funding_spread_probe,
 }
 
 
 def _write_result(output_root: Path, result: FeasibilityResult) -> Path:
+    result = _ensure_statistical_power_check(result)
     path = output_root / result.batch_id / result.candidate_dir / "stage2_feasibility.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = _jsonable(result_to_dict(result))
@@ -972,15 +1175,27 @@ async def run_data_probe(
     output_root: Path,
     universe_path: Path,
     candidates: Sequence[str],
+    statistical_power: Mapping[str, Any],
+    experiment_registry_path: Path = EXPERIMENT_REGISTRY_PATH,
 ) -> list[tuple[FeasibilityResult, Path]]:
+    statistical_power = require_statistical_power_inputs(statistical_power)
     start = _utc(START)
     end = _utc(END_EXCLUSIVE)
     try:
         conn = await _connect(dsn)
     except Exception as exc:
-        return [(_result, _write_result(output_root, _result)) for _result in (
-            build_fail_closed_result(candidate_key, exc) for candidate_key in candidates
-        )]
+        failed = [build_fail_closed_result(candidate_key, exc) for candidate_key in candidates]
+        failed = [
+            _with_context_power_screen(
+                result,
+                {
+                    "statistical_power": statistical_power,
+                    "experiment_registry_path": experiment_registry_path,
+                },
+            )
+            for result in failed
+        ]
+        return [(result, _write_result(output_root, result)) for result in failed]
 
     results: list[tuple[FeasibilityResult, Path]] = []
     try:
@@ -1008,6 +1223,13 @@ async def run_data_probe(
                     raise ValueError(f"unknown candidate key {candidate_key!r}")
             except Exception as exc:
                 result = build_fail_closed_result(candidate_key, exc)
+            result = _with_context_power_screen(
+                result,
+                {
+                    "statistical_power": statistical_power,
+                    "experiment_registry_path": experiment_registry_path,
+                },
+            )
             results.append((result, _write_result(output_root, result)))
     finally:
         await conn.close()
@@ -1070,8 +1292,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dsn", default=DSN)
     parser.add_argument("--output-root", type=Path, default=Path("results"))
     parser.add_argument("--universe-path", type=Path, default=UNIVERSE_PATH)
-    parser.add_argument("--candidate", choices=["all", *CANDIDATES], default="all")
+    parser.add_argument("--candidate", choices=CANDIDATES, required=True)
+    parser.add_argument("--breadth", type=float, required=True)
+    parser.add_argument("--n-obs", type=int, required=True)
+    parser.add_argument("--n-trials", type=int, required=True)
+    parser.add_argument("--plausible-net-sharpe", type=float, required=True)
+    parser.add_argument("--power-override-rationale")
+    parser.add_argument("--experiment-registry", type=Path, default=EXPERIMENT_REGISTRY_PATH)
     args = parser.parse_args(argv)
+
+    statistical_power = {
+        "breadth": args.breadth,
+        "n_obs": args.n_obs,
+        "n_trials": args.n_trials,
+        "plausible_net_sharpe": args.plausible_net_sharpe,
+        "override_rationale": args.power_override_rationale,
+    }
 
     outputs = asyncio.run(
         run_data_probe(
@@ -1079,6 +1315,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_root=args.output_root,
             universe_path=args.universe_path,
             candidates=_candidate_list(args.candidate),
+            statistical_power=statistical_power,
+            experiment_registry_path=args.experiment_registry,
         )
     )
     for result, path in outputs:

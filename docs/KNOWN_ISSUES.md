@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -50,7 +50,17 @@ over time.
 - H-013/F-VRP-TIMING Stage-1 is user-signed-off and remains `proposed`; E-038 is
   deliberately reserved-only and absent from the experiment registry until the
   approved Stage-2 probe actually runs.
-- H-010 remains data-blocked on missing OKX BTC/ETH-USDT-SWAP 1m candles.
+- **Closed data boundary — H-010/F44/I47 (2026-07-17):** ADR-0014 added an
+  additive source-aware canonical identity without changing the priority-
+  resolved table or its CAGGs. The authorized OKX BTC/ETH frozen-window
+  promotion has 1,293,120 rows per symbol, raw parity mismatches 0, and
+  coverage/alignment 1.0; rerun changes 0 rows. H-010 itself was not retried and
+  its ledger status/verdict remains unchanged. Binance substitution remains
+  forbidden by I19.
+- **Closed caller/observability bugs — F45/F46:** active Stage-2 callers now
+  reject missing candidate-specific power inputs before probe/artifact/status
+  mutation, and malformed artifacts are reported per file without aborting the
+  schema-v3 funnel.
 - By user decision, Deribit snapshot/forward-ingest Windows tasks remain
   unregistered and stale series are accepted while the RUNBOOK manual path
   remains usable. Daily `dvol_deribit_*` is retained and was backfilled on

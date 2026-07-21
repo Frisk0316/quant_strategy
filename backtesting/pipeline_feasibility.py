@@ -76,6 +76,11 @@ def result_from_dict(payload: dict[str, Any]) -> FeasibilityResult:
 
 
 def evaluate_stage2_result(result: FeasibilityResult) -> str:
+    if any(
+        check.name == "statistical_power" and check.status != "PASS"
+        for check in result.checks
+    ):
+        return "FAIL"
     by_name = {check.name: check for check in result.checks}
     for required in REQUIRED_CHECKS:
         check = by_name.get(required)

@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -42,7 +42,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I20 | Universe membership is point-in-time: no symbol is eligible before listing plus warmup, ended candle history is not forward-filled into later eligibility, and timestamp storage precision does not change membership output | R6.1, R6.2 | `tests/unit/test_universe_membership.py` |
 | I21 | DSR is computed on the same per-observation return basis as PSR(0), and `DSR <= PSR(0)` for the same series when `n_trials > 1` | R7.4 | `tests/unit/test_dsr.py`, `tests/unit/test_cpcv.py` |
 | I22 | XS momentum portfolio-vol targeting sizes gross from estimated book volatility and enforces the max-gross cap | R4.4 | `tests/unit/test_xs_momentum.py::test_vol_target_uses_portfolio_book_vol_and_cap` |
-| I23 | Candidate CPCV `n_trials` must be at least the family-cumulative trial count recorded in `docs/EXPERIMENT_REGISTRY.md`; a per-run grid count alone is a violation | R6.3, R7.4 | `tests/unit/test_xs_momentum_backtest.py::test_scan_adds_prior_family_trials_to_n_trials`; review of `backtesting.replay.run_replay_validations` caller-provided `n_trials` passthrough |
+| I23 | Candidate CPCV and Stage-2 power-screen `n_trials` must use at least the family-cumulative trial count recorded in `docs/EXPERIMENT_REGISTRY.md`; a per-run or caller-declared smaller count alone is a violation | R6.3, R7.4 | `tests/unit/test_xs_momentum_backtest.py::test_scan_adds_prior_family_trials_to_n_trials`, `tests/unit/test_pipeline_stage2_registry.py::test_registered_probe_uses_family_cumulative_trials_from_registry`; review of `backtesting.replay.run_replay_validations` caller-provided `n_trials` passthrough |
 | I24 | WF/CPCV evidence must select parameters inside each train fold and evaluate only on the held-out test fold; slicing one full-sample-selected return series is in-sample evidence | R6.3, R7.4 | `tests/unit/test_pipeline_refit.py`, `tests/unit/test_pipeline_batch1_checkpoint_runner.py` |
 | I25 | Future CPCV artifacts must retain raw path returns, or the combined return series when path assembly is unavailable, plus periods/lengths and n_trials provenance so DSR can be recomputed offline | R6.3, R7.4 | `tests/unit/test_cpcv.py::test_cpcv_emits_path_returns_that_recompute_dsr`, `tests/unit/test_pipeline_batch1_contracts.py::test_pipeline_refit_summary_carries_cpcv_retention_fields` |
 | I26 | Stage 3 checkpoint summaries entering checkpoint review must have a machine-readable `checkpoint1_auto.json` from `scripts/run_pipeline_checkpoint1_check.py` with `checkpoint1_auto_status != FAIL`; the summary and CPCV `n_trials` must reconcile to `docs/EXPERIMENT_REGISTRY.md` for that artifact/family, including feedback-spawned ideas once they are ledgered. `PASS` is advisory only and does not remove the required human review items. | R6.3, R7.4 | `tests/unit/test_pipeline_checkpoint1_check.py` |
@@ -63,7 +63,11 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I41 | Funding settlement rows may be canonicalized to their nearest hourly boundary only when source jitter is at most one second; exact timestamp equality must not manufacture gaps, and larger offsets fail closed rather than being rounded into a valid event. | R6.1 | `tests/unit/test_xvenue_funding_spread_probe.py` |
 | I42 | A quantitative family-distinctness check must fail closed when any required candidate/reference correlation is undefined because observations are insufficient or either series has zero variance; undefined is never equivalent to zero correlation. | R6.3 | `tests/unit/test_xvenue_funding_spread_probe.py` |
 | I43 | A funding proxy that claims next-settlement execution must verify every adjacent evaluated event is exactly one contractual interval apart; missing intervals fail the cost gate instead of being compressed into a false t+1 transition. | R6.1, R6.3 | `tests/unit/test_xvenue_funding_spread_probe.py` |
-| I44 | Inverse-perpetual research PnL uses the exact 1/P formula in coin, converts to USD at the same-bar venue-scoped mark for pair aggregation, and no Stage-3 grid may run before a hand-computed golden inverse-perp cycle test (entry, funding interval, basis move, exit, both cost scenarios) is green | R9.1–R9.5 | `tests/unit/test_h021_inverse_perp_accounting.py` (to land with the Stage-3 runner; REVIEW until then) |
+| I44 | Inverse-perpetual research PnL uses the exact 1/P formula in coin, converts to USD at the same-bar venue-scoped mark for pair aggregation, and no Stage-3 grid may run before a hand-computed golden inverse-perp cycle test (entry, funding interval, basis move, exit, both cost scenarios) is green | R9.1–R9.5 | `tests/unit/test_h021_inverse_perp_accounting.py` |
+
+| I45 | Every active Stage-2 caller supplies candidate-specific `breadth`, `n_obs`, `n_trials`, and `plausible_net_sharpe` before DB access, probe execution, artifact write, or terminal status mutation; unimplemented families require no fabricated inputs | R6.3, R7.4 | `tests/unit/test_pipeline_stage2_registry.py`, `tests/unit/test_pipeline_orchestrator.py`, `tests/unit/test_backfill_universe_funding.py` |
+| I46 | A malformed or unreadable Stage-2 artifact is isolated and reported; it cannot abort the funnel or count as data/power feasible | R6.3 | `tests/unit/test_pipeline_funnel_report.py::test_pipeline_funnel_isolates_malformed_stage2_artifact` |
+| I47 | Default canonical identity remains one priority-resolved row, while simultaneous venue rows use `(source_primary, inst_id, bar, ts)`; source-aware promotion matches closed raw OHLCV exactly and never replaces a corrected/validated same-source row | R6.2, R6.4, R6.5 | `tests/unit/test_venue_canonical_promotion.py`, `tests/unit/test_db_writer.py`, `tests/unit/test_data_loader.py`, `scripts/verify_okx_1m_backfill.py` |
 
 ## Usage
 

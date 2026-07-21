@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,46 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-17 - Stage-2 caller repair and OKX source-aware promotion (Codex)
+
+- Recorded the user's ratification of ADR-0013's five-line evaluator scope and
+  computed `1.7206` reference case. Active registry CLI, funding backfill, and
+  orchestrator callers now require candidate-specific power inputs before DB
+  access, probes, artifacts, or terminal status mutation; no breadth/Sharpe
+  defaults were invented.
+- Funnel schema v3 reports malformed Stage-2 files under
+  `stage2_artifact_errors` and continues valid-family aggregation. This closes
+  F45/F46 without changing Stage-3, ledgers, results, or deployment gates.
+- Accepted ADR-0014 and added an additive source-aware canonical hypertable/view
+  while keeping the existing priority-resolved canonical identity and CAGGs
+  unchanged. Future raw canonicalization dual-writes the source-aware layer and
+  pair purge paths remove it.
+- Applied the fixed OKX BTC/ETH 1m promotion for
+  `[2024-01-01, 2026-06-17)`: 1,293,120 venue rows per symbol. The read-only
+  verifier reports raw/venue counts equal, OHLCV mismatches 0,
+  coverage/alignment 1.0, and resolved OKX rows 0. A second promotion changed 0
+  rows.
+- No network ingest, H-010 retry/Stage-1/verdict, experiment/ledger update,
+  backtest, strategy/result change, promotion, demo, shadow, or live work ran.
+
+## 2026-07-16 - Stage-2 power triage, history audit, and Ledger view (Codex)
+
+- Added ADR-0013 and a registry-scoped Stage-2 statistical-power check that inverts the
+  current PSR/DSR definitions, uses family-cumulative `n_trials`, and fails
+  closed on missing inputs. It is triage only; Stage-3 and deployment gates are
+  unchanged. Existing immutable artifacts remain readable and are not migrated.
+- Added a ledger/registry-derived funnel report and a read-only 研究總表 / Ledger
+  frontend projection. The optional static JSON is disposable; the Markdown
+  ledgers remain authoritative, and their links retain the existing loopback-only
+  allow-list boundary.
+- Added a read-only canonical/external history audit, ranked P1-P3 backfill list,
+  exact human-run OKX 1m command, and fail-closed H-010 verifier. The real audit
+  found 68 canonical plus 46 external datasets. H-010 still fails at 0% canonical
+  OKX coverage: the raw/multi-venue tables already hold the rows, but the current
+  canonical identity/source priority cannot expose both venues simultaneously.
+- No network ingest, retry, Stage-3 run, result mutation, trading-core change,
+  gate relaxation, or live/demo/shadow action was performed.
 
 ## 2026-07-15 - Deribit perpetual candles and H-021 E-055 reprobe (Codex)
 

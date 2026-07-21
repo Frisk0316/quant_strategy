@@ -69,3 +69,29 @@ def canonical_conflict_where(existing_table: str = "canonical_candles") -> str:
             )
         )
     """
+
+
+def venue_canonical_conflict_where() -> str:
+    """Refresh raw/suspect venue rows only when their candle values changed."""
+    return """
+        venue_canonical_candles.quality_status IN ('raw', 'suspect')
+        AND ROW(
+            venue_canonical_candles.open,
+            venue_canonical_candles.high,
+            venue_canonical_candles.low,
+            venue_canonical_candles.close,
+            venue_canonical_candles.vol_contract,
+            venue_canonical_candles.vol_base,
+            venue_canonical_candles.vol_quote,
+            venue_canonical_candles.quality_status
+        ) IS DISTINCT FROM ROW(
+            EXCLUDED.open,
+            EXCLUDED.high,
+            EXCLUDED.low,
+            EXCLUDED.close,
+            EXCLUDED.vol_contract,
+            EXCLUDED.vol_base,
+            EXCLUDED.vol_quote,
+            EXCLUDED.quality_status
+        )
+    """

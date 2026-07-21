@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -30,6 +30,8 @@ Main app views in `frontend/app.js`:
 - `wf` / `cpcv`: walk-forward and CPCV panels from `frontend/view-results.js`.
 - `trades`, `compare`, `metrics`, and `risk`: secondary review views.
 - `progress`: read-only workstream milestone view from `frontend/view-progress.js`.
+- `ledger`: read-only research funnel and ledger links from
+  `frontend/view-ledger.js`.
 
 ## Backtest View
 
@@ -126,6 +128,34 @@ Main app views in `frontend/app.js`:
   This file route is enabled only by a loopback-bound standalone server. The
   engine app and non-loopback standalone binds render paths as non-clickable chips.
 
+## 研究總表 / Ledger
+
+- Current: `frontend/view-ledger.js` owns the `研究總表 / Ledger` view in the
+  Analysis nav group. `frontend/app.js` loads it with a side-effect import, so
+  `frontend/index.html` needs no additional script tag.
+- Current: the view fetches the generated static `/research_funnel.json` through
+  `window.API.fetchResearchFunnel` and fetches `/api/progress` separately only
+  to discover `file_links_enabled`. A Progress failure leaves the funnel table
+  visible with non-clickable ledger chips.
+- Current: KPI cards and the per-family table preserve the schema-v1 summary
+  fields. Each schema-v2+ family row also has a native expandable detail showing
+  its source, hypothesis text, and complete experiment timeline. Schema-v1
+  projections show the regeneration command in the detail instead of failing.
+  Schema v3 additionally carries `stage2_artifact_errors`; the read-only view
+  remains forward-compatible and does not treat those files as feasible rows.
+  Null values display as an em dash.
+- Current: when file links are enabled, each row deep-links to
+  `docs/HYPOTHESIS_LEDGER.md`, `docs/EXPERIMENT_REGISTRY.md`, and
+  `docs/STRATEGY_HISTORY.md` through the existing contained Progress file route.
+  The view has no mutation controls or write calls.
+- Target: regenerate the projection after authoritative ledger or pipeline
+  evidence changes with `python scripts/run_pipeline_funnel_report.py
+  --json-output frontend/research_funnel.json`.
+- Known gap: the JSON is a generated static projection and may be absent or stale;
+  the view shows the generation command when unavailable, and the two markdown
+  ledgers remain authoritative on any conflict. File links remain unavailable on
+  the engine app and non-loopback standalone binds.
+
 ## User Manual
 
 - `frontend/view-manual.js` owns the 使用手冊 view in the Help nav group.
@@ -174,6 +204,7 @@ Main app views in `frontend/app.js`:
 - `fetch manual manifest/chapter`: `GET /api/manual`,
   `GET /api/manual/{slug}`.
 - `fetchProgress`: `GET /api/progress`.
+- `fetchResearchFunnel`: `GET /research_funnel.json`.
 - Progress file links: `GET /api/progress/file?path=<configured markdown path>`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight

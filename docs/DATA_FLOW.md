@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -19,7 +19,7 @@ source -> script/module -> storage -> consumer -> artifact/result -> UI/API
 ## Historical OHLCV Ingestion Flow
 
 ```text
-exchange REST candles -> scripts/market_data/ingest.py or legacy download scripts -> raw_candles plus canonical_candles and optional parquet mirror -> backtesting.data_loader.load_candles -> ReplayBacktestEngine -> price/equity/result artifacts -> routes_backtest.py and frontend charts
+exchange REST candles -> scripts/market_data/ingest.py or legacy download scripts -> raw_candles plus venue_canonical_candles plus priority-resolved canonical_candles and optional parquet mirror -> backtesting.data_loader.load_candles -> ReplayBacktestEngine -> price/equity/result artifacts -> routes_backtest.py and frontend charts
 ```
 
 Current: DB-backed ingestion is available when `DATABASE_URL` or
@@ -36,6 +36,13 @@ An empty venue series still errors, and an internal hole below
 substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
+
+ADR-0014 keeps `canonical_candles` and its 5m/15m/1H aggregates as the
+priority-resolved default. Explicitly source-filtered `CandleStore` reads and
+simultaneous-venue probes use `canonical_candles_by_source`, which combines
+resolved rows with `venue_canonical_candles` keyed by
+`(source_primary, inst_id, bar, ts)`. Raw writers dual-write both layers;
+same-source corrected/validated resolved rows take precedence in the view.
 
 Deribit BTC/ETH inverse-perpetual 1m candles use the credential-free
 `public/get_tradingview_chart_data` endpoint through
@@ -66,7 +73,7 @@ frontend coverage row Delete -> DELETE /api/data/pairs/{inst_id} -> transactiona
 ```
 
 Current: the delete route removes the pair from `market_klines`,
-`market_funding_rates`, `market_instruments`, `canonical_candles`,
+`market_funding_rates`, `market_instruments`, `venue_canonical_candles`, `canonical_candles`,
 `raw_candles`, `funding_rates`, `instrument_bars`, `instruments`, and the local
 parquet mirror directory. The API returns 409 if a non-terminal fetch job lists
 the same pair; parquet deletion errors are surfaced but do not roll back the DB
@@ -107,18 +114,36 @@ The coverage API labels funding provider/exchange from `funding_rates.source`
 instead of a hard-coded venue label. `backfill_universe_funding.py` is a
 research-pipeline utility for Binance universe-wide funding coverage and writes
 local parquet/coverage JSON before attempting DB upsert and advisory Stage2
-reprobe; it does not alter funding cashflow math or strategy gates. The Stage-2
+reprobe; it does not alter funding cashflow math or strategy gates. An active
+reprobe requires explicit `breadth`, `n_obs`, `n_trials`, and
+`plausible_net_sharpe`; omission is a caller error before any probe/artifact.
+The Stage-2
 funding breadth probe (`backtesting/pipeline_stage2_registry.py`) evaluates its
 breadth minimum from `START + breadth_warmup_days` (30, mirroring
 `config/universe.yaml` warmup) because PIT eligibility cannot exist during
 warmup; warmup days stay recorded in probe details for audit (user-approved
 2026-07-03, manifest `2026-07-03-stage2-breadth-warmup.md`).
-The C4 cross-venue probe canonicalizes only settlement timestamps within one
+The C4 cross-venue path canonicalizes only settlement timestamps within one
 second of the hourly boundary (F41/I41), sums eight non-overlapping Deribit
 `interest_1h` rows per Binance settlement, and never substitutes Deribit index
-prices for venue-scoped perpetual marks. Its lagged funding/cost grid is proxy
-evidence only; basis, inverse-collateral, margin, and executable-price PnL remain
-unavailable until a separate Stage-3 contract is approved.
+prices for venue-scoped perpetual marks. E-053/E-054/E-055 remain Stage-2 proxy
+evidence. The separately authorized H-021 Stage-3 runner reads Binance and
+Deribit `source_primary`-scoped canonical 1m candles, collapses each to the last
+pre-settlement event mark, applies ADR-0012 exact inverse 1/P coin PnL with
+same-bar USD conversion, sums complete 8h PnL into UTC days, and sends the four
+frozen daily series through fold-refit WF/CPCV plus stress re-costing:
+
+```text
+Binance funding + Deribit hourly funding + venue-scoped Binance/Deribit 1m marks
+  -> backtesting/xvenue_funding_spread_backtest.py
+  -> exact R9 event PnL + t+1 positions + base/stress costs
+  -> UTC-daily combo returns -> pipeline_refit + family minting
+  -> results/h021_stage3_<date> checkpoint artifacts
+```
+
+Missing 8h events or venue marks fail closed without time compression. The
+runner assumes adequate coin collateral for the unlevered gross-1 pair and has
+no margin/liquidation, index-price, engine, demo, shadow, or live path.
 
 ## External Observations Ingestion Flow
 
@@ -316,6 +341,49 @@ not only during post-run validation.
 from already-ingested Binance 1m canonical rows without changing schema or gate
 logic.
 
+## Data-History Coverage Audit and Backfill ROI
+
+```text
+canonical_candles + external_datasets/external_observations
+  -> scripts/audit_history_coverage.py (read-only SQL; no network)
+  -> per-dataset earliest/latest/rows/gap-vs-expected
+  -> JSON + ranked Markdown history-gap report
+  -> human-run backfill commands -> fail-closed coverage verifier
+```
+
+The audit groups every canonical dataset by `(inst_id, source_primary, bar)` and
+every registered external dataset by `dataset_id`. Canonical expected counts use
+`bar_intervals.interval_ms`; external expected counts are emitted only for fixed
+cadences such as 5m, hourly, and daily. Event, business-day, unknown, and empty
+datasets report a null expected gap instead of inventing observations. With no
+resolvable DSN the audit writes explicit `SKIP` JSON/Markdown without opening a
+DB connection; a configured connection/query failure is `FAIL` and nonzero.
+
+`history_gap_years` is the held earliest timestamp minus the corresponding
+`scripts/market_data/ingest.py::DEFAULT_STARTS` 1m start. Those starts are
+operational defaults, not verified exchange history limits, so every venue
+maximum is marked **UNCONFIRMED**. External providers without a
+repository-authoritative maximum receive a null history gap and sort after
+measured rows. Instrument listing timestamps are incomplete, so raw
+`history_gap_years` can overstate late-listed symbols; use the explicit P1-P3
+list, not that heuristic alone, as the actionable order.
+
+Backfill ROI priority is fixed as follows; it does not authorize a network run:
+
+| Priority | Target | Blocked family / hypothesis |
+| --- | --- | --- |
+| P1 | OKX `BTC-USDT-SWAP` and `ETH-USDT-SWAP` 1m | H-010 / F-XVENUE-LEADLAG; I19 forbids Binance substitution |
+| P2 | Extend Binance/Deribit BTC/ETH 1m and funding before 2024 | Long-window F-XVENUE-LEADLAG and F-XVENUE-FUNDING-SPREAD checks |
+| P3 | Stablecoin-supply and Coinbase-premium external features | Task key H-016/H-017; the current registry actually maps stablecoin to H-017/F-STABLECOIN-LIQUIDITY and Coinbase premium to H-018/F-COINBASE-PREMIUM (H-016 is XS illiquidity) |
+
+Completed 2026-07-17 under explicit data-promotion authorization: ADR-0014's
+additive venue layer received the closed OKX BTC/ETH 1m rows for the frozen
+window. Each source-aware leg has 1,293,120 rows; raw-to-venue OHLCV mismatches
+are zero and Binance/OKX alignment is 1.0. The resolved table still has zero OKX
+rows in-window, so its Binance priority/default CAGG behavior is unchanged. The
+verifier passes this data boundary only; H-010 was not retried and its ledger
+status/verdict did not change. I19 still forbids substitution.
+
 ## Backtest Run Flow
 
 ```text
@@ -435,6 +503,30 @@ Progress file reads are limited to existing markdown paths explicitly present in
 the workstream config and resolved inside the repository; the repo root is not
 mounted as static content. File reads are disabled in the engine app and for a
 standalone server bound to a non-loopback host.
+
+## Research Funnel / Ledger Projection Flow
+
+```text
+results/**/stage2_feasibility.json + docs/HYPOTHESIS_LEDGER.md + docs/EXPERIMENT_REGISTRY.md
+  -> scripts/run_pipeline_funnel_report.py
+  -> Markdown stdout/output + optional frontend/research_funnel.json
+  -> static GET /research_funnel.json
+  -> frontend/data.js -> frontend/view-ledger.js
+```
+
+Current: the report derives one schema-v3 row per registered family, retaining
+the schema-v2 family detail fields and adding per-file
+`stage2_artifact_errors`. A malformed artifact is excluded from feasibility and
+cannot abort valid-family reporting. The projection also adds the
+selected hypothesis source/text and its date-sorted raw experiment timeline
+(`id`, `date`, `setup`, `outcome`, `notes`). It filters
+non-executed or invalid Stage-3 rows, selects the latest valid WF/CPCV/DSR/PSR
+evidence, and reconciles family-cumulative `n_trials` and K from the experiment
+registry. The optional JSON is a disposable UI projection, not a status store or
+promotion artifact. `docs/HYPOTHESIS_LEDGER.md` and
+`docs/EXPERIMENT_REGISTRY.md` remain authoritative; when the JSON is absent the
+view displays its exact regeneration command. Ledger links reuse the existing
+loopback-only, contained Progress file route and are disabled elsewhere.
 
 ## Validation Artifact Flow
 

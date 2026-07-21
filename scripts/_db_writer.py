@@ -31,6 +31,7 @@ try:
         canonical_conflict_where,
         should_replace_canonical as _should_replace_canonical,
         source_priority as _source_priority,
+        venue_canonical_conflict_where,
     )
 except ModuleNotFoundError:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -41,6 +42,7 @@ except ModuleNotFoundError:
         canonical_conflict_where,
         should_replace_canonical as _should_replace_canonical,
         source_priority as _source_priority,
+        venue_canonical_conflict_where,
     )
 
 _VALID_SOURCES = {"okx", "binance", "bybit", "coinbase", "kraken", "manual", "other"}
@@ -218,6 +220,42 @@ async def _upsert_async(
             for i in range(0, len(canonical_rows), chunk_size):
                 chunk = canonical_rows[i : i + chunk_size]
                 cols = [list(col) for col in zip(*chunk)]
+                await conn.fetch(
+                    f"""
+                INSERT INTO venue_canonical_candles
+                    (ts, inst_id, bar, open, high, low, close,
+                     vol_contract, vol_base, vol_quote, source_primary, quality_status)
+                SELECT *
+                FROM unnest(
+                    $1::timestamptz[],
+                    $2::text[],
+                    $3::text[],
+                    $4::double precision[],
+                    $5::double precision[],
+                    $6::double precision[],
+                    $7::double precision[],
+                    $8::double precision[],
+                    $9::double precision[],
+                    $10::double precision[],
+                    $11::text[],
+                    $12::text[]
+                )
+                ON CONFLICT (source_primary, inst_id, bar, ts) DO UPDATE SET
+                    open = EXCLUDED.open,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    close = EXCLUDED.close,
+                    vol_contract = EXCLUDED.vol_contract,
+                    vol_base = EXCLUDED.vol_base,
+                    vol_quote = EXCLUDED.vol_quote,
+                    quality_status = EXCLUDED.quality_status,
+                    updated_at = NOW(),
+                    version = venue_canonical_candles.version + 1
+                WHERE {venue_canonical_conflict_where()}
+                RETURNING 1
+                """,
+                    *cols,
+                )
                 changed = await conn.fetch(
                     f"""
                 INSERT INTO canonical_candles

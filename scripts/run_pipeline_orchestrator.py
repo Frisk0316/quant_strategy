@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -23,10 +24,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--universe-path", default=Path("data/universe/universe_membership.parquet"), type=Path)
     parser.add_argument("--start", default="2024-01-01")
     parser.add_argument("--end-exclusive", default="2026-06-17")
+    parser.add_argument("--power-inputs", type=Path)
     parser.add_argument("--reprobe", action="store_true")
     args = parser.parse_args(argv)
     if not args.reprobe and (args.idea_batch_path is None or args.hypothesis_ids is None):
         parser.error("--idea-batch-path and --hypothesis-ids are required unless --reprobe is set")
+    power_inputs = {}
+    if args.power_inputs is not None:
+        try:
+            power_inputs = json.loads(args.power_inputs.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            parser.error(f"cannot read --power-inputs: {exc}")
+        if not isinstance(power_inputs, dict):
+            parser.error("--power-inputs must contain a JSON object keyed by candidate_id")
 
     state_path = asyncio.run(
         run_orchestrator(
@@ -39,6 +49,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             universe_path=args.universe_path,
             start=args.start,
             end_exclusive=args.end_exclusive,
+            power_inputs=power_inputs,
             reprobe=args.reprobe,
         )
     )

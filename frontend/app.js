@@ -2,6 +2,7 @@ import { h, Fragment } from 'preact';
 import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { html } from 'htm/preact';
+import './view-ledger.js';
 
 const useAppState = useState;
 const useAppEffect = useEffect;
@@ -171,6 +172,7 @@ function App() {
     { id: "compare", label: "Compare runs", group: "Analysis", glyph: "compare" },
     { id: "metrics", label: "Metrics Glossary", group: "Analysis", glyph: "metrics" },
     { id: "progress", label: "進度 / Progress", group: "Analysis", glyph: "progress" },
+    { id: "ledger", label: "研究總表 / Ledger", group: "Analysis", glyph: "progress" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
     { id: "manual", label: "使用手冊", group: "Help", glyph: "manual" },
   ];
@@ -185,6 +187,7 @@ function App() {
     compare: ["Compare Runs", "Aligned equity comparison across saved runs"],
     metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
     progress: ["進度 / Progress", "Per-workstream milestone progress"],
+    ledger: ["研究總表 / Ledger", "Research status, statistical evidence, and funnel counts"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
     manual: ["使用手冊", "架構、驗證、風控與設定來源"],
   };
@@ -273,6 +276,7 @@ function App() {
         ${view === "compare" && html`<${window.CompareView} selectedRunId=${selectedRunId} />`}
         ${view === "metrics" && html`<${window.MetricsGlossaryView} />`}
         ${view === "progress" && html`<${window.ProgressView} />`}
+        ${view === "ledger" && html`<${window.LedgerView} />`}
         ${view === "risk" && html`<${window.RiskView} selectedRunId=${selectedRunId} />`}
         ${view === "manual" && html`<${window.ManualView} />`}
       </main>

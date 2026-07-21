@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping
 from scripts.run_funding_xs_dispersion_checkpoint import run_funding_xs_dispersion_checkpoint
 from scripts.run_oi_positioning_checkpoint import run_oi_positioning_checkpoint
 from scripts.run_pipeline_batch2_checkpoint import run_c1, run_c2, run_c3
+from backtesting.xvenue_funding_spread_backtest import run_xvenue_funding_spread_checkpoint
 
 Stage3Context = Mapping[str, Any]
 Stage3Runner = Callable[[Stage3Context], dict[str, Any]]
@@ -33,4 +34,5 @@ STAGE3_RUNNERS: dict[str, Stage3Runner] = {
     "F-SENTIMENT": _legacy_runner(run_c3, "F-SENTIMENT"),
     "F-FUNDING-XS-DISPERSION": run_funding_xs_dispersion_checkpoint,
     "F-OI-POSITIONING": run_oi_positioning_checkpoint,
+    "F-XVENUE-FUNDING-SPREAD": run_xvenue_funding_spread_checkpoint,
 }

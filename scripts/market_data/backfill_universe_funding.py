@@ -256,18 +256,23 @@ def _run_stage2(
     membership_path: Path,
     stage2_output_root: Path | None,
     stage2_runner: Callable[..., Any] | None,
+    statistical_power: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     if db_status.get("status") != "ok" or not dsn:
         return {"status": "skipped", "reason": "db_unavailable"}
     if stage2_output_root is None:
         return {"status": "skipped", "reason": "stage2_output_root_not_set"}
     try:
+        from backtesting.pipeline_stage2_registry import require_statistical_power_inputs
+
+        power_inputs = require_statistical_power_inputs(statistical_power)
         runner = stage2_runner or _default_stage2_runner
         outputs = runner(
             dsn=dsn,
             output_root=stage2_output_root,
             universe_path=membership_path,
             candidates=["funding"],
+            statistical_power=power_inputs,
         )
         return {
             "status": "ok",
@@ -290,6 +295,7 @@ def backfill_universe_funding(
     stage2_output_root: Path | None = Path("results/stage2_reprobe_20260703_funding"),
     store_factory: Callable[[str], Any] | None = None,
     stage2_runner: Callable[..., Any] | None = None,
+    statistical_power: Mapping[str, Any] | None = None,
     limit: int = 1000,
 ) -> dict[str, Any]:
     owned_client = client is None
@@ -319,6 +325,7 @@ def backfill_universe_funding(
         membership_path=membership_path,
         stage2_output_root=stage2_output_root,
         stage2_runner=stage2_runner,
+        statistical_power=statistical_power,
     )
     return {
         "symbols": symbols,
@@ -342,7 +349,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-db", action="store_true")
     parser.add_argument("--stage2-output-root", type=Path, default=Path("results/stage2_reprobe_20260703_funding"))
     parser.add_argument("--skip-stage2-probe", action="store_true")
+    parser.add_argument("--breadth", type=float)
+    parser.add_argument("--n-obs", type=int)
+    parser.add_argument("--n-trials", type=int)
+    parser.add_argument("--plausible-net-sharpe", type=float)
+    parser.add_argument("--power-override-rationale")
     args = parser.parse_args(argv)
+
+    power_values = {
+        "breadth": args.breadth,
+        "n_obs": args.n_obs,
+        "n_trials": args.n_trials,
+        "plausible_net_sharpe": args.plausible_net_sharpe,
+        "override_rationale": args.power_override_rationale,
+    }
+    if not args.skip_stage2_probe and not args.no_db:
+        missing = [name for name, value in power_values.items() if name != "override_rationale" and value is None]
+        if missing:
+            parser.error("active Stage-2 probe requires " + ", ".join("--" + name.replace("_", "-") for name in missing))
 
     dsn = None
     if not args.no_db:
@@ -357,6 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report_path=_repo_path(args.report_out),
         dsn=dsn,
         stage2_output_root=None if args.skip_stage2_probe else _repo_path(args.stage2_output_root),
+        statistical_power=power_values,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 1 if summary["db"]["status"] == "error" or summary["stage2"]["status"] == "error" else 0

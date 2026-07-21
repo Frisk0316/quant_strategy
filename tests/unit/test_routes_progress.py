@@ -135,3 +135,30 @@ def test_shipped_workstreams_yaml_is_valid():
     assert cards, "expected seeded workstreams"
     bad = [c["name"] for c in cards if c["error"]]
     assert not bad, f"cards with errors: {bad}"
+
+
+def test_shipped_ledger_files_require_file_serving():
+    repo_root = Path(__file__).resolve().parents[2]
+    ledger_paths = [
+        "docs/HYPOTHESIS_LEDGER.md",
+        "docs/EXPERIMENT_REGISTRY.md",
+        "docs/STRATEGY_HISTORY.md",
+    ]
+    cards, _ = _load_workstreams(repo_root)
+    pipeline = next(c for c in cards if c["name"] == "Strategy research pipeline — full-auto roadmap")
+    assert [link for link in pipeline["links"] if link in ledger_paths] == ledger_paths
+
+    enabled = FastAPI()
+    enabled.include_router(make_progress_router(repo_root, serve_files=True), prefix="/api/progress")
+    enabled_client = TestClient(enabled)
+    assert enabled_client.get("/api/progress").json()["file_links_enabled"] is True
+    for path in ledger_paths:
+        assert enabled_client.get("/api/progress/file", params={"path": path}).status_code == 200
+    assert enabled_client.get("/api/progress/file", params={"path": "AI_CONTEXT.md"}).status_code == 404
+
+    disabled = FastAPI()
+    disabled.include_router(make_progress_router(repo_root, serve_files=False), prefix="/api/progress")
+    disabled_client = TestClient(disabled)
+    assert disabled_client.get("/api/progress").json()["file_links_enabled"] is False
+    for path in ledger_paths:
+        assert disabled_client.get("/api/progress/file", params={"path": path}).status_code == 404

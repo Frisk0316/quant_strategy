@@ -414,6 +414,7 @@ window.API = (function () {
       return payload;
     },
     fetchProgress:            ()        => _get("/api/progress"),
+    fetchResearchFunnel:      ()        => _get("/research_funnel.json"),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     cancelBacktestRun:        (jobId)   => _post("/api/backtest/run/cancel/" + jobId, {}),

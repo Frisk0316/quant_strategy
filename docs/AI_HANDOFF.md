@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-17
 expires: none
 superseded_by: null
 ---
@@ -16,15 +16,17 @@ durable backlog.
 
 ## Current goal
 
-Open and review the pushed follow-up and stacked research branches as separate
-PRs. Preserve every strategy, research, and deployment gate. No retry, adapter,
-promotion, demo, shadow, or live work is authorized by this handoff.
+Have Claude review the user-ratified ADR-0013 scope/reference floor, F45/F46
+caller/funnel repair, and ADR-0014 source-aware OKX data promotion. Confirm the
+data-only boundary and raw-parity evidence without treating it as an H-010
+retry/verdict or deployment evidence. Preserve every strategy, research, and
+deployment gate.
 
 ## Branch and working tree
 
-- Current branch: `feature/taxonomy003-stage3`, stacked on
-  `feature/f-vol-regime-opt-stage2`, which is stacked on
-  `codex/pipeline-batch1-stage3`.
+- Current branch: `feature/h014-e052-shadow` at `b2eb27e`, with the uncommitted
+  2026-07-16 delivery and 2026-07-17 strategy-history/funnel-v2/Ledger-detail
+  delivery in the shared working tree. No commit was requested.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -59,11 +61,31 @@ promotion, demo, shadow, or live work is authorized by this handoff.
   data-blocked on OKX 1m. H-013/E-050 is shelved after statistical failure.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
-  ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-055
-  remains inconclusive at Stage 2: D6 supplied continuous venue-scoped Deribit
-  perpetual 1m prices and Gate 1 now passes, but the frozen conservative
-  two-leg cost gate still has no common positive BTC/ETH cell. Family proxy
-  n_trials=8, K=0/2; stop with no retune, Stage 3, full-PnL, or promotion claim.
+  ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
+  refuted after its separately authorized first Stage-3 full-PnL validation:
+  WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818, family-cumulative
+  `n_trials=12`, K 0/2. Stop with no retry, retune, promotion, or deployment
+  claim.
+- Pipeline observability/triage: under ADR-0013, new registry-written Stage-2
+  artifacts fail closed on a fourth `statistical_power` check using
+  registry-cumulative trials. `docs/STRATEGY_HISTORY.md` consolidates H-000–H-021
+  and E-000–E-056 without inventing unrecorded metrics. The disposable funnel is
+  now schema v2 and the read-only 研究總表 / Ledger view exposes each family's
+  source, hypothesis, and full iteration timeline; schema v1 degrades to a
+  regeneration hint. The Markdown ledgers remain authoritative and generated
+  JSON is not checked in. This does not alter Stage-3 or deployment gates.
+- Stage-2 follow-up: the five-line evaluator scope and computed `1.7206`
+  reference case were ratified. Active CLI/backfill/orchestrator callers reject
+  missing candidate-specific power inputs before probes/artifacts/status
+  changes. Funnel schema v3 isolates malformed files under
+  `stage2_artifact_errors`; no research inputs are inferred.
+- History/data boundary: the read-only scan completed over 68 canonical and 46
+  external datasets. Under separately approved ADR-0014, the existing complete
+  raw OKX BTC/ETH 1m window was promoted to an additive source-aware canonical
+  layer. Each symbol has 1,293,120 rows, raw mismatches 0,
+  coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0
+  rows. No network ingest, H-010 retry, ledger/verdict change, or result artifact
+  was performed.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -111,11 +133,34 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   no-symlink-privilege containment case.
 - Audit-scope Ruff, frontend syntax, docs metadata/links/overview/impact, config,
   backtest smoke, live API smoke, and Playwright Manual/Progress checks pass.
+- 2026-07-16 delivery checks: 99 targeted cross-module tests pass; targeted Ruff,
+  all frontend syntax (including `view-ledger.js`), docs metadata/links/ledger/
+  strict impact, config, backtest smoke, funnel CLI, and loopback HTTP contract
+  pass. The real H-010 verifier correctly exits 1 at 0% coverage. Playwright is
+  an environment SKIP because no local package exists and third-party npm
+  download/execution was rejected; no browser-render claim is made.
+- 2026-07-17 delivery checks: funnel and route tests pass (`3 + 10`), targeted
+  Ruff and every frontend syntax check pass, and docs metadata/links/ledger plus
+  config validation pass. A real disposable projection produced schema 2 with
+  22 families and the expected F-FUNDING-CARRY timeline. Playwright against
+  Edge verified both schema-v2 expansion and schema-v1 graceful fallback; the
+  only console error was the unrelated missing favicon. Temporary JSON,
+  screenshots, logs, server, and browser processes were removed.
+- 2026-07-17 authorized follow-up: focused Stage-2 caller/funnel tests passed
+  (31), source-aware data tests passed (45), real fixed-scope promotion inserted
+  1,293,120 rows per symbol, verifier PASSed exact raw parity and 1.0
+  coverage/alignment, and the second promotion changed zero rows. No H-010
+  experiment command ran.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
+
+First review the 2026-07-17 Stage-2 caller-fix and OKX promotion context/session
+handoffs. Claude should confirm the candidate-specific input boundary,
+schema-v3 error isolation, ADR-0014 resolved/source-aware split, and that data
+availability did not change H-010 research evidence.
 
 Claude review (`tasks/2026-07-12-claude-p0-review.md`) is user-ratified and
 implemented for P0.1-P0.3, H-012, and H-013.
@@ -174,6 +219,14 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
    12 pairs — **Stage 2 PASS**, real/synthetic RICH-leg ratios 0.88–1.03 ≥
    the ex-ante 0.8 bar. Next gate is the user's: chain-history purchase and
    Stage-3/engine authorization (coin-accounting manifest + ADR first).
+
+10. DONE 2026-07-17: Codex completed
+    `tasks/2026-07-16-strategy-history-doc-frontend-codex-tasks.md` — Task A
+    `docs/STRATEGY_HISTORY.md` records H-000–H-021 and E-000–E-056; Task B upgrades
+    the disposable funnel to schema v2 with per-family source, hypothesis text,
+    and dated experiments; Task C adds expandable Ledger iteration detail and
+    schema-v1 fallback. Ledgers stayed read-only; no new route, checked-in JSON,
+    strategy/gate change, or fabricated metric was introduced.
 
 ## Open decisions
 

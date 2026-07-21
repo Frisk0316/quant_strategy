@@ -14,7 +14,10 @@ import asyncpg
 import pandas as pd
 from loguru import logger
 
-from okx_quant.data.canonical_policy import canonical_conflict_where
+from okx_quant.data.canonical_policy import (
+    canonical_conflict_where,
+    venue_canonical_conflict_where,
+)
 
 
 # Milliseconds per bar used for gap detection interval lookups
@@ -875,9 +878,9 @@ class CandleStore:
         end: Optional[datetime] = None,
     ) -> dict:
         """
-        Promote closed raw candles from `source` into canonical_candles.
-        Uses the shared canonical priority gate so higher-priority raw sources
-        can upgrade lower-priority raw rows without overwriting corrected rows.
+        Promote closed raw candles into both source-aware and resolved canonical layers.
+        The source-aware identity retains venue rows; the resolved layer keeps
+        applying source priority without overwriting corrected rows.
         """
         conditions = ["r.source=$1", "r.inst_id=$2", "r.bar=$3", "r.is_closed=TRUE"]
         params: list[Any] = [source, inst_id, bar]
@@ -889,8 +892,38 @@ class CandleStore:
             conditions.append(f"r.ts < ${len(params)}")
         where = " AND ".join(conditions)
 
-        changed_rows = await self._pool.fetch(
+        venue_promoted = await self._pool.fetchval(
             f"""
+            WITH changed AS (
+            INSERT INTO venue_canonical_candles
+                (ts, inst_id, bar, open, high, low, close,
+                 vol_contract, vol_base, vol_quote, source_primary, quality_status)
+            SELECT
+                r.ts, r.inst_id, r.bar, r.open, r.high, r.low, r.close,
+                r.vol_contract, r.vol_base, r.vol_quote, $1, 'raw'
+            FROM raw_candles r
+            WHERE {where}
+            ON CONFLICT (source_primary, inst_id, bar, ts) DO UPDATE SET
+                open=EXCLUDED.open,
+                high=EXCLUDED.high,
+                low=EXCLUDED.low,
+                close=EXCLUDED.close,
+                vol_contract=EXCLUDED.vol_contract,
+                vol_base=EXCLUDED.vol_base,
+                vol_quote=EXCLUDED.vol_quote,
+                quality_status=EXCLUDED.quality_status,
+                updated_at=NOW(),
+                version=venue_canonical_candles.version + 1
+            WHERE {venue_canonical_conflict_where()}
+            RETURNING 1
+            )
+            SELECT COUNT(*)::bigint FROM changed
+            """,
+            *params,
+        )
+        promoted = await self._pool.fetchval(
+            f"""
+            WITH changed AS (
             INSERT INTO canonical_candles
                 (ts, inst_id, bar, open, high, low, close,
                  vol_contract, vol_base, vol_quote, source_primary, quality_status)
@@ -913,10 +946,12 @@ class CandleStore:
                 version=canonical_candles.version + 1
             WHERE {canonical_conflict_where()}
             RETURNING 1
+            )
+            SELECT COUNT(*)::bigint FROM changed
             """,
             *params,
         )
-        return {"promoted": len(changed_rows)}
+        return {"promoted": int(promoted or 0), "venue_promoted": int(venue_promoted or 0)}
 
     async def upsert_canonical_candles(
         self,
@@ -998,7 +1033,7 @@ class CandleStore:
         Returns tz-aware UTC DatetimeIndex, cols [open,high,low,close,vol_contract,vol_base,vol_quote].
         """
         view_map = {} if source_primary else {"5m": "canonical_candles_5m", "15m": "canonical_candles_15m", "1H": "canonical_candles_1h"}
-        table = view_map.get(bar, "canonical_candles")
+        table = "canonical_candles_by_source" if source_primary else view_map.get(bar, "canonical_candles")
 
         conditions = ["inst_id=$1", "bar=$2"]
         params: list[Any] = [inst_id, bar]
@@ -1011,7 +1046,7 @@ class CandleStore:
         if end:
             params.append(end)
             conditions.append(f"ts < ${len(params)}")
-        if not include_suspect and table == "canonical_candles":
+        if not include_suspect and table in {"canonical_candles", "canonical_candles_by_source"}:
             conditions.append("quality_status != 'suspect'")
         where = " AND ".join(conditions)
 
@@ -1020,7 +1055,7 @@ class CandleStore:
             f"FROM {table} WHERE {where} ORDER BY ts",
             *params,
         )
-        if not rows and table != "canonical_candles":
+        if not rows and not source_primary and table != "canonical_candles":
             fallback_conditions = list(conditions)
             if not include_suspect:
                 fallback_conditions.append("quality_status != 'suspect'")
