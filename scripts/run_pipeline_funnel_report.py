@@ -137,6 +137,14 @@ def _stage2_candidates(
         hypothesis_id = str(payload.get("hypothesis_id") or "").strip()
         family_id = str(payload.get("family_id") or "").strip()
         if not hypothesis_id or not family_id:
+            exc = ValueError("stage2 artifact must include hypothesis_id and family_id")
+            errors.append(
+                {
+                    "path": str(path).replace("\\", "/"),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
             continue
         row = candidates.setdefault(
             (hypothesis_id, family_id),

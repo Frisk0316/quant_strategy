@@ -3,6 +3,10 @@
 The calibration is deliberately separate from the registered Stage-2 caller:
 it freezes the sample-derived power input before the active probe opens a DB
 connection.  It never evaluates the four-cell Stage-3 grid.
+
+Funding settlements use the half-open interval ``[entry, exit)``: a settlement
+at entry is included and one at exit is excluded, using ``bisect_left`` for
+both boundaries.
 """
 from __future__ import annotations
 
@@ -255,6 +259,7 @@ def _funding_cashflow(
     exit: datetime,
     side: int,
 ) -> tuple[float, int]:
+    """Return signed funding for entry-inclusive, exit-exclusive ``[entry, exit)``."""
     times, rates = index
     lo = bisect_left(times, entry)
     hi = bisect_left(times, exit)

@@ -53,6 +53,22 @@ def _funding(start, rate=0.001):
     ]
 
 
+def test_funding_window_includes_entry_and_excludes_exit_settlement():
+    entry = datetime(2024, 1, 1, tzinfo=UTC)
+    middle = entry + timedelta(hours=8)
+    exit_time = entry + timedelta(hours=16)
+
+    cashflow, count = _funding_cashflow(
+        ([entry, middle, exit_time], [0.001, 0.002, 0.004]),
+        entry=entry,
+        exit=exit_time,
+        side=1,
+    )
+
+    assert count == 2
+    assert cashflow == pytest.approx(-0.003)
+
+
 def test_fixed_anchor_signal_uses_next_open_and_exact_episode_cost():
     start = datetime(2020, 1, 1, tzinfo=UTC)
     gaps = [0.0, 0.0, 0.03, 0.01, 0.01, 0.01]

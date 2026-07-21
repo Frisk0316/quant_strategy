@@ -3,7 +3,7 @@ status: current
 type: spec
 owner: claude
 created: 2026-07-18
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -76,6 +76,8 @@ consumes K and requires ex-ante rationale.
 - min_detectable_sharpe at these inputs: **0.8682** (long window). Short
   window 2024+ would demand 1.41–1.72 — that is why the long-window
   promotion is a prerequisite, not an option.
+- Superseded for implementation by the exact `n_obs=2,268` floor **0.8838**;
+  this strictly tightens the original 0.8682 requirement.
 - plausible_net_sharpe: to be estimated by Stage-2 `cost_after_edge` from a
   sample-window gap-persistence measurement. If the cheap estimate is below
   0.87, Stage-2 FAILS and the family stops with 0 grid trials burned.
@@ -104,3 +106,13 @@ consumes K and requires ex-ante rationale.
 
 Stage-3, adapters, promotion, demo/shadow/live. Stage-2 probe execution is a
 separate Codex task after the history promotion lands.
+
+## Future-round distinctness amendment — 2026-07-21
+
+This amendment is ex-ante for future rounds only; E-057's immutable artifact,
+FAIL, and shelved outcome do not change. Any future H-010 Stage-2 round must
+compute the candidate distinctness proxy across the post-calibration formal
+window, declare each gating reference's available date range, and establish
+before probe execution that their intersection can reach
+`MIN_COMMON_DAYS=365`. A structurally impossible intersection is refused as a
+contract defect rather than recorded as a data-conditional measurement.

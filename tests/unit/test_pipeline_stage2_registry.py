@@ -44,11 +44,20 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
     monkeypatch.setattr(registry, "probe_funding", fake_funding)
     monkeypatch.setattr(registry, "probe_xvenue", fake_xvenue)
     monkeypatch.setattr(registry, "probe_oi_universe", fake_oi_universe)
+    monkeypatch.setattr(registry, "validate_xvenue_leadlag_evidence", lambda evidence: evidence)
 
+    statistical_power = {
+        "breadth": 1,
+        "n_obs": 900,
+        "n_trials": 4,
+        "plausible_net_sharpe": 2.0,
+    }
     ctx = {
         "universe_path": "universe.parquet",
         "start": datetime(2024, 1, 1, tzinfo=timezone.utc),
         "end": datetime(2024, 1, 2, tzinfo=timezone.utc),
+        "statistical_power": statistical_power,
+        "calibration_evidence": {"statistical_power": statistical_power},
     }
 
     assert set(registry.STAGE2_PROBES) == {
@@ -70,6 +79,23 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
         ("oi", "conn", Path("universe.parquet"), ctx["start"], ctx["end"], "OIThresholds"),
         ("xvenue", "conn", ctx["start"], ctx["end"], "VenueThresholds"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_registered_xvenue_probe_refuses_missing_frozen_evidence_before_probe(monkeypatch):
+    async def forbidden_probe(*_args, **_kwargs):
+        raise AssertionError("xvenue probe ran without frozen calibration evidence")
+
+    monkeypatch.setattr(registry, "probe_xvenue", forbidden_probe)
+
+    with pytest.raises(ValueError, match="requires frozen calibration evidence"):
+        await registry.STAGE2_PROBES["F-XVENUE-LEADLAG"](
+            "conn",
+            {
+                "start": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "end": datetime(2024, 1, 2, tzinfo=timezone.utc),
+            },
+        )
 
 
 def _otherwise_passing_stage2() -> FeasibilityResult:

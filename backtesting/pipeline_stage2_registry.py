@@ -1139,9 +1139,20 @@ async def _run_funding_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult
 
 
 async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
-    result = await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
     evidence = ctx.get("calibration_evidence")
-    if isinstance(evidence, Mapping) and result.checks:
+    if not isinstance(evidence, Mapping):
+        raise ValueError("H-010 xvenue probe requires frozen calibration evidence")
+    evidence = validate_xvenue_leadlag_evidence(evidence)
+    evidence_power = evidence["statistical_power"]
+    statistical_power = ctx.get("statistical_power")
+    if not isinstance(statistical_power, Mapping):
+        raise ValueError("H-010 xvenue probe requires statistical power inputs")
+    for field in STATISTICAL_POWER_INPUT_FIELDS:
+        if statistical_power.get(field) != evidence_power.get(field):
+            raise ValueError(f"H-010 {field} does not match frozen calibration evidence")
+
+    result = await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
+    if result.checks:
         result = replace(result, checks=xvenue_leadlag_checks_from_evidence(result.checks[0], evidence))
     return _with_context_power_screen(result, ctx)
 

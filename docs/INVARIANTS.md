@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -69,6 +69,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I46 | A malformed or unreadable Stage-2 artifact is isolated and reported; it cannot abort the funnel or count as data/power feasible | R6.3 | `tests/unit/test_pipeline_funnel_report.py::test_pipeline_funnel_isolates_malformed_stage2_artifact` |
 | I47 | Default canonical identity remains one priority-resolved row, while simultaneous venue rows use `(source_primary, inst_id, bar, ts)`; source-aware promotion matches closed raw OHLCV exactly and never replaces a corrected/validated same-source row | R6.2, R6.4, R6.5 | `tests/unit/test_venue_canonical_promotion.py`, `tests/unit/test_db_writer.py`, `tests/unit/test_data_loader.py`, `scripts/verify_okx_1m_backfill.py` |
 | I48 | A cross-venue signal strategy applies funding only from its declared execution venue; absent OKX settlements fail Stage 2 and Binance/another venue is never substituted | R3.1–R3.4, R6.4 | `tests/unit/test_xvenue_leadlag_probe.py` |
+| I49 | Before any future H-010 Stage-2 probe, the formal post-calibration candidate-return window and every gating reference must have a declared intersection capable of meeting `MIN_COMMON_DAYS=365`; structural impossibility is refused as a contract error, never reported as a data-conditional distinctness measurement | R6.3, R6.6, R7.4 | `docs/superpowers/specs/2026-07-18-f-xvenue-leadlag-hypothesis.md`; human review before reuse |
 
 ## Usage
 

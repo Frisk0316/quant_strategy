@@ -3,7 +3,7 @@ status: current
 type: change-manifest
 owner: codex
 created: 2026-07-18
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -30,6 +30,20 @@ superseded_by: null
 
 The implementation clarification is registered as R3.4/F47/I48: funding must
 match the execution venue and cannot be borrowed from the signal venue.
+
+## Review-fix amendment — 2026-07-21
+
+- R3.2 now records the already-implemented entry-inclusive/exit-exclusive
+  funding boundary; E-057 has zero numeric change.
+- R6.6/I49/F49 amend only future H-010 rounds: distinctness uses the
+  post-calibration formal candidate window and gating references whose declared
+  intersection can satisfy `MIN_COMMON_DAYS=365`. Structural impossibility is
+  refused as a contract defect before measurement.
+- The generic registered-probe entry path now refuses missing or mismatched
+  frozen calibration evidence before calling the H-010 probe, matching the
+  direct `run_data_probe` path.
+- E-057 result artifacts, trial/K accounting, FAIL, and shelved outcome remain
+  immutable and unchanged; no probe, retry, Stage 3, or promotion is authorized.
 
 ## Current / target / known gap
 

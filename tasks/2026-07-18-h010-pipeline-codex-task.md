@@ -3,7 +3,7 @@ status: current
 type: task
 owner: codex
 created: 2026-07-18
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -144,6 +144,16 @@ Advisory-only record (does not gate because the family is refuted):
 
 Every reference file hash is embedded in the calibration evidence and checked
 again by registered Stage 2.
+
+### Review amendment for future rounds — 2026-07-21
+
+E-057 exposed that its 91-day calibration proxy could never satisfy 365 common
+days with references beginning in 2022. E-057 remains immutable and its outcome
+stands. Before any future probe, distinctness must instead use the
+post-calibration formal candidate-return window, declare gating-reference date
+ranges whose intersection can reach `MIN_COMMON_DAYS=365`, and refuse a
+structurally impossible contract before measurement. This amendment is committed
+before any future H-010 probe or reuse.
 
 ## Frozen conditional Stage 3
 
