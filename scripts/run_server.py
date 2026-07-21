@@ -25,6 +25,7 @@ from okx_quant.api.routes_config import make_config_router
 from okx_quant.api.routes_data import make_data_router
 from okx_quant.api.routes_manual import make_manual_router
 from okx_quant.api.routes_progress import make_progress_router
+from okx_quant.api.routes_research import make_research_router
 from okx_quant.core.config import load_config
 
 
@@ -61,6 +62,11 @@ def create_app(
         make_progress_router(PROJECT_ROOT, serve_files=serve_progress_files),
         prefix="/api/progress",
         tags=["progress"],
+    )
+    app.include_router(
+        make_research_router(PROJECT_ROOT, actions_enabled=serve_progress_files),
+        prefix="/api/research",
+        tags=["research"],
     )
 
     @app.get("/api/live/status")

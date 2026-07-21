@@ -183,7 +183,10 @@ real execution requires a new ADR and R7.2 approval.
   credential or order capability. Chain-construction failures journal as
   `missed_entry`; R8.3 intent-set failures journal as `rejected`, which is
   counted separately from and excluded from the missed-entry denominator like
-  `cap_rejected`. At least eight weeks of fresh daily records plus fill-bias,
+  `cap_rejected`. Every journal-producing UI, CLI, and scheduled process must
+  acquire the same non-blocking cross-process cycle lock before reading or
+  appending journal state; an overlapping cycle fails closed without writing.
+  At least eight weeks of fresh daily records plus fill-bias,
   missed-entry, and mark-tracking metrics unlock only a future live-ADR
   discussion; live still requires R7.2 and explicit user approval.
 

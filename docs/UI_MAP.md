@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 expires: none
 superseded_by: null
 ---
@@ -32,6 +32,8 @@ Main app views in `frontend/app.js`:
 - `progress`: read-only workstream milestone view from `frontend/view-progress.js`.
 - `ledger`: read-only research funnel and ledger links from
   `frontend/view-ledger.js`.
+- `research`: local H-014 shadow status/action and H-009 sensitivity controls
+  from `frontend/view-research.js`.
 
 ## Backtest View
 
@@ -168,6 +170,29 @@ Main app views in `frontend/app.js`:
   standalone `scripts/run_server.py` before the static file mount. Lifecycle
   frontmatter is removed from chapter responses before markdown rendering.
 
+## Research Ops
+
+- `frontend/view-research.js` owns the `Research Ops` view in the Analysis nav
+  group and is loaded by a side-effect import from `frontend/app.js`.
+- H-014 shows journal weeks, distinct weeks, bias completeness, and whether the
+  eight-week evidence gate unlocks a live-ADR discussion. Its button runs exactly
+  one existing credential-free public-data shadow cycle; it does not switch mode
+  or create an order.
+- H-009 accepts comma-separated lookback days and quantiles, starts a background
+  full-sample sensitivity job, polls its in-memory status, and shows up to 20
+  ranked rows. The page labels these rows research-only and non-promotion; its
+  `known n_trials` value is an explicit lower bound made from E-031's registered
+  baseline plus local UI submissions, not a replacement for the registry.
+- Mutation controls are available only when `scripts/run_server.py` is bound to
+  loopback. The engine app and non-loopback standalone binds expose H-014 status
+  but return HTTP 403 for H-014/H-009 actions. The frontend also sends a custom
+  local-action header, so a cross-origin HTML form cannot trigger localhost
+  journal or artifact writes.
+- Backend endpoints are implemented in
+  `src/okx_quant/api/routes_research.py`. H-009 artifacts persist under
+  `results/h009_parameter_sweeps/`, while the job list itself resets when the
+  standalone server restarts.
+
 ## API Calls Used By Frontend
 
 `frontend/data.js` maps frontend calls to FastAPI endpoints:
@@ -205,6 +230,11 @@ Main app views in `frontend/app.js`:
   `GET /api/manual/{slug}`.
 - `fetchProgress`: `GET /api/progress`.
 - `fetchResearchFunnel`: `GET /research_funnel.json`.
+- `fetchH014Research`: `GET /api/research/h014`.
+- `runH014Research`: `POST /api/research/h014/run`.
+- `runH009ResearchSweep`: `POST /api/research/h009/sweep`.
+- `fetchH009ResearchSweep`: `GET /api/research/h009/sweep/{job_id}`.
+- `fetchH009ResearchJobs`: `GET /api/research/h009/jobs`.
 - Progress file links: `GET /api/progress/file?path=<configured markdown path>`.
 
 `fetchRuns` / `fetchBacktestRuns` and `fetchDataCoverage` use a short in-flight

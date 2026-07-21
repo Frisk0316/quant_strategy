@@ -69,6 +69,7 @@ failure modes say how it silently breaks.
 | F45 | Missing Stage-2 caller inputs are serialized as a candidate failure | A caller-contract error silently becomes terminal `stage2_fail`, over-rejecting a candidate and hiding the integration defect | I45 rejects missing candidate-specific inputs before probe/artifact/status mutation | R6.3, R7.4 |
 | F46 | One malformed Stage-2 artifact aborts the full funnel | Observability disappears for every valid family because one JSON file is truncated, unreadable, or not an object | I46 per-artifact error isolation and regression test | R6.3 |
 | F47 | Signal-venue funding is substituted for missing execution-venue funding | A cross-venue strategy appears fully costed while charging Binance settlements to an OKX position, silently changing both provenance and PnL | I48 venue-matched funding census and fail-closed H-010 regression | R3.1–R3.4, R6.4 |
+| F48 | Concurrent UI, CLI, or scheduled H-014 cycles append the same journal | Both processes read the same prior state and persist overlapping evidence, corrupting week counts and live-gate observability | I39 shared non-blocking cross-process cycle lock and overlap regression | R8.7 |
 
 ## How to add a failure mode
 
