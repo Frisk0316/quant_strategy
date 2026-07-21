@@ -7,12 +7,17 @@ import backtesting.pipeline_stage2_registry as registry
 from backtesting.pipeline_feasibility import FeasibilityCheck
 from backtesting.xvenue_leadlag_probe import (
     BREADTH,
+    CALIBRATION_END,
+    CALIBRATION_START,
+    FORMAL_END,
+    FORMAL_START,
     N_OBS,
     N_TRIALS,
     PARAMS,
     AnchorParams,
     _funding_cashflow,
     build_distinctness_check,
+    check_distinctness_feasibility,
     checks_from_evidence,
     payload_sha256,
     simulate_fixed_anchor,
@@ -21,6 +26,19 @@ from backtesting.xvenue_leadlag_probe import (
 
 
 UTC = timezone.utc
+
+
+def _declared_reference_ranges():
+    return {
+        "F-FUNDING-XS-DISPERSION": {
+            "start": "2024-01-01",
+            "end_exclusive": "2026-06-17",
+        },
+        "F-VOL-REGIME-OPT": {
+            "start": "2022-05-12",
+            "end_exclusive": "2026-02-28",
+        },
+    }
 
 
 def _rows(start, gaps, opens=None):
@@ -152,6 +170,58 @@ def test_distinctness_compares_returns_to_returns_with_minimum_overlap():
 
     assert check.status == "PASS"
     assert check.details["candidate_kind"] == "fixed_anchor_daily_net_strategy_returns"
+
+
+def test_distinctness_feasibility_rejects_e057_contract():
+    with pytest.raises(ValueError, match="distinctness contract defect") as exc_info:
+        check_distinctness_feasibility(
+            {"start": CALIBRATION_START, "end_exclusive": CALIBRATION_END},
+            _declared_reference_ranges(),
+        )
+
+    message = str(exc_info.value)
+    assert "F-FUNDING-XS-DISPERSION" in message
+    assert "F-VOL-REGIME-OPT" in message
+    assert "achievable_common_days=0" in message
+    assert "required_minimum=365" in message
+
+
+def test_distinctness_feasibility_accepts_formal_window():
+    result = check_distinctness_feasibility(
+        {"start": FORMAL_START, "end_exclusive": FORMAL_END},
+        _declared_reference_ranges(),
+    )
+
+    assert result["references"]["F-FUNDING-XS-DISPERSION"]["achievable_common_days"] == 898
+    assert result["references"]["F-VOL-REGIME-OPT"]["achievable_common_days"] == 1388
+    assert result["overall_common_days"] == 789
+
+    joint_zero = check_distinctness_feasibility(
+        {"start": "2020-01-01", "end_exclusive": "2024-01-01"},
+        {
+            "F-FUNDING-XS-DISPERSION": {
+                "start": "2020-01-01",
+                "end_exclusive": "2021-01-01",
+            },
+            "F-VOL-REGIME-OPT": {
+                "start": "2022-01-01",
+                "end_exclusive": "2023-01-01",
+            },
+        },
+    )
+
+    assert joint_zero["references"]["F-FUNDING-XS-DISPERSION"]["achievable_common_days"] == 366
+    assert joint_zero["references"]["F-VOL-REGIME-OPT"]["achievable_common_days"] == 365
+    assert joint_zero["overall_common_days"] == 0
+
+
+@pytest.mark.parametrize("reference_ranges", [None, {}])
+def test_distinctness_feasibility_requires_declared_reference_ranges(reference_ranges):
+    with pytest.raises(ValueError, match="declared reference_ranges are required"):
+        check_distinctness_feasibility(
+            {"start": FORMAL_START, "end_exclusive": FORMAL_END},
+            reference_ranges,
+        )
 
 
 def test_calibration_evidence_hash_and_reference_hash_are_fail_closed(tmp_path):

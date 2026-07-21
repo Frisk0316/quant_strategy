@@ -143,7 +143,7 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   post-calibration formal window and every gating reference must declare enough
   overlapping daily returns to permit `MIN_COMMON_DAYS=365`. An impossible
   declared overlap is a contract refusal, not a data-conditional distinctness
-  measurement. Immutable E-057 and its recorded FAIL remain unchanged.
+  measurement. `check_distinctness_feasibility` now enforces this before both registered Stage-2 probe paths. Immutable E-057 and its recorded FAIL remain unchanged.
 
 ## R7. Promotion Gates
 

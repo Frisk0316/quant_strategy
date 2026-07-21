@@ -15,6 +15,7 @@ from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
 from backtesting.pipeline_power_screen import min_detectable_sharpe
 from backtesting.xvenue_leadlag_probe import (
+    check_distinctness_feasibility as check_xvenue_distinctness_feasibility,
     checks_from_evidence as xvenue_leadlag_checks_from_evidence,
     validate_calibration_evidence as validate_xvenue_leadlag_evidence,
 )
@@ -1150,6 +1151,10 @@ async def _run_xvenue_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
     for field in STATISTICAL_POWER_INPUT_FIELDS:
         if statistical_power.get(field) != evidence_power.get(field):
             raise ValueError(f"H-010 {field} does not match frozen calibration evidence")
+    check_xvenue_distinctness_feasibility(
+        evidence.get("formal_window"),
+        ctx.get("reference_ranges"),
+    )
 
     result = await probe_xvenue(conn, start=ctx["start"], end=ctx["end"], thresholds=VenueThresholds())
     if result.checks:
@@ -1202,6 +1207,7 @@ async def run_data_probe(
     start: str | datetime = START,
     end_exclusive: str | datetime = END_EXCLUSIVE,
     calibration_evidence: Mapping[str, Any] | None = None,
+    reference_ranges: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[tuple[FeasibilityResult, Path]]:
     statistical_power = require_statistical_power_inputs(statistical_power)
     if "xvenue" in candidates:
@@ -1212,6 +1218,10 @@ async def run_data_probe(
         for field in STATISTICAL_POWER_INPUT_FIELDS:
             if statistical_power.get(field) != evidence_power.get(field):
                 raise ValueError(f"H-010 {field} does not match frozen calibration evidence")
+        check_xvenue_distinctness_feasibility(
+            calibration_evidence.get("formal_window"),
+            reference_ranges,
+        )
     start = _utc(str(start)) if not isinstance(start, datetime) else _utc(start.isoformat())
     end = _utc(str(end_exclusive)) if not isinstance(end_exclusive, datetime) else _utc(end_exclusive.isoformat())
     try:
@@ -1336,6 +1346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--start", default=START)
     parser.add_argument("--end-exclusive", default=END_EXCLUSIVE)
     parser.add_argument("--power-input", type=Path)
+    parser.add_argument("--reference-ranges", type=Path)
     parser.add_argument("--breadth", type=float)
     parser.add_argument("--n-obs", type=int)
     parser.add_argument("--n-trials", type=int)
@@ -1345,6 +1356,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     calibration_evidence = None
+    reference_ranges = None
     if args.power_input and args.candidate != "xvenue":
         parser.error("--power-input is reserved for the H-010 xvenue calibration artifact")
     if args.power_input and args.power_override_rationale:
@@ -1369,6 +1381,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.candidate == "xvenue" and calibration_evidence is None:
         parser.error("--candidate xvenue requires --power-input from the frozen calibration step")
+    if args.reference_ranges and args.candidate != "xvenue":
+        parser.error("--reference-ranges is reserved for the H-010 xvenue contract")
+    if args.reference_ranges:
+        reference_ranges = json.loads(args.reference_ranges.read_text(encoding="utf-8"))
 
     outputs = asyncio.run(
         run_data_probe(
@@ -1381,6 +1397,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             start=args.start,
             end_exclusive=args.end_exclusive,
             calibration_evidence=calibration_evidence,
+            reference_ranges=reference_ranges,
         )
     )
     for result, path in outputs:

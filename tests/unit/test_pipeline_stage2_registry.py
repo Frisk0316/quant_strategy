@@ -8,6 +8,28 @@ from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
 import backtesting.pipeline_stage2_registry as registry
 
 
+def _xvenue_power():
+    return {
+        "breadth": 1,
+        "n_obs": 900,
+        "n_trials": 4,
+        "plausible_net_sharpe": 2.0,
+    }
+
+
+def _feasible_reference_ranges():
+    return {
+        "F-FUNDING-XS-DISPERSION": {
+            "start": "2024-01-01",
+            "end_exclusive": "2026-06-17",
+        },
+        "F-VOL-REGIME-OPT": {
+            "start": "2022-05-12",
+            "end_exclusive": "2026-02-28",
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_run_data_probe_rejects_missing_power_inputs_before_connect(tmp_path, monkeypatch):
     async def forbidden_connect(_dsn):
@@ -46,18 +68,17 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
     monkeypatch.setattr(registry, "probe_oi_universe", fake_oi_universe)
     monkeypatch.setattr(registry, "validate_xvenue_leadlag_evidence", lambda evidence: evidence)
 
-    statistical_power = {
-        "breadth": 1,
-        "n_obs": 900,
-        "n_trials": 4,
-        "plausible_net_sharpe": 2.0,
-    }
+    statistical_power = _xvenue_power()
     ctx = {
         "universe_path": "universe.parquet",
         "start": datetime(2024, 1, 1, tzinfo=timezone.utc),
         "end": datetime(2024, 1, 2, tzinfo=timezone.utc),
         "statistical_power": statistical_power,
-        "calibration_evidence": {"statistical_power": statistical_power},
+        "calibration_evidence": {
+            "statistical_power": statistical_power,
+            "formal_window": {"start": "2020-04-01", "end_exclusive": "2026-06-17"},
+        },
+        "reference_ranges": _feasible_reference_ranges(),
     }
 
     assert set(registry.STAGE2_PROBES) == {
@@ -96,6 +117,69 @@ async def test_registered_xvenue_probe_refuses_missing_frozen_evidence_before_pr
                 "end": datetime(2024, 1, 2, tzinfo=timezone.utc),
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_registered_xvenue_probe_refuses_missing_reference_ranges_before_probe_or_artifact(
+    tmp_path, monkeypatch
+):
+    async def forbidden_probe(*_args, **_kwargs):
+        raise AssertionError("xvenue probe ran without declared reference ranges")
+
+    power = _xvenue_power()
+    monkeypatch.setattr(registry, "probe_xvenue", forbidden_probe)
+    monkeypatch.setattr(registry, "validate_xvenue_leadlag_evidence", lambda evidence: evidence)
+
+    with pytest.raises(ValueError, match="declared reference_ranges are required"):
+        await registry.STAGE2_PROBES["F-XVENUE-LEADLAG"](
+            "conn",
+            {
+                "output_root": tmp_path,
+                "start": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                "end": datetime(2026, 6, 17, tzinfo=timezone.utc),
+                "statistical_power": power,
+                "calibration_evidence": {
+                    "statistical_power": power,
+                    "formal_window": {
+                        "start": "2020-04-01",
+                        "end_exclusive": "2026-06-17",
+                    },
+                },
+            },
+        )
+
+    assert not any(tmp_path.rglob("*"))
+
+
+@pytest.mark.asyncio
+async def test_run_data_probe_refuses_e057_distinctness_before_connect_or_artifact(
+    tmp_path, monkeypatch
+):
+    async def forbidden_connect(_dsn):
+        raise AssertionError("DB connection opened before distinctness feasibility validation")
+
+    power = _xvenue_power()
+    monkeypatch.setattr(registry, "_connect", forbidden_connect)
+    monkeypatch.setattr(registry, "validate_xvenue_leadlag_evidence", lambda evidence: evidence)
+
+    with pytest.raises(ValueError, match="distinctness contract defect"):
+        await registry.run_data_probe(
+            dsn="postgresql://example",
+            output_root=tmp_path,
+            universe_path=tmp_path / "unused.parquet",
+            candidates=["xvenue"],
+            statistical_power=power,
+            calibration_evidence={
+                "statistical_power": power,
+                "formal_window": {
+                    "start": "2020-01-01",
+                    "end_exclusive": "2020-04-01",
+                },
+            },
+            reference_ranges=_feasible_reference_ranges(),
+        )
+
+    assert not any(tmp_path.rglob("*"))
 
 
 def _otherwise_passing_stage2() -> FeasibilityResult:

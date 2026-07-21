@@ -160,6 +160,85 @@ def abs_correlation(left: Mapping[str, float], right: Mapping[str, float]) -> tu
     return abs(sum(x * y for x, y in zip(dx, dy)) / denominator), len(keys)
 
 
+def _declared_window(window: Any, label: str) -> tuple[datetime, datetime]:
+    if not isinstance(window, Mapping):
+        raise ValueError(f"H-010 distinctness contract defect: {label} must be a declared date range")
+    if window.get("start") is None or window.get("end_exclusive") is None:
+        raise ValueError(
+            f"H-010 distinctness contract defect: {label} requires start and end_exclusive"
+        )
+    start, end = _utc(window["start"]), _utc(window["end_exclusive"])
+    if end <= start:
+        raise ValueError(f"H-010 distinctness contract defect: {label} end must be after start")
+    return start, end
+
+
+def check_distinctness_feasibility(
+    candidate_window: Mapping[str, Any],
+    reference_ranges: Mapping[str, Mapping[str, Any]] | None,
+    min_common_days: int = MIN_COMMON_DAYS,
+) -> dict[str, Any]:
+    """Refuse an H-010 distinctness contract that cannot reach its day minimum."""
+
+    if not isinstance(min_common_days, int) or isinstance(min_common_days, bool) or min_common_days <= 0:
+        raise ValueError("H-010 distinctness contract defect: min_common_days must be a positive integer")
+    if not isinstance(reference_ranges, Mapping) or not reference_ranges:
+        raise ValueError(
+            "H-010 distinctness contract defect: declared reference_ranges are required"
+        )
+    missing = [family for family in GATING_REFERENCES if family not in reference_ranges]
+    if missing:
+        raise ValueError(
+            "H-010 distinctness contract defect: missing declared reference ranges for "
+            + ", ".join(missing)
+        )
+
+    candidate_start, candidate_end = _declared_window(candidate_window, "candidate_window")
+    details: dict[str, Any] = {
+        "candidate_window": {
+            "start": candidate_start.isoformat(),
+            "end_exclusive": candidate_end.isoformat(),
+        },
+        "references": {},
+        "required_minimum": min_common_days,
+    }
+    overall_start, overall_end = candidate_start, candidate_end
+    for family in GATING_REFERENCES:
+        reference_start, reference_end = _declared_window(
+            reference_ranges[family], f"reference_ranges[{family!r}]"
+        )
+        common_start = max(candidate_start, reference_start)
+        common_end = min(candidate_end, reference_end)
+        common_days = max(0, int((common_end - common_start).total_seconds() // 86_400))
+        details["references"][family] = {
+            "start": reference_start.isoformat(),
+            "end_exclusive": reference_end.isoformat(),
+            "achievable_common_days": common_days,
+        }
+        overall_start = max(overall_start, reference_start)
+        overall_end = min(overall_end, reference_end)
+
+    overall_days = max(0, int((overall_end - overall_start).total_seconds() // 86_400))
+    details["overall_common_days"] = overall_days
+    if any(
+        row["achievable_common_days"] < min_common_days
+        for row in details["references"].values()
+    ):
+        reference_summary = "; ".join(
+            f"{family} range=[{row['start']},{row['end_exclusive']}): "
+            f"achievable_common_days={row['achievable_common_days']}, "
+            f"required_minimum={min_common_days}"
+            for family, row in details["references"].items()
+        )
+        raise ValueError(
+            "H-010 distinctness contract defect: "
+            f"candidate_range=[{candidate_start.isoformat()},{candidate_end.isoformat()}); "
+            f"{reference_summary}; overall achievable_common_days={overall_days}, "
+            f"required_minimum={min_common_days}"
+        )
+    return details
+
+
 def build_distinctness_check(
     candidate_daily: Mapping[str, float],
     references: Mapping[str, Mapping[str, float]],
