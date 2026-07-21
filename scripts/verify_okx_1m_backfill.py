@@ -1,10 +1,11 @@
-"""Fail closed unless frozen-window OKX 1m coverage and alignment are at least 95%."""
+"""Fail closed unless requested-window OKX 1m coverage and alignment are at least 95%."""
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -23,13 +24,20 @@ from backtesting.pipeline_stage2_registry import (
 from scripts._db_writer import resolve_dsn
 
 
+def _parse_date(value: str) -> datetime:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected YYYY-MM-DD") from exc
+
+
 async def _connect(dsn: str):
     import asyncpg
 
     return await asyncpg.connect(dsn, server_settings={"default_transaction_read_only": "on"})
 
 
-def build_verification(result: Any) -> dict:
+def build_verification(result: Any, start: datetime, end: datetime) -> dict:
     thresholds = VenueThresholds()
     check = result.checks[0]
     coverage = check.details.get("venue_coverage") or {}
@@ -54,7 +62,10 @@ def build_verification(result: Any) -> dict:
         }
     return {
         "status": "PASS" if passed else "FAIL",
-        "window": {"start": START, "end_exclusive": END_EXCLUSIVE},
+        "window": {
+            "start": start.date().isoformat(),
+            "end_exclusive": end.date().isoformat(),
+        },
         "thresholds": {
             "okx_coverage_ratio": thresholds.min_coverage,
             "alignment_ratio": thresholds.min_alignment,
@@ -64,7 +75,49 @@ def build_verification(result: Any) -> dict:
     }
 
 
-async def _fetch_integrity(conn: Any) -> dict[str, dict[str, int]]:
+def _raw_gap_ranges(
+    rows: Sequence[Any],
+    start: datetime,
+    end: datetime,
+) -> dict[str, list[dict[str, int | str]]]:
+    counts = {
+        (str(row["inst_id"]), row["day"]): int(row["row_count"] or 0)
+        for row in rows
+    }
+    gaps: dict[str, list[dict[str, int | str]]] = {
+        symbol: [] for symbol in XVENUE_SYMBOLS
+    }
+    for symbol in XVENUE_SYMBOLS:
+        day = start.date()
+        while day < end.date():
+            observed = counts.get((symbol, day), 0)
+            missing = max(0, 1440 - observed)
+            if missing:
+                if gaps[symbol] and gaps[symbol][-1]["end_exclusive"] == day.isoformat():
+                    gap = gaps[symbol][-1]
+                    gap["end_exclusive"] = (day + timedelta(days=1)).isoformat()
+                    gap["expected_rows"] += 1440
+                    gap["observed_rows"] += observed
+                    gap["missing_rows"] += missing
+                else:
+                    gaps[symbol].append(
+                        {
+                            "start": day.isoformat(),
+                            "end_exclusive": (day + timedelta(days=1)).isoformat(),
+                            "expected_rows": 1440,
+                            "observed_rows": observed,
+                            "missing_rows": missing,
+                        }
+                    )
+            day += timedelta(days=1)
+    return gaps
+
+
+async def _fetch_integrity(
+    conn: Any,
+    start: datetime,
+    end: datetime,
+) -> dict[str, dict[str, Any]]:
     rows = await conn.fetch(
         """
         WITH raw AS (
@@ -104,8 +157,8 @@ async def _fetch_integrity(conn: Any) -> dict[str, dict[str, int]]:
         ORDER BY inst_id
         """,
         list(XVENUE_SYMBOLS),
-        _utc(START),
-        _utc(END_EXCLUSIVE),
+        start,
+        end,
     )
     resolved = await conn.fetch(
         """
@@ -118,32 +171,60 @@ async def _fetch_integrity(conn: Any) -> dict[str, dict[str, int]]:
         GROUP BY inst_id
         """,
         list(XVENUE_SYMBOLS),
-        _utc(START),
-        _utc(END_EXCLUSIVE),
+        start,
+        end,
+    )
+    raw_daily = await conn.fetch(
+        """
+        SELECT inst_id, date_trunc('day', ts)::date AS day, COUNT(*)::bigint AS row_count
+        FROM raw_candles
+        WHERE source = 'okx'
+          AND is_closed
+          AND inst_id = ANY($1::text[])
+          AND bar = '1m'
+          AND ts >= $2 AND ts < $3
+        GROUP BY inst_id, date_trunc('day', ts)::date
+        ORDER BY inst_id, day
+        """,
+        list(XVENUE_SYMBOLS),
+        start,
+        end,
     )
     resolved_by_symbol = {str(row["inst_id"]): int(row["rows"] or 0) for row in resolved}
+    joined_by_symbol = {str(row["inst_id"]): row for row in rows}
+    gap_ranges = _raw_gap_ranges(raw_daily, start, end)
     return {
-        str(row["inst_id"]): {
-            "raw_rows": int(row["raw_rows"] or 0),
-            "venue_rows": int(row["venue_rows"] or 0),
-            "mismatch_rows": int(row["mismatch_rows"] or 0),
-            "resolved_okx_rows": resolved_by_symbol.get(str(row["inst_id"]), 0),
+        symbol: {
+            "raw_rows": int((joined_by_symbol.get(symbol) or {}).get("raw_rows") or 0),
+            "venue_rows": int((joined_by_symbol.get(symbol) or {}).get("venue_rows") or 0),
+            "mismatch_rows": int(
+                (joined_by_symbol.get(symbol) or {}).get("mismatch_rows") or 0
+            ),
+            "resolved_okx_rows": resolved_by_symbol.get(symbol, 0),
+            "raw_gap_ranges": gap_ranges[symbol],
+            "raw_missing_rows": sum(gap["missing_rows"] for gap in gap_ranges[symbol]),
         }
-        for row in rows
+        for symbol in XVENUE_SYMBOLS
     }
 
 
-async def verify(dsn: str) -> dict:
+async def verify(
+    dsn: str,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> dict:
+    start = start or _utc(START)
+    end = end or _utc(END_EXCLUSIVE)
     conn = await _connect(dsn)
     try:
         result = await probe_xvenue(
             conn,
-            start=_utc(START),
-            end=_utc(END_EXCLUSIVE),
+            start=start,
+            end=end,
             thresholds=VenueThresholds(),
         )
-        report = build_verification(result)
-        integrity = await _fetch_integrity(conn)
+        report = build_verification(result, start, end)
+        integrity = await _fetch_integrity(conn, start, end)
         for symbol in XVENUE_SYMBOLS:
             row = integrity.get(symbol) or {
                 "raw_rows": 0,
@@ -171,13 +252,17 @@ async def verify(dsn: str) -> dict:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dsn", help="Override DATABASE_URL/config DSN")
+    parser.add_argument("--start", type=_parse_date, default=_utc(START))
+    parser.add_argument("--end", type=_parse_date, default=_utc(END_EXCLUSIVE))
     args = parser.parse_args(argv)
+    if args.start >= args.end:
+        parser.error("--start must be earlier than --end")
     dsn = resolve_dsn(args.dsn)
     if not dsn:
         print("FAIL: no DSN; OKX coverage was not verified", file=sys.stderr)
         return 2
     try:
-        report = asyncio.run(verify(dsn))
+        report = asyncio.run(verify(dsn, args.start, args.end))
     except Exception as exc:
         print(f"FAIL: OKX coverage probe failed closed: {exc}", file=sys.stderr)
         return 2
