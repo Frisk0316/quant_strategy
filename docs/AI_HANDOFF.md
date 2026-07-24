@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-24
 expires: none
 superseded_by: null
 ---
@@ -16,10 +16,9 @@ durable backlog.
 
 ## Current goal
 
-Have Claude review the five-commit delivery split and A1-A3/B1-B4 repairs.
-E-057 remains immutable and shelved; confirm the future distinctness contract is
-satisfiable, every H-010 entry path requires frozen evidence, and generated
-funnel JSON plus the stray result JSON remain outside the commits.
+Complete the user-authorized E-058 data repair and then E-059 frozen-contract
+reprobe. T1 is `NEEDS-HUMAN` because the sandbox cannot reach Binance; T2 is
+committed at `8fac3f7`; T3 must not start until the human backfill is verified.
 
 ## Branch and working tree
 
@@ -27,6 +26,8 @@ funnel JSON plus the stray result JSON remain outside the commits.
   is split into five ordered delivery commits at current HEAD; inspect
   `git log --oneline -5` for exact hashes. The generated funnel JSON remains on
   disk but ignored, and the stray execution-comparison JSON remains untracked.
+  The latest scoped commit is T2 alias rule/helper `8fac3f7`; pre-existing
+  runtime/API working-tree changes remain unstaged and untouched.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -75,7 +76,14 @@ funnel JSON plus the stray result JSON remain outside the commits.
   898 member-days and SHIBUSDT for 842, while malformed rows and unresolved
   symbols are zero. Distinctness, cost, and power passed; H-002's non-gating
   advisory corr is 0.484286 and needs Claude's mechanism/relabel review. Trials
-  remain 0 and K remains 0/2; no Stage 3 or data remediation is authorized.
+  remain 0 and K remains 0/2; E-058 stays immutable and Stage 3 is unauthorized.
+- E-058 repair / E-059 reprobe is partially complete. The Binance network
+  preflight failed in the sandbox, so ETHUSDT remains 0/1,293,120 raw minutes
+  and T1 is `NEEDS-HUMAN`. T2 added ADR-0015 and the consumer-time
+  `SHIB-USDT-SWAP -> 1000SHIB-USDT-SWAP` helper without wiring the probe;
+  membership SHA-256 remains
+  `9822810321262e76a65bccf18a519ac2f61f05f986bd13b730c0cb3d9e1657c5`.
+  E-059 is not registered or run.
 - Research Ops UI: the loopback standalone server now exposes H-014 bias/journal
   status plus one existing public-data shadow cycle, and an H-009 full-sample
   lookback/quantile screen. Mutations are disabled in the engine app and on
@@ -187,11 +195,22 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   all bounded symbol-year queries without a probe timeout and wrote the
   immutable four-check artifact with SHA-256
   `a61f58c0c2ea8b539b6cb0896abde6cd50e1154a7bbd59794db11f3b7a275a10`.
+- 2026-07-24 T2 alias rule/helper: targeted `1 passed`; full unit `955 passed,
+  1 skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
+  strict doc impact, and diff checks pass. Membership and E-058 hashes are
+  byte-identical; no taker-flow probe code or result artifact changed.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
+
+Immediate: the human runs the documented ETHUSDT preflight and backward
+`scripts/market_data/ingest.py` command outside the sandbox. Require 898/898
+parseable ETH member-days, 1,293,120 raw 12-slot rows, and an unchanged
+non-ETH symbol-count hash before T1 passes. Only then preregister E-059 in its
+own commit; probe wiring/execution follows in a later commit. Stage 3 remains
+unauthorized.
 
 First review the five ordered commits plus the 2026-07-21 context/session
 handoffs. Confirm A1-A3/B1-B4 are scoped, E-057 is byte-identical, and each

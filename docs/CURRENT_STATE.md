@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-24
 expires: none
 superseded_by: null
 ---
@@ -116,8 +116,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   versus 95%); missing coverage is ETHUSDT 898 days plus SHIBUSDT 842 days,
   with zero malformed rows or unresolved symbols. Distinctness, cost, and power
   passed, but H-002 advisory correlation is 0.4843 and needs Claude's
-  mechanism/relabel review. Family trials remain 0 and K remains 0/2. No
-  Stage 3, retry, download, backfill, schema change, promotion, or deployment.
+  mechanism/relabel review. Family trials remain 0 and K remains 0/2.
+  User-authorized repair is now partial: T1 is `NEEDS-HUMAN` after the sandbox
+  Binance preflight failed, while T2 commit `8fac3f7` adds the immutable-PIT
+  alias rule/helper without probe wiring. E-059 is not registered or run;
+  Stage 3, promotion, and deployment remain unauthorized.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
@@ -133,6 +136,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   private endpoint, credential, or order path exists.
 
 ## Next actions, in order
+
+Immediate gate: the human preflights and backward-ingests ETHUSDT raw 1m
+outside the sandbox, then returns the output for the 898-day coverage and
+non-ETH count-hash verification. Do not preregister or execute E-059 before
+that verification passes.
 
 1. Claude reviews the five ordered delivery commits and A1-A3/B1-B4 fixes,
    including E-057 byte-hash preservation and per-commit diff stats.

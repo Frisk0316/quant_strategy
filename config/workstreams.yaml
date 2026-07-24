@@ -68,11 +68,11 @@ workstreams:
 
   - name: Strategy research pipeline — F-TAKER-FLOW
     status: blocked
-    milestones: [stage1_spec, stage2_probe, claude_review]
-    current: claude_review
-    state: "H-022/E-058 is data-blocked and inconclusive after its zero-trial Stage-2-only probe. Coverage was 23,847/25,587 PIT member-days (0.931997 versus 0.95), while distinctness, cost, and power passed. Family trials remain 0 and K remains 0/2."
-    next: "Claude reviews the data-only failure and H-002 advisory corr 0.484286. No Stage 3, retry, download, backfill, schema change, promotion, or deployment is authorized."
-    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-taker-flow-stage2-codex-tasks.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, tasks/2026-07-24-taker-flow-stage2-context-handoff.md, tasks/2026-07-24-taker-flow-stage2-session-handoff.md]
+    milestones: [stage1_spec, stage2_probe, claude_review, data_repair, alias_rule, e059_reprobe]
+    current: data_repair
+    state: "H-022/E-058 remains data-blocked and inconclusive. T1 is NEEDS-HUMAN because the sandbox Binance preflight returned no data; ETHUSDT is still 0/1,293,120 raw minutes. T2 consumer-time alias rule/helper is committed at 8fac3f7 without probe wiring. E-059 is not registered or run; family trials remain 0 and K remains 0/2."
+    next: "Human preflights and backward-ingests ETHUSDT with the existing ingest.py command, then Codex verifies 898/898 parseable days, 1,293,120 12-slot raw rows, and unchanged non-ETH counts. Only after T1 passes may E-059 be preregistered and run. No Stage 3, promotion, or deployment."
+    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-e058-repair-e059-codex-tasks.md, docs/ADR/0015-consumer-time-economic-asset-aliases.md, docs/change_manifests/2026-07-24-consumer-time-universe-aliases.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, tasks/2026-07-24-taker-flow-stage2-context-handoff.md, tasks/2026-07-24-taker-flow-stage2-session-handoff.md]
     updated: 2026-07-24
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
