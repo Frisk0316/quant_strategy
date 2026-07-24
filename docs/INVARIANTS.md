@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-24
 expires: none
 superseded_by: null
 ---
@@ -70,6 +70,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I47 | Default canonical identity remains one priority-resolved row, while simultaneous venue rows use `(source_primary, inst_id, bar, ts)`; source-aware promotion matches closed raw OHLCV exactly and never replaces a corrected/validated same-source row | R6.2, R6.4, R6.5 | `tests/unit/test_venue_canonical_promotion.py`, `tests/unit/test_db_writer.py`, `tests/unit/test_data_loader.py`, `scripts/verify_okx_1m_backfill.py` |
 | I48 | A cross-venue signal strategy applies funding only from its declared execution venue; absent OKX settlements fail Stage 2 and Binance/another venue is never substituted | R3.1–R3.4, R6.4 | `tests/unit/test_xvenue_leadlag_probe.py` |
 | I49 | Before any future H-010 Stage-2 probe, the formal post-calibration candidate-return window and every gating reference must have a declared intersection capable of meeting `MIN_COMMON_DAYS=365`; structural impossibility is refused as a contract error, never reported as a data-conditional distinctness measurement | R6.3, R6.6, R7.4 | `tests/unit/test_xvenue_leadlag_probe.py::test_distinctness_feasibility_rejects_e057_contract`, `tests/unit/test_pipeline_stage2_registry.py::test_registered_xvenue_probe_refuses_missing_reference_ranges_before_probe_or_artifact` |
+| I50 | Consumer-time same-asset alias collapse preserves the immutable PIT membership bytes, maps Binance `SHIB-USDT-SWAP` to tradable `1000SHIB-USDT-SWAP`, retains unrelated selected symbols, and does not refill the selected top-N after deduplication | R6.7 | `tests/unit/test_universe_aliases.py` |
 
 ## Usage
 

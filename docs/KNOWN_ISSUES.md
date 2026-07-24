@@ -70,6 +70,12 @@ over time.
   reject missing candidate-specific power inputs before probe/artifact/status
   mutation, and malformed artifacts are reported per file without aborting the
   schema-v3 funnel.
+- **Open same-asset alias adoption (F53/I50):** ADR-0015 defines Binance
+  `SHIB-USDT-SWAP -> 1000SHIB-USDT-SWAP` collapse after PIT top-N selection
+  without rewriting membership history. T2 provides the pure helper and E-059
+  is its first authorized consumer after T1 passes. Funding/XS/OI/checkpoint
+  consumers remain unchanged and need separately scoped adoption before their
+  denominators can be assumed economic-asset unique.
 - By user decision, Deribit snapshot/forward-ingest Windows tasks remain
   unregistered and stale series are accepted while the RUNBOOK manual path
   remains usable. Daily `dvol_deribit_*` is retained and was backfilled on

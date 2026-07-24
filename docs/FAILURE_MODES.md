@@ -71,6 +71,7 @@ failure modes say how it silently breaks.
 | F47 | Signal-venue funding is substituted for missing execution-venue funding | A cross-venue strategy appears fully costed while charging Binance settlements to an OKX position, silently changing both provenance and PnL | I48 venue-matched funding census and fail-closed H-010 regression | R3.1–R3.4, R6.4 |
 | F48 | Concurrent UI, CLI, or scheduled H-014 cycles append the same journal | Both processes read the same prior state and persist overlapping evidence, corrupting week counts and live-gate observability | I39 shared non-blocking cross-process cycle lock and overlap regression | R8.7 |
 | F49 | A Stage-2 distinctness threshold exceeds the maximum overlap possible under its declared candidate/reference windows | PASS is unreachable by construction but the artifact presents the result as if observed data caused the failure | I49 pre-run contract satisfiability review; future H-010 uses formal post-calibration returns and references capable of 365 common days | R6.3, R6.6, R7.4 |
+| F53 | Two venue symbols for one economic asset survive PIT top-N selection | Cross-sectional books can double-weight one asset and inflate member-day denominators while every row remains individually valid | I50 consumer-time alias-collapse test, immutable membership SHA-256 check, and effective-denominator review | R6.7 |
 
 ## How to add a failure mode
 

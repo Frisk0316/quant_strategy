@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-24
 expires: none
 superseded_by: null
 ---
@@ -144,6 +144,12 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   overlapping daily returns to permit `MIN_COMMON_DAYS=365`. An impossible
   declared overlap is a contract refusal, not a data-conditional distinctness
   measurement. `check_distinctness_feasibility` now enforces this before both registered Stage-2 probe paths. Immutable E-057 and its recorded FAIL remain unchanged.
+- **R6.7** Point-in-time universe membership artifacts are immutable evidence
+  inputs. An exchange-scoped consumer must collapse declared same-economic-asset
+  aliases only after PIT eligibility and top-N selection, preserve the selected
+  order, keep the canonical tradable contract once, and recompute its effective
+  member-day denominator without refilling from rank N+1. For Binance,
+  `SHIB-USDT-SWAP` aliases to `1000SHIB-USDT-SWAP`.
 
 ## R7. Promotion Gates
 

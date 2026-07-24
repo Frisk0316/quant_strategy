@@ -313,20 +313,25 @@ implementation exists.
 
 - User-facing behavior: build a deterministic liquid USDT-perp universe artifact
   for cross-sectional research without pre-listing or delisting survivorship
-  leakage.
+  leakage. ADR-0015 keeps that artifact immutable and defines consumer-time
+  same-asset collapse; T2 provides the Binance alias helper, while E-059 probe
+  wiring remains gated on T1 verification.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/data_loader.py` is the downstream candle
   aggregation authority; no dedicated backtest runner is wired yet.
 - Data / DB / artifact files: `scripts/build_universe_membership.py`,
+  `backtesting/universe_aliases.py`,
   local candles under `data/ticks/<inst_id>/candles_1m.parquet`, generated
   artifact `data/universe/universe_membership.parquet`.
 - Config files: `config/universe.yaml`, `config/settings.yaml`.
-- Tests: `tests/unit/test_universe_membership.py`.
+- Tests: `tests/unit/test_universe_membership.py`,
+  `tests/unit/test_universe_aliases.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/INVARIANTS.md`,
   `docs/FAILURE_MODES.md`, `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: do not use a hand-picked final symbol list as historical
-  membership; promotion-grade runs still need venue-scoped DB coverage evidence.
+  membership or rewrite the membership parquet for an economic alias;
+  promotion-grade runs still need venue-scoped DB coverage evidence.
 
 ## XS Momentum Research Strategy
 
