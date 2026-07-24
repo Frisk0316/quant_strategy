@@ -69,6 +69,13 @@ funnel JSON plus the stray result JSON remain outside the commits.
   WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818, family-cumulative
   `n_trials=12`, K 0/2. Stop with no retry, retune, promotion, or deployment
   claim.
+- F-TAKER-FLOW H-022/E-058 is data-blocked and `inconclusive` after its
+  Stage-2-only Option A probe. Data availability alone failed at
+  23,847/25,587 PIT member-days (0.931997 versus 0.95): ETHUSDT is absent for
+  898 member-days and SHIBUSDT for 842, while malformed rows and unresolved
+  symbols are zero. Distinctness, cost, and power passed; H-002's non-gating
+  advisory corr is 0.484286 and needs Claude's mechanism/relabel review. Trials
+  remain 0 and K remains 0/2; no Stage 3 or data remediation is authorized.
 - Research Ops UI: the loopback standalone server now exposes H-014 bias/journal
   status plus one existing public-data shadow cycle, and an H-009 full-sample
   lookback/quantile screen. Mutations are disabled in the engine app and on
@@ -174,6 +181,12 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   `921 passed, 1 skipped`; full Ruff, frontend syntax, config, backtest smoke,
   docs metadata/links/ledger, and strict doc impact pass. E-057 file hashes are
   byte-identical before/after.
+- 2026-07-24 E-058: targeted tests `27 passed`; full unit `954 passed, 1
+  skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
+  strict doc impact, and diff checks pass. The real read-only probe completed
+  all bounded symbol-year queries without a probe timeout and wrote the
+  immutable four-check artifact with SHA-256
+  `a61f58c0c2ea8b539b6cb0896abde6cd50e1154a7bbd59794db11f3b7a275a10`.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.

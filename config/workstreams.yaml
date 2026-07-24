@@ -66,6 +66,15 @@ workstreams:
     links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, docs/ADR/0012-inverse-perpetual-research-accounting.md, tasks/2026-07-15-h021-stage3-context-handoff.md, tasks/2026-07-15-h021-stage3-session-handoff.md]
     updated: 2026-07-16
 
+  - name: Strategy research pipeline — F-TAKER-FLOW
+    status: blocked
+    milestones: [stage1_spec, stage2_probe, claude_review]
+    current: claude_review
+    state: "H-022/E-058 is data-blocked and inconclusive after its zero-trial Stage-2-only probe. Coverage was 23,847/25,587 PIT member-days (0.931997 versus 0.95), while distinctness, cost, and power passed. Family trials remain 0 and K remains 0/2."
+    next: "Claude reviews the data-only failure and H-002 advisory corr 0.484286. No Stage 3, retry, download, backfill, schema change, promotion, or deployment is authorized."
+    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-taker-flow-stage2-codex-tasks.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, tasks/2026-07-24-taker-flow-stage2-context-handoff.md, tasks/2026-07-24-taker-flow-stage2-session-handoff.md]
+    updated: 2026-07-24
+
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done
     milestones: [spec, impl, validation, consolidated_pr, merge]

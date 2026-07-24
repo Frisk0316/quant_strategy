@@ -111,6 +111,13 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   accounting and failed statistical/robustness gates: WF -0.2158, CPCV -0.0375,
   DSR 0.2357, PSR 0.4818, family-cumulative n_trials=12, K=0/2. Stop: no retry,
   retune, promotion, demo, shadow, or live work.
+- H-022/F-TAKER-FLOW is `inconclusive` after the zero-trial E-058 Stage-2-only
+  probe. Data availability failed at 23,847/25,587 PIT member-days (93.1997%
+  versus 95%); missing coverage is ETHUSDT 898 days plus SHIBUSDT 842 days,
+  with zero malformed rows or unresolved symbols. Distinctness, cost, and power
+  passed, but H-002 advisory correlation is 0.4843 and needs Claude's
+  mechanism/relabel review. Family trials remain 0 and K remains 0/2. No
+  Stage 3, retry, download, backfill, schema change, promotion, or deployment.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
@@ -129,6 +136,8 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 1. Claude reviews the five ordered delivery commits and A1-A3/B1-B4 fixes,
    including E-057 byte-hash preservation and per-commit diff stats.
+   Claude also reviews E-058's data-blocked outcome and the non-gating H-002
+   advisory correlation; no F-TAKER-FLOW follow-on is authorized.
 2. Open and review the separate `codex/pipeline-batch1-stage3` follow-up PR;
    human performs the merge.
 3. Continue the manual H-014 shadow cycle and obtain Claude's execution/risk
