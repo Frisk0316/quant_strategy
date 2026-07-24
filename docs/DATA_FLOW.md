@@ -426,6 +426,8 @@ source-aware Binance/OKX 1m + OKX-only funding
   -> E-057 FAIL -> stop; no Stage-3 grid/WF/CPCV
 ```
 
+For H-022/E-058 only, read-only symbol-year queries parse Binance 1m `market_klines.raw_payload.raw[9]/[10]` against PIT membership -> four Stage-2 checks -> one new `stage2_feasibility.json`; malformed/missing arrays stay missing, with no download, schema change, or Stage 3.
+
 ## Backtest Run Flow
 
 ```text

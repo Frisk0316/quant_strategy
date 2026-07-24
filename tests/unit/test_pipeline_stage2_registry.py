@@ -17,6 +17,10 @@ def _xvenue_power():
     }
 
 
+def _taker_power():
+    return {"breadth": 6, "n_trials": 4}
+
+
 def _feasible_reference_ranges():
     return {
         "F-FUNDING-XS-DISPERSION": {
@@ -86,6 +90,7 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
         "F-OI-POSITIONING",
         "F-XVENUE-LEADLAG",
         "F-XVENUE-FUNDING-SPREAD",
+        "F-TAKER-FLOW",
     }
 
     funding = await registry.STAGE2_PROBES["F-FUNDING-XS-DISPERSION"]("conn", ctx)
@@ -182,6 +187,107 @@ async def test_run_data_probe_refuses_e057_distinctness_before_connect_or_artifa
     assert not any(tmp_path.rglob("*"))
 
 
+@pytest.mark.asyncio
+async def test_registered_taker_probe_refuses_missing_reference_ranges_before_probe_or_artifact(
+    tmp_path, monkeypatch
+):
+    async def forbidden_probe(*_args, **_kwargs):
+        raise AssertionError("taker probe ran without declared reference ranges")
+
+    monkeypatch.setattr(registry, "probe_taker_flow", forbidden_probe)
+
+    with pytest.raises(ValueError, match="declared reference_ranges are required"):
+        await registry.STAGE2_PROBES["F-TAKER-FLOW"](
+            "conn",
+            {
+                "output_root": tmp_path,
+                "universe_path": tmp_path / "unused.parquet",
+                "start": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "end": datetime(2026, 6, 17, tzinfo=timezone.utc),
+                "statistical_power": _taker_power(),
+            },
+        )
+
+    assert not any(tmp_path.rglob("*"))
+
+
+@pytest.mark.asyncio
+async def test_registered_taker_probe_derives_power_instead_of_using_caller_estimates(
+    tmp_path, monkeypatch
+):
+    async def fake_probe(_conn, ctx):
+        assert ctx["statistical_power"] == _taker_power()
+        return FeasibilityResult(
+            "e058_taker_flow_stage2_20260724",
+            "B-f-taker-flow",
+            "f_taker_flow",
+            "H-022",
+            "F-TAKER-FLOW",
+            (
+                FeasibilityCheck("data_availability", "PASS", "ok"),
+                FeasibilityCheck("distinctness", "PASS", "ok"),
+                FeasibilityCheck(
+                    "cost_after_edge",
+                    "PASS",
+                    "ok",
+                    {"n_obs": 779, "plausible_net_sharpe": 0.8},
+                ),
+            ),
+        )
+
+    registry_path = tmp_path / "EXPERIMENT_REGISTRY.md"
+    registry_path.write_text(
+        "| F-TAKER-FLOW | 0 | 2 | E-058 zero-trial Stage-2 probe |\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(registry, "probe_taker_flow", fake_probe)
+
+    result = await registry.STAGE2_PROBES["F-TAKER-FLOW"](
+        "conn",
+        {
+            "universe_path": tmp_path / "unused.parquet",
+            "start": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "end": datetime(2026, 6, 17, tzinfo=timezone.utc),
+            "statistical_power": {
+                "breadth": 6,
+                "n_obs": 900,
+                "n_trials": 4,
+                "plausible_net_sharpe": 99.0,
+            },
+            "reference_ranges": _feasible_reference_ranges(),
+            "experiment_registry_path": registry_path,
+        },
+    )
+
+    power = {check.name: check for check in result.checks}["statistical_power"]
+    assert power.details["n_obs"] == 779
+    assert power.details["plausible_net_sharpe"] == 0.8
+    assert power.details["registry_cumulative_n_trials"] == 0
+    assert power.details["caller_declared_n_trials"] == 4
+
+
+@pytest.mark.asyncio
+async def test_run_data_probe_refuses_missing_taker_power_before_connect_or_artifact(
+    tmp_path, monkeypatch
+):
+    async def forbidden_connect(_dsn):
+        raise AssertionError("DB connection opened before E-058 power validation")
+
+    monkeypatch.setattr(registry, "_connect", forbidden_connect)
+
+    with pytest.raises(ValueError, match="n_trials"):
+        await registry.run_data_probe(
+            dsn="postgresql://example",
+            output_root=tmp_path,
+            universe_path=tmp_path / "unused.parquet",
+            candidates=["taker"],
+            statistical_power={"breadth": 6},
+            reference_ranges=_feasible_reference_ranges(),
+        )
+
+    assert not any(tmp_path.rglob("*"))
+
+
 def _otherwise_passing_stage2() -> FeasibilityResult:
     return FeasibilityResult(
         "batch",
@@ -215,6 +321,30 @@ def test_statistical_power_fail_is_written_into_same_stage2_artifact(tmp_path):
     assert "min_detectable_sharpe=1.7206" in power["reason"]
     assert power["details"]["n_trials_provenance"] == "caller_declared"
     assert power["details"]["grid_trials_on_unoverridden_fail"] == 0
+
+
+def test_taker_writer_uses_exact_immutable_artifact_path(tmp_path):
+    result = FeasibilityResult(
+        "e058_taker_flow_stage2_20260724",
+        "B-f-taker-flow",
+        "f_taker_flow",
+        "H-022",
+        "F-TAKER-FLOW",
+        (
+            FeasibilityCheck("data_availability", "PASS", "ok"),
+            FeasibilityCheck("distinctness", "PASS", "ok"),
+            FeasibilityCheck("cost_after_edge", "PASS", "ok"),
+            FeasibilityCheck("statistical_power", "PASS", "ok"),
+        ),
+    )
+
+    path = registry._write_result(tmp_path, result)
+
+    assert path == (
+        tmp_path / "e058_taker_flow_stage2_20260724" / "stage2_feasibility.json"
+    )
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        registry._write_result(tmp_path, result)
 
 
 def test_h014_like_breadth_and_length_pass_power_screen():

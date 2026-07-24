@@ -14,6 +14,13 @@ from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
 from backtesting.pipeline_power_screen import min_detectable_sharpe
+from backtesting.taker_flow_probe import (
+    ARTIFACT_DIR as TAKER_ARTIFACT_DIR,
+    FORMAL_WINDOW as TAKER_FORMAL_WINDOW,
+    check_distinctness_feasibility as check_taker_distinctness_feasibility,
+    probe_taker_flow,
+    validate_power_declaration as validate_taker_power_declaration,
+)
 from backtesting.xvenue_leadlag_probe import (
     check_distinctness_feasibility as check_xvenue_distinctness_feasibility,
     checks_from_evidence as xvenue_leadlag_checks_from_evidence,
@@ -120,6 +127,13 @@ CANDIDATES: dict[str, CandidateSpec] = {
         candidate_dir="f_oi_positioning",
         hypothesis_id="H-012",
         family_id="F-OI-POSITIONING",
+    ),
+    "taker": CandidateSpec(
+        key="taker",
+        candidate_id="B-f-taker-flow",
+        candidate_dir="f_taker_flow",
+        hypothesis_id="H-022",
+        family_id="F-TAKER-FLOW",
     ),
 }
 
@@ -1179,17 +1193,71 @@ async def _run_xvenue_funding_spread_probe(conn: Any, ctx: Stage2Context) -> Fea
     return _with_context_power_screen(await probe_xvenue_funding_spread(conn, ctx), ctx)
 
 
+def _require_taker_contract(ctx: Stage2Context) -> tuple[dict[str, Any], dict[str, Any]]:
+    power = validate_taker_power_declaration(ctx.get("statistical_power"))
+    feasibility = check_taker_distinctness_feasibility(
+        TAKER_FORMAL_WINDOW,
+        ctx.get("reference_ranges"),
+    )
+    return power, feasibility
+
+
+async def _run_taker_flow_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    power, feasibility = _require_taker_contract(ctx)
+    probe_ctx = dict(ctx)
+    probe_ctx["statistical_power"] = power
+    probe_ctx["distinctness_feasibility"] = feasibility
+    result = await probe_taker_flow(conn, probe_ctx)
+    cost = next((check for check in result.checks if check.name == "cost_after_edge"), None)
+    try:
+        if cost is None:
+            raise ValueError("cost_after_edge check is missing")
+        n_obs = cost.details.get("n_obs")
+        plausible = cost.details.get("plausible_net_sharpe")
+        if type(n_obs) is not int or n_obs <= 0:
+            raise ValueError("measured n_obs must be a positive integer")
+        if plausible is None or not math.isfinite(float(plausible)):
+            raise ValueError("measured plausible_net_sharpe must be finite")
+    except (TypeError, ValueError) as exc:
+        return _failed_statistical_power_result(
+            result,
+            f"E-058 statistical power inputs unavailable: {exc}",
+            error_type=type(exc).__name__,
+        )
+    power_ctx = dict(ctx)
+    power_ctx["statistical_power"] = {
+        "breadth": power["breadth"],
+        "n_obs": n_obs,
+        "n_trials": power["n_trials"],
+        "plausible_net_sharpe": float(plausible),
+    }
+    return _with_context_power_screen(result, power_ctx)
+
+
 STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
     "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
     "F-XVENUE-FUNDING-SPREAD": _run_xvenue_funding_spread_probe,
+    "F-TAKER-FLOW": _run_taker_flow_probe,
 }
 
 
 def _write_result(output_root: Path, result: FeasibilityResult) -> Path:
     result = _ensure_statistical_power_check(result)
-    path = output_root / result.batch_id / result.candidate_dir / "stage2_feasibility.json"
+    if result.family_id == "F-TAKER-FLOW":
+        required = {"data_availability", "distinctness", "cost_after_edge", "statistical_power"}
+        present = {check.name for check in result.checks}
+        if not required.issubset(present):
+            raise ValueError(
+                "E-058 artifact requires all four Stage-2 checks; missing "
+                + ", ".join(sorted(required - present))
+            )
+        path = output_root / TAKER_ARTIFACT_DIR / "stage2_feasibility.json"
+        if path.exists():
+            raise FileExistsError(f"refusing to overwrite immutable E-058 artifact: {path}")
+    else:
+        path = output_root / result.batch_id / result.candidate_dir / "stage2_feasibility.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = _jsonable(result_to_dict(result))
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1209,7 +1277,13 @@ async def run_data_probe(
     calibration_evidence: Mapping[str, Any] | None = None,
     reference_ranges: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[tuple[FeasibilityResult, Path]]:
-    statistical_power = require_statistical_power_inputs(statistical_power)
+    if "taker" in candidates:
+        if len(candidates) != 1:
+            raise ValueError("E-058 taker probe must run alone")
+        statistical_power = validate_taker_power_declaration(statistical_power)
+        check_taker_distinctness_feasibility(TAKER_FORMAL_WINDOW, reference_ranges)
+    else:
+        statistical_power = require_statistical_power_inputs(statistical_power)
     if "xvenue" in candidates:
         if not isinstance(calibration_evidence, Mapping):
             raise ValueError("H-010 xvenue probe requires frozen calibration evidence")
@@ -1227,6 +1301,8 @@ async def run_data_probe(
     try:
         conn = await _connect(dsn)
     except Exception as exc:
+        if "taker" in candidates:
+            raise RuntimeError("E-058 database connection failed before artifact creation") from exc
         failed = [build_fail_closed_result(candidate_key, exc) for candidate_key in candidates]
         failed = [
             _with_context_power_screen(
@@ -1269,17 +1345,32 @@ async def run_data_probe(
                             calibration_evidence or {},
                         ),
                     )
+                elif candidate_key == "taker":
+                    result = await _run_taker_flow_probe(
+                        conn,
+                        {
+                            "universe_path": universe_path,
+                            "start": start,
+                            "end": end,
+                            "statistical_power": statistical_power,
+                            "reference_ranges": reference_ranges,
+                            "experiment_registry_path": experiment_registry_path,
+                        },
+                    )
                 else:
                     raise ValueError(f"unknown candidate key {candidate_key!r}")
             except Exception as exc:
+                if candidate_key == "taker":
+                    raise
                 result = build_fail_closed_result(candidate_key, exc)
-            result = _with_context_power_screen(
-                result,
-                {
-                    "statistical_power": statistical_power,
-                    "experiment_registry_path": experiment_registry_path,
-                },
-            )
+            if candidate_key != "taker":
+                result = _with_context_power_screen(
+                    result,
+                    {
+                        "statistical_power": statistical_power,
+                        "experiment_registry_path": experiment_registry_path,
+                    },
+                )
             results.append((result, _write_result(output_root, result)))
     finally:
         await conn.close()
@@ -1369,6 +1460,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             field: calibration_evidence["statistical_power"][field]
             for field in STATISTICAL_POWER_INPUT_FIELDS
         }
+    elif args.candidate == "taker":
+        statistical_power = validate_taker_power_declaration(
+            {
+                "breadth": args.breadth,
+                "n_trials": args.n_trials,
+            }
+        )
     else:
         statistical_power = require_statistical_power_inputs(
             {
@@ -1381,10 +1479,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.candidate == "xvenue" and calibration_evidence is None:
         parser.error("--candidate xvenue requires --power-input from the frozen calibration step")
-    if args.reference_ranges and args.candidate != "xvenue":
-        parser.error("--reference-ranges is reserved for the H-010 xvenue contract")
+    if args.reference_ranges and args.candidate not in {"xvenue", "taker"}:
+        parser.error("--reference-ranges is reserved for H-010 or E-058 distinctness contracts")
     if args.reference_ranges:
         reference_ranges = json.loads(args.reference_ranges.read_text(encoding="utf-8"))
+    if args.candidate == "taker" and reference_ranges is None:
+        parser.error("--candidate taker requires --reference-ranges")
 
     outputs = asyncio.run(
         run_data_probe(

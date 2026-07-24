@@ -555,6 +555,7 @@ implementation exists.
   E-057 fails and stops before Stage 3. Its structurally impossible 91-day/
   365-common-day distinctness result remains immutable; future contracts must
   declare a satisfiable formal-window/reference overlap before registration.
+  H-022/E-058 Stage-2 ownership is `backtesting/taker_flow_probe.py`: it parses existing Binance 1m `raw_payload.raw[9]/[10]` without download or schema changes and never enters Stage 3.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
