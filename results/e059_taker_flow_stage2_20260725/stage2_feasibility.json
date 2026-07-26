@@ -1,0 +1,282 @@
+{
+  "batch_id": "e059_taker_flow_stage2_20260725",
+  "candidate_dir": "f_taker_flow",
+  "candidate_id": "B-f-taker-flow",
+  "checks": [
+    {
+      "details": {
+        "expected_member_days": 24745,
+        "expected_universe_days": 898,
+        "flow_non_degenerate": true,
+        "malformed_taker_rows": 0,
+        "maximum_daily_breadth": 29,
+        "member_day_coverage": 1.0,
+        "minimum_coverage": 0.95,
+        "minimum_daily_breadth": 23,
+        "missing_minute_rows": 0,
+        "parseable_member_days": 24745,
+        "query_shape": "Binance instrument resolution then symbol-year UTC ts bounds",
+        "source": "market_klines.raw_payload.raw[9]/[10]",
+        "symbols": {
+          "1000SHIB-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "AAVE-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "ADA-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "ALGO-USDT-SWAP": {
+            "expected_member_days": 844,
+            "parseable_member_days": 844
+          },
+          "ATOM-USDT-SWAP": {
+            "expected_member_days": 870,
+            "parseable_member_days": 870
+          },
+          "AVAX-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "BCH-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "BNB-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "BTC-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "CC-USDT-SWAP": {
+            "expected_member_days": 51,
+            "parseable_member_days": 51
+          },
+          "DOGE-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "DOT-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "ETC-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "ETH-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "FIL-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "HBAR-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "HYPE-USDT-SWAP": {
+            "expected_member_days": 352,
+            "parseable_member_days": 352
+          },
+          "ICP-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "LINK-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "LTC-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "M-USDT-SWAP": {
+            "expected_member_days": 129,
+            "parseable_member_days": 129
+          },
+          "POL-USDT-SWAP": {
+            "expected_member_days": 603,
+            "parseable_member_days": 603
+          },
+          "SOL-USDT-SWAP": {
+            "expected_member_days": 865,
+            "parseable_member_days": 865
+          },
+          "SUI-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "TAO-USDT-SWAP": {
+            "expected_member_days": 766,
+            "parseable_member_days": 766
+          },
+          "TON-USDT-SWAP": {
+            "expected_member_days": 807,
+            "parseable_member_days": 807
+          },
+          "TRX-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "XLM-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "XMR-USDT-SWAP": {
+            "expected_member_days": 850,
+            "parseable_member_days": 850
+          },
+          "XRP-USDT-SWAP": {
+            "expected_member_days": 898,
+            "parseable_member_days": 898
+          },
+          "ZEC-USDT-SWAP": {
+            "expected_member_days": 648,
+            "parseable_member_days": 648
+          }
+        },
+        "top_n_by_adv_usd": 30,
+        "universe_day_coverage": 1.0,
+        "universe_days": 898,
+        "unresolved_symbols": [],
+        "window": {
+          "end_exclusive": "2026-06-17",
+          "start": "2024-01-01"
+        }
+      },
+      "name": "data_availability",
+      "reason": "parseable PIT member-day coverage=1.000000 >= 0.95",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "abs_correlations": {
+          "F-FUNDING-XS-DISPERSION": 0.04365985663425595,
+          "F-VOL-REGIME-OPT": 0.09393915243098237,
+          "H-002/F-XS-MOMENTUM": 0.4218621151851982
+        },
+        "advisory_h002_exact_e005_reproduction": false,
+        "advisory_h002_omissions": [
+          "inverse_vol_weighting",
+          "book_vol_target",
+          "per_name_cap",
+          "market_regime_multiplier"
+        ],
+        "advisory_h002_proxy": "21d_skip0_vol_normalized_top25_adv_q0.30_equal_weight_weekly_t_plus_1",
+        "advisory_references": [
+          "H-002/F-XS-MOMENTUM"
+        ],
+        "candidate_kind": "frozen_30d_weekly_taker_flow_daily_gross_returns",
+        "common_days": {
+          "F-FUNDING-XS-DISPERSION": 777,
+          "F-VOL-REGIME-OPT": 669,
+          "H-002/F-XS-MOMENTUM": 775
+        },
+        "ex_ante_range_feasibility": {
+          "formal_window": {
+            "end_exclusive": "2026-06-17",
+            "start": "2024-04-29"
+          },
+          "joint_achievable_common_days": 670,
+          "references": {
+            "F-FUNDING-XS-DISPERSION": {
+              "achievable_common_days": 779,
+              "end_exclusive": "2026-06-17",
+              "start": "2024-01-01"
+            },
+            "F-VOL-REGIME-OPT": {
+              "achievable_common_days": 670,
+              "end_exclusive": "2026-02-28",
+              "start": "2022-05-12"
+            }
+          },
+          "required_minimum": 365
+        },
+        "gating_references": [
+          "F-FUNDING-XS-DISPERSION",
+          "F-VOL-REGIME-OPT"
+        ],
+        "reference_artifacts": {
+          "F-FUNDING-XS-DISPERSION": {
+            "field": "signal",
+            "path": "results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/family_minting_candidate.json",
+            "sha256": "573516ff9a540894dc1ec8f79ecbdf80f235384b81933b84c9060e1da986a8cf"
+          },
+          "F-VOL-REGIME-OPT": {
+            "field": "ivp_min=75.0|z_min=0.5",
+            "path": "results/h014_stage3_20260714/combo_daily_returns.csv",
+            "sha256": "e3f353a71da4ae43eae80a85f007f29aab558055f5977e463d8dfa33110753bd"
+          }
+        },
+        "required_common_days": 365,
+        "threshold": 0.3,
+        "undefined_fails_closed": true
+      },
+      "name": "distinctness",
+      "reason": "all gating absolute correlations are below 0.30",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "cost_hurdle_bps": 9.916035,
+        "funding_complete": true,
+        "grid_trials_evaluated": 0,
+        "median_short_leg_funding_payment_bps": 1.916035,
+        "median_weekly_gross_capture_bps": 42.75290553469646,
+        "n_obs": 777,
+        "plausible_net_sharpe": 0.4484656909595735,
+        "positive_short_funding_receipts_credited": false,
+        "roundtrip_cost_bps": 8.0,
+        "statistical_power_inputs": {
+          "breadth": 6.0,
+          "n_obs": 777,
+          "n_trials": 4,
+          "plausible_net_sharpe": 0.4484656909595735
+        },
+        "variant": "lookback30_weekly_fraction0.2_own_z90_xs_z_t_plus_1",
+        "weekly_episode_count": 112
+      },
+      "name": "cost_after_edge",
+      "reason": "median weekly gross=42.7529 bps > hurdle=9.9160 bps",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "breadth": 6.0,
+        "caller_declared_n_trials": 4,
+        "dsr_probability": 0.95,
+        "effective_n_obs": 4662.0,
+        "grid_trials_on_unoverridden_fail": 0,
+        "kurtosis": 3.0,
+        "measured_status": "FAIL",
+        "min_detectable_sharpe": 0.7548964575664427,
+        "n_obs": 777,
+        "n_trials": 4,
+        "n_trials_provenance": "max_registry_actual_and_ex_ante_declared_cumulative",
+        "n_trials_registry_path": "docs/EXPERIMENT_REGISTRY.md",
+        "overridden": false,
+        "override_rationale": null,
+        "periods_per_year": 365.0,
+        "plausible_net_sharpe": 0.4484656909595735,
+        "psr_probability": 0.95,
+        "registry_cumulative_n_trials": 0,
+        "skew": 0.0
+      },
+      "name": "statistical_power",
+      "reason": "plausible_net_sharpe=0.4485 < min_detectable_sharpe=0.7549",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-TAKER-FLOW",
+  "hypothesis_id": "H-022",
+  "schema_version": 1,
+  "stage2_status": "FAIL"
+}

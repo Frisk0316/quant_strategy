@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult
+from backtesting.universe_aliases import collapse_same_asset_aliases
 from backtesting.xvenue_leadlag_probe import abs_correlation, load_reference_series
 from okx_quant.portfolio.allocation import dollar_neutral_long_short_weights
 
@@ -460,7 +461,10 @@ def _load_universe(path: Path, start: datetime, end: datetime) -> dict[str, tupl
     ].sort_values(["date", "adv_usd", "symbol"], ascending=[True, False, True])
     frame = frame.groupby("date", sort=True).head(30)
     return {
-        day.isoformat(): tuple(group["symbol"].astype(str))
+        day.isoformat(): collapse_same_asset_aliases(
+            group["symbol"].astype(str),
+            exchange="binance",
+        )
         for day, group in frame.groupby("date", sort=True)
     }
 

@@ -4,12 +4,40 @@ import pytest
 from backtesting.taker_flow_probe import (
     FORMAL_WINDOW,
     REFERENCE_RANGES,
+    START,
+    _load_universe,
     build_taker_flow_proxy,
     check_distinctness_feasibility,
     parse_taker_fields,
     probe_taker_flow,
     validate_power_declaration,
 )
+
+
+def test_probe_loads_aliases_after_top_30_without_refill(tmp_path):
+    universe_path = tmp_path / "universe.parquet"
+    symbols = ["SHIB-USDT-SWAP", "1000SHIB-USDT-SWAP", *[f"S{i}" for i in range(29)]]
+    pd.DataFrame(
+        [
+            {
+                "date": "2024-01-01",
+                "symbol": symbol,
+                "eligible": True,
+                "adv_usd": len(symbols) - rank,
+            }
+            for rank, symbol in enumerate(symbols)
+        ]
+    ).to_parquet(universe_path, index=False)
+
+    members = _load_universe(
+        universe_path,
+        START,
+        START + pd.Timedelta(days=1),
+    )["2024-01-01"]
+
+    assert members[:2] == ("1000SHIB-USDT-SWAP", "S0")
+    assert len(members) == 29
+    assert "S28" not in members
 
 
 def test_parse_taker_fields_reads_strict_binance_slots():
