@@ -3,7 +3,7 @@ status: current
 type: manifest
 owner: codex
 created: 2026-07-24
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -15,7 +15,7 @@ superseded_by: null
 Define the Binance same-economic-asset alias
 `SHIB-USDT-SWAP -> 1000SHIB-USDT-SWAP` as a pure, order-preserving
 consumer-time collapse without modifying point-in-time membership history.
-Probe wiring remains a T3 action gated on successful T1 verification.
+After T1 passed, E-059 became the first opted-in consumer.
 
 ## Business rule(s) affected
 
@@ -43,9 +43,9 @@ promotion-gate change.
 
 - Before: no repository-owned rule or helper distinguished two selected venue
   symbols representing the same economic asset.
-- After: an opted-in Binance consumer can map SHIB to the tradable 1000SHIB
-  contract and deduplicate after PIT top-N selection without refilling rank
-  N+1. No active probe is wired until T1 passes and T3 begins.
+- After: the E-059 Binance consumer maps SHIB to the tradable 1000SHIB
+  contract and deduplicates after PIT top-N selection without refilling rank
+  N+1. Broader universe consumers remain unchanged.
 - Money/risk impact: none. A future opted-in research consumer recomputes its
   effective member-day denominator; no PnL, fee, funding, sizing, fill, or gate
   changes.
@@ -91,15 +91,16 @@ promotion-gate change.
   `9822810321262e76a65bccf18a519ac2f61f05f986bd13b730c0cb3d9e1657c5`.
 - Immutable E-058 artifact SHA-256 before/after:
   `a61f58c0c2ea8b539b6cb0896abde6cd50e1154a7bbd59794db11f3b7a275a10`.
+- E-059 targeted probe/alias/registry tests — 29 passed; E-059 data
+  availability passes at 24,745/24,745 alias-adjusted member-days.
 
 ## Risks and rollback
 
-- Risks: consumers not yet wired can still double-count the alias; premature
-  probe wiring would violate the T1-to-T3 gate.
+- Risks: consumers other than E-059 can still double-count the alias.
 - Rollback: revert the independent T2 commit; the membership parquet and E-058
   artifact require no rollback because neither is modified.
 
 ## Approval
 
 - Human approval required: yes — obtained in the 2026-07-24 E-058 repair /
-  E-059 task; T3 remains conditional on T1 verification.
+  E-059 task; T1 passed before E-059 wiring/execution.

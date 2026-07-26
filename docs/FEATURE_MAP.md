@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -314,8 +314,8 @@ implementation exists.
 - User-facing behavior: build a deterministic liquid USDT-perp universe artifact
   for cross-sectional research without pre-listing or delisting survivorship
   leakage. ADR-0015 keeps that artifact immutable and defines consumer-time
-  same-asset collapse; T2 provides the Binance alias helper, while E-059 probe
-  wiring remains gated on T1 verification.
+  same-asset collapse; E-059 is the first Binance alias consumer after T1
+  verification, while broader consumers remain unchanged.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/data_loader.py` is the downstream candle

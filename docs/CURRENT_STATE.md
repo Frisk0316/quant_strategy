@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -111,16 +111,14 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   accounting and failed statistical/robustness gates: WF -0.2158, CPCV -0.0375,
   DSR 0.2357, PSR 0.4818, family-cumulative n_trials=12, K=0/2. Stop: no retry,
   retune, promotion, demo, shadow, or live work.
-- H-022/F-TAKER-FLOW is `inconclusive` after the zero-trial E-058 Stage-2-only
-  probe. Data availability failed at 23,847/25,587 PIT member-days (93.1997%
-  versus 95%); missing coverage is ETHUSDT 898 days plus SHIBUSDT 842 days,
-  with zero malformed rows or unresolved symbols. Distinctness, cost, and power
-  passed, but H-002 advisory correlation is 0.4843 and needs Claude's
-  mechanism/relabel review. Family trials remain 0 and K remains 0/2.
-  User-authorized repair is now partial: T1 is `NEEDS-HUMAN` after the sandbox
-  Binance preflight failed, while T2 commit `8fac3f7` adds the immutable-PIT
-  alias rule/helper without probe wiring. E-059 is not registered or run;
-  Stage 3, promotion, and deployment remain unauthorized.
+- H-022/F-TAKER-FLOW is `shelved` after the zero-trial E-059 data-gap repair
+  reprobe. T1 verifies ETH at 898/898 complete days and
+  1,293,120/1,293,120 raw/taker rows, with the retained non-ETH count hash
+  unchanged. ADR-0015 alias consumption yields 24,745/24,745 member-days.
+  Data, distinctness (0.043660/0.093939), and cost (42.7529 versus 9.9160 bps)
+  pass, while power fails at 0.448466 versus the 0.754896 floor. Family trials
+  remain 0 and K remains 0/2. Stop with no retune; Stage 3, promotion, and
+  deployment remain unauthorized.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
@@ -137,14 +135,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Next actions, in order
 
-Immediate gate: the human preflights and backward-ingests ETHUSDT raw 1m
-outside the sandbox, then returns the output for the 898-day coverage and
-non-ETH count-hash verification. Do not preregister or execute E-059 before
-that verification passes.
+Immediate gate: Claude reviews the ordered E-059 registration, execution, and
+outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
 
 1. Claude reviews the five ordered delivery commits and A1-A3/B1-B4 fixes,
    including E-057 byte-hash preservation and per-commit diff stats.
-   Claude also reviews E-058's data-blocked outcome and the non-gating H-002
+   Claude also reviews E-059's power-fail outcome and the non-gating H-002
    advisory correlation; no F-TAKER-FLOW follow-on is authorized.
 2. Open and review the separate `codex/pipeline-batch1-stage3` follow-up PR;
    human performs the merge.

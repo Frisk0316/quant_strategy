@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -302,7 +302,7 @@ server restart; immutable request/result/error sidecars remain.
 1m candle parquet by symbol -> scripts/build_universe_membership.py --source parquet -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
 canonical_candles daily dollar volume (DB) -> scripts/build_universe_membership.py --source db -> data/universe/universe_membership.parquet -> Stage-2 funding/xvenue probes and xs_momentum consumers
 venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
-immutable PIT top-N selection -> backtesting.universe_aliases consumer-time map/dedupe -> E-059 taker-flow probe (only after T1 verification)
+immutable PIT top-N selection -> backtesting.universe_aliases consumer-time map/dedupe -> E-059 taker-flow probe
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
@@ -321,7 +321,8 @@ shared `data/universe/universe_membership.parquet` was rebuilt with
 ADR-0015 does not rewrite that artifact: an opted-in exchange consumer maps
 same-economic-asset aliases after top-N selection, keeps the first canonical
 tradable contract, and recomputes its own denominator without rank-N+1 refill.
-T2 supplies the helper; the E-059 consumer call remains blocked until T1 passes.
+T1 passed; E-059 now consumes the T2 helper. Other universe consumers remain
+unchanged.
 `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
 convention, shifts daily target weights one full day before intraday expansion to

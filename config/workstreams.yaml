@@ -67,13 +67,13 @@ workstreams:
     updated: 2026-07-16
 
   - name: Strategy research pipeline — F-TAKER-FLOW
-    status: blocked
+    status: shelved
     milestones: [stage1_spec, stage2_probe, claude_review, data_repair, alias_rule, e059_reprobe]
-    current: data_repair
-    state: "H-022/E-058 remains data-blocked and inconclusive. T1 is NEEDS-HUMAN because the sandbox Binance preflight returned no data; ETHUSDT is still 0/1,293,120 raw minutes. T2 consumer-time alias rule/helper is committed at 8fac3f7 without probe wiring. E-059 is not registered or run; family trials remain 0 and K remains 0/2."
-    next: "Human preflights and backward-ingests ETHUSDT with the existing ingest.py command, then Codex verifies 898/898 parseable days, 1,293,120 12-slot raw rows, and unchanged non-ETH counts. Only after T1 passes may E-059 be preregistered and run. No Stage 3, promotion, or deployment."
-    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-e058-repair-e059-codex-tasks.md, docs/ADR/0015-consumer-time-economic-asset-aliases.md, docs/change_manifests/2026-07-24-consumer-time-universe-aliases.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, tasks/2026-07-24-taker-flow-stage2-context-handoff.md, tasks/2026-07-24-taker-flow-stage2-session-handoff.md]
-    updated: 2026-07-24
+    current: e059_reprobe
+    state: "H-022/E-059 is complete and shelved. T1 verified ETH at 898/898 days and 1,293,120/1,293,120 raw/taker rows; the ADR-0015 alias-adjusted denominator is 24,745/24,745. Data, distinctness, and cost pass, but statistical power fails at plausible net Sharpe 0.448466 below the 0.754896 floor. Family trials remain 0 and K remains 0/2."
+    next: "Claude reviews the ordered E-059 registration, execution, and outcome-sync commits. Stop with no retune or reprobe; no Stage 3, promotion, or deployment."
+    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-e058-repair-e059-codex-tasks.md, docs/ADR/0015-consumer-time-economic-asset-aliases.md, docs/change_manifests/2026-07-24-consumer-time-universe-aliases.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, results/e059_taker_flow_stage2_20260725/stage2_feasibility.json, tasks/2026-07-26-e059-taker-flow-context-handoff.md, tasks/2026-07-26-e059-taker-flow-session-handoff.md]
+    updated: 2026-07-26
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

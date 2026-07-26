@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -16,9 +16,9 @@ durable backlog.
 
 ## Current goal
 
-Complete the user-authorized E-058 data repair and then E-059 frozen-contract
-reprobe. T1 is `NEEDS-HUMAN` because the sandbox cannot reach Binance; T2 is
-committed at `8fac3f7`; T3 must not start until the human backfill is verified.
+Hand the completed E-059 frozen-contract reprobe to Claude for review. T1/T2/T3
+are complete; E-059 fails statistical power, so H-022 is shelved with no retune
+or Stage 3.
 
 ## Branch and working tree
 
@@ -26,8 +26,9 @@ committed at `8fac3f7`; T3 must not start until the human backfill is verified.
   is split into five ordered delivery commits at current HEAD; inspect
   `git log --oneline -5` for exact hashes. The generated funnel JSON remains on
   disk but ignored, and the stray execution-comparison JSON remains untracked.
-  The latest scoped commit is T2 alias rule/helper `8fac3f7`; pre-existing
-  runtime/API working-tree changes remain unstaged and untouched.
+  The latest scoped commits are E-059 preregistration `592b757` and execution
+  `049d136`; pre-existing runtime/API working-tree changes remain unstaged and
+  untouched.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -70,20 +71,14 @@ committed at `8fac3f7`; T3 must not start until the human backfill is verified.
   WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818, family-cumulative
   `n_trials=12`, K 0/2. Stop with no retry, retune, promotion, or deployment
   claim.
-- F-TAKER-FLOW H-022/E-058 is data-blocked and `inconclusive` after its
-  Stage-2-only Option A probe. Data availability alone failed at
-  23,847/25,587 PIT member-days (0.931997 versus 0.95): ETHUSDT is absent for
-  898 member-days and SHIBUSDT for 842, while malformed rows and unresolved
-  symbols are zero. Distinctness, cost, and power passed; H-002's non-gating
-  advisory corr is 0.484286 and needs Claude's mechanism/relabel review. Trials
-  remain 0 and K remains 0/2; E-058 stays immutable and Stage 3 is unauthorized.
-- E-058 repair / E-059 reprobe is partially complete. The Binance network
-  preflight failed in the sandbox, so ETHUSDT remains 0/1,293,120 raw minutes
-  and T1 is `NEEDS-HUMAN`. T2 added ADR-0015 and the consumer-time
-  `SHIB-USDT-SWAP -> 1000SHIB-USDT-SWAP` helper without wiring the probe;
-  membership SHA-256 remains
-  `9822810321262e76a65bccf18a519ac2f61f05f986bd13b730c0cb3d9e1657c5`.
-  E-059 is not registered or run.
+- F-TAKER-FLOW H-022 is `shelved` after E-059 completed the authorized
+  data-gap repair reprobe. T1 verifies ETH at 898/898 complete member-days and
+  1,293,120/1,293,120 exact raw/taker rows; the retained non-ETH snapshot hash
+  remains `c2b7bf0313b30ae203548e718d91621d33f98c6c6c3475970a05ffc597146858`.
+  ADR-0015 alias consumption yields 24,745/24,745 member-days. Data,
+  distinctness, and cost pass; power fails at plausible net Sharpe 0.448466
+  versus the recomputed 0.754896 floor. Family trials remain 0, K remains 0/2,
+  and no retune or Stage 3 is authorized.
 - Research Ops UI: the loopback standalone server now exposes H-014 bias/journal
   status plus one existing public-data shadow cycle, and an H-009 full-sample
   lookback/quantile screen. Mutations are disabled in the engine app and on
@@ -199,18 +194,21 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   1 skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
   strict doc impact, and diff checks pass. Membership and E-058 hashes are
   byte-identical; no taker-flow probe code or result artifact changed.
+- 2026-07-26 E-059: targeted alias/probe/registry tests `29 passed`; full unit
+  `956 passed, 1 skipped`; full Ruff, docs metadata/feature-map/ledger, strict
+  doc impact, config, backtest smoke, and diff checks pass. Data 24,745/24,745
+  PASS, distinctness 0.043660/0.093939 PASS, cost 42.7529 versus 9.9160 bps
+  PASS, power 0.448466 versus 0.754896 FAIL. Artifact SHA-256 is
+  `0eefc5531d075202aa688ae052e9d159c6b7f2d494b76ccd0080dea9c352acee`.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
 
-Immediate: the human runs the documented ETHUSDT preflight and backward
-`scripts/market_data/ingest.py` command outside the sandbox. Require 898/898
-parseable ETH member-days, 1,293,120 raw 12-slot rows, and an unchanged
-non-ETH symbol-count hash before T1 passes. Only then preregister E-059 in its
-own commit; probe wiring/execution follows in a later commit. Stage 3 remains
-unauthorized.
+Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
+`049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
+Stage 3 remains unauthorized; do not retune or reprobe H-022.
 
 First review the five ordered commits plus the 2026-07-21 context/session
 handoffs. Confirm A1-A3/B1-B4 are scoped, E-057 is byte-identical, and each
