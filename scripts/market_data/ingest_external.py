@@ -133,7 +133,7 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
     if adapter == "deribit_option_surface":
         return DeribitOptionSurfaceClient()
     if adapter == "deribit_option_flow":
-        return DeribitOptionFlowClient(endpoint=DeribitOptionFlowClient.www_endpoint)
+        return DeribitOptionFlowClient()
     if adapter == "fear_greed":
         return FearGreedClient()
     if adapter == "okx_liquidation":
