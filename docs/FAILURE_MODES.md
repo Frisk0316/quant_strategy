@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -77,6 +77,9 @@ failure modes say how it silently breaks.
 | F53 | Two venue symbols for one economic asset survive PIT top-N selection | Cross-sectional books can double-weight one asset and inflate member-day denominators while every row remains individually valid | I50 consumer-time alias-collapse test, immutable membership SHA-256 check, and effective-denominator review | R6.7 |
 | F54 | Paginated trade API is consumed without an explicit sort contract | A high-volume Deribit option-flow interval silently keeps only one plausible-looking page or repeats the same boundary page, leaving multi-hour gaps | I51 explicit descending sort plus non-overlapping page-boundary regression | R6.2 |
 | F55 | Funding rows are aggregated without execution-venue scoping | Same-symbol settlements from multiple venues are averaged into a plausible daily rate, silently changing signal and PnL while candle provenance still looks correct | I52 source-scoped funding-loader regression and artifact source census | R3.1–R3.4, R6.4 |
+| F56 | A sparse or non-executable candidate batch is presented as a completed strategy-finding round | A few ideas, parameter variants, `pending_llm` drafts, data-only checks, or missing runners overstate the breadth actually backtested | I53 requires a result-blind 8/2/10 executable manifest, backfill, terminal Stage-2 evidence for every counted candidate, and incomplete/limited labeling otherwise | R6.8 |
+| F57 | GenAI output becomes canonical backtest evidence | Hallucinated paper provenance, hidden same-round retuning, generated-code drift, or model-authored metrics produce plausible but irreproducible passes | I54 freezes source/prompt/model/spec hashes and keeps code execution, metrics, trial/K, gates, and reporting deterministic | R6.9 |
+| F58 | Adaptively downsampled chart history is labeled hourly | A long-range response looks complete but older 6h points are used as 1h returns, producing plausible yet mis-scaled realized volatility | I55 requires exact hourly continuity, explicit perpetual-close provenance, and no interpolation; `test_deribit_realized_volatility_uses_contiguous_hourly_log_returns` | R6.2 |
 
 ## How to add a failure mode
 

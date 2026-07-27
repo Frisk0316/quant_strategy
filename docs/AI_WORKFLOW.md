@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-05-11
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -89,6 +89,41 @@ This exception does **not** apply to:
 7. Human merges
 8. AI_HANDOFF.md updated (Current Change Context, Next Steps, Known Bugs)
 ```
+
+---
+
+## Strategy-Finding Round Scope
+
+A completed strategy-finding round is one prompt-triggered candidate portfolio,
+not one or two isolated probes. It follows ADR-0016 and must:
+
+1. Oversample verified papers and candidate specifications, using current
+   available data and gaps in `docs/STRATEGY_HISTORY.md`.
+2. Before viewing any candidate result, seal a manifest of **10–15 unique,
+   execution-ready strategies**: at least **8 genuinely new,
+   verified-paper-backed mechanisms** and at least **2 material ex-ante
+   iterations** of eligible existing strategies.
+3. Exclude parameter-only variants, renames, duplicates, unverifiable papers,
+   unavailable data, invalid contracts, and missing runners from the quota.
+   Keep every rejection in the audit funnel and backfill it before sealing.
+4. Use deterministic repository code to run a Stage-2 screening backtest or
+   research-return evaluation for every sealed strategy. Run Stage 3 only for
+   Stage-2 passes, preserving all stop rules and honest family-cumulative
+   trial/K counts.
+5. Generate a deterministic report reconciling papers fetched, ideas proposed,
+   rejected/backfilled candidates, all Stage-2 terminal results, and pass-only
+   Stage-3 results.
+
+If the pipeline cannot seal and evaluate ten eligible strategies, it stops as
+an **incomplete round** or explicitly scoped **limited probe**. User approval
+can authorize a limited probe but does not relabel it as a completed round.
+
+GenAI owns literature query expansion, paper interpretation, mechanism
+synthesis, iteration proposals, and schema-valid candidate drafts. It must not
+see same-round OOS/fold results before sealing, execute arbitrary generated code
+as evidence, compute/override gates, or author the canonical report. The
+validator, backtester, metrics, trial/K accounting, gates, and report remain
+ordinary deterministic programs.
 
 ---
 

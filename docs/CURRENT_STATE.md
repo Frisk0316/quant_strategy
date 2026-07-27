@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -49,6 +49,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   detail in the CHANGELOG_AI 2026-07-12 entry.
 - Turtle research runner, Deribit D1-D5 + R1-R5, manual/Progress routes, and
   daily DVOL backfill (2021-03-24→2026-07-11, gap-free) remain accepted.
+- Deribit native hourly HV remains a recent rolling source window. The separate
+  `rv30_deribit_{btc,eth}_1h` derived datasets now cover 2021-01-01 through
+  2026-07-26 with 48,792 unique rows each, using contiguous Deribit perpetual
+  closes and an explicit 720-hour log-return formula. The existing frontend
+  fetch queue now exposes BTC/ETH DVOL, native HV, RV30, and current full-chain
+  option snapshots without changing strategy or deployment gates.
 - H-014/F-VOL-REGIME-OPT is `supported` on double-passed evidence: E-051
   (2022-05→2026-02, DSR=PSR 0.9845, user-ratified checkpoint ①) and **E-052
   extended-window retry PASS** (2020-05→2026-02 incl. COVID aftermath +
@@ -110,6 +116,16 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   power (0.5961 plausible net Sharpe < 0.7134 floor), so no Stage 3, trials, or
   retry budget were consumed. `docs/EXPERIMENT_REGISTRY.md` remains the
   authoritative total.
+  The 2026-07-26 batch is now correctly classified as a limited two-candidate
+  probe: H-023 was its only genuinely new family and H-009 its only
+  existing-family iteration. It did not provide full strategy-finding coverage.
+  ADR-0016 now defines a complete prompt-triggered round as 10–15
+  execution-ready strategies frozen before results, with at least eight
+  verified-paper-backed new mechanisms and two eligible existing-strategy
+  iterations. This is target authority, not current implementation: today's
+  generators lack the minimum/mix validator and unified entry point, literature
+  drafts remain `pending_llm`, and unknown/new families without runners stop
+  before deterministic evaluation.
   H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 E-057 is shelved at
   Stage 2: 3,396,960 aligned candle rows per venue/symbol pass, but no OKX
   funding exists and 7,376 fixed-anchor episodes capture median 1.3636 bps gross
@@ -162,10 +178,14 @@ outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
 4. From Administrator PowerShell, apply the P1.4 RUNBOOK `/NP` registration;
    verify `S4U`/`Limited`, run the task once, and require result `0`.
 5. Pending fact: the user creates the OKX Demo key.
-6. Taxonomy_003, H-013, and H-010 E-057 are closed/shelved; next ideation round
-   only with a genuinely new data family/mechanism, not a DSR-targeting retune.
-   H-009 E-063 and H-023 E-062 are also closed for this round; neither passed,
-   and no follow-on is authorized without a new ex-ante rationale.
+6. Before the next completed strategy-finding round, implement ADR-0016 in the
+   smallest slices: result-blind manifest plus 8/2/10 executable validation and
+   hash-bound resume; joined paper/iteration candidate input with provenance
+   deduplication; registered deterministic Stage-2 evaluation for every counted
+   candidate; then one reconciled report. Keep execution sequential until
+   profiling justifies concurrency. Anything below ten remains incomplete or a
+   limited probe. H-009 E-063 and H-023 E-062 are closed; neither passed, and no
+   follow-on is authorized without a new ex-ante rationale.
 7. Claude review DONE 2026-07-18 and repairs DONE 2026-07-21
    (`tasks/2026-07-18-strategy-history-h010-claude-review.md`): strategy-history
    A/B/C APPROVE-WITH-FINDINGS (minor fixes A1-A3: gitignore funnel JSON,

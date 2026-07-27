@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-07-17
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -630,6 +630,15 @@ the exact contracts.
 - **Outcome / lesson:** Better data and the full economic PnL model did not
   rescue the frozen thesis. Stop with no retry, retune, or deployment claim.
 - **Trace:** Hypothesis Ledger `H-021`; Experiment Registry `E-053`–`E-056`.
+
+## Strategy-finding coverage correction (2026-07-27)
+
+The 2026-07-26 batch evaluated exactly one genuinely new family
+(`H-023/F-XS-IDIOVOL`) and one existing-family iteration (`H-009/E-063`).
+It is therefore a **limited two-candidate probe**, not a completed
+strategy-finding round under `docs/AI_WORKFLOW.md`. Existing pre-registration,
+experiment records, verdicts, and result artifacts remain immutable; only the
+coverage label is corrected.
 
 ## H-023 — Cross-sectional idiosyncratic volatility (`F-XS-IDIOVOL`)
 

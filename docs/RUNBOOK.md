@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -1057,6 +1057,18 @@ python scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --data
 
 `--start`/`--end` only filter the rolling response locally; they cannot request
 older historical-volatility rows from Deribit.
+
+For a reproducible series extending to 2021, use the separate derived RV30
+datasets. They use contiguous hourly Deribit perpetual closes, not Deribit's
+native HV endpoint or adaptively downsampled index-chart history:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset rv30_deribit_btc_1h --dataset rv30_deribit_eth_1h --start 2021-01-01T00:00:00Z --end <UTC_END>
+```
+
+The Market Data Coverage panel exposes the same refresh under Exchange =
+`Deribit`; search BTC/ETH and submit the hourly job. It also refreshes DVOL,
+native rolling HV, and the current option-chain snapshot.
 
 Daily DVOL (`dvol_deribit_btc`/`dvol_deribit_eth`) is manual-update only by the
 2026-07-12 user decision (no scheduled task). Update it with explicit bounds —

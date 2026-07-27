@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,21 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-27 - Deribit RV30 history and frontend fetch (Codex)
+
+- Kept Deribit's native `hv_deribit_*` series unchanged because its public API
+  exposes only a recent rolling response. Added separate BTC/ETH 30-day
+  realized-volatility datasets derived from contiguous hourly Deribit
+  perpetual closes with explicit source/window/formula provenance.
+- Backfilled both derived datasets from 2021-01-01 through 2026-07-26:
+  48,792 unique hourly rows per symbol.
+- Extended the existing Market Data Coverage fetch queue with a Deribit
+  BTC/ETH path that refreshes daily/hourly DVOL, native HV, derived RV30, and
+  the current complete option-chain snapshot.
+- Added F58/I55 and regression coverage so an adaptively downsampled long-range
+  chart response cannot be silently relabeled as hourly. No schema, strategy,
+  risk, result artifact, scheduler, or deployment gate changed.
 
 ## 2026-07-21 - DB and UI data reliability repair (Codex)
 

@@ -1,0 +1,32 @@
+{
+  "base_run_id": "ui_funding_carry_2a3cdd23",
+  "execution_profile": "dual_output",
+  "strategy_fill_run_id": "ui_funding_carry_2a3cdd23_strategy_fill",
+  "realistic_execution_run_id": "ui_funding_carry_2a3cdd23_realistic_execution",
+  "metrics": {
+    "strategy_fill": {
+      "signal_count": 6,
+      "submitted_order_count": 12,
+      "real_fill_count": 14,
+      "submitted_order_fill_count": 12,
+      "terminal_liquidation_fill_count": 2,
+      "fill_rate": 1.0,
+      "total_return": 0.08968817886222968,
+      "max_drawdown": -0.019782659244567995
+    },
+    "realistic_execution": {
+      "signal_count": 60,
+      "submitted_order_count": 64,
+      "real_fill_count": 16,
+      "submitted_order_fill_count": 4,
+      "terminal_liquidation_fill_count": 1,
+      "fill_rate": 0.0625,
+      "total_return": -0.02860979246727169,
+      "max_drawdown": -0.08763940180506438
+    }
+  },
+  "deltas": {
+    "strategy_minus_realistic_return": 0.11829797132950137,
+    "strategy_minus_realistic_fill_rate": 0.9375
+  }
+}

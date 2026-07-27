@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -73,6 +73,9 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I50 | Consumer-time same-asset alias collapse preserves the immutable PIT membership bytes, maps Binance `SHIB-USDT-SWAP` to tradable `1000SHIB-USDT-SWAP`, retains unrelated selected symbols, and does not refill the selected top-N after deduplication | R6.7 | `tests/unit/test_universe_aliases.py` |
 | I51 | Deribit option-flow pagination requests explicit descending order and moves the next page's inclusive end boundary below the oldest accepted millisecond, so a provider's default row order cannot truncate or repeat the interval | R6.2 | `tests/unit/test_deribit_option_flow.py::test_option_flow_client_paginates_has_more` |
 | I52 | Every funding-data load filters `funding_rates.source` to the declared execution venue before per-symbol or daily aggregation; another venue's same-symbol rows are never averaged or substituted | R3.1–R3.4, R6.4 | `tests/unit/test_funding_xs_dispersion_backtest.py::test_postgres_daily_loader_scopes_funding_to_declared_exchange`, `tests/unit/test_xvenue_leadlag_probe.py` |
+| I53 | Before any result is visible, a completed prompt-triggered strategy-finding round seals 10–15 unique execution-ready strategies: at least eight verified-paper-backed new mechanisms and at least two eligible ex-ante existing-strategy iterations. Rejected or unimplemented candidates are backfilled, every sealed strategy reaches a deterministic Stage-2 screening backtest/research-return terminal artifact, and Stage 3 remains pass-only. Anything smaller is incomplete or a limited probe. | R6.8 | REVIEW until the round-manifest validator and reconciled report ship; then targeted manifest/orchestrator tests |
+| I54 | GenAI may discover papers and draft schema-valid candidates but cannot see same-round OOS/fold results before manifest sealing, execute arbitrary generated code as canonical evidence, compute/override gates, or author the canonical report. Frozen provenance/spec hashes and deterministic repository code own execution, metrics, trial/K accounting, verdicts, and reporting. | R6.9 | REVIEW of `round_manifest.json`, candidate artifacts, and report until automated boundary tests ship |
+| I55 | An hourly derived-volatility row uses only a fully contiguous hourly source window, publishes no earlier than the source bucket end, records the exact source instrument and formula, and never interpolates or relabels an adaptively downsampled long-range response as hourly | R6.1, R6.2 | `tests/unit/test_deribit_dvol_client.py::test_deribit_realized_volatility_uses_contiguous_hourly_log_returns` |
 
 ## Usage
 

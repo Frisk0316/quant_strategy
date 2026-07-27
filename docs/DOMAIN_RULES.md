@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -150,6 +150,22 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   order, keep the canonical tradable contract once, and recompute its effective
   member-day denominator without refilling from rank N+1. For Binance,
   `SHIB-USDT-SWAP` aliases to `1000SHIB-USDT-SWAP`.
+- **R6.8** A completed prompt-triggered strategy-finding round freezes, before
+  any candidate result is visible, 10–15 unique execution-ready strategies:
+  at least eight verified-paper-backed mechanisms not represented in strategy
+  history and at least two material ex-ante iterations of eligible existing
+  strategies. Parameter cells, renames, duplicates, unverifiable papers,
+  unavailable data, invalid contracts, and missing runners do not count. They
+  remain in the audit funnel and must be backfilled before the manifest is
+  sealed; otherwise the run is an incomplete round or limited probe.
+- **R6.9** GenAI may discover and interpret verified literature and emit
+  schema-valid candidate specifications, but canonical evidence remains
+  deterministic. A result-blind manifest freezes paper/prompt/model/template/
+  spec provenance before ordinary repository code validates inputs, executes
+  every counted Stage-2 screening backtest or research-return evaluation,
+  computes metrics/trial/K/gates, runs Stage 3 only for passes, and writes the
+  report. Arbitrary generated code, same-round result-driven retuning, and
+  GenAI-authored gate decisions or canonical reports are not evidence.
 
 ## R7. Promotion Gates
 

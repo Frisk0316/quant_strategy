@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -16,9 +16,11 @@ durable backlog.
 
 ## Current goal
 
-Hand the completed E-059 frozen-contract reprobe to Claude for review. T1/T2/T3
-are complete; E-059 fails statistical power, so H-022 is shelved with no retune
-or Stage 3.
+Implement ADR-0016's first safe slice before another complete strategy-finding
+round: a result-blind round manifest, fail-fast 8/2/10 executable-slate
+validation, manifest-hash resume, and a reconciled per-round report. The
+completed E-059 reprobe still awaits Claude review separately; H-022 remains
+shelved with no retune or Stage 3.
 
 ## Branch and working tree
 
@@ -41,9 +43,13 @@ or Stage 3.
 - Turtle: accepted research-only standalone runner; real-data golden parity,
   API/UI, and resumable large sweeps exist. Audit fix restores the documented
   fraction-unit sweep behavior.
-- Deribit: D1-D5 and review fixes accepted; BTC/ETH DVOL/funding/option-flow
-  history is present through 2026-07-10 23:00Z. Forward schedulers are not
-  registered; option-surface remains snapshot-only.
+- Deribit: D1-D5 and review fixes accepted. Native `hv_deribit_*` remains
+  limited to Deribit's recent rolling response; separate derived
+  `rv30_deribit_{btc,eth}_1h` now has 48,792 unique hourly rows per symbol from
+  2021-01-01 through 2026-07-26, sourced from contiguous venue perpetual
+  closes. The Market Data Coverage fetch form can queue BTC/ETH DVOL, native
+  HV, RV30, and current full option-surface refreshes. Forward schedulers are
+  not registered; option-surface history remains snapshot-only.
 - Manual/Progress: all manual chapters exist. The standalone server now wires
   `/api/manual`, chapter frontmatter is removed, and configured Progress markdown
   links are served through a contained allow-list route only on loopback binds.
@@ -70,6 +76,19 @@ or Stage 3.
   CPCV 0.9092, DSR 0.8305, PSR 0.9166; family `n_trials=8`, K 1/2).
   H-023/F-XS-IDIOVOL stopped at E-062 Stage 2 because plausible net Sharpe
   0.5961 was below the 0.7134 power floor; zero grid trials and K 0/2.
+  User correction 2026-07-27: that batch contained only one genuinely new
+  family (H-023) and one existing-family iteration (H-009), so it is a limited
+  two-candidate probe rather than a completed strategy-finding round. Future
+  full rounds follow ADR-0016/R6.8/I53: seal and deterministically evaluate
+  10–15 execution-ready strategies before results, including at least eight
+  verified-paper-backed new mechanisms and two eligible ex-ante
+  existing-strategy iterations.
+  Current automation does not meet that contract: the generators have no
+  minimum/mix validator or unified command, literature drafts normally remain
+  `pending_llm`, and new families without registered runners stop before
+  execution. Until the manifest, candidate-specific runner path, and
+  reconciled report ship, output is advisory/limited rather than a completed
+  round.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
@@ -227,6 +246,22 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
 `049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
 Stage 3 remains unauthorized; do not retune or reprobe H-022.
+
+Before executing another full strategy-finding round:
+
+1. Add the ADR-0016 manifest validator at the orchestrator boundary and reject
+   fewer than eight `new_research`, two `existing_iteration`, or ten executable
+   candidates before DB/backtest access.
+2. Join verified literature candidates and history-led iteration candidates,
+   deduplicate DOI/arXiv/title identity, and have GenAI emit schema-valid specs
+   only.
+3. Reuse the drafted `signal_ref` registry contract so every counted strategy
+   has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
+4. Reconcile one manifest/state/report and bind resume to the manifest hash.
+
+Keep the first implementation sequential. Add bounded concurrency only after
+runtime/DB profiling shows it is needed. A smaller user-approved batch remains
+a limited probe, not a completed round.
 
 First review the five ordered commits plus the 2026-07-21 context/session
 handoffs. Confirm A1-A3/B1-B4 are scoped, E-057 is byte-identical, and each
