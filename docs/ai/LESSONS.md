@@ -27,3 +27,14 @@ Trigger: recurring pattern of "tests should pass now" with no run.
 Wrong: reporting completion from intention instead of evidence.
 Right: paste the command output tail, or report "not verified".
 Rule: no pasted output = not verified = not done.
+
+## 2026-07-18 Uncommitted multi-delivery trees break ex-ante provability
+
+Trigger: E-057 registration order was unprovable because the spec, task,
+registry row, and results all sat uncommitted in one shared working tree
+alongside a sibling delivery.
+Wrong: running an experiment while its ex-ante registration exists only as
+uncommitted working-tree text.
+Right: commit the registration (spec + registry row) before the run, and
+commit each delivery separately.
+Rule: ex-ante means committed-before-run; one delivery = one commit.

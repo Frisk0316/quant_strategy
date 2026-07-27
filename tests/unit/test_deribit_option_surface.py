@@ -44,7 +44,7 @@ def test_option_surface_aggregate_math_and_snapshot_shape():
     assert row["fields"]["unit"] == "base_contracts"
 
 
-def test_option_surface_raw_payload_is_top_20_by_open_interest(monkeypatch):
+def test_option_surface_raw_payload_preserves_full_sorted_chain(monkeypatch):
     client = DeribitOptionSurfaceClient()
     rows = [
         _option(f"BTC-26JAN24-{100 + i}-C", float(i), 50.0 + i)
@@ -54,8 +54,11 @@ def test_option_surface_raw_payload_is_top_20_by_open_interest(monkeypatch):
 
     [snapshot] = client.fetch(currency="BTC")
 
-    assert len(snapshot["raw_payload"]) == 20
-    assert [item["open_interest"] for item in snapshot["raw_payload"][:3]] == [24.0, 23.0, 22.0]
+    assert len(snapshot["raw_payload"]) == 25
+    assert [item["strike"] for item in snapshot["raw_payload"][:3]] == [100.0, 101.0, 102.0]
+    assert snapshot["raw_payload"][0]["expiry"] == "2024-01-26"
+    assert snapshot["raw_payload"][0]["option_type"] == "call"
+    assert snapshot["fields"]["raw_payload_scope"] == "full_current_chain"
 
 
 def test_option_surface_all_missing_creation_timestamps_returns_none():

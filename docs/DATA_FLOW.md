@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -153,7 +153,8 @@ keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter
 
 Current: `config/external_data.yaml` registers keyless adapters for
 Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
-Deribit funding, Deribit option-surface snapshots, and Deribit option flow,
+Deribit historical volatility, Deribit funding, Deribit option-surface
+snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
 yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
@@ -177,6 +178,11 @@ aggregates, `observed_at` is the market bucket label and `published_at` is the
 bucket end, which is the earliest safe as-of timestamp for replay joins; Deribit
 hourly DVOL and option-flow rows therefore publish one hour after
 `observed_at`, and daily DVOL publishes one day after `observed_at`.
+`DeribitHistoricalVolatilityClient` writes `hv_deribit_btc_1h` /
+`hv_deribit_eth_1h` as annualized historical-volatility percentages. Deribit's
+public endpoint has no server-side start/end parameters and exposes only a
+recent rolling window, so requested bounds are local filters and longer history
+must accumulate forward.
 `DeribitFundingClient` writes `funding_deribit_btc` / `funding_deribit_eth` as
 hourly BTC-PERPETUAL/ETH-PERPETUAL funding observations with `value_num =
 interest_1h` and `fields.unit = "rate_1h_decimal"`; Deribit funding timestamps
@@ -186,8 +192,10 @@ are treated as accrual-period end and are safe to use as both `observed_at` and
 `optsurf_deribit_eth` snapshots as one hourly aggregate row per currency:
 `value_num` is total option open interest, fields carry put/call OI, put/call
 ratio, max pain pooled across all listed expiries in the one-row-per-currency
-snapshot, OI-weighted mark IV, and spot index, and raw payloads are bounded to
-the top 20 instruments by open interest. `DeribitOptionFlowClient`
+snapshot, OI-weighted mark IV, and spot index, and raw payloads retain the
+complete current listed chain sorted by expiry, strike, and option type,
+with normalized `expiry`, `strike`, and `option_type` fields on every
+instrument. `DeribitOptionFlowClient`
 and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
 `optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
 Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
@@ -197,7 +205,11 @@ Hours containing only excluded USDC-linear option trades still emit a row with
 `value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
 v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
 can advance cleanly because zero inverse trades is a valid historical outcome;
-other required external datasets marked `fail_on_empty_fetch` still fail closed
+operators must still inspect the gap report because Deribit's history and live
+hosts can have a temporary visibility gap. The shared client requests explicit
+descending trade order and uses a non-overlapping millisecond page boundary;
+omitting that order silently truncates the live response (F54/I51).
+Other required external datasets marked `fail_on_empty_fetch` still fail closed
 on an empty generic ingest.
 `GET /api/data/external-series` reads `external_observations` by `dataset_id`,
 optional UTC `start`/`end` bounds, filters to numeric `value_num`, downsamples to
@@ -265,12 +277,44 @@ rewriting history. The report exposes fill bias, missed-entry rate, mark
 tracking error, coin equity curves, stale-record exclusions, and the eight-week
 ADR-0011 exit gate. It never marks live as approved.
 
+The local frontend is a thin control surface over this same path:
+
+```text
+Research Ops -> GET /api/research/h014 -> journal bias report
+Research Ops -> POST /api/research/h014/run (loopback only)
+  -> custom local-action header + cross-process cycle lock
+  -> existing run_cycle -> append-only journal -> refreshed bias report
+```
+
+It adds no broker, private endpoint, credential, scheduler, or mode change.
+
+## H-009 Research Parameter-Screen Flow
+
+```text
+Research Ops lookback_days x quantile grid (max 25)
+  -> POST /api/research/h009/sweep (loopback only)
+  -> write immutable request.json and count every submitted combination
+  -> existing PIT universe + Stage-2-good symbols + venue-scoped DB inputs
+  -> full-sample scan_funding_xs_dispersion
+  -> new results/h009_parameter_sweeps/<sweep_id>/summary.json or error.json
+  -> polled job status + ranked table
+```
+
+This is sensitivity navigation only. Its trial value is explicitly a known
+lower bound: E-031's registered baseline plus request sidecars in this UI root.
+The Experiment Registry remains authoritative for trials elsewhere. It does not
+run WF/CPCV, change H-009's `testing` verdict, or provide promotion evidence. A
+decision-relevant run still requires ex-ante experiment registration and the
+honest total family trial count. Job status is process-local and disappears on
+server restart; immutable request/result/error sidecars remain.
+
 ## Point-In-Time Universe Membership Flow
 
 ```text
 1m candle parquet by symbol -> scripts/build_universe_membership.py --source parquet -> data/universe/universe_membership.parquet -> xs_momentum target-weight and validation consumers
 canonical_candles daily dollar volume (DB) -> scripts/build_universe_membership.py --source db -> data/universe/universe_membership.parquet -> Stage-2 funding/xvenue probes and xs_momentum consumers
 venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
+immutable PIT top-N selection -> backtesting.universe_aliases consumer-time map/dedupe -> E-059 taker-flow probe
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
@@ -286,6 +330,11 @@ eligibility (median 2 eligible/day) versus the DB source (median 28); the
 shared `data/universe/universe_membership.parquet` was rebuilt with
 `--source db` and Stage-2 funding breadth now passes data availability
 (`docs/HYPOTHESIS_LEDGER.md` H-009, `docs/EXPERIMENT_REGISTRY.md` E-030).
+ADR-0015 does not rewrite that artifact: an opted-in exchange consumer maps
+same-economic-asset aliases after top-N selection, keeps the first canonical
+tradable contract, and recomputes its own denominator without rank-N+1 refill.
+T1 passed; E-059 now consumes the T2 helper. Other universe consumers remain
+unchanged.
 `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
 convention, shifts daily target weights one full day before intraday expansion to
@@ -325,7 +374,10 @@ UI responsive while large 1m backfills are running; the displayed OHLCV row coun
 is an estimate from first/last timestamp and bar interval. Targeted diagnostics
 or export paths remain the place for exact counts and gap inspection. Funding
 coverage rows still come from `funding_rates` and label provider/exchange from
-the stored `source`.
+the stored `source`. External coverage scans `external_observations` once,
+groups by `dataset_id`, and left-joins that aggregate to `external_datasets`;
+it does not run one full aggregate per dataset, and registered empty datasets
+remain visible with null timestamps and a zero count.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the
@@ -381,8 +433,21 @@ additive venue layer received the closed OKX BTC/ETH 1m rows for the frozen
 window. Each source-aware leg has 1,293,120 rows; raw-to-venue OHLCV mismatches
 are zero and Binance/OKX alignment is 1.0. The resolved table still has zero OKX
 rows in-window, so its Binance priority/default CAGG behavior is unchanged. The
-verifier passes this data boundary only; H-010 was not retried and its ledger
-status/verdict did not change. I19 still forbids substitution.
+verifier passed this data boundary only. The later, separately authorized E-057
+Stage-2 run used the extended 3,396,960-row-per-leg window; its candle gate is
+PASS, but the combined data gate fails because no venue-matched OKX funding
+exists. I19/I48 forbid candle or funding substitution.
+
+```text
+source-aware Binance/OKX 1m + OKX-only funding
+  -> one frozen H-010 calibration anchor (0 grid trials)
+  -> immutable h010_power_input.json
+  -> active Stage-2 caller validates inputs/hashes before DB access
+  -> full-window candle + data/distinctness/cost/power checks
+  -> E-057 FAIL -> stop; no Stage-3 grid/WF/CPCV
+```
+
+For H-022/E-058 only, read-only symbol-year queries parse Binance 1m `market_klines.raw_payload.raw[9]/[10]` against PIT membership -> four Stage-2 checks -> one new `stage2_feasibility.json`; malformed/missing arrays stay missing, with no download, schema change, or Stage 3.
 
 ## Backtest Run Flow
 

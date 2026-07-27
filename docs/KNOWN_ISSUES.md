@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -53,19 +53,40 @@ over time.
 - **Closed data boundary — H-010/F44/I47 (2026-07-17):** ADR-0014 added an
   additive source-aware canonical identity without changing the priority-
   resolved table or its CAGGs. The authorized OKX BTC/ETH frozen-window
-  promotion has 1,293,120 rows per symbol, raw parity mismatches 0, and
-  coverage/alignment 1.0; rerun changes 0 rows. H-010 itself was not retried and
-  its ledger status/verdict remains unchanged. Binance substitution remains
-  forbidden by I19.
+  promotion plus the 2020–2023 extension has 3,396,960 rows per symbol/venue,
+  raw parity mismatches 0, and coverage/alignment 1.0; rerun changes 0 rows.
+  E-057 later consumed this boundary and passed its candle check.
+- **Open data boundary / closed strategy round — H-010/F47/I48 (2026-07-18):**
+  the DB has no OKX funding rows for the execution venue, and another venue is
+  not substituted. Independently, the frozen zero-trial calibration found only
+  1.3636 bps median gross capture versus 8.0 bps cost across 7,376 episodes, so
+  H-010 is shelved and Stage 3 is not justified even if funding is later added.
+- **Closed review defects — H-010 B1/B2 (2026-07-21):** E-057's distinctness
+  FAIL is now described honestly as an impossible 91-day/365-day contract, and
+  future contracts require satisfiable formal/reference overlap. The generic
+  orchestrator refuses missing or mismatched frozen H-010 evidence before the
+  venue probe, so it cannot skip R3.4/I48 or the frozen cost/distinctness checks.
 - **Closed caller/observability bugs — F45/F46:** active Stage-2 callers now
   reject missing candidate-specific power inputs before probe/artifact/status
   mutation, and malformed artifacts are reported per file without aborting the
   schema-v3 funnel.
+- **Open same-asset alias adoption (F53/I50):** ADR-0015 defines Binance
+  `SHIB-USDT-SWAP -> 1000SHIB-USDT-SWAP` collapse after PIT top-N selection
+  without rewriting membership history. E-059 is the first completed consumer.
+  Funding/XS/OI/checkpoint
+  consumers remain unchanged and need separately scoped adoption before their
+  denominators can be assumed economic-asset unique.
 - By user decision, Deribit snapshot/forward-ingest Windows tasks remain
   unregistered and stale series are accepted while the RUNBOOK manual path
-  remains usable. Daily `dvol_deribit_*` is retained and was backfilled on
-  2026-07-12 (1,936 gap-free rows per symbol through 2026-07-11); its manual
-  update command is recorded in the RUNBOOK.
+  remains usable. A manual 2026-07-26 top-up brought daily `dvol_deribit_*` to
+  1,950 rows per symbol through 2026-07-25, hourly DVOL/funding/option flow to
+  2026-07-26 09:00 UTC, and stored one full current option-chain snapshot
+  (BTC 866 instruments/12 expiries/93 strikes; ETH 678/12/85). Historical
+  volatility starts only at Deribit's rolling public window
+  (`2026-07-10T13:00Z` in this run) and must accumulate forward. Option flow
+  still has a source-visibility gap from `2026-07-21T13:00Z` through
+  `2026-07-25T09:00Z`; the backfill checkpoints were reset to the last verified
+  hour so the history host can be retried without skipping it.
 - OKX Demo private login returns `60005 Invalid apiKey`; a valid Demo key is
   required. Do not switch to live as a workaround.
 - The existing `127.0.0.1:8080` listener (PID 23696 during the audit) timed out
@@ -78,6 +99,31 @@ over time.
   because this session could not obtain Administrator Task Scheduler rights.
   Run the documented `/NP` command from Administrator PowerShell, then require
   `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
+
+## Runtime and API reliability
+
+- **Closed coverage bottleneck (F28, 2026-07-21):** external coverage now scans
+  and groups `external_observations` once, then joins the 46 registered datasets.
+  On the current approximately 10 GB / 7.4 million-row table, the old shape
+  exceeded a 12-second cold-query timeout; the repaired full coverage endpoint
+  returned 137 combined rows in 1.704 seconds. No schema or payload shape changed.
+- **Closed container routing bug (F50, 2026-07-21):** the backtest route now
+  gives `DATABASE_URL` precedence over the YAML DSN, and the main Compose service
+  waits until TimescaleDB is healthy. This prevents container-local `localhost`
+  from silently shadowing the `timescaledb` service address.
+- **Closed for run list/result summary (F51, 2026-07-21):** a source DB exception
+  now produces HTTP 503 when no exact file fallback exists; a successful no-row
+  lookup remains 404, and a real file artifact remains usable. Extend this
+  three-state contract to the remaining per-artifact endpoints before treating
+  every DB failure path as observable.
+- **Open engine-dashboard auth contract (F52):** engine mode protects its API
+  with `X-API-Key`, while the same-origin browser client has no credential flow.
+  Choose cookie/session auth or an explicit loopback-only UI contract and add an
+  engine-app regression; do not remove authentication ad hoc.
+- **Scalability follow-up:** the backtest screen issues several concurrent API
+  requests and many routes still open one or two fresh asyncpg connections per
+  request. Measure after this query repair, then introduce one bounded shared
+  pool plus query/pool-wait metrics only if connection setup remains material.
 
 ## Governance follow-ups
 

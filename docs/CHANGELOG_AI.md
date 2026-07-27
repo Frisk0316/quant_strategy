@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,74 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-21 - DB and UI data reliability repair (Codex)
+
+- Replaced the external-coverage correlated aggregate with one grouped scan and
+  join, preserving registered datasets with no observations as null timestamps
+  and row count zero. The current real DB endpoint improved from an old query
+  that exceeded 12 seconds cold to 137 combined rows in 1.704 seconds.
+- Made the main Compose app wait for TimescaleDB health and made runtime
+  `DATABASE_URL` override the YAML candle DSN, closing the container-local
+  `localhost` split between coverage and backtest paths.
+- Backtest run listing and result-summary reads now distinguish DB outage from
+  true absence: outage without a precise file fallback is 503, healthy no-row is
+  404, and existing file fallback remains available. Invalid DB JSON remains a
+  corruption error rather than being mislabeled as availability failure.
+- Updated F28/F50-F52, UI/data flow, runbook/debugging guidance, current state,
+  and workstream handoffs. No DB schema, business rule, strategy, execution,
+  risk, result artifact, or deployment gate changed.
+
+## 2026-07-21 - Claude review fixes and delivery commit split (Codex)
+
+- Closed A1-A3: generated `frontend/research_funnel.json` is ignored but left
+  on disk, frontend syntax coverage includes Ledger and Research Ops, and
+  identity-less Stage-2 JSON is reported under `stage2_artifact_errors`.
+- Closed B1/B2 without changing E-057: future distinctness contracts must have a
+  satisfiable formal/reference overlap, while the generic H-010 orchestrator
+  refuses missing or mismatched frozen calibration evidence before probing.
+- Recorded the implemented 0.8838 power floor and entry-inclusive/exit-exclusive
+  funding-settlement boundary. E-057 byte hashes remained unchanged.
+- Split the shared tree into five ordered delivery commits. No reprobe, Stage 3,
+  existing-result mutation, strategy/risk/execution change, or deployment work
+  was performed by this review-fix task.
+
+## 2026-07-18 - H-014/H-009 local Research Ops UI (Codex)
+
+- Added an Analysis-nav `Research Ops` view backed by a separate research-only
+  API. H-014 exposes its journal/bias status and one existing public-data shadow
+  cycle; it has no private endpoint, credential, broker, or order path.
+- Added an H-009 full-sample sensitivity screen for the already-defined
+  `lookback_days` and `quantile` dimensions. Submissions are capped at 25 cells,
+  get new request/result/error artifacts, and conservatively accumulate an
+  explicitly labeled known family-trial lower bound even when execution later
+  fails; the Experiment Registry remains authoritative outside the UI root.
+- Mutation routes are enabled only on a loopback standalone server. The engine
+  app and non-loopback binds are status-only/HTTP 403, and a custom action header
+  blocks cross-origin form posts. H-014 manual/UI/scheduler cycles now share a
+  non-blocking cross-process journal lock. No mode, frozen parameter, ledger
+  verdict, existing result, promotion gate, or deployment configuration changed.
+
+## 2026-07-18 - H-010 E-057 Stage-2 selection round (Codex)
+
+- Reconciled the user-authorized H-010 execution with ADR-0013 before reading
+  returns: one isolated 2020-Q1 calibration anchor, prospective four-cell trial
+  count, corrected formal `n_obs=2,268` / minimum detectable Sharpe `0.8838`,
+  and conditional Stage-3 mechanics were frozen in the task contract.
+- Added a two-step H-010 Stage-2 path. Calibration freezes and hashes the power
+  input; the active caller validates all four inputs and reference hashes before
+  DB access. The registered artifact now contains data, distinctness, cost, and
+  statistical-power checks instead of coverage alone.
+- E-057 candle evidence passes for Binance and OKX BTC/ETH at 3,396,960 aligned
+  1m rows per venue/symbol. R3.4/F47/I48 fail closed because the DB contains no
+  OKX execution-venue funding; Binance funding is not substituted.
+- The fixed L240/Z2 anchor completed 7,376 episodes but median gross capture was
+  only 1.3636 bps versus 8.0 bps median round-trip cost. The provisional
+  missing-funding Sharpe was -12.7264 and is explicitly not accepted as measured
+  performance. Distinctness and power also fail closed.
+- H-010 is shelved at Stage 2. The four-cell grid, WF/CPCV, DSR/PSR, adapter,
+  promotion, demo, shadow, and live paths did not run. Family cumulative trials
+  and K remain 0 and 0/2 respectively. Existing artifacts were not overwritten.
 
 ## 2026-07-17 - Stage-2 caller repair and OKX source-aware promotion (Codex)
 

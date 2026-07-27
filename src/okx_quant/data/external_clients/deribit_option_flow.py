@@ -74,6 +74,7 @@ class DeribitOptionFlowClient:
             "start_timestamp": _to_ms(start),
             "end_timestamp": _to_ms(end),
             "count": int(count),
+            "sorting": "desc",
         }
         trades: dict[str, dict[str, Any]] = {}
         seen_ends: set[int] = set()
@@ -100,7 +101,7 @@ class DeribitOptionFlowClient:
             if min_ts in seen_ends:
                 break
             seen_ends.add(min_ts)
-            params["end_timestamp"] = min_ts
+            params["end_timestamp"] = min_ts - 1
             if self.page_delay > 0:
                 self.sleep(self.page_delay)
         self.last_page_count = pages

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -15,9 +15,10 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Current working branch: `feature/h014-e052-shadow` at `b2eb27e`, with the
-  uncommitted 2026-07-16 delivery plus the 2026-07-17 strategy-history,
-  funnel-schema-v2, and Ledger-detail delivery; no commit was requested.
+- Current working branch: `feature/h014-e052-shadow`. The 2026-07-18 shared
+  working tree is now split into five ordered delivery commits at current HEAD;
+  use `git log --oneline -5` for exact hashes. The generated funnel JSON remains
+  ignored on disk and the stray execution-comparison JSON remains untracked.
 - PR #9 merged to `main` at `b378e16` (head `00c7a51`). The separate follow-up
   branch `codex/pipeline-batch1-stage3` is pushed through `d046978` and still
   needs a human-reviewed PR. Stacked research branches are also pushed:
@@ -32,6 +33,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Completed and usable
 
+- Runtime/data reliability repair is complete for the highest-impact paths:
+  external coverage groups its approximately 7.4 million observation rows once
+  and the real endpoint returns 137 combined rows in 1.704 seconds; Compose
+  waits for TimescaleDB health; runtime `DATABASE_URL` wins over the YAML candle
+  DSN; and run-list/result-summary DB outages without file fallback return 503
+  rather than a plausible empty list or 404. No schema or payload shape changed.
 - P0.1-P0.3 rules implemented and Claude-APPROVED (artifact-ID containment,
   `ct_val` validator, venue fail-closed); post-merge gaps repaired with
   fail-closed regressions. No PnL formula or existing artifact changed.
@@ -52,6 +59,8 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   Promotion still blocked per R7.2. ADR-0011's shadow-only implementation now
   exists; the next gate is at least 8 valid journal weeks plus the fill-bias,
   missed-entry, and mark-tracking report, followed by human and Claude review.
+  A local `Research Ops` page can now show this status and run one existing
+  public-data shadow cycle; it has no live-mode or order capability.
 - Taxonomy_003 Stage-3 COMPLETE 2026-07-14 (user-authorized, Claude solo,
   E-044..E-049, fresh-verifier clean): all six candidates MINT (max corr
   ≤ 0.099) but ALL FAIL the DSR/PSR ≥ 0.95 gate. H-015 optflow refuted;
@@ -75,7 +84,16 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   isolated in funnel schema v3. The separately authorized ADR-0014 data task
   promoted closed OKX BTC/ETH 1m raw rows into an additive source-aware layer:
   1,293,120 rows per symbol, raw mismatches 0, coverage/alignment 1.0, resolved
-  OKX rows 0, and a second run changed 0 rows. No H-010 retry or verdict ran.
+  OKX rows 0, and a second run changed 0 rows. The separately authorized E-057
+  task then ran H-010 Stage 2: source-aware candles pass over the extended
+  window, but OKX funding is absent and the fixed anchor fails cost at 1.3636
+  bps gross versus 8.0 bps median round trip. H-010 is shelved with zero grid
+  trials; no Stage 3 or DSR/PSR ran.
+- Claude's A1-A3/B1-B4 findings are repaired. Future distinctness contracts
+  must have a satisfiable formal/reference overlap; E-057's structural FAIL is
+  no longer described as measured evidence. The generic orchestrator refuses
+  missing/mismatched H-010 frozen evidence before probing, and funnel schema v3
+  reports identity-less artifacts instead of dropping them.
 
 ## Active / blocked
 
@@ -85,16 +103,30 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   human review/merge remain pending.
 - H-013/F-VRP-TIMING complete 2026-07-14: E-038 PASS; E-050 grid FAILED the
   gate (DSR 0.60/PSR 0.78, MINT 0.051) — shelved, no retry.
-- H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry).
-  H-012 user-shelved, no retry; F36 cost-lag recorded. H-010's data-consumer
-  boundary is closed by ADR-0014 and independently verified, but H-010 remains
-  otherwise untouched: no registered retry, Stage-1 change, verdict, Stage 3,
-  promotion, demo, shadow, or live claim was authorized or performed.
+- H-009 is shelved after E-063 breadth-restored retry 1: 31 unique assets,
+  unchanged four-cell fold-refit grid, WF 1.4778, CPCV 0.9092, DSR 0.8305,
+  PSR 0.9166, family-cumulative `n_trials=8`, K 1/2. Checkpoint1 auto fails only
+  the statistical threshold; no retune. H-023/F-XS-IDIOVOL stopped at Stage 2
+  power (0.5961 plausible net Sharpe < 0.7134 floor), so no Stage 3, trials, or
+  retry budget were consumed. `docs/EXPERIMENT_REGISTRY.md` remains the
+  authoritative total.
+  H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 E-057 is shelved at
+  Stage 2: 3,396,960 aligned candle rows per venue/symbol pass, but no OKX
+  funding exists and 7,376 fixed-anchor episodes capture median 1.3636 bps gross
+  versus 8.0 bps cost. All four checks fail; zero grid trials, no Stage 3/DSR.
 - H-021/F-XVENUE-FUNDING-SPREAD is `refuted` after taxonomy_004 E-056. The
   separately authorized first Stage-3 full-PnL validation used ADR-0012 inverse
   accounting and failed statistical/robustness gates: WF -0.2158, CPCV -0.0375,
   DSR 0.2357, PSR 0.4818, family-cumulative n_trials=12, K=0/2. Stop: no retry,
   retune, promotion, demo, shadow, or live work.
+- H-022/F-TAKER-FLOW is `shelved` after the zero-trial E-059 data-gap repair
+  reprobe. T1 verifies ETH at 898/898 complete days and
+  1,293,120/1,293,120 raw/taker rows, with the retained non-ETH count hash
+  unchanged. ADR-0015 alias consumption yields 24,745/24,745 member-days.
+  Data, distinctness (0.043660/0.093939), and cost (42.7529 versus 9.9160 bps)
+  pass, while power fails at 0.448466 versus the 0.754896 floor. Family trials
+  remain 0 and K remains 0/2. Stop with no retune; Stage 3, promotion, and
+  deployment remain unauthorized.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
@@ -108,12 +140,20 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   pre-guard smoke's two stale-signal records remain in the append-only audit log
   and are explicitly excluded by the report. No scheduler is registered and no
   private endpoint, credential, or order path exists.
+- Runtime follow-ups remain: F52 needs an explicit engine-dashboard API-key
+  contract; remaining per-artifact DB reads should adopt the same outage/absent/
+  file-fallback distinction; add a bounded asyncpg pool only after measuring
+  post-query-fix connection overhead.
 
 ## Next actions, in order
 
-1. Claude reviews the ratified Stage-2 caller repair/schema-v3 error isolation,
-   ADR-0014 source-aware canonical boundary, raw-parity evidence, and confirms
-   that no H-010 research verdict follows from data availability alone.
+Immediate gate: Claude reviews the ordered E-059 registration, execution, and
+outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
+
+1. Claude reviews the five ordered delivery commits and A1-A3/B1-B4 fixes,
+   including E-057 byte-hash preservation and per-commit diff stats.
+   Claude also reviews E-059's power-fail outcome and the non-gating H-002
+   advisory correlation; no F-TAKER-FLOW follow-on is authorized.
 2. Open and review the separate `codex/pipeline-batch1-stage3` follow-up PR;
    human performs the merge.
 3. Continue the manual H-014 shadow cycle and obtain Claude's execution/risk
@@ -122,19 +162,33 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 4. From Administrator PowerShell, apply the P1.4 RUNBOOK `/NP` registration;
    verify `S4U`/`Limited`, run the task once, and require result `0`.
 5. Pending fact: the user creates the OKX Demo key.
-6. Taxonomy_003 and H-013 are closed (all failed the gate); next ideation
-   round only with new data families or materially longer history.
-7. DONE 2026-07-17: Codex completed
-   `tasks/2026-07-16-strategy-history-doc-frontend-codex-tasks.md`; Claude now
-   reviews the consolidated history, schema-v2 source mapping, and v1/v2 Ledger
-   behavior. Observability/docs only; no gate or rule change.
+6. Taxonomy_003, H-013, and H-010 E-057 are closed/shelved; next ideation round
+   only with a genuinely new data family/mechanism, not a DSR-targeting retune.
+   H-009 E-063 and H-023 E-062 are also closed for this round; neither passed,
+   and no follow-on is authorized without a new ex-ante rationale.
+7. Claude review DONE 2026-07-18 and repairs DONE 2026-07-21
+   (`tasks/2026-07-18-strategy-history-h010-claude-review.md`): strategy-history
+   A/B/C APPROVE-WITH-FINDINGS (minor fixes A1-A3: gitignore funnel JSON,
+   frontend-check coverage, missing-ID artifact isolation). H-010/E-057
+   APPROVE-WITH-FINDINGS: stage2_fail/shelved outcome stands; B1 (unpassable
+   distinctness contract) and B2 (orchestrator bypasses frozen-evidence guard)
+   MUST be fixed before any F-XVENUE-LEADLAG reprobe or Stage-2 path reuse.
+   A1-A3/B1-B4 are applied and the tree is committed per delivery. Next: Claude
+   verifies scope, hashes, tests, and commit ordering; no H-010 path reuse.
 
 8. DONE 2026-07-17: Stage-2 F45/F46 caller/funnel repair and OKX
    raw-to-source-aware-canonical promotion completed under explicit user
    authorization. H-010 ledgers/results were not touched.
+9. Measure the repaired UI/API path under normal concurrent run selection, then
+   close the remaining per-artifact DB error paths and decide F52 authentication
+   before adding retries or a shared connection pool.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`,
 `tasks/2026-07-12-project-diagnosis-followup-tasks.md`, and
 `tasks/2026-07-16-power-history-ledger-codex-context-handoff.md`,
 `tasks/2026-07-17-strategy-history-frontend-codex-context-handoff.md`, and
-`tasks/2026-07-17-strategy-history-frontend-codex-session-handoff.md`.
+`tasks/2026-07-17-strategy-history-frontend-codex-session-handoff.md`, plus
+`tasks/2026-07-18-h010-e057-context-handoff.md` and
+`tasks/2026-07-18-h010-e057-session-handoff.md`, plus
+`tasks/2026-07-21-db-coverage-performance-context-handoff.md` and
+`tasks/2026-07-21-db-coverage-performance-session-handoff.md`.

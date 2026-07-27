@@ -77,10 +77,11 @@ def aggregate_option_surface(currency: str, rows: list[dict[str, Any]]) -> Optio
             "oi_weighted_mark_iv": iv_weight / iv_oi if iv_oi else None,
             "spot_index": _first_float(rows, "estimated_delivery_price"),
             "n_instruments": len(options),
+            "raw_payload_scope": "full_current_chain",
             "unit": "base_contracts",
         },
         "quality_status": "raw",
-        "raw_payload": _top_open_interest(rows, limit=20),
+        "raw_payload": _organized_chain(options),
     }
 
 
@@ -89,17 +90,28 @@ def _parse_option(row: dict[str, Any]) -> Optional[dict[str, Any]]:
     parts = name.split("-")
     if len(parts) < 4 or parts[-1] not in {"C", "P"}:
         return None
+    try:
+        expiry = datetime.strptime(parts[-3], "%d%b%y").date().isoformat()
+    except ValueError:
+        return None
     open_interest = _to_float(row.get("open_interest"))
     strike = _to_float(parts[-2])
     if open_interest is None or strike is None:
         return None
     return {
         "instrument_name": name,
+        "expiry": expiry,
         "option_type": parts[-1],
         "strike": strike,
         "open_interest": open_interest,
         "mark_iv": _to_float(row.get("mark_iv")),
         "creation_timestamp": _to_int(row.get("creation_timestamp")),
+        "raw_payload": {
+            **row,
+            "expiry": expiry,
+            "strike": strike,
+            "option_type": "call" if parts[-1] == "C" else "put",
+        },
     }
 
 
@@ -119,12 +131,14 @@ def _max_pain_strike(options: list[dict[str, Any]]) -> Optional[float]:
     return min(pain_by_strike, key=lambda strike: (pain_by_strike[strike], strike))
 
 
-def _top_open_interest(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
-    return sorted(
-        rows,
-        key=lambda row: _to_float(row.get("open_interest")) or 0.0,
-        reverse=True,
-    )[:limit]
+def _organized_chain(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row["raw_payload"]
+        for row in sorted(
+            options,
+            key=lambda row: (row["expiry"], row["strike"], row["option_type"], row["instrument_name"]),
+        )
+    ]
 
 
 def _first_float(rows: list[dict[str, Any]], key: str) -> Optional[float]:

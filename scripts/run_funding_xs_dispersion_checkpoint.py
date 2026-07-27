@@ -18,6 +18,7 @@ from backtesting.funding_xs_dispersion_backtest import (
     json_signal,
     load_funding_xs_dispersion_inputs,
     run_funding_xs_dispersion_backtest,
+    scan_funding_xs_dispersion,
 )
 from backtesting.pipeline_family_minting import decide_family_minting
 from backtesting.pipeline_stage2_registry import load_point_in_time_universe
@@ -46,6 +47,7 @@ STAGE2_PASS_PATH = Path(
     "idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/stage2_feasibility.json"
 )
 OUT = Path("results") / BATCH_ID / CANDIDATE_DIR
+REGISTERED_BASELINE_N_TRIALS = 4
 
 
 def _ctx_value(ctx: Mapping[str, Any], key: str, default: Any) -> Any:
@@ -349,6 +351,97 @@ def run_funding_xs_dispersion_checkpoint(ctx: Mapping[str, Any] | None = None) -
         }
     )
     return summary
+
+
+def run_funding_xs_dispersion_screen(ctx: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Run a research-only full-sample sensitivity grid for the frontend."""
+    ctx = ctx or {}
+    project_root = Path(_ctx_value(ctx, "project_root", Path.cwd()))
+    start = _as_date_string(_ctx_value(ctx, "start", START))
+    end = _as_date_string(_ctx_value(ctx, "end", END))
+    dsn = str(_ctx_value(ctx, "dsn", DSN))
+    universe_path = Path(_ctx_value(ctx, "universe_path", project_root / UNIVERSE_PATH))
+    stage2_path = Path(_ctx_value(ctx, "stage2_path", project_root / STAGE2_PASS_PATH))
+    grid = dict(_ctx_value(ctx, "grid", {"lookback_days": [7, 14], "quantile": [0.20, 0.30]}))
+    if set(grid) != {"lookback_days", "quantile"}:
+        raise ValueError("H-009 frontend screening supports lookback_days and quantile only")
+    if not grid["lookback_days"] or not grid["quantile"]:
+        raise ValueError("H-009 frontend screening grid values cannot be empty")
+    known_prior_n_trials = max(
+        REGISTERED_BASELINE_N_TRIALS,
+        int(_ctx_value(ctx, "prior_family_n_trials", REGISTERED_BASELINE_N_TRIALS)),
+    )
+
+    symbols, _daily, _expected = load_point_in_time_universe(
+        universe_path,
+        start=_utc(start).to_pydatetime(),
+        end=_utc(end).to_pydatetime(),
+    )
+    good_symbols = set(_stage2_good_symbols(stage2_path))
+    if good_symbols:
+        symbols = [symbol for symbol in symbols if symbol in good_symbols]
+    membership = pd.read_parquet(universe_path)
+    membership["date"] = pd.to_datetime(membership["date"]).dt.normalize()
+    membership = membership[membership["symbol"].isin(symbols)].copy()
+    close, high, low, vol, funding = load_funding_xs_dispersion_inputs(
+        symbols,
+        bar="1D",
+        start=start,
+        end=end,
+        backend="postgres",
+        dsn=dsn,
+        exchange=EXCHANGE,
+    )
+    params = FundingXSDispersionParams(universe=symbols, bar="1D")
+    market_close = close["BTC-USDT-SWAP"] if "BTC-USDT-SWAP" in close.columns else None
+    frame = scan_funding_xs_dispersion(
+        close,
+        high,
+        low,
+        vol,
+        funding,
+        membership,
+        params,
+        grid,
+        market_close=market_close,
+        prior_family_n_trials=known_prior_n_trials,
+    )
+    records = [_jsonable(row) for row in frame.to_dict(orient="records")]
+    records.sort(
+        key=lambda row: row.get("sharpe") if row.get("sharpe") is not None else float("-inf"),
+        reverse=True,
+    )
+    for rank, row in enumerate(records, start=1):
+        row["rank"] = rank
+
+    return {
+        "hypothesis_id": HYPOTHESIS_ID,
+        "family_id": FAMILY_ID,
+        "validation_status": "in_sample",
+        "research_only": True,
+        "promotion_gate_passed": False,
+        "registration_required": True,
+        "grid": _jsonable(grid),
+        "grid_size_this_run": len(records),
+        "registered_baseline_n_trials": REGISTERED_BASELINE_N_TRIALS,
+        "known_prior_n_trials_lower_bound": known_prior_n_trials,
+        "known_family_n_trials_lower_bound": int(frame.attrs["n_trials"]),
+        "trial_count_scope": "registered_E031_baseline_plus_local_ui_submissions",
+        "results": records,
+        "data_source": {
+            "start": start,
+            "end": end,
+            "primary_exchange": EXCHANGE,
+            "bar": "1D_from_1m_canonical_close",
+            "universe_path": str(universe_path),
+        },
+        "warnings": [
+            "Full-sample sensitivity screen only; not WF/CPCV or promotion evidence.",
+            "Every inspected combination is counted in the known family-trial lower bound.",
+            "The Experiment Registry remains authoritative for any trials outside this UI.",
+            "Register any decision-relevant run in EXPERIMENT_REGISTRY before review.",
+        ],
+    }
 
 
 def main() -> int:

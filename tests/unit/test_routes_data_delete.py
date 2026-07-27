@@ -92,8 +92,10 @@ def test_coverage_route_uses_instrument_bars_fast_path(monkeypatch):
             if "from funding_rates" in query:
                 return []
             if "from external_datasets" in query:
-                assert "join lateral" in query
-                assert "where o.dataset_id = d.dataset_id" in query
+                assert "join lateral" not in query
+                assert "group by dataset_id" in query
+                assert "left join coverage" in query
+                assert "coalesce(coverage.row_count, 0)" in query
                 return []
             raise AssertionError(sql)
 
@@ -203,6 +205,49 @@ def test_coverage_external_exchange_comes_from_provider(monkeypatch):
     assert payload[0]["provider"] == "deribit"
     assert payload[0]["exchange"] == "deribit"
     assert payload[0]["mixed"] is False
+
+
+def test_external_coverage_keeps_dataset_without_observations(monkeypatch):
+    import asyncpg
+
+    class FakeConn:
+        async def fetch(self, sql, *params):
+            query = " ".join(sql.lower().split())
+            if "from instrument_bars" in query or "from funding_rates" in query:
+                return []
+            if "from external_datasets" in query:
+                assert "coalesce(coverage.row_count, 0)" in query
+                return [{
+                    "inst_id": "empty_dataset",
+                    "bar": "daily",
+                    "first_ts": None,
+                    "last_ts": None,
+                    "row_count": 0,
+                    "provider": "test_provider",
+                    "value_kind": "scalar",
+                    "frequency": "daily",
+                    "source_url": None,
+                    "attribution": None,
+                    "research_only": False,
+                }]
+            raise AssertionError(sql)
+
+        async def close(self):
+            return None
+
+    async def fake_connect(dsn):
+        return FakeConn()
+
+    monkeypatch.setattr(asyncpg, "connect", fake_connect)
+    app = FastAPI()
+    app.include_router(routes_data.make_data_router("postgresql://unused"), prefix="/api/data")
+
+    payload = TestClient(app).get("/api/data/coverage").json()
+
+    assert payload[0]["inst_id"] == "empty_dataset"
+    assert payload[0]["first_ts"] is None
+    assert payload[0]["last_ts"] is None
+    assert payload[0]["row_count"] == 0
 
 
 def test_delete_pair_route_returns_db_and_parquet_counts(monkeypatch, tmp_path):

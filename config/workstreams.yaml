@@ -14,12 +14,12 @@ workstreams:
 
   - name: Local runtime reliability
     status: blocked
-    milestones: [coverage_query, single_server, private_ws_auth]
+    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth]
     current: private_ws_auth
-    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. P1.4 repo support pins the liquidation Python path and documents S4U/Limited task lifecycle; host activation is pending Administrator rights. The pre-existing 127.0.0.1:8080 listener was left untouched. Demo private WS still returns OKX 60005 Invalid apiKey."
-    next: "Run the P1.4 RUNBOOK /NP command from Administrator PowerShell, verify S4U/Limited and result 0. Port 8080 stays abandoned; configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
-    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-15
+    state: "External coverage now uses one grouped scan: the current real endpoint returned 137 rows in 1.704 seconds after the old query exceeded a 12-second cold timeout. Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. Standalone Manual/Progress and terminal private-WS auth-loop fixes remain implemented. Demo private WS still returns OKX 60005 Invalid apiKey; engine-dashboard API-key flow remains unresolved."
+    next: "Choose the engine-dashboard auth contract, extend explicit DB outage handling to remaining per-artifact endpoints, and measure concurrent UI connection overhead before adding a bounded pool. Run the P1.4 Administrator task activation separately; do not switch to live mode as a workaround."
+    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, tasks/2026-07-21-db-coverage-performance-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
+    updated: 2026-07-21
 
   - name: XS momentum
     status: shelved
@@ -43,19 +43,19 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
     current: checkpoint_review
-    state: "The first pipeline cycles and taxonomy_003/004 evidence remain recorded in the ledgers. The user ratified ADR-0013 scope and the computed 1.7206 reference case; active callers now require candidate-specific power inputs and schema-v3 funnel errors are isolated. ADR-0014's separately approved data task promoted the existing OKX BTC/ETH frozen-window raw rows into an additive source-aware canonical layer: 1,293,120 rows per symbol, zero raw mismatches, coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0. No H-010 retry/verdict or deployment work ran."
-    next: "Claude reviews F45/F46, ADR-0014, and the raw-parity evidence. Do not infer H-010 research success from data availability; no hypothesis retry, Stage-1 change, ledger verdict, Stage 3, scheduling, promotion, demo, shadow, or live work is authorized."
-    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
-    updated: 2026-07-17
+    state: "E-057 remains immutable and H-010 remains shelved. The 2026-07-26 strategy-finding round also closed without a pass: H-023/F-XS-IDIOVOL failed Stage-2 power at 0.5961 versus a 0.7134 floor (zero trials/K), while H-009 E-063 restored 28 to 31 unique assets and passed Stage 2 but failed checkpoint 1 at WF 1.4778, CPCV 0.9092, DSR 0.8305, PSR 0.9166 (family n_trials=8, K=1/2). The loopback Research Ops surface remains non-promotion tooling."
+    next: "Claude may review E-062/E-063 evidence and the existing A1-A3/B1-B4 delivery. No H-009/H-023 retune or H-010 reprobe, Stage 3 extension, scheduling, promotion, demo, shadow, or live work is authorized."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-26-strategy-finding-round.md, results/strategy_finding_20260726/checkpoint_review.json, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
+    updated: 2026-07-26
 
   - name: Deribit derivatives data
     status: active
     milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec, stage1_review, stage2_probe]
     current: stage2_probe
-    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 SHELVED (E-050 statistical fail). H-014/F-VOL-REGIME-OPT: user signed off ADR-0010 (accepted; DOMAIN_RULES R8, I39, matrix A12) and Stage 3 on 2026-07-14; Stage-3 data collected free (786 entries, 11,121 daily marks, 4,930 official delivery prices); golden tests 6/6; E-051 PASSED the statistical gate - the project's first (WF 1.3049, CPCV 1.1326, DSR=PSR 0.9845, minting MINT 0.074, fallback marks <=4.5%); adversarial fresh-verifier verdict PASS-STANDS. Recorded caveats: thin margin with degenerate-zero DSR penalty (all CPCV folds picked the same combo), single bear cycle in window."
-    next: "E-052 extended-window retry PASSED 2026-07-14 (WF 0.8818/CPCV 1.0098/DSR 0.9746/PSR 0.9904, real penalty, K 1/2, n_trials 8; verifier surfaces resolved incl. persisted splice-sensitivity artifact). H-014 supported on double-passed evidence; both E-051 caveats closed. Next gate: ADR-0011 shadow-execution v1 (Codex implements tasks/2026-07-14-deribit-shadow-execution-codex-tasks.md, Claude reviews; >=8 weeks journal + bias report before any live-execution ADR). Promotion still blocked per R7.2. No promotion/live claim."
+    state: "D1-D5 and R1-R5 are accepted with DB evidence. F-VRP-TIMING/H-013 SHELVED (E-050 statistical fail). H-014/F-VOL-REGIME-OPT: user signed off ADR-0010 (accepted; DOMAIN_RULES R8, I39, matrix A12) and Stage 3 on 2026-07-14; Stage-3 data collected free (786 entries, 11,121 daily marks, 4,930 official delivery prices); golden tests 6/6; E-051 PASSED the statistical gate - the project's first (WF 1.3049, CPCV 1.1326, DSR=PSR 0.9845, minting MINT 0.074, fallback marks <=4.5%); adversarial fresh-verifier verdict PASS-STANDS. Recorded caveats: thin margin with degenerate-zero DSR penalty (all CPCV folds picked the same combo), single bear cycle in window. A loopback Research Ops page now shows the ADR-0011 journal/bias gate and can invoke one existing credential-free public-data shadow cycle; CLI/UI/scheduler invocations share a cross-process journal lock."
+    next: "E-052 extended-window retry PASSED 2026-07-14 (WF 0.8818/CPCV 1.0098/DSR 0.9746/PSR 0.9904, real penalty, K 1/2, n_trials 8; verifier surfaces resolved incl. persisted splice-sensitivity artifact). H-014 supported on double-passed evidence; both E-051 caveats closed. Continue ADR-0011 shadow evidence until >=8 weeks plus a complete bias report before any live-execution ADR. The UI does not change this gate. Promotion remains blocked per R7.2; no promotion/live claim."
     links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md, docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md, tasks/2026-07-13-vol-regime-opt-handoff.md, tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md, tasks/2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md]
-    updated: 2026-07-14
+    updated: 2026-07-18
 
   - name: Strategy research pipeline — taxonomy_004 C4
     status: done
@@ -65,6 +65,15 @@ workstreams:
     next: "STOP. No retry, retune, promotion, demo, shadow, or live work. E-056 is immutable non-promotion evidence."
     links: [docs/superpowers/specs/2026-07-15-mechanism-taxonomy-004.md, docs/superpowers/specs/2026-07-15-f-xvenue-funding-spread-hypothesis.md, docs/change_manifests/2026-07-15-xvenue-funding-spread-stage2.md, docs/ADR/0012-inverse-perpetual-research-accounting.md, tasks/2026-07-15-h021-stage3-context-handoff.md, tasks/2026-07-15-h021-stage3-session-handoff.md]
     updated: 2026-07-16
+
+  - name: Strategy research pipeline — F-TAKER-FLOW
+    status: shelved
+    milestones: [stage1_spec, stage2_probe, claude_review, data_repair, alias_rule, e059_reprobe]
+    current: e059_reprobe
+    state: "H-022/E-059 is complete and shelved. T1 verified ETH at 898/898 days and 1,293,120/1,293,120 raw/taker rows; the ADR-0015 alias-adjusted denominator is 24,745/24,745. Data, distinctness, and cost pass, but statistical power fails at plausible net Sharpe 0.448466 below the 0.754896 floor. Family trials remain 0 and K remains 0/2."
+    next: "Claude reviews the ordered E-059 registration, execution, and outcome-sync commits. Stop with no retune or reprobe; no Stage 3, promotion, or deployment."
+    links: [docs/superpowers/specs/2026-07-23-f-taker-flow-hypothesis.md, tasks/2026-07-24-e058-repair-e059-codex-tasks.md, docs/ADR/0015-consumer-time-economic-asset-aliases.md, docs/change_manifests/2026-07-24-consumer-time-universe-aliases.md, results/e058_taker_flow_stage2_20260724/stage2_feasibility.json, results/e059_taker_flow_stage2_20260725/stage2_feasibility.json, tasks/2026-07-26-e059-taker-flow-context-handoff.md, tasks/2026-07-26-e059-taker-flow-session-handoff.md]
+    updated: 2026-07-26
 
   - name: Multi-venue instrument specs (ADR-0007 P1)
     status: done

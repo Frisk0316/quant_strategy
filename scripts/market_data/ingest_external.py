@@ -19,6 +19,7 @@ from okx_quant.data.external_clients import (
     BinanceOIClient,
     DeribitDVOLClient,
     DeribitFundingClient,
+    DeribitHistoricalVolatilityClient,
     DeribitOptionFlowClient,
     DeribitOptionSurfaceClient,
     FREDClient,
@@ -122,6 +123,8 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
         return BinanceOIClient()
     if adapter == "deribit_dvol":
         return DeribitDVOLClient()
+    if adapter == "deribit_historical_volatility":
+        return DeribitHistoricalVolatilityClient()
     if adapter == "deribit_funding":
         return DeribitFundingClient()
     if adapter == "deribit_option_surface":
@@ -165,6 +168,12 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
             start=start,
             end=end,
             resolution=str(cfg.get("resolution") or "1D"),
+        )
+    if adapter == "deribit_historical_volatility":
+        return client.fetch(
+            currency=str(cfg.get("currency") or "BTC"),
+            start=start,
+            end=end,
         )
     if adapter == "deribit_funding":
         return client.fetch(

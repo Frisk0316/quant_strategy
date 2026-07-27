@@ -23,6 +23,7 @@ notebooks/.ipynb_checkpoints/
 
 # Backtest run artifacts (timestamped dirs with CSV/JSON per run)
 results/*/
+frontend/research_funnel.json
 
 # Calibration JSONL session logs
 results/calibration/

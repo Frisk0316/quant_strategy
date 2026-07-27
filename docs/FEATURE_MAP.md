@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -98,7 +98,9 @@ implementation exists.
 ## Backtest API
 
 - User-facing behavior: list runs, start runs/sweeps, read saved result artifacts,
-  delete runs, and expose chart-specific endpoints.
+  delete runs, and expose chart-specific endpoints. Run-list/result-summary DB
+  outages without an exact file fallback return 503; a healthy missing run stays
+  404 and an existing file artifact remains usable.
 - Frontend files: `frontend/data.js`, `frontend/view-backtest.js`,
   `frontend/view-results.js`, `frontend/view-config.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -108,7 +110,7 @@ implementation exists.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
   `sql/migrations/0012_backtest_artifact_rows.sql`, `backtesting/artifacts.py`,
   `backtesting/artifact_rows.py`, runtime result directories.
-- Config files: `config/settings.yaml`.
+- Config files: `config/settings.yaml`, `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
   `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/integration/test_api_endpoints.py`.
@@ -213,6 +215,12 @@ implementation exists.
   resolve multiplier contracts such as `1000SHIB-USDT-SWAP` from DB.
   External coverage rows label Exchange from the dataset provider, and external
   export downloads DB rows even when the optional refresh pre-step skips or fails.
+  Coverage groups external observations once and keeps registered empty datasets
+  visible with null timestamps and zero rows rather than timing out the card.
+  Deribit external ingestion includes rolling BTC/ETH historical volatility,
+  historical/hourly DVOL and funding/option flow. New option-surface snapshots
+  preserve the complete current chain sorted by expiry, strike, and option type;
+  they do not fabricate historical strike snapshots.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
@@ -241,7 +249,8 @@ implementation exists.
   `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
-- Config files: `config/settings.yaml`, `config/external_data.yaml`.
+- Config files: `config/settings.yaml`, `config/external_data.yaml`,
+  `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
   `tests/unit/test_deribit_public_client.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,
@@ -313,20 +322,25 @@ implementation exists.
 
 - User-facing behavior: build a deterministic liquid USDT-perp universe artifact
   for cross-sectional research without pre-listing or delisting survivorship
-  leakage.
+  leakage. ADR-0015 keeps that artifact immutable and defines consumer-time
+  same-asset collapse; E-059 is the first Binance alias consumer after T1
+  verification, while broader consumers remain unchanged.
 - Frontend files: none.
 - Backend/API files: none.
 - Backtesting files: `backtesting/data_loader.py` is the downstream candle
   aggregation authority; no dedicated backtest runner is wired yet.
 - Data / DB / artifact files: `scripts/build_universe_membership.py`,
+  `backtesting/universe_aliases.py`,
   local candles under `data/ticks/<inst_id>/candles_1m.parquet`, generated
   artifact `data/universe/universe_membership.parquet`.
 - Config files: `config/universe.yaml`, `config/settings.yaml`.
-- Tests: `tests/unit/test_universe_membership.py`.
+- Tests: `tests/unit/test_universe_membership.py`,
+  `tests/unit/test_universe_aliases.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/INVARIANTS.md`,
   `docs/FAILURE_MODES.md`, `docs/AI_HANDOFF.md`.
 - Do-not-touch notes: do not use a hand-picked final symbol list as historical
-  membership; promotion-grade runs still need venue-scoped DB coverage evidence.
+  membership or rewrite the membership parquet for an economic alias;
+  promotion-grade runs still need venue-scoped DB coverage evidence.
 
 ## XS Momentum Research Strategy
 
@@ -437,31 +451,40 @@ implementation exists.
 - User-facing behavior: checkpoint-only research candidate for
   F-FUNDING-XS-DISPERSION. It tests a dollar-neutral perp-only book that goes
   long low trailing funding APR and short high trailing funding APR across the
-  point-in-time liquid USDT-perp universe. This is evidence-review tooling only,
-  with no UI or API promotion entrypoint.
-- Frontend files: none.
-- Backend/API files: none.
+  point-in-time liquid USDT-perp universe. A local Research Ops form permits
+  only the existing `lookback_days` and `quantile` sensitivity dimensions, with
+  at most 25 full-sample combinations per submission. This remains in-sample
+  evidence-review tooling, with no UI or API promotion entrypoint.
+- Frontend files: `frontend/app.js`, `frontend/data.js`,
+  `frontend/view-research.js`.
+- Backend/API files: `src/okx_quant/api/routes_research.py`,
+  `scripts/run_server.py`, `src/okx_quant/api/server.py`.
 - Backtesting files: `backtesting/funding_xs_dispersion_backtest.py`,
   `backtesting/pipeline_stage3_registry.py`,
   `scripts/run_funding_xs_dispersion_checkpoint.py`.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
   Binance venue-scoped `canonical_candles`, `funding_rates`, and
   `venue_instrument_specs`; generated sidecars live under
-  `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/`.
+  `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/`. New UI
+  requests/summaries/errors use separate directories under
+  `results/h009_parameter_sweeps/` and do not modify existing artifacts.
 - Config files: none changed.
 - Strategy / portfolio files: none changed; target-weight construction reuses
   `okx_quant.strategies.xs_momentum.target_weights` from the research path.
 - Tests: `tests/unit/test_funding_xs_dispersion_backtest.py`,
   `tests/unit/test_pipeline_stage3_registry.py`,
-  `tests/unit/test_pipeline_checkpoint1_check.py`.
+  `tests/unit/test_pipeline_checkpoint1_check.py`,
+  `tests/unit/test_routes_research.py`.
 - Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
   `docs/HYPOTHESIS_LEDGER.md`, relevant Change Manifest and session/context
   handoffs.
 - Do-not-touch notes: do not enable a strategy, change live funding-carry
   behavior, touch `config/strategies.yaml`, `config/risk.yaml`, risk,
   portfolio, execution, demo/shadow/live gates, or mutate existing result
-  artifacts. Stop at checkpoint 1 unless Claude/human explicitly opens the next
-  task.
+  artifacts. Every submitted UI combination counts toward a documented known
+  family-trial lower bound; the Experiment Registry remains authoritative for
+  activity outside this UI. The result is never WF/CPCV or promotion evidence.
+  Stop at checkpoint 1 unless Claude/human explicitly opens the next task.
 
 ## OI Positioning Research Candidate
 
@@ -516,8 +539,10 @@ implementation exists.
   ADR-0013 adds a registry-scoped, fail-closed statistical-power triage check
   and a ledger/registry-wide derived funnel without changing Stage-3 gates.
   Active callers require candidate-specific power inputs before probes or
-  artifacts; the orchestrator carries them on first run and reprobe, and a
-  malformed artifact is isolated rather than aborting the schema-v3 funnel.
+  artifacts. The generic orchestrator refuses H-010 when frozen calibration
+  evidence is absent or mismatched; it cannot silently skip funding, cost, or
+  distinctness checks. A malformed or identity-less artifact is isolated
+  rather than aborting the schema-v3 funnel.
   F-OI-POSITIONING Stage-2 data availability first read BTC/ETH Binance Vision
   5m OI (`oi_binance_hist_btc` / `oi_binance_hist_eth`, E-034), then the
   user-directed universe-wide backfill/probe generalized the dataset convention
@@ -537,7 +562,14 @@ implementation exists.
   separately authorized Stage-3 runner uses the identical frozen four-cell
   signal grid, ADR-0012 exact inverse-perpetual accounting, base-cost fold-refit
   WF/CPCV, stress re-costing, and checkpoint-only artifacts. It is not wired to
-  any UI/API or deployment surface.
+  any UI/API or deployment surface. H-010 E-057 adds a two-step registered
+  Stage-2 path: one fixed-anchor, zero-grid-trial calibration freezes the power
+  input, then the active caller validates its hash before DB access and combines
+  full source-aware candle coverage with distinctness, cost, and power checks.
+  E-057 fails and stops before Stage 3. Its structurally impossible 91-day/
+  365-common-day distinctness result remains immutable; future contracts must
+  declare a satisfiable formal-window/reference overlap before registration.
+  H-022/E-058 Stage-2 ownership is `backtesting/taker_flow_probe.py`: it parses existing Binance 1m `raw_payload.raw[9]/[10]` without download or schema changes and never enters Stage 3.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
@@ -547,6 +579,7 @@ implementation exists.
   `backtesting/pipeline_idea_generator.py`, `backtesting/pipeline_refit.py`,
   `backtesting/pipeline_power_screen.py`, `backtesting/pipeline_stage2_registry.py`,
   `backtesting/pipeline_stage3_registry.py`,
+  `backtesting/xvenue_leadlag_probe.py`,
   `backtesting/xvenue_funding_spread_probe.py`,
   `backtesting/xvenue_funding_spread_backtest.py`.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
@@ -582,6 +615,7 @@ implementation exists.
   `tests/unit/test_pipeline_orchestrator.py`,
   `tests/unit/test_pipeline_funnel_report.py`,
   `tests/unit/test_f_vol_regime_opt_stage2.py`,
+  `tests/unit/test_xvenue_leadlag_probe.py`,
   `tests/unit/test_xvenue_funding_spread_probe.py`,
   `tests/unit/test_h021_inverse_perp_accounting.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
@@ -673,19 +707,24 @@ implementation exists.
   current nearest-30d option chain, atomically simulate sells at bid/buys at
   ask, append R8 records (including journaled chain misses and R8.3 rejections),
   and generate the ADR-0011 bias report.
-- Frontend/API files: none.
+- Frontend/API files: `frontend/app.js`, `frontend/data.js`,
+  `frontend/view-research.js`, `src/okx_quant/api/routes_research.py`,
+  `src/okx_quant/api/server.py`, and `scripts/run_server.py`. The engine app is
+  status-only; mutation routes are enabled only by a loopback standalone bind.
 - Execution files: `src/okx_quant/execution/deribit_shadow/`,
   `scripts/run_h014_shadow.py`.
 - Data / artifacts: reads `external_observations` and `canonical_candles`, then
   Deribit allow-listed public REST data; appends runtime JSONL under
-  `results/shadow_h014/`. No DB write or schema change.
+  `results/shadow_h014/`. A persistent sidecar lock serializes manual, UI, and
+  scheduled journal-producing cycles. No DB write or schema change.
 - Config: `config/h014_shadow.yaml` freezes `ivp_min=85`, `z_min=0.5`,
   1/30-unit tranches, and the 1.0-unit cap; `config/risk.yaml` is untouched.
 - Research imports (read-only): `research/probes/f_vol_regime_opt_probe.py`,
   `research/probes/h014_collect_leg_marks.py`,
   `research/probes/h014_stage3_backtest.py`.
 - Tests: `tests/unit/test_h014_shadow.py`,
-  `tests/unit/test_h014_options_accounting.py`.
+  `tests/unit/test_h014_options_accounting.py`,
+  `tests/unit/test_routes_research.py`.
 - Docs: ADR-0011, `docs/DOMAIN_RULES.md` R8, `docs/DATA_FLOW.md`, this map,
   `docs/RUNBOOK.md`, and the change manifest.
 - Do-not-touch notes: no private/authenticated endpoint, broker/order path,

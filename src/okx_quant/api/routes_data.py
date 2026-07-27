@@ -1518,12 +1518,21 @@ async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
     try:
         rows = await conn.fetch(
             """
+            WITH coverage AS (
+                SELECT
+                    dataset_id,
+                    MIN(observed_at) AS first_ts,
+                    MAX(observed_at) AS last_ts,
+                    COUNT(*)::bigint AS row_count
+                FROM external_observations
+                GROUP BY dataset_id
+            )
             SELECT
                 d.dataset_id AS inst_id,
                 COALESCE(d.frequency, 'external') AS bar,
                 coverage.first_ts,
                 coverage.last_ts,
-                coverage.row_count,
+                COALESCE(coverage.row_count, 0)::bigint AS row_count,
                 d.provider,
                 d.value_kind,
                 d.frequency,
@@ -1531,14 +1540,7 @@ async def _fetch_external_coverage(conn: Any) -> list[dict[str, Any]]:
                 d.attribution,
                 COALESCE((d.metadata->>'research_only')::boolean, false) AS research_only
             FROM external_datasets d
-            LEFT JOIN LATERAL (
-                SELECT
-                    MIN(o.observed_at) AS first_ts,
-                    MAX(o.observed_at) AS last_ts,
-                    COUNT(*) AS row_count
-                FROM external_observations o
-                WHERE o.dataset_id = d.dataset_id
-            ) coverage ON TRUE
+            LEFT JOIN coverage ON coverage.dataset_id = d.dataset_id
             ORDER BY d.dataset_id
             """
         )

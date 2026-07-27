@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -50,6 +50,34 @@ Expected `Content-Type`: `application/javascript` or `text/javascript`. Any of t
 - Full console error text
 - Network tab screenshot showing failed requests and their status + MIME type
 - Output of `curl -I http://localhost:8080/app.js`
+
+---
+
+## Market Data Coverage Unavailable or Timed Out
+
+**Symptoms:** The coverage card reports `signal timed out`, `Market data
+coverage unavailable`, or fails to load rows that exist in TimescaleDB.
+
+1. Verify both services, not only the database:
+   ```powershell
+   Test-NetConnection localhost -Port 5432
+   netstat -ano | Select-String ':8080'
+   Invoke-WebRequest http://localhost:8080/api/data/coverage
+   ```
+2. Treat HTTP 503 as a database-readiness/connection problem. Confirm
+   `DATABASE_URL`, then start the DB before the API. The full Compose stack
+   waits for the TimescaleDB health check; a standalone server does not.
+3. If the request times out, inspect the external-coverage query. The current
+   contract is one `GROUP BY dataset_id` scan joined once to the dataset table,
+   not a correlated aggregate per dataset.
+4. Record the response status, elapsed time, returned row count, API PID/port,
+   and whether the server was standalone or engine mode. Do not report an empty
+   table as proof that the DB contains no data.
+
+Known separate gaps: run-list/result-summary reads now expose outage without a
+file fallback as 503 (F51), but remaining per-artifact DB exceptions still need
+the same contract. Engine-mode API-key protection also has no browser credential
+flow (F52). Diagnose those before adding retries or increasing frontend timeouts.
 
 ---
 

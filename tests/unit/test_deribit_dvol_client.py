@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from okx_quant.data.external_clients.deribit_dvol import DeribitDVOLClient
+from okx_quant.data.external_clients.deribit_dvol import (
+    DeribitDVOLClient,
+    DeribitHistoricalVolatilityClient,
+)
 
 
 def test_deribit_dvol_client_pages_backward_from_continuation_timestamp(monkeypatch):
@@ -106,3 +109,35 @@ def test_deribit_dvol_client_rejects_unknown_resolution(monkeypatch):
 
     with pytest.raises(ValueError, match="unsupported DVOL resolution"):
         client.fetch(currency="BTC", resolution="300")
+
+
+def test_deribit_historical_volatility_client_filters_and_deduplicates(monkeypatch):
+    client = DeribitHistoricalVolatilityClient()
+    calls = []
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda params: calls.append(params) or {
+            "result": [
+                [1704067200000, 40.0],
+                [1704070800000, 41.0],
+                [1704070800000, 42.0],
+                [1704074400000, 43.0],
+                ["bad", 99.0],
+                [1704070800000, -1.0],
+            ]
+        },
+    )
+
+    rows = client.fetch(
+        currency="btc",
+        start=datetime(2024, 1, 1, 1, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 1, 2, tzinfo=timezone.utc),
+    )
+
+    assert calls == [{"currency": "BTC"}]
+    assert len(rows) == 1
+    assert rows[0]["observed_at"] == datetime(2024, 1, 1, 1, tzinfo=timezone.utc)
+    assert rows[0]["published_at"] == rows[0]["observed_at"]
+    assert rows[0]["value_num"] == 42.0
+    assert rows[0]["fields"]["unit"] == "annualized_percent"

@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -62,6 +62,12 @@ python scripts/market_data/init_db.py
 python scripts/market_data/import_parquet_ohlcv.py --bar 1H
 python scripts/market_data/import_parquet_funding.py
 ```
+
+Starting the full Compose stack also waits for the TimescaleDB health check
+before starting `okx-quant`. Inside containers, `DATABASE_URL` takes precedence
+over the local YAML DSN so the app reaches the `timescaledb` service rather than
+container-local `localhost`. A standalone server still requires both a reachable
+DB and an explicitly started API process.
 
 For a targeted Binance OHLCV repair, use an exclusive `--end` window:
 
@@ -291,10 +297,33 @@ schema and fixed-scope promotion (the command reruns idempotently):
 python scripts\promote_okx_canonical_1m.py
 ```
 
+The no-flag defaults remain `[2024-01-01, 2026-06-17)`. For the separately
+authorized 2020-2023 history extension, use ISO dates and then run the exact
+same command a second time; both resolved `promoted` counts must stay zero and
+the second run's venue counts must also be zero:
+
+```powershell
+python scripts\promote_okx_canonical_1m.py `
+    --start 2020-01-01 `
+    --end 2024-01-01
+```
+
+The command compares aggregate raw/resolved timestamp fingerprints before any
+write and wraps both symbols in one transaction. A fingerprint mismatch or any
+resolved-table change aborts and rolls back the full operation.
+
 Then use this one-shot read-only verifier:
 
 ```powershell
 python scripts\verify_okx_1m_backfill.py
+```
+
+Verify the complete promoted history with:
+
+```powershell
+python scripts\verify_okx_1m_backfill.py `
+    --start 2020-01-01 `
+    --end 2026-06-17
 ```
 
 The verifier reuses `pipeline_stage2_registry.probe_xvenue` over
@@ -305,11 +334,65 @@ parity and zero OKX rows in the priority-resolved table for this window.
 
 Completed local evidence on 2026-07-17: BTC and ETH each have 1,293,120 raw and
 venue-canonical rows, zero mismatches, 1.0 OKX coverage/alignment, and zero
-resolved OKX rows. A second promotion changed zero rows. This is data-layer
-verification only; do not run H-010, edit its ledger/verdict, or claim promotion
-or deployment readiness from this result.
+resolved OKX rows. A second promotion changed zero rows. That promotion remains
+data-layer evidence only; the separately authorized E-057 commands below create
+the later H-010 research verdict. Neither result is promotion or deployment
+evidence.
+
+Completed historical extension evidence on 2026-07-18: BTC and ETH each added
+2,103,840 venue rows for `[2020-01-01, 2024-01-01)` while changing zero
+resolved rows. The final-code rerun changed zero venue and zero resolved rows.
+Across `[2020-01-01, 2026-06-17)`, each leg has 3,396,960 raw and venue rows,
+zero OHLCV mismatches, 1.0 OKX coverage/alignment, zero missing raw rows, and an
+empty `raw_gap_ranges` list. No Binance row filled an OKX gap.
+Resolved global counts were identical before and after (`binance/raw`
+93,445,900; `deribit/raw` 2,667,850; `okx/raw` 333,723), and two-seed
+full-row fingerprints over both historical symbol scopes were also identical.
+
+### H-010 Stage-2 calibration and registered probe
+
+The strategy probe is intentionally two commands. The first command evaluates
+one frozen calibration anchor and writes a fresh power-input artifact; it does
+not run the four-cell grid or mutate pipeline status:
+
+```powershell
+python -m backtesting.xvenue_leadlag_probe `
+    --output results\h010_e057_stage2_20260718\h010_power_input.json
+```
+
+Then the active caller validates that artifact and its reference hashes before
+opening the DB connection:
+
+```powershell
+python scripts\run_pipeline_stage2_data_probe.py `
+    --candidate xvenue `
+    --output-root results\h010_e057_stage2_20260718 `
+    --power-input results\h010_e057_stage2_20260718\h010_power_input.json `
+    --start 2020-01-01 `
+    --end-exclusive 2026-06-17
+```
+
+Both commands refuse to treat another venue's funding as OKX funding. Completed
+E-057 evidence on 2026-07-18: candle coverage/alignment is 1.0 at 3,396,960
+rows per venue/symbol, but exact OKX funding is absent. The one frozen anchor
+completed 7,376 episodes and failed cost (median gross 1.3636 bps versus 8.0
+bps median round trip). Stage 2 therefore fails with zero grid trials and Stage
+3 must not run. Never overwrite either E-057 artifact; choose a new experiment
+ID/output directory only after a separately approved ex-ante thesis.
 
 Rollback the data rows only after stopping source-aware consumers:
+
+```sql
+-- Roll back only the 2026-07-18 history extension.
+DELETE FROM venue_canonical_candles
+WHERE source_primary = 'okx'
+  AND inst_id IN ('BTC-USDT-SWAP', 'ETH-USDT-SWAP')
+  AND bar = '1m'
+  AND ts >= '2020-01-01T00:00:00Z'
+  AND ts < '2024-01-01T00:00:00Z';
+```
+
+The earlier frozen-window rollback remains:
 
 ```sql
 DELETE FROM venue_canonical_candles
@@ -326,8 +409,9 @@ After code rollback, drop `canonical_candles_by_source` and then
 
 ### Stage-2 statistical-power caller inputs
 
-Active registry CLI runs require one candidate plus `--breadth`, `--n-obs`,
-`--n-trials`, and `--plausible-net-sharpe`. Funding backfill requires the same
+Active registry CLI runs normally require one candidate plus `--breadth`, `--n-obs`,
+`--n-trials`, and `--plausible-net-sharpe`; H-010 instead requires the frozen
+`--power-input` artifact above. Funding backfill requires the same
 four flags unless `--skip-stage2-probe` or `--no-db` makes the probe inactive.
 The orchestrator accepts `--power-inputs <json>` where the root object is keyed
 by exact `candidate_id`; each value contains those four fields. Values are
@@ -810,7 +894,10 @@ python scripts/run_h014_shadow.py --report
 ```
 
 Runtime files are `results/shadow_h014/journal.jsonl` and
-`bias_report.json`. Do not truncate or edit the journal.
+`bias_report.json`; `journal.jsonl.lock` is the persistent cross-process lock
+sidecar. Do not truncate, edit, or remove the journal or its lock while a cycle
+may be running. If a UI/manual/scheduled cycle overlaps another, one fails
+closed with `another H-014 shadow cycle is already running`.
 
 USER-APPROVED SCHEDULE (2026-07-15, after the review conditions cleared):
 `quant_h014_shadow_daily` runs `scripts\run_h014_shadow_task.cmd` daily at
@@ -837,6 +924,31 @@ Unregister-ScheduledTask -TaskName "quant_h014_deribit_shadow" -Confirm
 
 Eight weeks plus a complete bias report unlock only a live ADR discussion;
 live execution still requires R7.2 and a separate explicit user approval.
+
+### Research Ops frontend
+
+Start the standalone server on loopback, then open `Research Ops` in the left
+navigation. Use another port if 8080 is occupied:
+
+```powershell
+python scripts/run_server.py --port 8082
+```
+
+- `Run one shadow cycle` invokes the exact H-014 manual path above and refreshes
+  the journal/bias status. It still has no credentials, private API, or orders.
+- `Run research screen` accepts comma-separated H-009 lookback days and
+  quantiles. It runs a full-sample sensitivity grid only; every submitted
+  combination increments the displayed known family-trial lower bound. The
+  Experiment Registry remains authoritative, and the result is not WF/CPCV or
+  promotion evidence.
+- H-009 request, summary, and error artifacts are written to a new directory
+  under `results/h009_parameter_sweeps/`. Do not edit or reuse them as registered
+  experiment evidence without completing the experiment-governance workflow.
+- Mutation routes return HTTP 403 on the engine app and on non-loopback binds.
+  The UI's custom action header also blocks cross-origin form posts. Stopping the
+  standalone server disables the UI action surface. No deployment configuration
+  is changed by using this page. H-009's in-memory job list resets on restart;
+  written artifacts remain.
 
 ## Scheduled External Ingest (OKX liquidation)
 
@@ -896,18 +1008,23 @@ schtasks /Delete /TN quant_deribit_options_snapshot /F
 ```
 
 The snapshot writes one row per currency per run into `external_observations`;
-audit first/last timestamps and gaps before using the series in research.
+new snapshots retain the complete current listed chain in `raw_payload`, sorted
+by expiry, strike, and option type. Audit first/last timestamps and gaps before
+using the series in research; past full chains cannot be reconstructed from this
+live endpoint.
 
-## Scheduled External Ingest (Deribit funding, DVOL, option flow)
+## Scheduled External Ingest (Deribit funding, volatility, option flow)
 
-Deribit funding, hourly DVOL, and option-flow datasets have historical backfills
-plus forward accumulation through `scripts/market_data/ingest_external.py`.
+Deribit funding, hourly DVOL, rolling historical volatility, and option-flow
+datasets use `scripts/market_data/ingest_external.py`. Historical volatility is
+forward-accumulated because its public endpoint exposes only a recent window.
 Register these Windows scheduled tasks yourself if the workstation should keep
 the datasets fresh; Codex should not register them during implementation:
 
 ```powershell
 schtasks /Create /TN quant_deribit_funding_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset funding_deribit_btc --dataset funding_deribit_eth >> logs\deribit_funding_ingest.log 2>&1" /F
 schtasks /Create /TN quant_deribit_dvol_1h_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset dvol_deribit_btc_1h --dataset dvol_deribit_eth_1h >> logs\deribit_dvol_1h_ingest.log 2>&1" /F
+schtasks /Create /TN quant_deribit_hv_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --dataset hv_deribit_eth_1h >> logs\deribit_hv_ingest.log 2>&1" /F
 schtasks /Create /TN quant_deribit_optflow_forward /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset optflow_deribit_btc --dataset optflow_deribit_eth >> logs\deribit_optflow_forward.log 2>&1" /F
 ```
 
@@ -916,17 +1033,30 @@ Manual run / removal:
 ```powershell
 schtasks /Run /TN quant_deribit_funding_ingest
 schtasks /Run /TN quant_deribit_dvol_1h_ingest
+schtasks /Run /TN quant_deribit_hv_ingest
 schtasks /Run /TN quant_deribit_optflow_forward
 schtasks /Delete /TN quant_deribit_funding_ingest /F
 schtasks /Delete /TN quant_deribit_dvol_1h_ingest /F
+schtasks /Delete /TN quant_deribit_hv_ingest /F
 schtasks /Delete /TN quant_deribit_optflow_forward /F
 ```
 
 The forward option-flow path fetches the recent live window from
 `www.deribit.com`; if a task is down for more than the live lookback, rerun the
 history backfill script with explicit UTC `--start`/`--end` bounds and
-`--resume`. Keep all tasks at hourly cadence or slower to stay within the
-project's <=5 req/s Deribit rule.
+`--resume`. If the history and live windows do not yet overlap, rerun the
+explicit missing interval without `--resume` after the history host catches up.
+Keep all tasks at hourly cadence or slower to stay within the project's <=5
+req/s Deribit rule.
+
+Manual historical-volatility refresh:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --dataset hv_deribit_eth_1h
+```
+
+`--start`/`--end` only filter the rolling response locally; they cannot request
+older historical-volatility rows from Deribit.
 
 Daily DVOL (`dvol_deribit_btc`/`dvol_deribit_eth`) is manual-update only by the
 2026-07-12 user decision (no scheduled task). Update it with explicit bounds —
@@ -938,8 +1068,8 @@ partial daily bar:
 python scripts\market_data\ingest_external.py --dataset dvol_deribit_btc --dataset dvol_deribit_eth --start <last_ingested_date> --end <today>T00:00:00
 ```
 
-History 2021-03-24 through 2026-07-11 (1,936 rows per symbol, gap-free) was
-backfilled 2026-07-12.
+History 2021-03-24 through 2026-07-25 (1,950 rows per symbol) was current after
+the manual 2026-07-26 top-up.
 
 ## Deribit Option Flow Backfill
 

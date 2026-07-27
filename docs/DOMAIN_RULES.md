@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-24
 expires: none
 superseded_by: null
 ---
@@ -72,8 +72,14 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
   receives negative funding (and vice versa). Sign errors invert strategy PnL.
 - **R3.2** Funding settles on the venue's settlement schedule (8h windows for
   OKX SWAP). A replay shorter than a settlement window understates funding.
+  H-010 episode settlement windows are entry-inclusive and exit-exclusive
+  (`[entry, exit)`), implemented with `bisect_left` at both boundaries; this
+  clarification has zero numeric effect on immutable E-057.
 - **R3.3** Funding income/expense must be a tracked cashflow, reconcilable to
   `funding_settlement_count`.
+- **R3.4** Funding cashflow must come from the declared execution venue. Missing
+  execution-venue settlements fail closed; a signal/reference venue's funding
+  series must never be substituted.
 
 ## R4. Sizing and Risk
 
@@ -132,6 +138,18 @@ Owning code: `src/okx_quant/risk/`, `src/okx_quant/portfolio/`.
   source-aware canonical identity `(source_primary, inst_id, bar, ts)`; it must
   not reinterpret the resolved default as multi-venue storage. A same-source
   corrected/validated resolved row takes precedence over raw venue data.
+- **R6.6** A future Stage-2 distinctness contract must be structurally
+  satisfiable before a probe runs. For H-010, the candidate proxy must use the
+  post-calibration formal window and every gating reference must declare enough
+  overlapping daily returns to permit `MIN_COMMON_DAYS=365`. An impossible
+  declared overlap is a contract refusal, not a data-conditional distinctness
+  measurement. `check_distinctness_feasibility` now enforces this before both registered Stage-2 probe paths. Immutable E-057 and its recorded FAIL remain unchanged.
+- **R6.7** Point-in-time universe membership artifacts are immutable evidence
+  inputs. An exchange-scoped consumer must collapse declared same-economic-asset
+  aliases only after PIT eligibility and top-N selection, preserve the selected
+  order, keep the canonical tradable contract once, and recompute its effective
+  member-day denominator without refilling from rank N+1. For Binance,
+  `SHIB-USDT-SWAP` aliases to `1000SHIB-USDT-SWAP`.
 
 ## R7. Promotion Gates
 
@@ -180,7 +198,10 @@ real execution requires a new ADR and R7.2 approval.
   credential or order capability. Chain-construction failures journal as
   `missed_entry`; R8.3 intent-set failures journal as `rejected`, which is
   counted separately from and excluded from the missed-entry denominator like
-  `cap_rejected`. At least eight weeks of fresh daily records plus fill-bias,
+  `cap_rejected`. Every journal-producing UI, CLI, and scheduled process must
+  acquire the same non-blocking cross-process cycle lock before reading or
+  appending journal state; an overlapping cycle fails closed without writing.
+  At least eight weeks of fresh daily records plus fill-bias,
   missed-entry, and mark-tracking metrics unlock only a future live-ADR
   discussion; live still requires R7.2 and explicit user approval.
 

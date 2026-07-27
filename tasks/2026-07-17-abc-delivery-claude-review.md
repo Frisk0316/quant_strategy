@@ -126,6 +126,16 @@ remaining 2020-01-01→2023-12-31 OKX raw history (same script, wider
 window) to realize the long-history benefit; two uncommitted unrelated
 H-021/E-056 handoff files remain in the tree.
 
+**User authorization 2026-07-18 ("是, 都授權"):** both follow-ups approved —
+(1) 2020–2023 OKX history promotion, Codex task
+`tasks/2026-07-18-okx-history-promotion-codex-tasks.md`; (2) H-010 Stage-1
+spec, written by Claude with a pre-registered grid BEFORE any probe:
+`docs/superpowers/specs/2026-07-18-f-xvenue-leadlag-hypothesis.md`
+(min_detectable_sharpe 0.8682 @ breadth 1.5 / n_obs 2250 / n_trials 4 on
+the long window — the promotion is therefore a hard prerequisite for the
+Stage-2 probe). Stage-2 execution remains a separate Codex task; Stage-3
+is NOT authorized.
+
 ## Explicitly NOT approved by this review
 
 No promotion, demo, shadow, or live readiness claim. The power screen is

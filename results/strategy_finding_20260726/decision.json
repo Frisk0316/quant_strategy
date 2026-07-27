@@ -1,0 +1,58 @@
+{
+  "batch_id": "strategy_finding_20260726",
+  "decision_rule": "Stage-2 requires four PASS checks. The Stage-3 precheck requires activity, DSR/PSR >=0.95, DSR<=PSR, reconciled caller-declared trials, green leak and non-idealized-fill flags, authoritative venue-matched ct_val, and retained raw CPCV paths. Formal checkpoint1_auto follows the actual registry row; promotion remains blocked.",
+  "directions": {
+    "H-009": {
+      "checkpoint1_auto_status": "pending_actual_registry_row",
+      "checkpoint_precheck_passed": false,
+      "family_cumulative_n_trials": 8,
+      "grid_trials_consumed": 4,
+      "promotion_gate_passed": false,
+      "retry_budget_after_run": {
+        "k_limit": 2,
+        "k_used": 1
+      },
+      "stage2_artifact": "results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/stage2_feasibility.json",
+      "stage2_status": "PASS",
+      "stage3_executed": true,
+      "stage3_summary": "results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/summary.json",
+      "statistical_gate_passed": false,
+      "verdict": "CHECKPOINT_EVIDENCE_FAIL"
+    },
+    "H-023": {
+      "checkpoint1_auto_status": "not_run",
+      "checkpoint_precheck_passed": false,
+      "family_cumulative_n_trials": 0,
+      "grid_trials_consumed": 0,
+      "promotion_gate_passed": false,
+      "retry_budget_after_run": {
+        "k_limit": 2,
+        "k_used": 0
+      },
+      "stage2_artifact": "results/strategy_finding_20260726/f_xs_idiovol/stage2_feasibility.json",
+      "stage2_status": "FAIL",
+      "stage3_executed": false,
+      "stage3_summary": null,
+      "statistical_gate_passed": false,
+      "verdict": "STAGE2_FAIL_STOP"
+    }
+  },
+  "live_trading_authorized": false,
+  "pre_registration": {
+    "frozen_file_sha256": {
+      "docs/EXPERIMENT_REGISTRY.md": "0a6ce4f356a2ede2634904e77564f60c82d395afcff8c4d3644671c74d684ece",
+      "docs/HYPOTHESIS_LEDGER.md": "a3a64c2f8ed2041d6ad9e36c1800a8d83c5ede31c0d351c6f7069ead7c6c2a84",
+      "docs/superpowers/specs/2026-07-26-strategy-finding-round.md": "00191c05ede721916dc99caa7530bf6fdd347334506eb558556bb8dac1d3c22e"
+    },
+    "receipt_path": "tasks/2026-07-26-strategy-finding-preregistration-receipt.md",
+    "receipt_sha256": "cee849291e8c06bfa5a1f4541cb5e580a926d852c0acbd6ed02b9df34263ca73",
+    "validated": true
+  },
+  "promotion_gate_passed": false,
+  "schema_version": 1,
+  "shared_data_evidence": "results/strategy_finding_20260726/data_evidence.json",
+  "window": {
+    "end_exclusive": "2026-06-17",
+    "start": "2024-01-01"
+  }
+}

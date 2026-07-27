@@ -3,6 +3,7 @@ import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { html } from 'htm/preact';
 import './view-ledger.js';
+import './view-research.js';
 
 const useAppState = useState;
 const useAppEffect = useEffect;
@@ -173,6 +174,7 @@ function App() {
     { id: "metrics", label: "Metrics Glossary", group: "Analysis", glyph: "metrics" },
     { id: "progress", label: "進度 / Progress", group: "Analysis", glyph: "progress" },
     { id: "ledger", label: "研究總表 / Ledger", group: "Analysis", glyph: "progress" },
+    { id: "research", label: "Research Ops", group: "Analysis", glyph: "config" },
     { id: "risk", label: "Risk Monitor", group: "Live", glyph: "risk" },
     { id: "manual", label: "使用手冊", group: "Help", glyph: "manual" },
   ];
@@ -188,6 +190,7 @@ function App() {
     metrics: ["Metrics Glossary", "Definitions for result metrics and execution counters"],
     progress: ["進度 / Progress", "Per-workstream milestone progress"],
     ledger: ["研究總表 / Ledger", "Research status, statistical evidence, and funnel counts"],
+    research: ["Research Ops", "Manual H-014 shadow and H-009 sensitivity screening"],
     risk: ["Risk Monitor", "Config limits and selected-run gate status"],
     manual: ["使用手冊", "架構、驗證、風控與設定來源"],
   };
@@ -277,6 +280,7 @@ function App() {
         ${view === "metrics" && html`<${window.MetricsGlossaryView} />`}
         ${view === "progress" && html`<${window.ProgressView} />`}
         ${view === "ledger" && html`<${window.LedgerView} />`}
+        ${view === "research" && html`<${window.ResearchOpsView} />`}
         ${view === "risk" && html`<${window.RiskView} selectedRunId=${selectedRunId} />`}
         ${view === "manual" && html`<${window.ManualView} />`}
       </main>

@@ -1,0 +1,230 @@
+{
+  "anchor": {
+    "lookback_min": 240,
+    "maker_fee_bps": 2.0,
+    "maker_slippage_bps": 2.0,
+    "max_hold_min": 60,
+    "taker_fee_bps": 5.0,
+    "taker_slippage_bps": 2.0,
+    "z_entry": 2.0,
+    "z_exit": 0.5
+  },
+  "calibration": {
+    "aligned_rows": {
+      "BTC-USDT-SWAP": 131040,
+      "ETH-USDT-SWAP": 131040
+    },
+    "cost_gate_passed": false,
+    "daily_net_returns": {
+      "2020-01-01": -0.018974357672975083,
+      "2020-01-02": -0.007798034428807816,
+      "2020-01-03": -0.003505893340131166,
+      "2020-01-04": -0.019804965802639556,
+      "2020-01-05": -0.017336084840090915,
+      "2020-01-06": -0.0031116601672770226,
+      "2020-01-07": -0.02423944240015155,
+      "2020-01-08": -0.039977714897935585,
+      "2020-01-09": -0.02502545599693565,
+      "2020-01-10": -0.0161352751463427,
+      "2020-01-11": -0.02026132730020939,
+      "2020-01-12": -0.022209452086128414,
+      "2020-01-13": -0.028683143617361056,
+      "2020-01-14": -0.014602927240455844,
+      "2020-01-15": -0.013068916161022626,
+      "2020-01-16": -0.045432932758030904,
+      "2020-01-17": -0.020190183721061822,
+      "2020-01-18": -0.04138978910715442,
+      "2020-01-19": -0.01680652780289953,
+      "2020-01-20": -0.05741095887819593,
+      "2020-01-21": -0.02807253618426379,
+      "2020-01-22": -0.036289806592836225,
+      "2020-01-23": -0.03506531191123699,
+      "2020-01-24": -0.021927129802570316,
+      "2020-01-25": -0.03200567104935661,
+      "2020-01-26": -0.025512893098528645,
+      "2020-01-27": -0.04047557161247453,
+      "2020-01-28": -0.012960528181826638,
+      "2020-01-29": -0.03815289768560985,
+      "2020-01-30": -0.020811836733939493,
+      "2020-01-31": -0.01421840136313572,
+      "2020-02-01": -0.029059609383405592,
+      "2020-02-02": 0.0045958711251673275,
+      "2020-02-03": -0.043282495126634464,
+      "2020-02-04": -0.026503104116380218,
+      "2020-02-05": -0.014168471784803151,
+      "2020-02-06": -0.02296073566707904,
+      "2020-02-07": -0.02090924827369271,
+      "2020-02-08": -0.013912255533768632,
+      "2020-02-09": -0.012481756402738848,
+      "2020-02-10": -0.0029876051906890678,
+      "2020-02-11": -0.011039982106688016,
+      "2020-02-12": -0.01475140464830829,
+      "2020-02-13": 0.01915169965616186,
+      "2020-02-14": -0.020716594961511126,
+      "2020-02-15": 0.022344989624663653,
+      "2020-02-16": -0.0002940975828550823,
+      "2020-02-17": 0.015181244104502606,
+      "2020-02-18": 0.003771798467384584,
+      "2020-02-19": -0.017889802964262364,
+      "2020-02-20": -0.024763571137960096,
+      "2020-02-21": -0.021591931424084113,
+      "2020-02-22": -0.03431524921095398,
+      "2020-02-23": -0.03569526398969247,
+      "2020-02-24": -0.012362386240259586,
+      "2020-02-25": -0.0162507638028166,
+      "2020-02-26": 0.002028220911841963,
+      "2020-02-27": 0.009005231154713885,
+      "2020-02-28": -0.0023326994451818212,
+      "2020-02-29": -0.017407835200963506,
+      "2020-03-01": -0.022021531637200994,
+      "2020-03-02": -0.02757467339753114,
+      "2020-03-03": -0.023624740742200567,
+      "2020-03-04": -0.02495211196341557,
+      "2020-03-05": -0.021949036194430848,
+      "2020-03-06": -0.014571530796504356,
+      "2020-03-07": -0.02078576506808246,
+      "2020-03-08": -0.023575055979973444,
+      "2020-03-09": -0.0012236694969285607,
+      "2020-03-10": 0.006364085072555875,
+      "2020-03-11": -0.01718666012679049,
+      "2020-03-12": -0.0876371744197603,
+      "2020-03-13": 0.01374209118550881,
+      "2020-03-14": 0.07713243707687518,
+      "2020-03-15": -0.010592463450046843,
+      "2020-03-16": 0.039117252038383454,
+      "2020-03-17": -0.04671784501182677,
+      "2020-03-18": 0.031348897550951105,
+      "2020-03-19": -0.053509334230492436,
+      "2020-03-20": 0.11417526650264978,
+      "2020-03-21": -0.026969714942873892,
+      "2020-03-22": -0.03720568472832364,
+      "2020-03-23": -0.029312300572800116,
+      "2020-03-24": -0.030670037059518474,
+      "2020-03-25": -0.022893508658587292,
+      "2020-03-26": -0.04618461714336497,
+      "2020-03-27": -0.009151481348324098,
+      "2020-03-28": -0.032759460377523315,
+      "2020-03-29": -0.0366365544192259,
+      "2020-03-30": -0.03231347262126151,
+      "2020-03-31": -0.026299256242843023
+    },
+    "discarded_terminal_positions": 2,
+    "errors": [],
+    "expected_rows_per_symbol": 131040,
+    "funding": {
+      "complete": false,
+      "source": "okx",
+      "symbols": {
+        "BTC-USDT-SWAP": {
+          "expected_settlements": 273,
+          "first_missing": "2020-01-01T00:00:00+00:00",
+          "missing_settlements": 273,
+          "observed_settlements": 0
+        },
+        "ETH-USDT-SWAP": {
+          "expected_settlements": 273,
+          "first_missing": "2020-01-01T00:00:00+00:00",
+          "missing_settlements": 273,
+          "observed_settlements": 0
+        }
+      },
+      "wrong_sources_ignored": []
+    },
+    "funding_complete": false,
+    "input_valid": true,
+    "measured": false,
+    "median_gross_capture_bps": 1.3635748633905598,
+    "median_roundtrip_cost_bps": 8.0,
+    "provisional_net_sharpe": -12.726422455540146,
+    "trade_count": 7376
+  },
+  "calibration_window": {
+    "end_exclusive": "2020-04-01T00:00:00+00:00",
+    "excluded_from_formal_validation": true,
+    "start": "2020-01-01T00:00:00+00:00"
+  },
+  "distinctness": {
+    "details": {
+      "advisory_references": [
+        "F-XVENUE-FUNDING-SPREAD"
+      ],
+      "candidate_kind": "fixed_anchor_daily_net_strategy_returns",
+      "common_days": {
+        "F-FUNDING-XS-DISPERSION": 0,
+        "F-VOL-REGIME-OPT": 0,
+        "F-XVENUE-FUNDING-SPREAD": 0
+      },
+      "correlations": {
+        "F-FUNDING-XS-DISPERSION": null,
+        "F-VOL-REGIME-OPT": null,
+        "F-XVENUE-FUNDING-SPREAD": null
+      },
+      "gating_references": [
+        "F-FUNDING-XS-DISPERSION",
+        "F-VOL-REGIME-OPT"
+      ],
+      "reference_kind": "daily_strategy_returns",
+      "threshold": 0.3,
+      "undefined_fails_closed": true
+    },
+    "name": "distinctness",
+    "reason": "daily-return correlation unavailable or has fewer than 365 common dates",
+    "status": "FAIL"
+  },
+  "execution": {
+    "execution_venue": "okx",
+    "fill_time": "exact_aligned_open_t_plus_1",
+    "maker_proxy_idealized": true,
+    "signal_time": "close_t",
+    "signal_venue": "binance"
+  },
+  "failure_reasons": [
+    "venue-matched OKX funding is incomplete; no cross-venue substitution",
+    "median gross capture does not exceed median exact round-trip cost",
+    "required daily-return distinctness correlations are unavailable or fail"
+  ],
+  "family_id": "F-XVENUE-LEADLAG",
+  "formal_window": {
+    "daily_observations": 2268,
+    "end_exclusive": "2026-06-17T00:00:00+00:00",
+    "start": "2020-04-01T00:00:00+00:00"
+  },
+  "grid_trials_evaluated": 0,
+  "hypothesis_id": "H-010",
+  "idealized_fill": true,
+  "kind": "h010_pre_stage2_calibration",
+  "measured": false,
+  "payload_sha256": "4c44cb1d099646bb9f7556dec6f88079c3c30f410e01587002915a9978b9d8db",
+  "promotion_evidence": false,
+  "references": {
+    "F-FUNDING-XS-DISPERSION": {
+      "field": "signal",
+      "format": "json",
+      "path": "results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/family_minting_candidate.json",
+      "sha256": "573516ff9a540894dc1ec8f79ecbdf80f235384b81933b84c9060e1da986a8cf"
+    },
+    "F-VOL-REGIME-OPT": {
+      "field": "ivp_min=75.0|z_min=0.5",
+      "format": "csv",
+      "path": "results/h014_stage3_20260714/combo_daily_returns.csv",
+      "sha256": "e3f353a71da4ae43eae80a85f007f29aab558055f5977e463d8dfa33110753bd"
+    },
+    "F-XVENUE-FUNDING-SPREAD": {
+      "field": "L3_H1__base",
+      "format": "csv",
+      "path": "results/h021_stage3_20260715/combo_daily_returns.csv",
+      "sha256": "f519c9d794c084de94df862b87bfa620b8763ec7ef9f60b99cccce7e6928499f"
+    }
+  },
+  "schema_version": 1,
+  "statistical_power": {
+    "breadth": 1.5,
+    "min_detectable_sharpe": 0.8838161257569653,
+    "n_obs": 2268,
+    "n_trials": 4,
+    "plausible_net_sharpe": 0.0,
+    "plausible_net_sharpe_measured": false
+  },
+  "status": "FAIL",
+  "valid": false
+}

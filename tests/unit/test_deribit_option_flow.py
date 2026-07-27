@@ -120,7 +120,8 @@ def test_option_flow_client_paginates_has_more(monkeypatch):
 
     assert [trade["trade_id"] for trade in trades] == ["1", "2"]
     assert calls[0]["count"] == 1000
-    assert calls[1]["end_timestamp"] == 2000
+    assert calls[0]["sorting"] == "desc"
+    assert calls[1]["end_timestamp"] == 1999
 
 
 def test_resume_start_uses_next_hour_after_checkpoint():

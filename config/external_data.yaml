@@ -87,6 +87,32 @@ datasets:
     required: true
     notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
 
+  hv_deribit_btc_1h:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_historical_volatility
+    attribution: "Data source: Deribit public historical volatility"
+    adapter: deribit_historical_volatility
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: false
+    notes: "Value is Deribit's annualized historical volatility in percent. The public endpoint exposes only a recent rolling window; start/end are local filters, so longer history must be accumulated forward."
+
+  hv_deribit_eth_1h:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_historical_volatility
+    attribution: "Data source: Deribit public historical volatility"
+    adapter: deribit_historical_volatility
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: false
+    notes: "Value is Deribit's annualized historical volatility in percent. The public endpoint exposes only a recent rolling window; start/end are local filters, so longer history must be accumulated forward."
+
   funding_deribit_btc:
     provider: deribit
     frequency: hourly

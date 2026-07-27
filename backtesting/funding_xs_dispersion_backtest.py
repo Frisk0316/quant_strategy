@@ -272,11 +272,13 @@ def _load_postgres_close_and_funding(
                     SELECT ts, funding_rate AS rate
                     FROM funding_rates
                     WHERE inst_id = $1
-                      AND ($2::timestamptz IS NULL OR ts >= $2)
-                      AND ($3::timestamptz IS NULL OR ts <  $3)
+                      AND source = $2
+                      AND ($3::timestamptz IS NULL OR ts >= $3)
+                      AND ($4::timestamptz IS NULL OR ts <  $4)
                     ORDER BY ts
                     """,
                     symbol,
+                    exchange,
                     start_dt,
                     end_dt,
                 )
@@ -330,12 +332,14 @@ def _load_postgres_daily_close_and_funding(
                 SELECT inst_id, date_trunc('day', ts) AS ts, AVG(funding_rate)::float AS rate
                 FROM funding_rates
                 WHERE inst_id = ANY($1::text[])
-                  AND ($2::timestamptz IS NULL OR ts >= $2)
-                  AND ($3::timestamptz IS NULL OR ts <  $3)
+                  AND source = $2
+                  AND ($3::timestamptz IS NULL OR ts >= $3)
+                  AND ($4::timestamptz IS NULL OR ts <  $4)
                 GROUP BY inst_id, date_trunc('day', ts)
                 ORDER BY inst_id, ts
                 """,
                 symbols,
+                exchange,
                 start_dt,
                 end_dt,
             )

@@ -60,6 +60,8 @@ frontend-check:
 	$(NODE) --check frontend/view-glossary.js
 	$(NODE) --check frontend/view-manual.js
 	$(NODE) --check frontend/view-progress.js
+	$(NODE) --check frontend/view-ledger.js
+	$(NODE) --check frontend/view-research.js
 	$(NODE) --check frontend/app.js
 
 api-smoke:

@@ -3,7 +3,7 @@ status: current
 type: manual
 owner: human
 created: 2026-06-25
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -34,9 +34,10 @@ review/data-context input only. The current dataset families are:
 | Family | Dataset ids | Meaning | History |
 | --- | --- | --- | --- |
 | DVOL implied-vol index | `dvol_deribit_btc_1h`, `dvol_deribit_eth_1h` | Hourly Deribit DVOL close, `fields.unit = "dvol_index_points"` | Backfilled from `2024-01-01T00:00:00Z`, then forward-ingested hourly |
+| Historical volatility | `hv_deribit_btc_1h`, `hv_deribit_eth_1h` | Deribit annualized historical volatility, `fields.unit = "annualized_percent"` | Recent rolling public window only; accumulate forward |
 | Perpetual funding | `funding_deribit_btc`, `funding_deribit_eth` | BTC/ETH perpetual `interest_1h`, `fields.unit = "rate_1h_decimal"` | Backfilled from `2024-01-01T00:00:00Z`, then forward-ingested hourly |
 | Option flow | `optflow_deribit_btc`, `optflow_deribit_eth` | Hourly inverse-option trade-flow aggregate; `value_num` is put-vs-call taker-buy premium imbalance | Backfilled from `2024-01-01T00:00:00Z`, checkpointed/resumable, then forward-ingested hourly |
-| Option surface | `optsurf_deribit_btc`, `optsurf_deribit_eth` | Snapshot-only option OI/IV aggregate; `value_num` is total option open interest, fields include max pain and put/call OI ratio | Forward-only; history starts at the first successful snapshot |
+| Option surface | `optsurf_deribit_btc`, `optsurf_deribit_eth` | Snapshot-only option OI/IV aggregate; fields include max pain and put/call OI ratio, while `raw_payload` retains the full current chain sorted by expiry/strike/type | Forward-only; history starts at the first successful snapshot |
 
 For option flow, `value_num` means:
 
@@ -55,13 +56,14 @@ Backfill/forward commands:
 ```powershell
 python scripts\market_data\ingest_external.py --dataset funding_deribit_btc --dataset funding_deribit_eth --start 2024-01-01T00:00:00+00:00 --end <UTC_END>
 python scripts\market_data\ingest_external.py --dataset dvol_deribit_btc_1h --dataset dvol_deribit_eth_1h --start 2024-01-01T00:00:00+00:00 --end <UTC_END>
+python scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --dataset hv_deribit_eth_1h
 python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00:00:00+00:00 --end <UTC_END> --resume
 python scripts\market_data\snapshot_deribit_options.py
 ```
 
 For scheduled forward ingest, see `docs/RUNBOOK.md` sections
 `Scheduled External Ingest (Deribit option surface)`,
-`Scheduled External Ingest (Deribit funding, DVOL, option flow)`, and
+`Scheduled External Ingest (Deribit funding, volatility, option flow)`, and
 `Deribit Option Flow Backfill`. The user registers Windows `schtasks`; Codex
 does not register workstation tasks during implementation.
 

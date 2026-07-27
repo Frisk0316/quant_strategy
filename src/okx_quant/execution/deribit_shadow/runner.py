@@ -12,9 +12,10 @@ import math
 import os
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from urllib.parse import urlparse
 
 import asyncpg
@@ -50,6 +51,45 @@ LEG_SPECS = {
     "put_25d": ("put", "sell"),
     "put_10d": ("put", "buy"),
 }
+
+
+@contextmanager
+def _journal_cycle_lock(journal_path: str | Path) -> Iterator[None]:
+    """Allow only one H-014 journal-producing cycle across processes."""
+    lock_path = Path(f"{journal_path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() == 0:
+        handle.write(b"\0")
+        handle.flush()
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        handle.close()
+        raise RuntimeError("another H-014 shadow cycle is already running") from exc
+
+    try:
+        yield
+    finally:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 def _finite(value: Any, *, positive: bool = False) -> float:
@@ -502,7 +542,6 @@ class Journal:
         if record["event_id"] in self._event_ids:
             return False
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # ponytail: v1 is a single manual process; add a file lock only if scheduling is approved.
         with self.path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
             handle.flush()
@@ -785,31 +824,32 @@ async def run_cycle(
     as_of = datetime.combine(now.date(), dt_time(hour=8), tzinfo=timezone.utc)
     if now < as_of:
         raise RuntimeError("H-014 daily cycle must run at or after 08:00 UTC")
-    signals = await load_signals(dsn, config, as_of)
-    journal = Journal(config["journal_path"])
-    own_client = client is None
-    client = client or DeribitPublicClient(str(config["public_api_url"]))
-    try:
-        vwap_count = _record_prior_vwaps(client, journal, now.date(), now)
-        accounting = _mark_or_settle(client, journal, signals, now)
-        intents = []
-        for signal in signals.values():
-            record = _intent_record(client, journal, signal, now)
-            if record is not None:
-                journal.append(record)
-                intents.append({"currency": signal["currency"], "status": record["status"]})
-        return {
-            "ts": _iso(now),
-            "journal_path": str(journal.path),
-            "intents": intents,
-            "vwap_records": vwap_count,
-            **accounting,
-            "order_capability": False,
-            "credentials_used": False,
-        }
-    finally:
-        if own_client:
-            client.close()
+    with _journal_cycle_lock(config["journal_path"]):
+        signals = await load_signals(dsn, config, as_of)
+        journal = Journal(config["journal_path"])
+        own_client = client is None
+        client = client or DeribitPublicClient(str(config["public_api_url"]))
+        try:
+            vwap_count = _record_prior_vwaps(client, journal, now.date(), now)
+            accounting = _mark_or_settle(client, journal, signals, now)
+            intents = []
+            for signal in signals.values():
+                record = _intent_record(client, journal, signal, now)
+                if record is not None:
+                    journal.append(record)
+                    intents.append({"currency": signal["currency"], "status": record["status"]})
+            return {
+                "ts": _iso(now),
+                "journal_path": str(journal.path),
+                "intents": intents,
+                "vwap_records": vwap_count,
+                **accounting,
+                "order_capability": False,
+                "credentials_used": False,
+            }
+        finally:
+            if own_client:
+                client.close()
 
 
 def _metric(values: list[float]) -> dict[str, Any]:

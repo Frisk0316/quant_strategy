@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -16,17 +16,19 @@ durable backlog.
 
 ## Current goal
 
-Have Claude review the user-ratified ADR-0013 scope/reference floor, F45/F46
-caller/funnel repair, and ADR-0014 source-aware OKX data promotion. Confirm the
-data-only boundary and raw-parity evidence without treating it as an H-010
-retry/verdict or deployment evidence. Preserve every strategy, research, and
-deployment gate.
+Hand the completed E-059 frozen-contract reprobe to Claude for review. T1/T2/T3
+are complete; E-059 fails statistical power, so H-022 is shelved with no retune
+or Stage 3.
 
 ## Branch and working tree
 
-- Current branch: `feature/h014-e052-shadow` at `b2eb27e`, with the uncommitted
-  2026-07-16 delivery and 2026-07-17 strategy-history/funnel-v2/Ledger-detail
-  delivery in the shared working tree. No commit was requested.
+- Current branch: `feature/h014-e052-shadow`. The 2026-07-18 shared working tree
+  is split into five ordered delivery commits at current HEAD; inspect
+  `git log --oneline -5` for exact hashes. The generated funnel JSON remains on
+  disk but ignored, and the stray execution-comparison JSON remains untracked.
+  The latest scoped commits are E-059 preregistration `592b757` and execution
+  `049d136`; pre-existing runtime/API working-tree changes remain unstaged and
+  untouched.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -52,13 +54,28 @@ deployment gate.
   liquidation task's Python executable and documents least-privilege S4U task
   registration/run/removal; the host task still reports `Interactive` until the
   user runs the Administrator PowerShell registration and verifies result `0`.
+- Runtime/data reliability: external coverage now uses one grouped observation
+  scan; the current real DB returned 137 combined coverage rows in 1.704 seconds
+  after the old query exceeded a 12-second cold timeout. Compose waits for DB
+  health, runtime `DATABASE_URL` overrides the YAML candle DSN, and run-list /
+  result-summary DB outages without file fallback return 503 instead of empty or
+  missing data. F52 browser authentication and remaining per-artifact/pool work
+  stay explicit follow-ups; no schema or API payload shape changed.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
   unchanged. No PnL formula or existing result changed.
-- Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
-  with no retry and E-037 remains immutable non-promotion evidence. H-010 is
-  data-blocked on OKX 1m. H-013/E-050 is shelved after statistical failure.
+- Research pipeline: H-009 is now shelved after the pre-registered E-063
+  breadth-restored retry failed checkpoint 1 (31 unique assets; WF 1.4778,
+  CPCV 0.9092, DSR 0.8305, PSR 0.9166; family `n_trials=8`, K 1/2).
+  H-023/F-XS-IDIOVOL stopped at E-062 Stage 2 because plausible net Sharpe
+  0.5961 was below the 0.7134 power floor; zero grid trials and K 0/2.
+  H-012 is user-shelved with no retry and E-037 remains immutable
+  non-promotion evidence. H-010/E-057
+  is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
+  absent, and the fixed zero-trial anchor's median gross capture is 1.3636 bps
+  versus 8.0 bps cost across 7,376 episodes. Stage 3 did not run. H-013/E-050 is
+  shelved after statistical failure.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
   ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
@@ -66,10 +83,26 @@ deployment gate.
   WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818, family-cumulative
   `n_trials=12`, K 0/2. Stop with no retry, retune, promotion, or deployment
   claim.
+- F-TAKER-FLOW H-022 is `shelved` after E-059 completed the authorized
+  data-gap repair reprobe. T1 verifies ETH at 898/898 complete member-days and
+  1,293,120/1,293,120 exact raw/taker rows; the retained non-ETH snapshot hash
+  remains `c2b7bf0313b30ae203548e718d91621d33f98c6c6c3475970a05ffc597146858`.
+  ADR-0015 alias consumption yields 24,745/24,745 member-days. Data,
+  distinctness, and cost pass; power fails at plausible net Sharpe 0.448466
+  versus the recomputed 0.754896 floor. Family trials remain 0, K remains 0/2,
+  and no retune or Stage 3 is authorized.
+- Research Ops UI: the loopback standalone server now exposes H-014 bias/journal
+  status plus one existing public-data shadow cycle, and an H-009 full-sample
+  lookback/quantile screen. Mutations are disabled in the engine app and on
+  non-loopback binds and require the frontend's local-action header. H-014 cycles
+  share a cross-process journal lock with CLI/scheduler runs. H-009 combinations
+  accumulate an explicitly labeled known trial lower bound; the registry remains
+  authoritative. Neither surface changes a verdict, mode, credential boundary,
+  or live gate.
 - Pipeline observability/triage: under ADR-0013, new registry-written Stage-2
   artifacts fail closed on a fourth `statistical_power` check using
   registry-cumulative trials. `docs/STRATEGY_HISTORY.md` consolidates H-000–H-021
-  and E-000–E-056 without inventing unrecorded metrics. The disposable funnel is
+  and E-000–E-057 without inventing unrecorded metrics. The disposable funnel is
   now schema v2 and the read-only 研究總表 / Ledger view exposes each family's
   source, hypothesis, and full iteration timeline; schema v1 degrades to a
   regeneration hint. The Markdown ledgers remain authoritative and generated
@@ -77,15 +110,17 @@ deployment gate.
 - Stage-2 follow-up: the five-line evaluator scope and computed `1.7206`
   reference case were ratified. Active CLI/backfill/orchestrator callers reject
   missing candidate-specific power inputs before probes/artifacts/status
-  changes. Funnel schema v3 isolates malformed files under
+  changes. H-010's generic orchestrator path additionally refuses missing or
+  mismatched frozen calibration evidence before the venue probe. Funnel schema
+  v3 isolates malformed and identity-less files under
   `stage2_artifact_errors`; no research inputs are inferred.
 - History/data boundary: the read-only scan completed over 68 canonical and 46
   external datasets. Under separately approved ADR-0014, the existing complete
   raw OKX BTC/ETH 1m window was promoted to an additive source-aware canonical
   layer. Each symbol has 1,293,120 rows, raw mismatches 0,
   coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0
-  rows. No network ingest, H-010 retry, ledger/verdict change, or result artifact
-  was performed.
+  rows. The later E-057 research task is separate from that promotion: full
+  candle alignment passes, but I48 correctly rejects missing OKX funding.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -110,6 +145,8 @@ deployment gate.
    lifecycle metadata now fail closed under adversarial tests.
 6. **Open - F36:** the shelved OI runner posts turnover cost on signal day even
    though positions/funding start t+1. Do not reuse E-037 as promotion evidence.
+7. **Closed - F47/I48:** H-010 refuses to substitute Binance funding for a
+   position executed on OKX; missing execution-venue settlements fail closed.
 
 Full evidence and binary acceptance criteria are in the follow-up task file;
 durable gaps are in `docs/KNOWN_ISSUES.md`.
@@ -151,16 +188,49 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   1,293,120 rows per symbol, verifier PASSed exact raw parity and 1.0
   coverage/alignment, and the second promotion changed zero rows. No H-010
   experiment command ran.
+- 2026-07-18 H-010 E-057: full candles 3,396,960/leg with 1.0 alignment;
+  calibration 7,376 episodes, median gross/cost 1.3636/8.0 bps; all four Stage-2
+  checks FAIL, grid trials 0. Focused H-010 + registry tests pass.
+- 2026-07-21 review repair: B2 red-first regression reproduced the orchestrator
+  bypass, then passed after the guard. Targeted matrix `80 passed`; full unit
+  `921 passed, 1 skipped`; full Ruff, frontend syntax, config, backtest smoke,
+  docs metadata/links/ledger, and strict doc impact pass. E-057 file hashes are
+  byte-identical before/after.
+- 2026-07-21 DB/UI reliability repair: six focused API/data files pass
+  (`119 passed`); targeted Ruff, config validation, Compose dependency parsing,
+  docs metadata/links/ledger, advisory doc impact, and `git diff --check` pass.
+  Real coverage returned HTTP 200 with 137 rows in 1.704 seconds. Docker and a
+  running browser/API server were unavailable, so those integration smokes were
+  not claimed.
+- 2026-07-24 E-058: targeted tests `27 passed`; full unit `954 passed, 1
+  skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
+  strict doc impact, and diff checks pass. The real read-only probe completed
+  all bounded symbol-year queries without a probe timeout and wrote the
+  immutable four-check artifact with SHA-256
+  `a61f58c0c2ea8b539b6cb0896abde6cd50e1154a7bbd59794db11f3b7a275a10`.
+- 2026-07-24 T2 alias rule/helper: targeted `1 passed`; full unit `955 passed,
+  1 skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
+  strict doc impact, and diff checks pass. Membership and E-058 hashes are
+  byte-identical; no taker-flow probe code or result artifact changed.
+- 2026-07-26 E-059: targeted alias/probe/registry tests `29 passed`; full unit
+  `956 passed, 1 skipped`; full Ruff, docs metadata/feature-map/ledger, strict
+  doc impact, config, backtest smoke, and diff checks pass. Data 24,745/24,745
+  PASS, distinctness 0.043660/0.093939 PASS, cost 42.7529 versus 9.9160 bps
+  PASS, power 0.448466 versus 0.754896 FAIL. Artifact SHA-256 is
+  `0eefc5531d075202aa688ae052e9d159c6b7f2d494b76ccd0080dea9c352acee`.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
 
-First review the 2026-07-17 Stage-2 caller-fix and OKX promotion context/session
-handoffs. Claude should confirm the candidate-specific input boundary,
-schema-v3 error isolation, ADR-0014 resolved/source-aware split, and that data
-availability did not change H-010 research evidence.
+Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
+`049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
+Stage 3 remains unauthorized; do not retune or reprobe H-022.
+
+First review the five ordered commits plus the 2026-07-21 context/session
+handoffs. Confirm A1-A3/B1-B4 are scoped, E-057 is byte-identical, and each
+commit stat contains only its named delivery/shared-sync files.
 
 Claude review (`tasks/2026-07-12-claude-p0-review.md`) is user-ratified and
 implemented for P0.1-P0.3, H-012, and H-013.
@@ -227,6 +297,21 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     and dated experiments; Task C adds expandable Ledger iteration detail and
     schema-v1 fallback. Ledgers stayed read-only; no new route, checked-in JSON,
     strategy/gate change, or fabricated metric was introduced.
+
+11. DONE 2026-07-18 (Claude review, two independent agents):
+    `tasks/2026-07-18-strategy-history-h010-claude-review.md`. A/B/C delivery
+    APPROVE-WITH-FINDINGS (no blockers; minor A1-A3). H-010 Stage-1/E-057
+    APPROVE-WITH-FINDINGS: recorded stage2_fail/shelved outcome accepted as
+    honest and fail-closed; majors B1 (structurally unpassable distinctness
+    gate presented as data-conditional) and B2 (`_run_xvenue_probe` skips
+    frozen-calibration checks when the orchestrator omits
+    `calibration_evidence`) block any reuse of this Stage-2 path, not the
+    recorded outcome. Codex applies A1-A3/B1-B5, then commits per-delivery.
+
+12. DONE 2026-07-21 (Codex): A1-A3/B1-B4 repaired and the working tree split
+    into five ordered commits. The distinctness amendment is future-only;
+    E-057 artifacts/outcome are unchanged. B2 fails closed before probe, the
+    full unit suite is green, and the next action is Claude diff review.
 
 ## Open decisions
 

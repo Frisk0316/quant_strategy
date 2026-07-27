@@ -18,7 +18,10 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
     networks:
       - quant-net
     command: python scripts/run_demo.py

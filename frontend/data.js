@@ -304,10 +304,10 @@ window.API = (function () {
   async function _memoGet(key, path) { return _memo(key, () => _get(path)); }
   async function _memoGetLarge(key, path) { return _memo(key, () => _getLarge(path)); }
 
-  async function _post(path, body) {
+  async function _post(path, body, extraHeaders = {}) {
     const r = await fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...extraHeaders },
       body: JSON.stringify(body),
     });
     const payload = await r.json().catch(() => ({}));
@@ -415,6 +415,11 @@ window.API = (function () {
     },
     fetchProgress:            ()        => _get("/api/progress"),
     fetchResearchFunnel:      ()        => _get("/research_funnel.json"),
+    fetchH014Research:        ()        => _get("/api/research/h014"),
+    runH014Research:          ()        => _post("/api/research/h014/run", {}, { "X-Research-Action": "1" }),
+    runH009ResearchSweep:     (body)    => _post("/api/research/h009/sweep", body, { "X-Research-Action": "1" }),
+    fetchH009ResearchSweep:   (jobId)   => _get("/api/research/h009/sweep/" + encodeURIComponent(jobId)),
+    fetchH009ResearchJobs:    ()        => _get("/api/research/h009/jobs"),
     triggerBacktestRun:       (body)    => _post("/api/backtest/run", body),
     fetchBacktestRunStatus:   (jobId)   => _get("/api/backtest/run/status/" + jobId),
     cancelBacktestRun:        (jobId)   => _post("/api/backtest/run/cancel/" + jobId, {}),

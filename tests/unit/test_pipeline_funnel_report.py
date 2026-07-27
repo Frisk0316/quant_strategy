@@ -216,3 +216,24 @@ def test_pipeline_funnel_isolates_malformed_stage2_artifact(tmp_path):
             "error": report["stage2_artifact_errors"][0]["error"],
         }
     ]
+
+
+def test_pipeline_funnel_isolates_stage2_artifact_missing_identity(tmp_path):
+    artifact = tmp_path / "results" / "missing-id" / "stage2_feasibility.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(json.dumps({"hypothesis_id": "H-123", "checks": []}), encoding="utf-8")
+    ledger = tmp_path / "HYPOTHESIS_LEDGER.md"
+    registry = tmp_path / "EXPERIMENT_REGISTRY.md"
+    ledger.write_text("", encoding="utf-8")
+    registry.write_text("", encoding="utf-8")
+
+    report = collect_pipeline_funnel(artifact.parents[2], registry, ledger)
+
+    assert report["stage2_artifacts_scanned"] == 1
+    assert report["stage2_artifact_errors"] == [
+        {
+            "path": str(artifact).replace("\\", "/"),
+            "error_type": "ValueError",
+            "error": "stage2 artifact must include hypothesis_id and family_id",
+        }
+    ]

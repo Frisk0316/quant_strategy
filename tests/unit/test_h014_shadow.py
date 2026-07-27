@@ -290,6 +290,21 @@ async def test_cycle_fills_sells_at_bid_buys_at_ask_and_dedupes(tmp_path: Path, 
 
 
 @pytest.mark.asyncio
+async def test_cycle_rejects_a_second_process_lock(tmp_path: Path, monkeypatch):
+    now = datetime(2026, 7, 14, 9, tzinfo=timezone.utc)
+    config = load_config(CONFIG)
+    config["journal_path"] = str(tmp_path / "journal.jsonl")
+
+    async def fake_signals(*_args, **_kwargs):
+        return {currency: _signal(currency) for currency in ("BTC", "ETH")}
+
+    monkeypatch.setattr(runner, "load_signals", fake_signals)
+    with runner._journal_cycle_lock(config["journal_path"]):
+        with pytest.raises(RuntimeError, match="already running"):
+            await run_cycle(config, "unused", now=now, client=FakePublicClient(now))
+
+
+@pytest.mark.asyncio
 async def test_sparse_chain_is_journaled_as_missed_entry_and_cycle_continues(
     tmp_path: Path, monkeypatch
 ):

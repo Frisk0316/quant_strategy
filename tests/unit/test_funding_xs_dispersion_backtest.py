@@ -3,6 +3,7 @@ import pandas as pd
 
 from backtesting.funding_xs_dispersion_backtest import (
     FundingXSDispersionParams,
+    load_funding_xs_dispersion_inputs,
     run_funding_xs_dispersion_backtest,
     scan_funding_xs_dispersion,
 )
@@ -86,3 +87,66 @@ def test_scan_accepts_caller_declared_researched_n_trials():
     assert result.attrs["n_trials"] == 4
     assert set(result["n_trials"]) == {4}
     assert set(result["n_trials_provenance"]) == {"caller_declared"}
+
+
+def test_scan_adds_frontend_grid_to_prior_family_trials():
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    close = pd.DataFrame({"LOW": 100.0, "HIGH": 100.0}, index=idx)
+    funding = pd.DataFrame({"LOW": 0.0, "HIGH": 0.001}, index=idx)
+    params = FundingXSDispersionParams(universe=list(close.columns), rebalance="daily")
+
+    result = scan_funding_xs_dispersion(
+        close,
+        close,
+        close,
+        close,
+        funding,
+        _membership(idx, close.columns),
+        params,
+        grid={"lookback_days": [7, 14], "quantile": [0.2]},
+        prior_family_n_trials=4,
+    )
+
+    assert result.attrs["n_trials"] == 6
+    assert set(result["n_trials"]) == {6}
+
+
+def test_postgres_daily_loader_scopes_funding_to_declared_exchange(monkeypatch):
+    import asyncpg
+
+    calls = []
+
+    class FakeConnection:
+        async def fetch(self, query, *args):
+            calls.append((query, args))
+            ts = pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime()
+            if "WITH daily AS" in query:
+                return [{"inst_id": "BTC-USDT-SWAP", "ts": ts, "close": 100.0}]
+            if "AVG(funding_rate)" in query:
+                return [{"inst_id": "BTC-USDT-SWAP", "ts": ts, "rate": 0.001}]
+            raise AssertionError(f"unexpected query: {query}")
+
+        async def close(self):
+            return None
+
+    async def fake_connect(_dsn):
+        return FakeConnection()
+
+    monkeypatch.setattr(asyncpg, "connect", fake_connect)
+    close, _, _, _, funding = load_funding_xs_dispersion_inputs(
+        ["BTC-USDT-SWAP"],
+        bar="1D",
+        start="2024-01-01",
+        end="2024-01-02",
+        backend="postgres",
+        dsn="postgresql://unused",
+        exchange="binance",
+    )
+
+    funding_query, funding_args = next(
+        (query, args) for query, args in calls if "AVG(funding_rate)" in query
+    )
+    assert "source = $2" in funding_query
+    assert funding_args[1] == "binance"
+    assert close.iloc[0, 0] == 100.0
+    assert funding.iloc[0, 0] == 0.001
