@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from okx_quant.api.routes_backtest import (
     ParameterSweepRequest,
     RunBacktestRequest,
+    _resolve_candle_backend,
     _validate_parameter_sweep_request,
     _normalize_backtest_request,
     _normalize_exchange,
@@ -28,6 +29,26 @@ def test_omitted_or_blank_exchange_uses_non_binance_config_primary(monkeypatch, 
     monkeypatch.setattr("okx_quant.core.config.load_config", lambda **_: config)
 
     assert _normalize_exchange(exchange) == "okx"
+
+
+def test_database_url_overrides_yaml_candle_dsn(monkeypatch):
+    runtime_dsn = "postgresql://runtime/db"
+    config = SimpleNamespace(
+        storage=SimpleNamespace(
+            candle_backend="postgres",
+            timescale_dsn="postgresql://yaml/db",
+        )
+    )
+    checked_dsns = []
+    monkeypatch.setenv("DATABASE_URL", runtime_dsn)
+    monkeypatch.setattr("okx_quant.core.config.load_config", lambda **_: config)
+    monkeypatch.setattr(
+        "okx_quant.api.routes_backtest._dsn_reachable",
+        lambda dsn: checked_dsns.append(dsn) or True,
+    )
+
+    assert _resolve_candle_backend("binance") == ("postgres", runtime_dsn)
+    assert checked_dsns == [runtime_dsn]
 
 
 @pytest.mark.parametrize("exchange", ["binance", "okx", "bybit", "coinbase", "kraken"])

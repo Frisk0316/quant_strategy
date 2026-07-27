@@ -1,13 +1,40 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from okx_quant.api import routes_backtest as routes
+
+
+class _FakeAsyncpgConnection:
+    def __init__(self, *, row=None, rows=None):
+        self.row = row
+        self.rows = rows or []
+
+    async def fetchrow(self, *_args):
+        return self.row
+
+    async def fetch(self, *_args):
+        return self.rows
+
+    async def close(self):
+        pass
+
+
+def _install_fake_asyncpg(monkeypatch, *, row=None, rows=None, error=None):
+    async def connect(*_args, **_kwargs):
+        if error is not None:
+            raise error
+        return _FakeAsyncpgConnection(row=row, rows=rows)
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unit/db")
+    monkeypatch.setitem(sys.modules, "asyncpg", SimpleNamespace(connect=connect))
 
 
 def test_backtest_market_symbol_loads_are_guarded_by_run_id_not_selection_cleanup():
@@ -601,6 +628,113 @@ def test_summary_endpoint_returns_lightweight_run_payload(tmp_path):
     assert payload["artifacts"] == {"price_series": "price_series.csv"}
     assert "price_series" not in payload
     assert "trades" not in payload
+
+
+def test_summary_returns_503_when_db_read_fails_without_file_fallback(tmp_path, monkeypatch):
+    _install_fake_asyncpg(monkeypatch, error=OSError("database unavailable"))
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/db_only/summary")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Database unavailable and no file-backed result is available"
+
+
+def test_summary_returns_404_when_db_has_no_row_and_no_file_fallback(tmp_path, monkeypatch):
+    _install_fake_asyncpg(monkeypatch, row=None)
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/missing/summary")
+
+    assert response.status_code == 404
+
+
+def test_summary_uses_exact_file_fallback_when_db_read_fails(tmp_path, monkeypatch):
+    run_dir = tmp_path / "file_run"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        json.dumps({
+            "run_id": "file_run",
+            "strategies": ["ema_crossover"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "metrics": {"total_return": 0.1},
+        }),
+        encoding="utf-8",
+    )
+    _install_fake_asyncpg(monkeypatch, error=OSError("database unavailable"))
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/file_run/summary")
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "file_run"
+
+
+def test_summary_invalid_db_json_is_500_not_503(tmp_path, monkeypatch):
+    _install_fake_asyncpg(monkeypatch, row={"payload": "{invalid json"})
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/db_run/summary")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Invalid database artifact payload"
+
+
+def test_price_series_uses_db_payload_when_optional_row_index_fails(tmp_path, monkeypatch):
+    async def fail_read_artifact_rows(**_kwargs):
+        raise OSError("artifact row index unavailable")
+
+    payload = [{"inst_id": "BTC-USDT-SWAP", "close": 42000.0}]
+    _install_fake_asyncpg(monkeypatch, row={"payload": payload})
+    monkeypatch.setattr(routes, "read_artifact_rows", fail_read_artifact_rows)
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get(
+        "/api/backtest/db_run/price-series?symbol=BTC-USDT-SWAP&n=1200"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_runs_returns_503_when_db_read_fails_without_file_fallback(tmp_path, monkeypatch):
+    _install_fake_asyncpg(monkeypatch, error=OSError("database unavailable"))
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/runs")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Database unavailable and no file-backed runs are available"
+
+
+def test_runs_uses_file_fallback_when_db_read_fails(tmp_path, monkeypatch):
+    run_dir = tmp_path / "file_run"
+    run_dir.mkdir()
+    (run_dir / "result.json").write_text(
+        json.dumps({
+            "run_id": "file_run",
+            "created_at": "2026-07-21T00:00:00+00:00",
+            "strategies": ["ema_crossover"],
+            "symbols": ["BTC-USDT-SWAP"],
+            "metrics": {"total_return": 0.1},
+            "returns": [0.01],
+        }),
+        encoding="utf-8",
+    )
+    _install_fake_asyncpg(monkeypatch, error=OSError("database unavailable"))
+    app = FastAPI()
+    app.include_router(routes.make_backtest_router(tmp_path), prefix="/api/backtest")
+
+    response = TestClient(app).get("/api/backtest/runs")
+
+    assert response.status_code == 200
+    assert [row["run_id"] for row in response.json()] == ["file_run"]
 
 
 def test_execution_comparison_endpoint_infers_dual_output_file(tmp_path):

@@ -63,6 +63,10 @@ TURTLE_SWEEP_INLINE_ROW_LIMIT = 5_000
 TURTLE_SWEEP_INLINE_EQUITY_ROW_LIMIT = 50_000
 
 
+class _DatabaseReadError(RuntimeError):
+    pass
+
+
 def _run_cancel_requested(job_id: str) -> bool:
     return bool(_run_jobs.get(job_id, {}).get("cancel_requested"))
 
@@ -282,8 +286,7 @@ def _resolve_candle_backend(exchange: str | None = None) -> tuple[str, str | Non
         dsn = getattr(cfg.storage, "timescale_dsn", None)
     except Exception:
         pass
-    if not dsn:
-        dsn = os.environ.get("DATABASE_URL")
+    dsn = os.environ.get("DATABASE_URL") or dsn
     if backend == "postgres":
         if not dsn or not _dsn_reachable(dsn):
             if exchange:
@@ -2730,14 +2733,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         indices.add(len(records) - 1)
         return [records[i] for i in sorted(indices)]
 
-    async def _read_db_artifact(run_id: str, artifact_type: str) -> Any | None:
+    async def _read_db_artifact(
+        run_id: str,
+        artifact_type: str,
+        *,
+        raise_on_error: bool = False,
+    ) -> Any | None:
         clean_run_id = _artifact_id(run_id, "run_id")
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn:
+            return None
         try:
             import asyncpg
 
-            dsn = os.environ.get("DATABASE_URL")
-            if not dsn:
-                return None
             conn = await asyncpg.connect(dsn)
             try:
                 row = await conn.fetchrow(
@@ -2751,12 +2759,19 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                 )
             finally:
                 await conn.close()
-            if not row:
-                return None
-            payload = row["payload"]
-            return json.loads(payload) if isinstance(payload, str) else payload
-        except Exception:
+        except Exception as exc:
+            if raise_on_error:
+                raise _DatabaseReadError("database artifact read failed") from exc
             return None
+        if not row:
+            return None
+        payload = row["payload"]
+        if isinstance(payload, str):
+            try:
+                return json.loads(payload)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=500, detail="Invalid database artifact payload") from exc
+        return payload
 
     async def _read_db_artifacts(run_id: str) -> dict[str, Any]:
         clean_run_id = _artifact_id(run_id, "run_id")
@@ -2820,19 +2835,32 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
         dsn = os.environ.get("DATABASE_URL")
         if not dsn:
             return []
-        return await read_artifact_rows(
-            dsn=dsn,
-            run_id=clean_run_id,
-            artifact_type=artifact_type,
-            symbol=symbol,
-            limit=limit,
-            offset=offset,
-            n=n,
-        )
+        try:
+            return await read_artifact_rows(
+                dsn=dsn,
+                run_id=clean_run_id,
+                artifact_type=artifact_type,
+                symbol=symbol,
+                limit=limit,
+                offset=offset,
+                n=n,
+            )
+        except Exception:
+            return []
 
     async def _read_result_payload(run_id: str) -> dict[str, Any]:
         clean_run_id = _artifact_id(run_id, "run_id")
-        payload = await _read_db_artifact(run_id, "result")
+        run_dir = _artifact_child(results_dir, clean_run_id, "run_id")
+        result_path = run_dir / "result.json"
+        try:
+            payload = await _read_db_artifact(run_id, "result", raise_on_error=True)
+        except _DatabaseReadError as exc:
+            if not result_path.is_file():
+                raise HTTPException(
+                    status_code=503,
+                    detail="Database unavailable and no file-backed result is available",
+                ) from exc
+            payload = None
         if payload is not None:
             result_payload = _normalize_daily_winner_payload(payload)
         else:
@@ -2943,11 +2971,13 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                     pass
 
         # --- DB scan (overlay; DB data overwrites filesystem entries) ---
-        try:
-            import asyncpg
+        db_error: Exception | None = None
+        rows: list[Any] = []
+        dsn = os.environ.get("DATABASE_URL")
+        if dsn:
+            try:
+                import asyncpg
 
-            dsn = os.environ.get("DATABASE_URL")
-            if dsn:
                 conn = await asyncpg.connect(dsn)
                 try:
                     try:
@@ -2978,20 +3008,27 @@ def make_backtest_router(results_dir: Path) -> APIRouter:
                         )
                 finally:
                     await conn.close()
-                for row in rows:
-                    item = dict(row)
-                    item["created_at"] = item.get("sort_created_at") or item.get("created_at")
-                    item.pop("sort_created_at", None)
-                    item["start"] = item.get("start_date")
-                    item["end"] = item.get("end_date")
-                    metadata = _metadata_dict(item.get("metadata"))
-                    existing = merged.get(item["run_id"], {})
-                    item["display_name"] = item.get("display_name") or existing.get("display_name")
-                    item["display_name"] = _backtest_display_name(item)
-                    item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
-                    merged[item["run_id"]] = _attach_idealized_fill_warning(item, metadata)
-        except Exception:
-            pass
+            except Exception as exc:
+                db_error = exc
+
+        for row in rows:
+            item = dict(row)
+            item["created_at"] = item.get("sort_created_at") or item.get("created_at")
+            item.pop("sort_created_at", None)
+            item["start"] = item.get("start_date")
+            item["end"] = item.get("end_date")
+            metadata = _metadata_dict(item.get("metadata"))
+            existing = merged.get(item["run_id"], {})
+            item["display_name"] = item.get("display_name") or existing.get("display_name")
+            item["display_name"] = _backtest_display_name(item)
+            item["parameters"] = metadata.get("parameters") or existing.get("parameters") or {}
+            merged[item["run_id"]] = _attach_idealized_fill_warning(item, metadata)
+
+        if db_error is not None and not merged:
+            raise HTTPException(
+                status_code=503,
+                detail="Database unavailable and no file-backed runs are available",
+            ) from db_error
 
         def _created_at_sort_key(row: dict) -> float:
             value = row.get("created_at")
