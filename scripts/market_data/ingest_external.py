@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -118,6 +118,17 @@ def _select_datasets(datasets: dict[str, dict[str, Any]], dataset: tuple[str, ..
     return selected
 
 
+OPTION_FLOW_HISTORY_CUTOFF = timedelta(days=2)
+
+
+def _option_flow_endpoint(start: Optional[datetime], now: Optional[datetime] = None) -> str:
+    """history.deribit.com archives trades with ~7d lag; www serves only the recent ~24h."""
+    now = now or datetime.now(timezone.utc)
+    if start is not None and start < now - OPTION_FLOW_HISTORY_CUTOFF:
+        return DeribitOptionFlowClient.history_endpoint
+    return DeribitOptionFlowClient.www_endpoint
+
+
 def _build_client(dataset_id: str, cfg: dict[str, Any]):
     adapter = str(cfg.get("adapter") or "")
     if adapter == "binance_oi":
@@ -194,7 +205,8 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
     if adapter == "deribit_option_surface":
         return client.fetch(currency=str(cfg.get("currency") or "BTC"))
     if adapter == "deribit_option_flow":
-        return client.fetch(
+        option_flow_client = DeribitOptionFlowClient(endpoint=_option_flow_endpoint(start))
+        return option_flow_client.fetch(
             currency=str(cfg.get("currency") or "BTC"),
             start=start,
             end=end,
