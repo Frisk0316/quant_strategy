@@ -17,6 +17,8 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+from okx_quant.data.external_clients.deribit_option_surface import ATM_BAND, moneyness_bucket
+
 EPSILON = 1e-12
 
 
@@ -152,6 +154,7 @@ def aggregate_hourly_option_flow(currency: str, trades: list[dict[str, Any]]) ->
             bucket["excluded_linear_usdc_count"] += 1
             continue
         option_type = meta["option_type"]
+        strike = meta["strike"]
         direction = str(trade.get("direction") or "").lower()
         premium = _premium_amount(trade)
         if premium is None or option_type not in {"C", "P"} or direction not in {"buy", "sell"}:
@@ -169,6 +172,15 @@ def aggregate_hourly_option_flow(currency: str, trades: list[dict[str, Any]]) ->
             bucket["iv_count"] += 1
         if len(bucket["sample"]) < 20:
             bucket["sample"].append(trade)
+
+        moneyness = moneyness_bucket(option_type, strike, _to_float(trade.get("index_price")))
+        if moneyness is None:
+            bucket["unbucketed_trade_count"] += 1
+        else:
+            bucket["bucket_premium"][moneyness] += premium
+            bucket["bucket_trades"][moneyness] += 1
+            if moneyness == "otm" and direction == "buy":
+                bucket["otm_buy_amt"][option_type] += premium
 
     rows = []
     for hour, bucket in sorted(buckets.items()):
@@ -190,6 +202,16 @@ def aggregate_hourly_option_flow(currency: str, trades: list[dict[str, Any]]) ->
             "liq_trade_count": bucket["liq_trade_count"],
             "unit": "imbalance_ratio",
             "excluded_linear_usdc_count": bucket["excluded_linear_usdc_count"],
+            "moneyness_atm_band": ATM_BAND,
+            "atm_premium": bucket["bucket_premium"]["atm"],
+            "itm_premium": bucket["bucket_premium"]["itm"],
+            "otm_premium": bucket["bucket_premium"]["otm"],
+            "atm_trades": bucket["bucket_trades"]["atm"],
+            "itm_trades": bucket["bucket_trades"]["itm"],
+            "otm_trades": bucket["bucket_trades"]["otm"],
+            "otm_put_buy_amt": bucket["otm_buy_amt"]["P"],
+            "otm_call_buy_amt": bucket["otm_buy_amt"]["C"],
+            "unbucketed_trade_count": bucket["unbucketed_trade_count"],
         }
         rows.append({
             "observed_at": hour,
@@ -220,6 +242,10 @@ def _empty_bucket() -> dict[str, Any]:
         "liq_trade_count": 0,
         "excluded_linear_usdc_count": 0,
         "sample": [],
+        "bucket_premium": {"atm": 0.0, "itm": 0.0, "otm": 0.0},
+        "bucket_trades": {"atm": 0, "itm": 0, "otm": 0},
+        "otm_buy_amt": {"C": 0.0, "P": 0.0},
+        "unbucketed_trade_count": 0,
     }
 
 
