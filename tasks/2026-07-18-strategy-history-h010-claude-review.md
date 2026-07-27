@@ -91,6 +91,85 @@ fields, but ex-ante ORDERING is unprovable from git because everything is
 uncommitted — a process reason to commit registration before running
 future experiments.
 
+## Follow-up verification 2026-07-21 (five-commit delivery 5982a7f..552188a)
+
+Two fresh-context verifiers; full unit suite 921 passed / 1 skipped; ledger
+consistency, doc impact/metadata/links all PASS. Answers to the four review
+questions:
+
+1. **B1 — PARTIAL.** Registry/ledger rewording and R6.6/I49 are correct and
+   honest; but the distinctness CODE is byte-identical (MIN_COMMON_DAYS=365,
+   91-day anchor, no pre-execution feasibility refusal). The ex-ante rule is
+   documentation-only. H-010 Stage-2 path reuse therefore REMAINS PROHIBITED
+   until a code-level guard (declare reference ranges, refuse impossible
+   intersections before probe) ships with a test. Tracked as open item B1-code.
+2. **B2 — YES, closed.** Both `run_data_probe` and the
+   `STAGE2_PROBES["F-XVENUE-LEADLAG"]` registry path raise explicit
+   ValueError without frozen calibration_evidence, before probe_xvenue runs;
+   guarding test exercises the previously-bypassable path; no third caller
+   exists; results/** untouched by the fix commit.
+3. **E-057 honesty — YES.** stage2_fail / shelved / promotion-blocked and all
+   recorded numbers (1.3636 vs 8.0 bps, 7,376 episodes, no OKX funding
+   substitution) preserved verbatim; K=0/2 unchanged; artifact SHA-256
+   recomputed byte-identical; git history shows only 5982a7f touching them.
+4. **Commit boundaries — YES with one flag.** 4/5 commits clean;
+   315b041 (Research Ops) also touches
+   `src/okx_quant/execution/deribit_shadow/runner.py` — inspected: a pure
+   cross-process file lock around run_cycle (msvcrt/fcntl), no PnL/sign/
+   accounting change. This is a do-not-touch-path edit requiring explicit
+   user ratification (or relocation to its own authorized commit record).
+   Stray results JSON remains untracked and in no commit. OKX 2020-2023
+   promotion DB-verified: 3,396,960 rows/leg continuous 2020-01-01→
+   2026-06-16, resolved per-source counts unchanged.
+
+**Verdict: APPROVE-WITH-FIXES.** Open items: B1-code guard (blocks any
+F-XVENUE-LEADLAG reprobe); user ratification of the runner.py lock touch;
+A/B/C fixes and B2-B4 are closed.
+
+**User rulings 2026-07-21:** (1) the `315b041` runner.py cross-process lock
+touch is RATIFIED (non-substantive concurrency safety; execution/ path edit
+approved retroactively for that commit only). (2) The B1-code guard is
+AUTHORIZED now: `tasks/2026-07-21-b1-distinctness-guard-codex-tasks.md`.
+The reprobe prohibition stands until that guard ships and passes review.
+
+**B1-guard delivery review 2026-07-21 (fresh verifier): APPROVE-WITH-FIXES.**
+Functional criteria 1-7 all PASS (E-057 config reproduces pre-execution
+refusal; feasible config proceeds; missing declaration fails closed; both
+entry paths guarded before artifact writes; E-057 hashes byte-identical;
+MIN_COMMON_DAYS=365 unchanged; full suite 927 passed / 1 skipped). Two
+Claude rulings on Codex's questions:
+
+- **Whitelist vs docs-impact --strict: NOT accepted.** Hard governance
+  checks are never overridden by a task's PERMITTED FILES list; the manifest
+  omission was a defect in the task spec, not license to skip A5. Whitelist
+  officially expanded (FX2): add Change Manifest
+  `docs/change_manifests/2026-07-21-b1-distinctness-guard.md` and a
+  GOLDEN_CASES entry ("E-057 config must be refused before probe"), then
+  `check_doc_impact.py --strict` must PASS.
+- **Joint/overall intersection gating: NOT confirmed — demote (FX1).** The
+  measurement (`build_distinctness_check`) evaluates each gating reference
+  independently; joint-intersection gating exceeds the measurement and can
+  mislabel per-pair-feasible configs as structural defects (verifier
+  counterexample on record). Gate on per-reference achievable days only;
+  keep `overall_common_days` as an advisory reported field. Add the
+  per-pair-feasible/joint-zero test case.
+
+Reprobe prohibition lifts after FX1+FX2 land and pass the final diff check;
+lifting the prohibition is still not reprobe authorization (separate user
+approval + ex-ante rationale + K accounting required).
+
+**FINAL 2026-07-21 — commit `f38b6c0`: APPROVE, B1 CLOSED.** Claude
+directly verified: refusal predicate gates on per-reference
+achievable_common_days only (xvenue_leadlag_probe.py:223-226);
+overall_common_days is advisory (computed, reported, non-gating); the
+per-reference-feasible/joint-zero counterexample test passes (24/24);
+Change Manifest `2026-07-21-b1-distinctness-guard.md` and GOLDEN_CASES
+G-006 added; `check_doc_impact.py --strict` PASS; E-057
+stage2_feasibility.json SHA-256 recomputed byte-identical
+(5E167003...1000F). The H-010 Stage-2 reprobe PROHIBITION IS LIFTED.
+Reprobe itself remains unauthorized until the user approves a new round
+with ex-ante rationale and K accounting.
+
 ## UNCONFIRMED (inherited from agents)
 
 - No browser eyeball of the expanded Ledger row (code-read + Codex's
