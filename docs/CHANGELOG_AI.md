@@ -13,6 +13,24 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-27 - Deribit vol backfill and moneyness buckets (Claude, SDD)
+
+- Backfilled hourly DVOL to inception 2021-03-24 (46,831 rows each, BTC/ETH)
+  and extended derived RV30 to 2018-09-14 (BTC, 68,959 rows) / 2019-04-14
+  (ETH, 63,871 rows). RV30-vs-official-HV overlap calibration (BTC corr 0.745,
+  ETH 0.766, RV30 ≈9 vol pts above HV, n=395) missed the plan's 0.9 gate and
+  was explicitly user-accepted (16-day overlap = weak evidence).
+- Added ATM/ITM/OTM moneyness classification (`moneyness_bucket`, band 0.025)
+  with per-bucket OI/mark-IV fields in the option-surface adapter and per-hour
+  premium/trade buckets + OTM taker-buy amounts in the option-flow adapter
+  (strict TDD); re-ingested optflow history with buckets from 2024-01-01
+  (22,403/22,402 hourly rows).
+- Fixed the ingest CLI's hardcoded www endpoint and added start-age endpoint
+  selection after measuring Deribit serving windows (history archive lags ~7
+  days; www holds ~24 hours). Newest ~day of optflow keeps the pre-bucket
+  schema until a one-off re-ingest after archive catch-up. Branch
+  `feature/deribit-vol-backfill-moneyness`, final whole-branch review clean.
+
 ## 2026-07-27 - Deribit RV30 history and frontend fetch (Codex)
 
 - Kept Deribit's native `hv_deribit_*` series unchanged because its public API

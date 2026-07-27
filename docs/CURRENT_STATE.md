@@ -15,10 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Current working branch: `feature/h014-e052-shadow`. The 2026-07-18 shared
-  working tree is now split into five ordered delivery commits at current HEAD;
-  use `git log --oneline -5` for exact hashes. The generated funnel JSON remains
-  ignored on disk and the stray execution-comparison JSON remains untracked.
+- Current working branch: `feature/deribit-vol-backfill-moneyness` (branched
+  2026-07-27 from `feature/h014-e052-shadow` after two wrap-up commits landed
+  the in-flight RV30 and GenAI-pipeline doc work). Five delivery commits on the
+  new branch passed per-task review and a clean final whole-branch review;
+  merge decision pending.
 - PR #9 merged to `main` at `b378e16` (head `00c7a51`). The separate follow-up
   branch `codex/pipeline-batch1-stage3` is pushed through `d046978` and still
   needs a human-reviewed PR. Stacked research branches are also pushed:
@@ -49,12 +50,17 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   detail in the CHANGELOG_AI 2026-07-12 entry.
 - Turtle research runner, Deribit D1-D5 + R1-R5, manual/Progress routes, and
   daily DVOL backfill (2021-03-24→2026-07-11, gap-free) remain accepted.
-- Deribit native hourly HV remains a recent rolling source window. The separate
-  `rv30_deribit_{btc,eth}_1h` derived datasets now cover 2021-01-01 through
-  2026-07-26 with 48,792 unique rows each, using contiguous Deribit perpetual
-  closes and an explicit 720-hour log-return formula. The existing frontend
-  fetch queue now exposes BTC/ETH DVOL, native HV, RV30, and current full-chain
-  option snapshots without changing strategy or deployment gates.
+- Deribit native hourly HV remains a recent rolling source window (API hard
+  limit, forward-accumulating only). As of 2026-07-27: hourly DVOL is
+  backfilled to DVOL inception 2021-03-24 (46,831 rows each, BTC/ETH);
+  `rv30_deribit_btc_1h` reaches back to 2018-09-14 (68,959 rows) and ETH to
+  2019-04-14 (63,871 rows); the ~16-day HV overlap calibration (BTC corr 0.745,
+  ETH 0.766, RV30 ≈9 vol pts above HV, n=395) was user-accepted as-is. Option
+  surface and flow adapters now emit ATM/ITM/OTM moneyness buckets
+  (`moneyness_atm_band` 0.025); optflow history is re-ingested with buckets
+  from 2024-01-01 (22,403/22,402 hourly rows), and ingestion auto-selects
+  history vs www Deribit endpoints by start age (archive lags ~7 days, www
+  holds ~24h; the newest ~day keeps the pre-bucket schema until re-ingested).
 - H-014/F-VOL-REGIME-OPT is `supported` on double-passed evidence: E-051
   (2022-05→2026-02, DSR=PSR 0.9845, user-ratified checkpoint ①) and **E-052
   extended-window retry PASS** (2020-05→2026-02 incl. COVID aftermath +

@@ -348,6 +348,16 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     E-057 artifacts/outcome are unchanged. B2 fails closed before probe, the
     full unit suite is green, and the next action is Claude diff review.
 
+13. DONE 2026-07-27 (Claude, subagent-driven, user-directed): Deribit vol
+    backfill + moneyness buckets on `feature/deribit-vol-backfill-moneyness`
+    (e60cb05..2f6ab9e, final review clean). DVOL 1h backfilled to 2021-03-24;
+    RV30 to 2018-09-14 (BTC) / 2019-04-14 (ETH); calibration corr 0.745/0.766
+    user-accepted. Surface + flow adapters emit ATM/ITM/OTM buckets; optflow
+    re-ingested with buckets from 2024-01-01. Ingest CLI now selects the
+    Deribit history vs www endpoint by start age (archive lags ~7 d, www ~24 h;
+    newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
+    Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.
