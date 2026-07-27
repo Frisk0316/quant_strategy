@@ -116,6 +116,46 @@ class DeribitDVOLClient:
         return [rows[key] for key in sorted(rows)]
 
 
+class DeribitHistoricalVolatilityClient(DeribitDVOLClient):
+    """Fetch Deribit's recent rolling historical-volatility series."""
+
+    endpoint = "https://www.deribit.com/api/v2/public/get_historical_volatility"
+
+    def fetch(
+        self,
+        *,
+        currency: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> list[dict[str, Any]]:
+        currency = str(currency).upper()
+        rows: dict[datetime, dict[str, Any]] = {}
+        for item in self._get({"currency": currency}).get("result") or []:
+            parsed = _parse_historical_volatility_item(item)
+            if not parsed:
+                continue
+            observed_at, value = parsed
+            if start and observed_at < _as_utc(start):
+                continue
+            if end and observed_at >= _as_utc(end):
+                continue
+            rows[observed_at] = {
+                "observed_at": observed_at,
+                "published_at": observed_at,
+                "value_num": value,
+                "value_text": None,
+                "fields": {
+                    "currency": currency,
+                    "unit": "annualized_percent",
+                    "value_unit": "annualized_percent",
+                    "source_value_field": "value",
+                },
+                "quality_status": "raw",
+                "raw_payload": item,
+            }
+        return [rows[key] for key in sorted(rows)]
+
+
 def _parse_item(item: Any) -> Optional[tuple[datetime, Optional[float], Optional[float], Optional[float], Optional[float]]]:
     if isinstance(item, dict):
         ts = item.get("timestamp") or item.get("time")
@@ -136,6 +176,17 @@ def _parse_item(item: Any) -> Optional[tuple[datetime, Optional[float], Optional
         _to_float(values[2]),
         _to_float(values[3]),
     )
+
+
+def _parse_historical_volatility_item(item: Any) -> Optional[tuple[datetime, float]]:
+    if not isinstance(item, (list, tuple)) or len(item) < 2:
+        return None
+    try:
+        observed_at = datetime.fromtimestamp(int(item[0]) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    value = _to_float(item[1])
+    return (observed_at, value) if value is not None and value >= 0 else None
 
 
 def _as_utc(value: datetime) -> datetime:
