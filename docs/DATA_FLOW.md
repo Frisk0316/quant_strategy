@@ -218,6 +218,9 @@ operators must still inspect the gap report because Deribit's history and live
 hosts can have a temporary visibility gap. The shared client requests explicit
 descending trade order and uses a non-overlapping millisecond page boundary;
 omitting that order silently truncates the live response (F54/I51).
+Backfills add DVOL 1h history to 2021-03-24 (inception), RV30 to 2018-09-14
+(BTC) / 2019-04-14 (ETH), and `optsurf_deribit_*`/`optflow_deribit_*` moneyness
+buckets, with optflow buckets re-ingested from 2024-01-01.
 Other required external datasets marked `fail_on_empty_fetch` still fail closed
 on an empty generic ingest.
 `GET /api/data/external-series` reads `external_observations` by `dataset_id`,

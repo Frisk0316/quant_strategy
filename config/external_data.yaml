@@ -74,7 +74,7 @@ datasets:
     resolution: "3600"
     fail_on_empty_fetch: true
     required: true
-    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review. History backfilled from 2021-03-24 (DVOL inception)."
 
   dvol_deribit_eth_1h:
     provider: deribit
@@ -89,7 +89,7 @@ datasets:
     resolution: "3600"
     fail_on_empty_fetch: true
     required: true
-    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review."
+    notes: "Value is hourly DVOL close in dvol_index_points. Deribit endpoint supports historical DVOL windows; execution venue questions stay in research review. History backfilled from 2021-03-24 (DVOL inception)."
 
   hv_deribit_btc_1h:
     provider: deribit
@@ -132,7 +132,7 @@ datasets:
     window_hours: 720
     fail_on_empty_fetch: true
     required: false
-    notes: "Derived 30-day close-to-close realized volatility from BTC-PERPETUAL: sample standard deviation of 720 hourly log returns, annualized by sqrt(365*24), in percent. This is neither Deribit's index-price series nor its native historical-volatility endpoint."
+    notes: "Derived 30-day close-to-close realized volatility from BTC-PERPETUAL: sample standard deviation of 720 hourly log returns, annualized by sqrt(365*24), in percent. This is neither Deribit's index-price series nor its native historical-volatility endpoint. Backfilled from 2018-09-14; calibration vs hv_deribit_btc_1h over the ~16-day overlap where both exist: corr 0.745, mean diff -8.66 vol pts (official HV below RV30), n=395."
 
   rv30_deribit_eth_1h:
     provider: deribit
@@ -147,7 +147,7 @@ datasets:
     window_hours: 720
     fail_on_empty_fetch: true
     required: false
-    notes: "Derived 30-day close-to-close realized volatility from ETH-PERPETUAL: sample standard deviation of 720 hourly log returns, annualized by sqrt(365*24), in percent. This is neither Deribit's index-price series nor its native historical-volatility endpoint."
+    notes: "Derived 30-day close-to-close realized volatility from ETH-PERPETUAL: sample standard deviation of 720 hourly log returns, annualized by sqrt(365*24), in percent. This is neither Deribit's index-price series nor its native historical-volatility endpoint. Backfilled from 2019-04-14; calibration vs hv_deribit_eth_1h over the ~16-day overlap where both exist: corr 0.766, mean diff -9.39 vol pts (official HV below RV30), n=395."
 
   funding_deribit_btc:
     provider: deribit
@@ -187,7 +187,7 @@ datasets:
     currency: BTC
     fail_on_empty_fetch: true
     required: true
-    notes: "Forward-only snapshot: value is total BTC option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot."
+    notes: "Forward-only snapshot: value is total BTC option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot. Fields now also include ATM/ITM/OTM open-interest and mark-IV buckets (moneyness_atm_band 0.025); snapshot-only, so buckets accrue forward from the next scheduled ingest."
 
   optsurf_deribit_eth:
     provider: deribit
@@ -201,7 +201,7 @@ datasets:
     currency: ETH
     fail_on_empty_fetch: true
     required: true
-    notes: "Forward-only snapshot: value is total ETH option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot."
+    notes: "Forward-only snapshot: value is total ETH option open_interest in base_contracts; fields include put/call OI, put/call ratio, max pain, OI-weighted mark IV, and spot index. History starts at the first snapshot. Fields now also include ATM/ITM/OTM open-interest and mark-IV buckets (moneyness_atm_band 0.025); snapshot-only, so buckets accrue forward from the next scheduled ingest."
 
   optflow_deribit_btc:
     provider: deribit
@@ -214,7 +214,7 @@ datasets:
     currency: BTC
     fail_on_empty_fetch: true
     required: true
-    notes: "Hourly inverse BTC option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record BTC premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count."
+    notes: "Hourly inverse BTC option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record BTC premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. Fields now also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts; history re-ingested with buckets from 2024-01-01 (22,403 hourly rows). Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise, so the newest ~day of rows keeps the pre-bucket schema until the archive catches up and is re-ingested."
 
   optflow_deribit_eth:
     provider: deribit
@@ -227,7 +227,7 @@ datasets:
     currency: ETH
     fail_on_empty_fetch: true
     required: true
-    notes: "Hourly inverse ETH option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record ETH premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count."
+    notes: "Hourly inverse ETH option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record ETH premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. Fields now also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts; history re-ingested with buckets from 2024-01-01 (22,402 hourly rows). Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise, so the newest ~day of rows keeps the pre-bucket schema until the archive catches up and is re-ingested."
 
   fear_greed_btc:
     provider: alternative_me
