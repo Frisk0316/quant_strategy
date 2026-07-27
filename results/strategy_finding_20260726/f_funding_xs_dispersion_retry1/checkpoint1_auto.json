@@ -1,0 +1,64 @@
+{
+  "batch_id": "strategy_finding_20260726",
+  "candidate_id": "f-funding-xs-dispersion-retry1",
+  "checkpoint1_auto_status": "FAIL",
+  "checks": [
+    {
+      "details": {
+        "cpcv_n_trials": 8,
+        "expected_family_trials": 8,
+        "summary_family_cumulative_n_trials": 8,
+        "summary_path": "results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/summary.json"
+      },
+      "name": "n_trials_reconcile",
+      "reason": "summary and CPCV n_trials reconcile to registry",
+      "status": "PASS"
+    },
+    {
+      "name": "leak_test_present_and_green",
+      "reason": "leak_test_passed is true",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "dsr": 0.8304758177760239,
+        "psr": 0.9165750911517625
+      },
+      "name": "dsr_le_psr",
+      "reason": "DSR is not greater than PSR(0)",
+      "status": "PASS"
+    },
+    {
+      "name": "idealized_fill_excluded",
+      "reason": "idealized_fill is false",
+      "status": "PASS"
+    },
+    {
+      "name": "portable_gate_or_honest_block",
+      "reason": "portable validation is blocked; human review must verify the block reason",
+      "status": "PASS"
+    },
+    {
+      "name": "ct_val_authoritative_and_venue_match",
+      "reason": "ct_val sources are authoritative and venue-matched",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "dsr": 0.8304758177760239,
+        "psr": 0.9165750911517625
+      },
+      "name": "dsr_psr_threshold",
+      "reason": "DSR or PSR is below 0.95",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-FUNDING-XS-DISPERSION",
+  "human_review_items": [
+    "leak_lag_spotcheck",
+    "diff_block_reason_honest",
+    "verdict",
+    "retry_vs_new_family"
+  ],
+  "schema_version": 1
+}

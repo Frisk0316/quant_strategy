@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "batch_id": "strategy_finding_20260726",
+  "review_date": "2026-07-26",
+  "overall_passed": false,
+  "promotion_gate_passed": false,
+  "live_trading_authorized": false,
+  "source_decision": {
+    "path": "results/strategy_finding_20260726/decision.json",
+    "sha256": "0f390c5137e526119880a740bb473ecc3637295ffd58f0a922429fad2245b0ad"
+  },
+  "directions": {
+    "H-023": {
+      "family_id": "F-XS-IDIOVOL",
+      "final_verdict": "STAGE2_FAIL_STATISTICAL_POWER",
+      "stage2_status": "FAIL",
+      "stage3_executed": false,
+      "data_availability": "PASS",
+      "distinctness": {
+        "status": "PASS",
+        "max_abs_correlation": 0.09135448216140683
+      },
+      "cost_after_edge": {
+        "status": "PASS",
+        "annualized_net_sharpe": 0.5960826082638108,
+        "mean_weekly_net_return": 0.001406524316516172
+      },
+      "statistical_power": {
+        "status": "FAIL",
+        "plausible_net_sharpe": 0.5960826082638108,
+        "min_detectable_sharpe": 0.7133821505828014,
+        "breadth": 6.0,
+        "n_obs": 870,
+        "prospective_n_trials": 4
+      },
+      "grid_trials_consumed": 0,
+      "family_cumulative_n_trials": 0,
+      "retry_budget": {
+        "k_used": 0,
+        "k_limit": 2
+      },
+      "artifact": {
+        "path": "results/strategy_finding_20260726/f_xs_idiovol/stage2_feasibility.json",
+        "sha256": "4a6a39cfbd94ef79b3590bc73fa0b2ff7779372c5fa300c5a358024eea858c4f"
+      }
+    },
+    "H-009": {
+      "family_id": "F-FUNDING-XS-DISPERSION",
+      "final_verdict": "CHECKPOINT1_AUTO_FAIL_STATISTICAL_THRESHOLD",
+      "stage2_status": "PASS",
+      "stage3_executed": true,
+      "wf_oos_sharpe": 1.4777716807599266,
+      "cpcv_oos_sharpe": 0.9092454819440962,
+      "dsr": 0.8304758177760239,
+      "psr": 0.9165750911517625,
+      "dsr_threshold": 0.95,
+      "psr_threshold": 0.95,
+      "checkpoint1_auto_status": "FAIL",
+      "checkpoint_checks_passed": 6,
+      "checkpoint_checks_failed": 1,
+      "failed_check": "dsr_psr_threshold",
+      "grid_trials_consumed": 4,
+      "family_cumulative_n_trials": 8,
+      "retry_budget": {
+        "k_used": 1,
+        "k_limit": 2
+      },
+      "summary_artifact": {
+        "path": "results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/summary.json",
+        "sha256": "de6bf84fddc3ca4cf03007f3bd8dd4f4422507f37d93ca2004f94f26d137ef1f"
+      },
+      "checkpoint_artifact": {
+        "path": "results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/checkpoint1_auto.json",
+        "sha256": "7e416b361aaeff214c6a39f6bbe72afceddb9fb9b2fdeb506de159a68fe65c05"
+      }
+    }
+  },
+  "decision": "Neither direction passes this round. Stop without retuning, promotion, shadow, demo, or live changes.",
+  "known_limitation": "Daily funding cashflow uses the frozen existing AVG-to-daily research convention; it is not settlement-grade cashflow."
+}
