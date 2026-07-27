@@ -78,9 +78,15 @@ over time.
   denominators can be assumed economic-asset unique.
 - By user decision, Deribit snapshot/forward-ingest Windows tasks remain
   unregistered and stale series are accepted while the RUNBOOK manual path
-  remains usable. Daily `dvol_deribit_*` is retained and was backfilled on
-  2026-07-12 (1,936 gap-free rows per symbol through 2026-07-11); its manual
-  update command is recorded in the RUNBOOK.
+  remains usable. A manual 2026-07-26 top-up brought daily `dvol_deribit_*` to
+  1,950 rows per symbol through 2026-07-25, hourly DVOL/funding/option flow to
+  2026-07-26 09:00 UTC, and stored one full current option-chain snapshot
+  (BTC 866 instruments/12 expiries/93 strikes; ETH 678/12/85). Historical
+  volatility starts only at Deribit's rolling public window
+  (`2026-07-10T13:00Z` in this run) and must accumulate forward. Option flow
+  still has a source-visibility gap from `2026-07-21T13:00Z` through
+  `2026-07-25T09:00Z`; the backfill checkpoints were reset to the last verified
+  hour so the history host can be retried without skipping it.
 - OKX Demo private login returns `60005 Invalid apiKey`; a valid Demo key is
   required. Do not switch to live as a workaround.
 - The existing `127.0.0.1:8080` listener (PID 23696 during the audit) timed out
@@ -93,6 +99,31 @@ over time.
   because this session could not obtain Administrator Task Scheduler rights.
   Run the documented `/NP` command from Administrator PowerShell, then require
   `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
+
+## Runtime and API reliability
+
+- **Closed coverage bottleneck (F28, 2026-07-21):** external coverage now scans
+  and groups `external_observations` once, then joins the 46 registered datasets.
+  On the current approximately 10 GB / 7.4 million-row table, the old shape
+  exceeded a 12-second cold-query timeout; the repaired full coverage endpoint
+  returned 137 combined rows in 1.704 seconds. No schema or payload shape changed.
+- **Closed container routing bug (F50, 2026-07-21):** the backtest route now
+  gives `DATABASE_URL` precedence over the YAML DSN, and the main Compose service
+  waits until TimescaleDB is healthy. This prevents container-local `localhost`
+  from silently shadowing the `timescaledb` service address.
+- **Closed for run list/result summary (F51, 2026-07-21):** a source DB exception
+  now produces HTTP 503 when no exact file fallback exists; a successful no-row
+  lookup remains 404, and a real file artifact remains usable. Extend this
+  three-state contract to the remaining per-artifact endpoints before treating
+  every DB failure path as observable.
+- **Open engine-dashboard auth contract (F52):** engine mode protects its API
+  with `X-API-Key`, while the same-origin browser client has no credential flow.
+  Choose cookie/session auth or an explicit loopback-only UI contract and add an
+  engine-app regression; do not remove authentication ad hoc.
+- **Scalability follow-up:** the backtest screen issues several concurrent API
+  requests and many routes still open one or two fresh asyncpg connections per
+  request. Measure after this query repair, then introduce one bounded shared
+  pool plus query/pool-wait metrics only if connection setup remains material.
 
 ## Governance follow-ups
 

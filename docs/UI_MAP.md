@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-21
 expires: none
 superseded_by: null
 ---
@@ -252,6 +252,9 @@ manual reload behavior.
   OHLCV row counts in this view are estimated from first/last timestamp and bar
   interval and are prefixed with `~`; exact row/gap checks belong in targeted
   diagnostics or export queries.
+- External coverage performs one grouped scan of `external_observations` and
+  joins the result once to `external_datasets`. Datasets with no observations
+  remain visible with null timestamps and row count `0`.
 - Funding coverage rows use `funding_rates.source` for both provider and
   exchange labels; Binance funding rows should not display provider `okx`.
 - Fetch submissions are no longer blocked by another active fetch. The card

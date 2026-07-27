@@ -54,12 +54,24 @@ or Stage 3.
   liquidation task's Python executable and documents least-privilege S4U task
   registration/run/removal; the host task still reports `Interactive` until the
   user runs the Administrator PowerShell registration and verifies result `0`.
+- Runtime/data reliability: external coverage now uses one grouped observation
+  scan; the current real DB returned 137 combined coverage rows in 1.704 seconds
+  after the old query exceeded a 12-second cold timeout. Compose waits for DB
+  health, runtime `DATABASE_URL` overrides the YAML candle DSN, and run-list /
+  result-summary DB outages without file fallback return 503 instead of empty or
+  missing data. F52 browser authentication and remaining per-artifact/pool work
+  stay explicit follow-ups; no schema or API payload shape changed.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
   unchanged. No PnL formula or existing result changed.
-- Research pipeline: H-009 remains non-passing `testing`; H-012 is user-shelved
-  with no retry and E-037 remains immutable non-promotion evidence. H-010/E-057
+- Research pipeline: H-009 is now shelved after the pre-registered E-063
+  breadth-restored retry failed checkpoint 1 (31 unique assets; WF 1.4778,
+  CPCV 0.9092, DSR 0.8305, PSR 0.9166; family `n_trials=8`, K 1/2).
+  H-023/F-XS-IDIOVOL stopped at E-062 Stage 2 because plausible net Sharpe
+  0.5961 was below the 0.7134 power floor; zero grid trials and K 0/2.
+  H-012 is user-shelved with no retry and E-037 remains immutable
+  non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
   absent, and the fixed zero-trial anchor's median gross capture is 1.3636 bps
   versus 8.0 bps cost across 7,376 episodes. Stage 3 did not run. H-013/E-050 is
@@ -184,6 +196,12 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   `921 passed, 1 skipped`; full Ruff, frontend syntax, config, backtest smoke,
   docs metadata/links/ledger, and strict doc impact pass. E-057 file hashes are
   byte-identical before/after.
+- 2026-07-21 DB/UI reliability repair: six focused API/data files pass
+  (`119 passed`); targeted Ruff, config validation, Compose dependency parsing,
+  docs metadata/links/ledger, advisory doc impact, and `git diff --check` pass.
+  Real coverage returned HTTP 200 with 137 rows in 1.704 seconds. Docker and a
+  running browser/API server were unavailable, so those integration smokes were
+  not claimed.
 - 2026-07-24 E-058: targeted tests `27 passed`; full unit `954 passed, 1
   skipped`; full Ruff, config, backtest smoke, docs metadata/links/ledger,
   strict doc impact, and diff checks pass. The real read-only probe completed

@@ -33,6 +33,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Completed and usable
 
+- Runtime/data reliability repair is complete for the highest-impact paths:
+  external coverage groups its approximately 7.4 million observation rows once
+  and the real endpoint returns 137 combined rows in 1.704 seconds; Compose
+  waits for TimescaleDB health; runtime `DATABASE_URL` wins over the YAML candle
+  DSN; and run-list/result-summary DB outages without file fallback return 503
+  rather than a plausible empty list or 404. No schema or payload shape changed.
 - P0.1-P0.3 rules implemented and Claude-APPROVED (artifact-ID containment,
   `ct_val` validator, venue fail-closed); post-merge gaps repaired with
   fail-closed regressions. No PnL formula or existing artifact changed.
@@ -97,10 +103,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   human review/merge remain pending.
 - H-013/F-VRP-TIMING complete 2026-07-14: E-038 PASS; E-050 grid FAILED the
   gate (DSR 0.60/PSR 0.78, MINT 0.051) — shelved, no retry.
-- H-009 stays `testing` (DSR=PSR 0.9346 < 0.95, no gate-chasing retry). A local
-  Research Ops screen may inspect only the existing lookback/quantile dimensions;
-  all submitted combinations count toward a known family-trial lower bound and
-  remain in-sample, non-promotion evidence. The Experiment Registry is still the
+- H-009 is shelved after E-063 breadth-restored retry 1: 31 unique assets,
+  unchanged four-cell fold-refit grid, WF 1.4778, CPCV 0.9092, DSR 0.8305,
+  PSR 0.9166, family-cumulative `n_trials=8`, K 1/2. Checkpoint1 auto fails only
+  the statistical threshold; no retune. H-023/F-XS-IDIOVOL stopped at Stage 2
+  power (0.5961 plausible net Sharpe < 0.7134 floor), so no Stage 3, trials, or
+  retry budget were consumed. `docs/EXPERIMENT_REGISTRY.md` remains the
   authoritative total.
   H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 E-057 is shelved at
   Stage 2: 3,396,960 aligned candle rows per venue/symbol pass, but no OKX
@@ -132,6 +140,10 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   pre-guard smoke's two stale-signal records remain in the append-only audit log
   and are explicitly excluded by the report. No scheduler is registered and no
   private endpoint, credential, or order path exists.
+- Runtime follow-ups remain: F52 needs an explicit engine-dashboard API-key
+  contract; remaining per-artifact DB reads should adopt the same outage/absent/
+  file-fallback distinction; add a bounded asyncpg pool only after measuring
+  post-query-fix connection overhead.
 
 ## Next actions, in order
 
@@ -152,6 +164,8 @@ outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
 5. Pending fact: the user creates the OKX Demo key.
 6. Taxonomy_003, H-013, and H-010 E-057 are closed/shelved; next ideation round
    only with a genuinely new data family/mechanism, not a DSR-targeting retune.
+   H-009 E-063 and H-023 E-062 are also closed for this round; neither passed,
+   and no follow-on is authorized without a new ex-ante rationale.
 7. Claude review DONE 2026-07-18 and repairs DONE 2026-07-21
    (`tasks/2026-07-18-strategy-history-h010-claude-review.md`): strategy-history
    A/B/C APPROVE-WITH-FINDINGS (minor fixes A1-A3: gitignore funnel JSON,
@@ -165,6 +179,9 @@ outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
 8. DONE 2026-07-17: Stage-2 F45/F46 caller/funnel repair and OKX
    raw-to-source-aware-canonical promotion completed under explicit user
    authorization. H-010 ledgers/results were not touched.
+9. Measure the repaired UI/API path under normal concurrent run selection, then
+   close the remaining per-artifact DB error paths and decide F52 authentication
+   before adding retries or a shared connection pool.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`,
 `tasks/2026-07-12-project-diagnosis-followup-tasks.md`, and
@@ -172,4 +189,6 @@ Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`
 `tasks/2026-07-17-strategy-history-frontend-codex-context-handoff.md`, and
 `tasks/2026-07-17-strategy-history-frontend-codex-session-handoff.md`, plus
 `tasks/2026-07-18-h010-e057-context-handoff.md` and
-`tasks/2026-07-18-h010-e057-session-handoff.md`.
+`tasks/2026-07-18-h010-e057-session-handoff.md`, plus
+`tasks/2026-07-21-db-coverage-performance-context-handoff.md` and
+`tasks/2026-07-21-db-coverage-performance-session-handoff.md`.

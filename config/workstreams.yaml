@@ -14,12 +14,12 @@ workstreams:
 
   - name: Local runtime reliability
     status: blocked
-    milestones: [coverage_query, single_server, private_ws_auth]
+    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth]
     current: private_ws_auth
-    state: "Coverage indexed aggregation, external DB-only export, and terminal private-WS auth-loop fixes are implemented. The standalone server now includes Manual and Progress. P1.4 repo support pins the liquidation Python path and documents S4U/Limited task lifecycle; host activation is pending Administrator rights. The pre-existing 127.0.0.1:8080 listener was left untouched. Demo private WS still returns OKX 60005 Invalid apiKey."
-    next: "Run the P1.4 RUNBOOK /NP command from Administrator PowerShell, verify S4U/Limited and result 0. Port 8080 stays abandoned; configure a valid OKX Demo Trading API key before engine mode. Do not switch to live mode as a workaround."
-    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-15
+    state: "External coverage now uses one grouped scan: the current real endpoint returned 137 rows in 1.704 seconds after the old query exceeded a 12-second cold timeout. Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. Standalone Manual/Progress and terminal private-WS auth-loop fixes remain implemented. Demo private WS still returns OKX 60005 Invalid apiKey; engine-dashboard API-key flow remains unresolved."
+    next: "Choose the engine-dashboard auth contract, extend explicit DB outage handling to remaining per-artifact endpoints, and measure concurrent UI connection overhead before adding a bounded pool. Run the P1.4 Administrator task activation separately; do not switch to live mode as a workaround."
+    links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, tasks/2026-07-21-db-coverage-performance-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
+    updated: 2026-07-21
 
   - name: XS momentum
     status: shelved
@@ -43,10 +43,10 @@ workstreams:
     status: active
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review]
     current: checkpoint_review
-    state: "E-057 remains immutable and H-010 remains shelved: candles pass at 3,396,960 aligned rows per venue/symbol, exact OKX funding is absent, and the frozen zero-trial anchor captured median 1.3636 bps gross versus 8.0 bps cost over 7,376 episodes. Claude review fixes are applied: future distinctness contracts must be structurally satisfiable, the generic orchestrator refuses missing/mismatched frozen H-010 evidence, and malformed or identity-less Stage-2 artifacts are isolated. The loopback Research Ops surface remains non-promotion tooling."
-    next: "Claude reviews the five delivery commits and A1-A3/B1-B4 fixes. No H-010 reprobe, retune, Stage 3, scheduling, promotion, demo, shadow, or live work. H-009 screens remain research-only and cannot be used to chase the 0.95 gate."
-    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
-    updated: 2026-07-21
+    state: "E-057 remains immutable and H-010 remains shelved. The 2026-07-26 strategy-finding round also closed without a pass: H-023/F-XS-IDIOVOL failed Stage-2 power at 0.5961 versus a 0.7134 floor (zero trials/K), while H-009 E-063 restored 28 to 31 unique assets and passed Stage 2 but failed checkpoint 1 at WF 1.4778, CPCV 0.9092, DSR 0.8305, PSR 0.9166 (family n_trials=8, K=1/2). The loopback Research Ops surface remains non-promotion tooling."
+    next: "Claude may review E-062/E-063 evidence and the existing A1-A3/B1-B4 delivery. No H-009/H-023 retune or H-010 reprobe, Stage 3 extension, scheduling, promotion, demo, shadow, or live work is authorized."
+    links: [docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-26-strategy-finding-round.md, results/strategy_finding_20260726/checkpoint_review.json, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
+    updated: 2026-07-26
 
   - name: Deribit derivatives data
     status: active

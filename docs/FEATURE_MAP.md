@@ -98,7 +98,9 @@ implementation exists.
 ## Backtest API
 
 - User-facing behavior: list runs, start runs/sweeps, read saved result artifacts,
-  delete runs, and expose chart-specific endpoints.
+  delete runs, and expose chart-specific endpoints. Run-list/result-summary DB
+  outages without an exact file fallback return 503; a healthy missing run stays
+  404 and an existing file artifact remains usable.
 - Frontend files: `frontend/data.js`, `frontend/view-backtest.js`,
   `frontend/view-results.js`, `frontend/view-config.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -108,7 +110,7 @@ implementation exists.
 - Data / DB / artifact files: `sql/migrations/0010_backtest_runs.sql`,
   `sql/migrations/0012_backtest_artifact_rows.sql`, `backtesting/artifacts.py`,
   `backtesting/artifact_rows.py`, runtime result directories.
-- Config files: `config/settings.yaml`.
+- Config files: `config/settings.yaml`, `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
   `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
   `tests/integration/test_api_endpoints.py`.
@@ -213,6 +215,12 @@ implementation exists.
   resolve multiplier contracts such as `1000SHIB-USDT-SWAP` from DB.
   External coverage rows label Exchange from the dataset provider, and external
   export downloads DB rows even when the optional refresh pre-step skips or fails.
+  Coverage groups external observations once and keeps registered empty datasets
+  visible with null timestamps and zero rows rather than timing out the card.
+  Deribit external ingestion includes rolling BTC/ETH historical volatility,
+  historical/hourly DVOL and funding/option flow. New option-surface snapshots
+  preserve the complete current chain sorted by expiry, strike, and option type;
+  they do not fabricate historical strike snapshots.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
@@ -241,7 +249,8 @@ implementation exists.
   `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
-- Config files: `config/settings.yaml`, `config/external_data.yaml`.
+- Config files: `config/settings.yaml`, `config/external_data.yaml`,
+  `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_market_ingest.py`, `tests/unit/test_external_data.py`,
   `tests/unit/test_deribit_public_client.py`,
   `tests/unit/test_routes_data_export.py`, `tests/unit/test_routes_data_queue.py`,

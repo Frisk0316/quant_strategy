@@ -153,7 +153,8 @@ keyless external HTTP endpoint -> scripts/market_data/ingest_external.py adapter
 
 Current: `config/external_data.yaml` registers keyless adapters for
 Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
-Deribit funding, Deribit option-surface snapshots, and Deribit option flow,
+Deribit historical volatility, Deribit funding, Deribit option-surface
+snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
 yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
@@ -177,6 +178,11 @@ aggregates, `observed_at` is the market bucket label and `published_at` is the
 bucket end, which is the earliest safe as-of timestamp for replay joins; Deribit
 hourly DVOL and option-flow rows therefore publish one hour after
 `observed_at`, and daily DVOL publishes one day after `observed_at`.
+`DeribitHistoricalVolatilityClient` writes `hv_deribit_btc_1h` /
+`hv_deribit_eth_1h` as annualized historical-volatility percentages. Deribit's
+public endpoint has no server-side start/end parameters and exposes only a
+recent rolling window, so requested bounds are local filters and longer history
+must accumulate forward.
 `DeribitFundingClient` writes `funding_deribit_btc` / `funding_deribit_eth` as
 hourly BTC-PERPETUAL/ETH-PERPETUAL funding observations with `value_num =
 interest_1h` and `fields.unit = "rate_1h_decimal"`; Deribit funding timestamps
@@ -186,8 +192,10 @@ are treated as accrual-period end and are safe to use as both `observed_at` and
 `optsurf_deribit_eth` snapshots as one hourly aggregate row per currency:
 `value_num` is total option open interest, fields carry put/call OI, put/call
 ratio, max pain pooled across all listed expiries in the one-row-per-currency
-snapshot, OI-weighted mark IV, and spot index, and raw payloads are bounded to
-the top 20 instruments by open interest. `DeribitOptionFlowClient`
+snapshot, OI-weighted mark IV, and spot index, and raw payloads retain the
+complete current listed chain sorted by expiry, strike, and option type,
+with normalized `expiry`, `strike`, and `option_type` fields on every
+instrument. `DeribitOptionFlowClient`
 and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
 `optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
 Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
@@ -197,7 +205,11 @@ Hours containing only excluded USDC-linear option trades still emit a row with
 `value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
 v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
 can advance cleanly because zero inverse trades is a valid historical outcome;
-other required external datasets marked `fail_on_empty_fetch` still fail closed
+operators must still inspect the gap report because Deribit's history and live
+hosts can have a temporary visibility gap. The shared client requests explicit
+descending trade order and uses a non-overlapping millisecond page boundary;
+omitting that order silently truncates the live response (F54/I51).
+Other required external datasets marked `fail_on_empty_fetch` still fail closed
 on an empty generic ingest.
 `GET /api/data/external-series` reads `external_observations` by `dataset_id`,
 optional UTC `start`/`end` bounds, filters to numeric `value_num`, downsamples to
@@ -362,7 +374,10 @@ UI responsive while large 1m backfills are running; the displayed OHLCV row coun
 is an estimate from first/last timestamp and bar interval. Targeted diagnostics
 or export paths remain the place for exact counts and gap inspection. Funding
 coverage rows still come from `funding_rates` and label provider/exchange from
-the stored `source`.
+the stored `source`. External coverage scans `external_observations` once,
+groups by `dataset_id`, and left-joins that aggregate to `external_datasets`;
+it does not run one full aggregate per dataset, and registered empty datasets
+remain visible with null timestamps and a zero count.
 Target: every promoted run should cite data coverage and source validation evidence.
 Validation DB parity filters canonical candles by `source_primary` when a run
 records `result.validation.exchange`, so the candle comparison is scoped to the

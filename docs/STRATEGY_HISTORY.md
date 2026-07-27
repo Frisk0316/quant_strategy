@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-07-17
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -285,20 +285,21 @@ the exact contracts.
 
 ## H-009 — Cross-sectional funding dispersion (`F-FUNDING-XS-DISPERSION`)
 
-- **Status:** `testing`.
+- **Status:** `shelved / retry1 statistical-fail`.
 - **Ideation source:** The taxonomy_002 idea batch and mechanism taxonomy
   proposed cross-sectional funding-level dispersion; the later family spec
   distinguished it from time-series funding carry.
 - **Strategy logic:** Each week rank a point-in-time liquid USDT-perp universe by
   trailing funding APR, buy the lowest-funding quartile, short the
   highest-funding quartile, and keep the book dollar neutral after costs.
-- **Instruments / universe and window:** 28 Stage-2-good Binance USDT perps from
-  the DB-rebuilt point-in-time universe, canonical `1m` and funding,
+- **Instruments / universe and window:** Latest E-063 used 31 unique
+  alias-adjusted Binance USDT-perp assets from the DB-built point-in-time
+  universe, canonical `1m`-derived daily close and Binance funding,
   2024-01-01 through 2026-06-17.
-- **Recorded results:** `E-031`: WF `1.1812`, CPCV `0.9553`, DSR `0.9346`, PSR
-  `0.9346`; annualized return `n/a (not recorded)`; equal-weight-universe
+- **Recorded results:** Retry `E-063`: WF `1.4778`, CPCV `0.9092`, DSR `0.8305`,
+  PSR `0.9166`; annualized return `n/a (not recorded)`; equal-weight-universe
   benchmark `n/a (not recorded)`. Artifact:
-  `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/summary.json`.
+  `results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/summary.json`.
 - **Iteration chain:**
   - `E-028` (2026-07-01) — failed data breadth because the universe artifact
     came from a thin parquet mirror.
@@ -306,13 +307,18 @@ the exact contracts.
     availability passed without changing thresholds.
   - `E-031` (2026-07-03) — minted the distinct family and ran the four-cell
     grid; the result narrowly missed both `0.95` probabilities.
-- **Outcome / lesson:** This is a marginal statistical miss, not a pass or a
-  refutation. Keep it `testing`; any retry needs a new ex-ante rationale and K.
+  - `E-061` (2026-07-26) — pre-registered a data-only 28→31 breadth
+    restoration, preserving the E-031 mechanism and grid.
+  - `E-063` (2026-07-26) — all Stage-2 checks passed, but the four-cell
+    fold-refit retry failed DSR/PSR; family trials rose to 8 and K to 1/2.
+- **Outcome / lesson:** More breadth improved WF by `0.2966` but reduced CPCV
+  by `0.0460`, DSR by `0.1041`, and PSR by `0.0180`. The machine checkpoint
+  fails only the statistical threshold. Shelve without retuning.
 - **Ordering note:** The registry dates `E-031` one day before `E-030`; the
   iteration list follows the ledger's recorded `E-028` → `E-030` → `E-031`
   chain rather than inventing a corrected chronology.
 - **Trace:** Hypothesis Ledger `H-009`; Experiment Registry `E-028`, `E-030`,
-  `E-031`.
+  `E-031`, `E-061`, `E-063`.
 
 ## H-010 — Binance/OKX lead-lag (`F-XVENUE-LEADLAG`)
 
@@ -624,6 +630,35 @@ the exact contracts.
 - **Outcome / lesson:** Better data and the full economic PnL model did not
   rescue the frozen thesis. Stop with no retry, retune, or deployment claim.
 - **Trace:** Hypothesis Ledger `H-021`; Experiment Registry `E-053`–`E-056`.
+
+## H-023 — Cross-sectional idiosyncratic volatility (`F-XS-IDIOVOL`)
+
+- **Status:** `shelved / Stage-2 power fail`.
+- **Ideation source:** The user-authorized 2026-07-26 strategy-finding round
+  selected a previously unvalidated low-idiosyncratic-volatility family after
+  design-space comparison with CME-gap and intraday-session alternatives.
+- **Strategy logic:** Estimate each eligible perp's rolling residual volatility
+  against same-day BTC returns, rank only non-BTC assets, and rebalance weekly
+  long the lowest-residual-volatility names and short the highest. Targets are
+  executable no earlier than t+1; the book reuses PIT membership, market-risk
+  multiplier, vol target, max-name cap, fees, slippage, and funding.
+- **Instruments / universe and window:** 31 alias-adjusted Binance USDT-perp
+  assets, PIT membership, canonical `1m`-derived daily close and Binance
+  funding, 2024-01-01 through 2026-06-17.
+- **Recorded results:** `E-062` Stage 2: data PASS, distinctness PASS (max abs
+  corr `0.09135`), cost PASS (engine-net Sharpe `0.5961`, mean weekly return
+  `0.0014065`), power FAIL (`0.5961 < 0.7134`, breadth 6, n_obs 870,
+  prospective n_trials 4). Stage-3 metrics are `n/a (not run)`. Artifact:
+  `results/strategy_finding_20260726/f_xs_idiovol/stage2_feasibility.json`.
+- **Iteration chain:**
+  - `E-060` (2026-07-26) — froze the signal, four-cell grid, references, and
+    stop rules before execution.
+  - `E-062` (2026-07-26) — failed prospective power after the other three
+    feasibility checks passed.
+- **Outcome / lesson:** The proxy is economically positive and distinct on this
+  sample but too weak for the pre-registered four-trial DSR/PSR target. Stop
+  before Stage 3; zero trials and K 0/2, with no retune.
+- **Trace:** Hypothesis Ledger `H-023`; Experiment Registry `E-060`, `E-062`.
 
 ## Known gaps
 

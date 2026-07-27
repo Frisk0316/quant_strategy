@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-18
+last_reviewed: 2026-07-26
 expires: none
 superseded_by: null
 ---
@@ -62,6 +62,12 @@ python scripts/market_data/init_db.py
 python scripts/market_data/import_parquet_ohlcv.py --bar 1H
 python scripts/market_data/import_parquet_funding.py
 ```
+
+Starting the full Compose stack also waits for the TimescaleDB health check
+before starting `okx-quant`. Inside containers, `DATABASE_URL` takes precedence
+over the local YAML DSN so the app reaches the `timescaledb` service rather than
+container-local `localhost`. A standalone server still requires both a reachable
+DB and an explicitly started API process.
 
 For a targeted Binance OHLCV repair, use an exclusive `--end` window:
 
@@ -1002,18 +1008,23 @@ schtasks /Delete /TN quant_deribit_options_snapshot /F
 ```
 
 The snapshot writes one row per currency per run into `external_observations`;
-audit first/last timestamps and gaps before using the series in research.
+new snapshots retain the complete current listed chain in `raw_payload`, sorted
+by expiry, strike, and option type. Audit first/last timestamps and gaps before
+using the series in research; past full chains cannot be reconstructed from this
+live endpoint.
 
-## Scheduled External Ingest (Deribit funding, DVOL, option flow)
+## Scheduled External Ingest (Deribit funding, volatility, option flow)
 
-Deribit funding, hourly DVOL, and option-flow datasets have historical backfills
-plus forward accumulation through `scripts/market_data/ingest_external.py`.
+Deribit funding, hourly DVOL, rolling historical volatility, and option-flow
+datasets use `scripts/market_data/ingest_external.py`. Historical volatility is
+forward-accumulated because its public endpoint exposes only a recent window.
 Register these Windows scheduled tasks yourself if the workstation should keep
 the datasets fresh; Codex should not register them during implementation:
 
 ```powershell
 schtasks /Create /TN quant_deribit_funding_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset funding_deribit_btc --dataset funding_deribit_eth >> logs\deribit_funding_ingest.log 2>&1" /F
 schtasks /Create /TN quant_deribit_dvol_1h_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset dvol_deribit_btc_1h --dataset dvol_deribit_eth_1h >> logs\deribit_dvol_1h_ingest.log 2>&1" /F
+schtasks /Create /TN quant_deribit_hv_ingest /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --dataset hv_deribit_eth_1h >> logs\deribit_hv_ingest.log 2>&1" /F
 schtasks /Create /TN quant_deribit_optflow_forward /SC HOURLY /MO 1 /TR "cmd /c cd /d C:\quant_strategy && C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe scripts\market_data\ingest_external.py --dataset optflow_deribit_btc --dataset optflow_deribit_eth >> logs\deribit_optflow_forward.log 2>&1" /F
 ```
 
@@ -1022,17 +1033,30 @@ Manual run / removal:
 ```powershell
 schtasks /Run /TN quant_deribit_funding_ingest
 schtasks /Run /TN quant_deribit_dvol_1h_ingest
+schtasks /Run /TN quant_deribit_hv_ingest
 schtasks /Run /TN quant_deribit_optflow_forward
 schtasks /Delete /TN quant_deribit_funding_ingest /F
 schtasks /Delete /TN quant_deribit_dvol_1h_ingest /F
+schtasks /Delete /TN quant_deribit_hv_ingest /F
 schtasks /Delete /TN quant_deribit_optflow_forward /F
 ```
 
 The forward option-flow path fetches the recent live window from
 `www.deribit.com`; if a task is down for more than the live lookback, rerun the
 history backfill script with explicit UTC `--start`/`--end` bounds and
-`--resume`. Keep all tasks at hourly cadence or slower to stay within the
-project's <=5 req/s Deribit rule.
+`--resume`. If the history and live windows do not yet overlap, rerun the
+explicit missing interval without `--resume` after the history host catches up.
+Keep all tasks at hourly cadence or slower to stay within the project's <=5
+req/s Deribit rule.
+
+Manual historical-volatility refresh:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --dataset hv_deribit_eth_1h
+```
+
+`--start`/`--end` only filter the rolling response locally; they cannot request
+older historical-volatility rows from Deribit.
 
 Daily DVOL (`dvol_deribit_btc`/`dvol_deribit_eth`) is manual-update only by the
 2026-07-12 user decision (no scheduled task). Update it with explicit bounds —
@@ -1044,8 +1068,8 @@ partial daily bar:
 python scripts\market_data\ingest_external.py --dataset dvol_deribit_btc --dataset dvol_deribit_eth --start <last_ingested_date> --end <today>T00:00:00
 ```
 
-History 2021-03-24 through 2026-07-11 (1,936 rows per symbol, gap-free) was
-backfilled 2026-07-12.
+History 2021-03-24 through 2026-07-25 (1,950 rows per symbol) was current after
+the manual 2026-07-26 top-up.
 
 ## Deribit Option Flow Backfill
 

@@ -13,6 +13,23 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-21 - DB and UI data reliability repair (Codex)
+
+- Replaced the external-coverage correlated aggregate with one grouped scan and
+  join, preserving registered datasets with no observations as null timestamps
+  and row count zero. The current real DB endpoint improved from an old query
+  that exceeded 12 seconds cold to 137 combined rows in 1.704 seconds.
+- Made the main Compose app wait for TimescaleDB health and made runtime
+  `DATABASE_URL` override the YAML candle DSN, closing the container-local
+  `localhost` split between coverage and backtest paths.
+- Backtest run listing and result-summary reads now distinguish DB outage from
+  true absence: outage without a precise file fallback is 503, healthy no-row is
+  404, and existing file fallback remains available. Invalid DB JSON remains a
+  corruption error rather than being mislabeled as availability failure.
+- Updated F28/F50-F52, UI/data flow, runbook/debugging guidance, current state,
+  and workstream handoffs. No DB schema, business rule, strategy, execution,
+  risk, result artifact, or deployment gate changed.
+
 ## 2026-07-21 - Claude review fixes and delivery commit split (Codex)
 
 - Closed A1-A3: generated `frontend/research_funnel.json` is ignored but left
