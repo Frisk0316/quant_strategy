@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -262,6 +262,12 @@ manual reload behavior.
   statuses and per-job cancel controls. For Binance, `POST /api/data/fetch`
   also syncs exchangeInfo-derived venue specs into `venue_instrument_specs`
   before candle writes.
+- Selecting Deribit in the same fetch form switches search to BTC/ETH, defaults
+  the start to `2021-01-01`, and locks the frequency to `1H`. A submitted
+  currency refreshes daily/hourly DVOL, native rolling HV, derived 30-day
+  realized volatility, and the current full option-chain snapshot through the
+  existing queued-job UI. The snapshot is current-only even when a historical
+  date range is selected.
 - If coverage loading fails or times out, the card shows a visible "Market data
   coverage unavailable" state instead of rendering the "No data in DB" empty
   state.
@@ -280,6 +286,9 @@ manual reload behavior.
   directly and show `Using existing DB rows`, rather than reporting every dataset
   as skipped. Refresh HTTP failures also fall through to the DB-backed download;
   successful refresh calls report only the count actually refreshed.
+  The same refresh backend also accepts datasets explicitly marked
+  `on_demand` for the Deribit fetch form; this does not make every external
+  adapter export-refreshable.
 - Coverage rows for OHLCV and funding pairs include a Delete button. The button
   uses a native confirmation dialog, calls `deleteDataPair`, and refreshes
   coverage when the API succeeds. External dataset rows are not pair-delete

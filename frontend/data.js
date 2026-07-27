@@ -389,7 +389,7 @@ window.API = (function () {
     fetchStrategyValidation: (strategy, validationId) => _get("/api/backtest/strategy-validation/" + strategy + "/" + validationId),
     fetchStrategyValidationArtifact: (strategy, validationId, artifactName) => _getLarge("/api/backtest/strategy-validation/" + strategy + "/" + validationId + "/artifact/" + artifactName),
     fetchRiskConfig:          ()        => _get("/api/config/risk"),
-    fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage"),
+    fetchDataCoverage:        ()        => _memoGetLarge("data-coverage", "/api/data/coverage"),
     fetchExternalSeries:      ({ dataset_id, start = "", end = "" }) => {
       const q = new URLSearchParams({ dataset_id });
       if (start) q.set("start", start);

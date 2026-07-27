@@ -34,6 +34,46 @@ def _seed_job(job_id: str) -> None:
     }
 
 
+def test_deribit_dataset_ids_include_native_and_derived_volatility():
+    assert routes_data._deribit_dataset_ids(["BTC"]) == [
+        "dvol_deribit_btc",
+        "dvol_deribit_btc_1h",
+        "hv_deribit_btc_1h",
+        "rv30_deribit_btc_1h",
+        "optsurf_deribit_btc",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_deribit_fetch_reuses_external_refresh(monkeypatch):
+    req = FetchRequest(
+        exchange="deribit",
+        symbols=["BTC"],
+        bar="1H",
+        start="2021-01-01",
+        end="2021-01-02",
+    )
+    _seed_job("deribit")
+
+    async def fake_refresh(db_dsn, dataset_ids, start, end):
+        assert db_dsn == "postgresql://unused"
+        assert dataset_ids == routes_data._deribit_dataset_ids(["BTC"])
+        return {
+            "status": "done",
+            "datasets": [
+                {"dataset_id": dataset_id, "status": "success", "rows_fetched": 1}
+                for dataset_id in dataset_ids
+            ],
+        }
+
+    monkeypatch.setattr(routes_data, "_refresh_external_datasets", fake_refresh)
+
+    await routes_data._run_fetch_body("deribit", req, "postgresql://unused")
+
+    assert routes_data._jobs["deribit"]["status"] == "done"
+    assert len(routes_data._jobs["deribit"]["results"]) == 5
+
+
 @pytest.mark.asyncio
 async def test_second_fetch_waits_as_queued_until_first_releases(monkeypatch):
     gate = asyncio.Event()

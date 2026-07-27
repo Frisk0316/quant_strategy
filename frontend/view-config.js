@@ -148,6 +148,10 @@ const DERIBIT_DATASET_ORDER = [
   "dvol_deribit_eth_1h",
   "dvol_deribit_btc",
   "dvol_deribit_eth",
+  "hv_deribit_btc_1h",
+  "hv_deribit_eth_1h",
+  "rv30_deribit_btc_1h",
+  "rv30_deribit_eth_1h",
   "funding_deribit_btc",
   "funding_deribit_eth",
   "optsurf_deribit_btc",
@@ -1715,8 +1719,9 @@ function MarketDataCard({ onCoverageChange } = {}) {
   const selectedExportCount = exportKind === "external" ? selectedExportDatasets.length : selectedExportSymbols.length;
   const estRows = selectedExportCount * estDays * (ROWS_PER_DAY[exportKind === "ohlcv" ? exportForm.bar : exportKind] || 24);
   const estBytes = estRows * (exportForm.format === "xlsx" ? 60 : 80);
+  const isDeribitFetch = fetchForm.exchange === "deribit";
   const existingDbFetchSymbols = [...new Set((coverage || [])
-    .filter((row) => (row.data_kind || "ohlcv") === "ohlcv" && row.bar === fetchForm.bar)
+    .filter((row) => !isDeribitFetch && (row.data_kind || "ohlcv") === "ohlcv" && row.bar === fetchForm.bar)
     .map((row) => row.inst_id)
     .filter(Boolean))]
     .sort();
@@ -2093,15 +2098,15 @@ function MarketDataCard({ onCoverageChange } = {}) {
 
       ${showFetchPanel && html`
         <div class="card" style=${{ background: "var(--surface-2)", marginBottom: 16 }}>
-          <div class="card-title" style=${{ marginBottom: 12 }}>Add Trading Pair Data to DB</div>
+          <div class="card-title" style=${{ marginBottom: 12 }}>Add Market Data to DB</div>
           <div class="field" style=${{ maxWidth: 760 }}>
-            <div class="field-label">USDT swap trading pairs</div>
+            <div class="field-label">${isDeribitFetch ? "Deribit BTC/ETH context datasets" : "USDT swap trading pairs"}</div>
             <div class="row" style=${{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
               <input
                 id=${FETCH_QUERY_INPUT_ID}
                 class="input mono"
                 style=${{ minWidth: 220, flex: "1 1 260px" }}
-                placeholder="Search BTC, ETH, PEPE..."
+                placeholder=${isDeribitFetch ? "Search BTC or ETH..." : "Search BTC, ETH, PEPE..."}
                 value=${instrumentQuery}
                 onInput=${(e) => setInstrumentQuery(e.currentTarget.value)}
                 onKeyDown=${(e) => {
@@ -2143,7 +2148,9 @@ function MarketDataCard({ onCoverageChange } = {}) {
                             ? `Search failed: ${instrumentSearch.message}`
                             : instrumentSearch.status === "done" && instrumentSearch.query
                               ? `No ${(instrumentSearch.exchange || fetchForm.exchange || "okx").toUpperCase()} matches for ${instrumentSearch.query || fetchSearchQuery}.`
-                              : "Search exchange pairs, or update existing DB pairs only."}
+                              : isDeribitFetch
+                                ? "Search BTC or ETH. Fetch includes DVOL, native HV, derived RV30, and the current full option chain."
+                                : "Search exchange pairs, or update existing DB pairs only."}
                       </td>
                     </tr>
                   `}
@@ -2160,17 +2167,24 @@ function MarketDataCard({ onCoverageChange } = {}) {
               <select id=${FETCH_EXCHANGE_SELECT_ID} class="select mono" value=${fetchForm.exchange || "okx"}
                 onChange=${(e) => {
                   setInstruments([]);
-                  setFetchForm((f) => ({ ...f, exchange: e.target.value, symbols: [] }));
+                  setFetchForm((f) => ({
+                    ...f,
+                    exchange: e.target.value,
+                    symbols: [],
+                    bar: e.target.value === "deribit" ? "1H" : f.bar,
+                    start: e.target.value === "deribit" ? "2021-01-01" : f.start,
+                  }));
                 }}>
                 <option value="okx">OKX</option>
                 <option value="binance">Binance</option>
+                <option value="deribit">Deribit</option>
               </select>
             </div>
             <div class="field">
               <div class="field-label">Bar</div>
               <select id=${FETCH_BAR_SELECT_ID} class="select mono" value=${fetchForm.bar}
                 onChange=${(e) => setFetchForm((f) => ({ ...f, bar: e.target.value }))}>
-                ${["1m", "5m", "15m", "1H", "4H", "1D"].map((b) => html`<option key=${b}>${b}</option>`)}
+                ${(isDeribitFetch ? ["1H"] : ["1m", "5m", "15m", "1H", "4H", "1D"]).map((b) => html`<option key=${b}>${b}</option>`)}
               </select>
             </div>
             <div class="field">
@@ -2191,11 +2205,13 @@ function MarketDataCard({ onCoverageChange } = {}) {
               onClick=${triggerFetch}>
               Confirm and Fetch to DB
             </button>
-            <button class="btn sm"
-              disabled=${fetchStartPending || !existingDbFetchSymbols.length || fetchForm.start >= fetchForm.end}
-              onClick=${triggerExistingOnlyFetch}>
-              Update DB Pairs Only (${existingDbFetchSymbols.length})
-            </button>
+            ${!isDeribitFetch && html`
+              <button class="btn sm"
+                disabled=${fetchStartPending || !existingDbFetchSymbols.length || fetchForm.start >= fetchForm.end}
+                onClick=${triggerExistingOnlyFetch}>
+                Update DB Pairs Only (${existingDbFetchSymbols.length})
+              </button>
+            `}
           </div>
           ${(fetchJobs || []).length > 0 && html`
             <div class="field" style=${{ marginTop: 12 }}>

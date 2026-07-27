@@ -377,10 +377,10 @@ async def test_refresh_external_datasets_rejects_dataset_unknown_in_yaml_and_db(
 
 
 @pytest.mark.asyncio
-async def test_refresh_external_datasets_skips_non_yfinance_adapter():
+async def test_refresh_external_datasets_skips_adapter_not_marked_on_demand():
     result = await _refresh_external_datasets(
         "postgresql://unused",
-        ["dvol_deribit_btc_1h"],
+        ["funding_deribit_btc"],
         datetime(2024, 1, 1, tzinfo=timezone.utc),
         datetime(2024, 1, 10, tzinfo=timezone.utc),
     )
@@ -388,9 +388,9 @@ async def test_refresh_external_datasets_skips_non_yfinance_adapter():
     assert result == {
         "status": "done",
         "datasets": [{
-            "dataset_id": "dvol_deribit_btc_1h",
+            "dataset_id": "funding_deribit_btc",
             "status": "skipped",
-            "reason": "adapter deribit_dvol does not support on-demand refresh",
+            "reason": "adapter deribit_funding does not support on-demand refresh",
         }],
     }
 
