@@ -33,6 +33,15 @@ over time.
 
 ## Research and operations state
 
+- **Open — H-014 shadow 8-week clock stalled (found 2026-07-28):** the journal's
+  last valid cycle entries are 2026-07-15; `quant_h014_shadow_daily` last ran
+  2026-07-27 20:25 with result 0xC000013A (console interrupt) and
+  `logs/h014_shadow_daily.log` ends with `run_h014_shadow.py` killed at `^C` —
+  consistent with the machine being off at the 16:10 window and catch-up runs
+  dying at shutdown. Missed shadow days cannot be backfilled, so the ADR-0011
+  ≥8-valid-weeks exit clock is effectively still at ~2 days. Needs: machine on
+  through the task window (or a user-approved schedule change) and a check that
+  a full cycle completes; every stalled day is permanently lost evidence.
 - **Open complete-round automation gap — ADR-0016/F56/F57/I53/I54
   (2026-07-27):** idea generation has a maximum of 15 but no 8/2/10
   executable minimum, literature and existing-strategy iteration inputs are not
