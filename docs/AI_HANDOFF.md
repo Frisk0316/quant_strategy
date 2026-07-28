@@ -366,6 +366,15 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     rules, no retune, one registry entry per executed candidate. Branch:
     `feature/deribit-moneyness-hypotheses`.
 
+15. ACCEPTED 2026-07-28 (user, "接受"): ADR-0017 H-014 live-execution layer,
+    parallel-track with the ADR-0011 shadow clock. Codex implementation task:
+    `tasks/2026-07-28-h014-live-execution-codex-tasks.md` (new
+    `execution/deribit_live/` package, additive `h014_live:` risk keys,
+    enabled=false fail-closed, testnet default, NO activation). Activation
+    order unchanged: shadow exit → bias review → R7.2 → user switch-on.
+    Shadow task now shows desktop toasts (start/ok/fail) so cycles are not
+    killed by shutdown; 8-week clock stalled since 07-15, see KNOWN_ISSUES.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.

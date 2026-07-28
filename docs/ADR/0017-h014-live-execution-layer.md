@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 type: adr
 owner: claude
 created: 2026-07-28
@@ -8,11 +8,12 @@ expires: none
 superseded_by: null
 ---
 
-# ADR-0017: H-014 Live-Execution Layer (draft for parallel-track review)
+# ADR-0017: H-014 Live-Execution Layer (parallel-track)
 
 ## Status
 
-Proposed — 2026-07-28. The user explicitly authorized DRAFTING this ADR in
+Accepted — 2026-07-28, explicit user acceptance in-session ("接受") after
+review of the draft. Drafting had been user-authorized the same day in
 parallel with the ADR-0011 shadow accumulation ("同時開始寫 live-execution
 ADR"), compressing the serial wait without weakening any gate. **This ADR
 being accepted does NOT enable live trading.** Activation stays behind, in
