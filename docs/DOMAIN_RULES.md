@@ -220,6 +220,19 @@ real execution requires a new ADR and R7.2 approval.
   At least eight weeks of fresh daily records plus fill-bias,
   missed-entry, and mark-tracking metrics unlock only a future live-ADR
   discussion; live still requires R7.2 and explicit user approval.
+- **R8.8** (ADR-0017) The live-execution layer consumes the frozen shadow
+  intent builder and R8.3/unit-cap checks unchanged — live intents must
+  byte-match shadow intents on identical inputs. Entries are post-only maker
+  orders only; taker execution exists solely as reduce-only risk exits; no
+  withdrawal or transfer capability exists anywhere in the codebase.
+- **R8.9** (ADR-0017) `h014_live.enabled: false` is the committed default and
+  fails closed: no private client is constructed and no authenticated request
+  is possible while disabled or uncredentialed. Testnet is the default
+  environment. Risk stops (per-symbol/aggregate notional caps, daily loss
+  stop, drawdown threshold) set a persistent reduce-only state that survives
+  restarts and blocks new entries. Activation order is fixed: ADR-0011 shadow
+  exit → bias-report review → every R7.2 gate → explicit user capital
+  approval with a stated cap.
 
 ## R9. Coin-margined perpetuals (research) — ADR-0012
 
