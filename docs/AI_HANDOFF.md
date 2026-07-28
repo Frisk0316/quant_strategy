@@ -358,6 +358,14 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
     Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
 
+14. AUTHORIZED 2026-07-28 (user): execute the H-024..H-027 Deribit
+    moneyness/vol limited probe per
+    `docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md`
+    (order H-024→H-025→H-027→H-026; H-026 = F-VRP-TIMING K retry 1/2,
+    explicitly included). Execution runs in a separate session; Stage-2 stop
+    rules, no retune, one registry entry per executed candidate. Branch:
+    `feature/deribit-moneyness-hypotheses`.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.

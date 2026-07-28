@@ -30,6 +30,18 @@ available: DVOL 1h 2021-03+, RV30 1h 2018/2019+, optflow moneyness buckets
   backtests.
 - Execution needs user authorization per candidate (or batch) before Stage 2.
 
+**AUTHORIZATION (2026-07-28, user, this-session chat):** the user authorized
+executing all four hypotheses H-024..H-027 as this limited probe, INCLUDING
+H-026 as F-VRP-TIMING retry 1 of 2 (the user replied "授權 claude 跑新的假設"
+after being shown a table that explicitly flagged H-026 as a K-consuming
+family retry needing authorization). Execution happens in a separate session;
+that session must follow this spec's order (H-024 → H-025 → H-027 → H-026),
+register one EXPERIMENT_REGISTRY entry per executed candidate, and apply the
+Stage-2 stop rules without retune. Scope granted: Stage 2 (four-check) and, on
+Stage-2 PASS, the pre-registered Stage-3 fold-refit grid for that candidate.
+NOT granted: any retune after a gate fail, any promotion/demo/shadow/live
+claim, any second retry of F-VRP-TIMING (K=2 would be terminal).
+
 ---
 
 ## H-024 F-OPT-HEDGE-DEMAND — OTM put taker-buy surge
