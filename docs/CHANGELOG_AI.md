@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,23 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-28 - H-014 live-execution implementation (Codex, inactive)
+
+- Implemented ADR-0017's testnet-default private Deribit client with OAuth
+  client credentials, one 401 refresh, limit-only public order methods, and
+  post-only entries; plain taker orders are not representable.
+- Added a disabled-by-default adapter that consumes the shadow builder/checks,
+  protects the long put before short legs, enforces allowlist/unit/notional/
+  daily-loss/drawdown gates, bounds maker repricing, and writes append-only
+  order/fill/reject/missed/risk events.
+- Added additive `h014_live` risk config, a cancel-BTC-and-ETH + persistent
+  reduce-only panic command, mocked HTTP/parity/risk/journal tests, runbook
+  operations, and the required Change Manifest.
+- No credentials, authenticated network call, scheduler, mode flip, existing
+  result mutation, or deployment-readiness claim was made. Activation remains
+  gated by ADR-0011 exit, bias review, R7.2, and separate explicit user
+  approval with a capital cap.
 
 ## 2026-07-27 - Deribit vol backfill and moneyness buckets (Claude, SDD)
 

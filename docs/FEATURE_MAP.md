@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -753,6 +753,34 @@ implementation exists.
 - Do-not-touch notes: no private/authenticated endpoint, broker/order path,
   credential, scheduler registration, strategy/risk/portfolio module, DB
   schema, live gate, or frozen parameter change is allowed.
+
+## H-014 Deribit Options Live Execution (disabled)
+
+- User-facing behavior: no active entrypoint. The ADR-0017 layer is
+  fail-closed behind `h014_live.enabled: false`, defaults to Deribit testnet,
+  consumes byte-identical ADR-0011 intent legs, places only limit orders
+  (post-only except explicit reduce-only risk exits), reprices a bounded number
+  of times, and appends order/fill/reject/missed/risk events.
+- Execution files: `src/okx_quant/execution/deribit_live/`; intent construction,
+  the 1.0-unit cap, and naked-put rejection import the read-only
+  `src/okx_quant/execution/deribit_shadow/` implementation.
+- Operations: `scripts/h014_live_panic.py` cancels option orders for BTC and
+  ETH and writes the persistent reduce-only state; `--dry-run` uses no network.
+- Data / artifacts: runtime-only append-only
+  `results/live_h014/orders.jsonl`, `orders.jsonl.lock`, and
+  `reduce_only.flag`. Unit tests redirect every write to temporary paths and do
+  not create or modify `results/**`.
+- Config: additive `config/risk.yaml` `h014_live` block. Credentials are read
+  only from `.env` / process environment as `DERIBIT_API_KEY` and
+  `DERIBIT_API_SECRET`; no credential is stored in config.
+- Tests: `tests/unit/test_deribit_private_client.py`,
+  `tests/unit/test_h014_live_adapter.py`.
+- Docs: ADR-0017, the 2026-07-28 Change Manifest, this map, and
+  `docs/RUNBOOK.md`.
+- Do-not-touch notes: implementation is not activation. Do not enable the
+  config, register a scheduler, switch `config/settings.yaml`, relax R7.2,
+  modify shadow intent logic, or claim demo/shadow/live readiness without the
+  ADR-0017 gate order and a separate explicit user approval.
 
 ## Shadow / Demo / Live Deployment Gate
 
