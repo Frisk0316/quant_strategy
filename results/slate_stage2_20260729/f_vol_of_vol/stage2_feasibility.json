@@ -1,0 +1,244 @@
+{
+  "batch_id": "slate_stage2_20260729",
+  "candidate_dir": "f_vol_of_vol",
+  "candidate_id": "H-032",
+  "checks": [
+    {
+      "details": {
+        "coverage": 1.0,
+        "formal_window": [
+          "2021-09-20",
+          "2026-07-27"
+        ],
+        "i49_preflight": {
+          "candidates": {
+            "H-030": {
+              "E-059/F-TAKER-FLOW": {
+                "achievable_common_days": 779,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-04-29",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-031": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 831,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-032": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 922,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-067/F-VRP-TIMING": {
+                "achievable_common_days": 1771,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2021-06-22",
+                  "2026-07-27"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-034": {
+              "E-062/F-XS-IDIOVOL": {
+                "achievable_common_days": 898,
+                "candidate_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-035": {
+              "E-044/F-OPTFLOW-POSITIONING": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-037": {
+              "E-057/F-XVENUE-LEADLAG": {
+                "achievable_common_days": 91,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2020-01-01",
+                  "2020-04-01"
+                ],
+                "required_common_days": 65
+              },
+              "cme_gap_fill baseline": {
+                "achievable_common_days": 870,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-05-20"
+                ],
+                "required_common_days": 65
+              }
+            }
+          },
+          "status": "PASS"
+        },
+        "n_obs": 1771,
+        "stage2_first_grid_cell": {
+          "window_days": 90,
+          "z_cut": 1.0
+        }
+      },
+      "name": "data_availability",
+      "reason": "complete DVOL/VoV daily coverage=1.000000",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "correlations": {
+          "E-050/F-VRP-TIMING:W=14|z_min=0.0": {
+            "abs_correlation": 0.21602887773269044,
+            "common_days": 921
+          },
+          "E-050/F-VRP-TIMING:W=14|z_min=0.5": {
+            "abs_correlation": 0.21625359742783729,
+            "common_days": 921
+          },
+          "E-050/F-VRP-TIMING:W=28|z_min=0.0": {
+            "abs_correlation": 0.21773664604036944,
+            "common_days": 921
+          },
+          "E-050/F-VRP-TIMING:W=28|z_min=0.5": {
+            "abs_correlation": 0.22933991698504014,
+            "common_days": 921
+          },
+          "E-067/H-026/F-VRP-TIMING": {
+            "abs_correlation": 0.5614902364437897,
+            "common_days": 1762
+          }
+        },
+        "required_common_days": 65,
+        "threshold": 0.3
+      },
+      "name": "distinctness",
+      "reason": "a mandatory VoV correlation is unavailable, under-covered, or >=0.30",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "annualized_net_sharpe": -0.41096341175488327,
+        "grid_trials_evaluated": 0,
+        "roundtrip_cost_bps": 8.0
+      },
+      "name": "cost_after_edge",
+      "reason": "annualized net Sharpe=-0.410963",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "breadth": 2.0,
+        "grid_trials_evaluated": 0,
+        "min_detectable_sharpe": 0.8683683964616495,
+        "n_obs": 1762,
+        "n_trials": 4,
+        "periods_per_year": 365.0,
+        "plausible_net_sharpe": -0.41096341175488327
+      },
+      "name": "statistical_power",
+      "reason": "plausible_net_sharpe=-0.410963 < min_detectable_sharpe=0.868368",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-VOL-OF-VOL",
+  "hypothesis_id": "H-032",
+  "schema_version": 1,
+  "stage2_status": "FAIL"
+}
