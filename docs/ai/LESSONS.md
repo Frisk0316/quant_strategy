@@ -55,3 +55,21 @@ automation's configuration and its own result codes. Then check the next layer
 too: fixing the scheduler exposed a second blocker (raw candles ran 14 days
 ahead of `canonical_candles` because the daily script never promoted), so
 "it runs now" is not "it works now" until the end-to-end artifact appears.
+
+## 2026-07-29 Specs frozen against data that was never checked
+
+Trigger: eight literature-backed hypotheses were registered with frozen
+signals; five of them (H-031, H-033, H-035, H-036, H-037) turned out to be
+unbuildable because the data they name does not exist in this repo — no
+per-trade Deribit option tape (optflow stores hourly aggregates with a
+20-trade sample), zero FRED rows, and no official CME series.
+Wrong: writing a data inventory from memory into the research prompt, then
+freezing specs against it. The same session had correctly scouted data before
+registering H-028/H-029 and caught a gap that way — the check was skipped for
+the bigger slate precisely when it mattered more.
+Right: before freezing any spec, run the one query that proves each named
+dataset exists at the required granularity and history. It costs minutes; the
+omission cost a full build-and-run cycle across five candidates.
+Rule: a spec may only name data whose existence, granularity, and date range
+have been verified in this session. "The adapter exists" is not "the data is
+ingested"; "we have option flow" is not "we have per-trade option flow".
