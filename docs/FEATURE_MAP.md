@@ -579,7 +579,14 @@ implementation exists.
   (E-064..E-067, all Stage-2 stops). H-029/E-068 Stage-2 ownership is
   `backtesting/funding_settlement_probe.py`: an event-window design over
   Binance funding settlements + 1m candles (no new ingestion), refuted on
-  negative net edge at Stage 2. ADR-0016 round-manifest sealing / hash-bound
+  negative net edge at Stage 2. H-030..H-037 Stage-2 ownership is split by
+  source shape across `backtesting/intrabar_periodicity_probe.py`,
+  `backtesting/options_flow_probe.py`, `backtesting/macro_state_probe.py`,
+  `backtesting/vol_structure_probe.py`, and
+  `backtesting/cme_session_probe.py`. The registry exposes one ordered
+  `--candidate slate` caller; it runs the whole-slate I49 overlap pre-flight
+  before opening the DB, writes four-check SHA-bound artifacts, and never
+  enters Stage 3. ADR-0016 round-manifest sealing / hash-bound
   resume / terminal reconciliation library is `backtesting/pipeline_round.py`
   (build-only; no real round has run).
 - Target behavior (ADR-0016): one user prompt may drive several bounded GenAI
@@ -588,12 +595,11 @@ implementation exists.
   and two eligible existing-strategy iterations). Deterministic code evaluates
   every sealed strategy at Stage 2, runs Stage 3 only for passes, and reconciles
   the full paper/idea/rejection/execution funnel.
-- Known gap: current generation has only a maximum of 15, no minimum or track
-  quota, and no unified literature-plus-iteration command. Literature candidates
-  normally remain `pending_llm`; unknown/new families stop at
-  `awaiting_stage2_implementation`; resume has no manifest hash; and current
-  aggregate reporting cannot prove that one frozen round completed. Therefore
-  current commands cannot claim a complete ADR-0016 round.
+- Known gap: the eight new slate mechanisms now have deterministic Stage-2
+  runners, but only one eligible existing-strategy iteration exists and H-038
+  remains explicitly unauthorized. The required 10–15 total / 8 new / 2
+  iterations contract therefore still cannot be sealed honestly, and the
+  slate-only caller is not a complete ADR-0016 round command.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
@@ -605,7 +611,11 @@ implementation exists.
   `backtesting/pipeline_stage3_registry.py`,
   `backtesting/xvenue_leadlag_probe.py`,
   `backtesting/xvenue_funding_spread_probe.py`,
-  `backtesting/xvenue_funding_spread_backtest.py`.
+  `backtesting/xvenue_funding_spread_backtest.py`,
+  `backtesting/intrabar_periodicity_probe.py`,
+  `backtesting/options_flow_probe.py`, `backtesting/macro_state_probe.py`,
+  `backtesting/vol_structure_probe.py`, and
+  `backtesting/cme_session_probe.py`.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
@@ -632,6 +642,11 @@ implementation exists.
   `tests/unit/test_pipeline_power_screen.py`,
   `tests/unit/test_pipeline_stage2_data_probe.py`,
   `tests/unit/test_pipeline_stage2_registry.py`,
+  `tests/unit/test_intrabar_periodicity_probe.py`,
+  `tests/unit/test_options_flow_probe.py`,
+  `tests/unit/test_macro_state_probe.py`,
+  `tests/unit/test_vol_structure_probe.py`,
+  `tests/unit/test_cme_session_probe.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
   `tests/unit/test_pipeline_literature_ideas.py`,

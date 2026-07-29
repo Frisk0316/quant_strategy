@@ -13,6 +13,17 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-29 - H-030..H-037 Stage-2 slate (Codex)
+
+- Added five source-shaped probe modules and eight registered candidate runners.
+  One whole-slate I49 overlap check runs before DB access; the ordered caller
+  writes four-check SHA-bound artifacts and never enters Stage 3.
+- E-069 H-030 passed data/distinctness but failed cost/power. E-074 H-032 and
+  E-075 H-034 passed data but failed decisive distinctness, cost, and power.
+  E-070/E-071/E-072/E-073/E-076 are data-blocked without proxy fabrication.
+- Family trials and K remain unchanged at zero for all eight. No ingestion,
+  retune, grid, Stage 3, promotion, deployment, or H-038 work occurred.
+
 ## 2026-07-29 - H-029 Stage 2 + ADR-0016 infrastructure slice 1 (Codex)
 
 - H-029/E-068 passed I49 before DB access, data coverage (1,512/1,512 active

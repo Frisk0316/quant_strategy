@@ -16,11 +16,10 @@ durable backlog.
 
 ## Current goal
 
-Close out the completed H-024..H-027 limited probe for Claude review. E-025's
-frozen selected combo now has a faithful 898-day dated reference; whole-batch
-I49 passed, and all four candidates executed in the authorized order. Every
-candidate stopped at Stage 2, so no grid, Stage 3, new trial, or K consumption
-occurred.
+Close out the completed H-030..H-037 limited slate probe for Claude review.
+Whole-batch I49 passed before DB access and all eight frozen first cells ran in
+the authorized order as E-069..E-076. Every candidate stopped at Stage 2, so
+no grid, Stage 3, new trial, or K consumption occurred.
 
 ## Branch and working tree
 
@@ -29,6 +28,10 @@ occurred.
   H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
   H-025 merged into F-OPT-HEDGE-DEMAND; all four Stage-2 artifacts are
   immutable and no Stage-3 artifact exists.
+- H-030..H-037 implementation/outcome slices are `69fae10`, `1f5f8df`,
+  `d482a17`, and `9f3023d`; the registry/docs wrap-up is the following ordered
+  commit. Eight SHA-bound Stage-2 artifacts exist under
+  `results/slate_stage2_20260729/`; no Stage-3 artifact exists.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -102,6 +105,14 @@ occurred.
   data/distinctness but failed cost/power. H-026's screen used prospective
   family `n_trials=8`, while actual trials remain 4 and K remains 0/2 because
   no Stage 3 ran. No retune is authorized.
+  H-030..H-037 limited slate execution is complete at E-069..E-076. H-030
+  passed data and decisive E-059 distinctness, then failed cost/power
+  (-97.306114 net Sharpe after 8 bps/event). H-032 and H-034 passed data but
+  failed their decisive mint-apart checks (0.561490 vs E-067; 0.494810 vs
+  E-062), cost, and power. H-031/H-035 are blocked because option-flow rows
+  retain only first-20 hourly trade samples; H-033/H-036 lack their required
+  FRED series; H-037 lacks official CME settlements. All family trials/K
+  remain zero and no retune or Stage 3 is authorized.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
   ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
@@ -449,6 +460,16 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     `docs/superpowers/specs/2026-07-29-literature-slate-h03{0,2}-*.md`.
     Next: Stage-2 probe modules per candidate (ADR-0016 phase 3).
 
+18. COMPLETE AT STAGE 2, 2026-07-29 (user-authorized): H-030..H-037 now have
+    deterministic registered runners and E-069..E-076 SHA-bound artifacts.
+    Whole-slate I49 ran before DB access. H-030, H-032, and H-034 reached
+    measurable returns but failed cost/power; H-032/H-034 also failed decisive
+    distinctness. The other five are honestly data-blocked. No Stage 3,
+    parameter grid, trial/K consumption, ingestion, proxy substitution,
+    promotion, or deployment ran. The 8/2/10 complete-round contract remains
+    blocked because H-038 is still unauthorized and only one eligible
+    iteration exists.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.
@@ -456,3 +477,7 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
   reserved-only; H-012 shelved; P1.4 operations decided.
 - H-014 pre-2024 hourly-DVOL backfill and E-043 are complete. Any chain-history
   purchase or Stage-3 engine/accounting work still needs explicit human approval.
+- Claude should decide whether H-032's 0.561490 correlation with E-067 and
+  H-034's 0.494810 correlation with E-062 require durable family reassignment;
+  this task records the decisive failures but does not rewrite the
+  pre-registered family identities.
