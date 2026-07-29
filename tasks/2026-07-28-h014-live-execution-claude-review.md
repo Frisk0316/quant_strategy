@@ -77,3 +77,24 @@ adding R8.8/R8.9 and I56 alongside this review.
 
 The three blockers above join the ADR-0017 activation review as mandatory
 items, before any `enabled: true` discussion.
+
+## Fix-wave outcome (2026-07-28, second review round)
+
+Codex fix wave re-reviewed (scoped, most-capable model) + independently
+verified: **clean — all 10 findings ADDRESSED** (F1.1-F1.3 blockers,
+F2.1-F2.5 minors, F3 honest-blocked diff-validation entry), no new breakage.
+Verifier: 100/100 focused tests, 969-passed full regression, diff confined to
+the 12 permitted files, `client_secret` moved to POST body, paths repo-root
+anchored, panic dry-run side-effect-free. Doc-impact strict closed by
+registering F59 (order-lifecycle/journal divergence races) and reviewing
+R8.8/R8.9/I56 against the post-fix behavior (no change needed) plus a
+FEATURE_MAP note for the `h014_vol_regime_options` honest-blocked contract.
+
+Remaining activation-wave items (from re-review minors, none blocking while
+disabled): widen orphan sweep to ambiguous HTTPStatusError; journal the
+original cancel-error text in sweep-resolved recoveries; anchor
+`from_env`'s `.env` default; export shadow's private helpers officially;
+tighten `_default_notify` async behavior; restate sequential-leg-execution
+assumption as an invariant if concurrency is ever introduced. The
+"shadow-bias-report satisfies the diff-validation gate row?" question stays
+open for the activation review.

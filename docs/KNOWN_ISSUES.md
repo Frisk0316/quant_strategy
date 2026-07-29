@@ -33,15 +33,14 @@ over time.
 
 ## Research and operations state
 
-- **Open — H-014 live layer pre-activation fixes (review 2026-07-28):** three
-  order-lifecycle edge cases from the ADR-0017 delivery review must be fixed
-  and re-reviewed before any activation discussion: (1) fill-during-reprice →
-  cancel error journals a false `adapter_failure` and desyncs venue vs
-  journal; (2) transport failure after venue accept leaves an orphan resting
-  order recoverable only by panic; (3) the final reprice attempt is placed and
-  immediately cancelled (zero resting time). Details:
-  `tasks/2026-07-28-h014-live-execution-claude-review.md`. Non-blocking while
-  `h014_live.enabled=false`.
+- **Closed — H-014 live layer pre-activation blockers (fixed + re-reviewed
+  2026-07-28):** the three order-lifecycle edge cases are fixed (F59 guards:
+  `get_order_state` reconciliation, journaled cancel sweep, full resting time)
+  and the fix wave re-review is clean. Residual activation-wave polish items
+  (ambiguous HTTPStatusError sweep, `from_env` `.env` anchoring, notify async
+  tightening, official shadow-helper export) are listed in
+  `tasks/2026-07-28-h014-live-execution-claude-review.md` "Fix-wave outcome";
+  they gate activation review, not the merge.
 - **Open — H-014 shadow 8-week clock stalled (found 2026-07-28):** the journal's
   last valid cycle entries are 2026-07-15; `quant_h014_shadow_daily` last ran
   2026-07-27 20:25 with result 0xC000013A (console interrupt) and

@@ -702,7 +702,10 @@ implementation exists.
 - Backtesting files: `backtesting/differential_validation.py`,
   `scripts/run_differential_validation.py`,
   `scripts/run_engine_consistency_smoke.py`, `backtesting/walk_forward.py`,
-  `backtesting/cpcv.py`.
+  `backtesting/cpcv.py`. 2026-07-28: `h014_vol_regime_options` is declared as
+  an honest-blocked contract (all engines `adapter_required`, gate `passed`
+  forced false); whether ADR-0011 shadow-bias evidence satisfies this gate row
+  is an open activation-review decision.
 - Data / DB / artifact files: runtime validation result directories and validation
   artifacts; frozen offline engine-consistency fixtures live under
   `tests/fixtures/engine_consistency/`.
