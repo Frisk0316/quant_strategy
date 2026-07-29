@@ -905,6 +905,24 @@ USER-APPROVED SCHEDULE (2026-07-15, after the review conditions cleared):
 `research\probes\h014_daily_shadow_ops.py --no-wait`, runs one cycle, and
 refreshes the bias report (log: `logs\h014_shadow_daily.log`). Manage with:
 
+REQUIRED power settings (user-approved 2026-07-29 after the clock stalled for
+two weeks): this host runs on battery, and Task Scheduler's defaults refuse a
+trigger on battery (`0x800710E0`), kill a running task when power is lost
+(`0xC000013A`), and never catch up a missed slot. Any re-registration MUST
+re-apply:
+
+```powershell
+$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries -StartWhenAvailable `
+  -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Set-ScheduledTask -TaskName quant_h014_shadow_daily -Settings $s
+```
+
+16:10 local = 08:10 UTC is the first slot after the frozen 08:00 UTC research-day
+boundary; a manual run before 08:00 UTC fail-closes with "H-014 daily cycle must
+run at or after 08:00 UTC" — that is correct behavior, not a fault. `Last Result`
+is meaningful again since the wrapper now propagates the cycle's exit code.
+
 ```powershell
 schtasks /Query /TN quant_h014_shadow_daily /FO LIST
 schtasks /Run /TN quant_h014_shadow_daily

@@ -41,15 +41,24 @@ over time.
   tightening, official shadow-helper export) are listed in
   `tasks/2026-07-28-h014-live-execution-claude-review.md` "Fix-wave outcome";
   they gate activation review, not the merge.
-- **Open — H-014 shadow 8-week clock stalled (found 2026-07-28):** the journal's
-  last valid cycle entries are 2026-07-15; `quant_h014_shadow_daily` last ran
-  2026-07-27 20:25 with result 0xC000013A (console interrupt) and
-  `logs/h014_shadow_daily.log` ends with `run_h014_shadow.py` killed at `^C` —
-  consistent with the machine being off at the 16:10 window and catch-up runs
-  dying at shutdown. Missed shadow days cannot be backfilled, so the ADR-0011
-  ≥8-valid-weeks exit clock is effectively still at ~2 days. Needs: machine on
-  through the task window (or a user-approved schedule change) and a check that
-  a full cycle completes; every stalled day is permanently lost evidence.
+- **Root-caused and repaired 2026-07-29 — H-014 shadow 8-week clock stalled:**
+  the journal's last valid cycle entries are 2026-07-15. The cause was NOT
+  machine downtime: `quant_h014_shadow_daily` carried the default power
+  conditions `DisallowStartIfOnBatteries=True`, `StopIfGoingOnBatteries=True`,
+  `StartWhenAvailable=False`, and this host runs on battery, so Task Scheduler
+  refused every trigger (0x800710E0 on 2026-07-29 12:34) and killed the one
+  run that did start when power was lost (0xC000013A on 2026-07-27). With
+  catch-up disabled, every refused day was silently skipped. User-approved fix
+  applied 2026-07-29: all three settings flipped (allow on battery, do not
+  stop on battery, start when available) plus a 2h execution limit. Also fixed
+  `scripts/run_h014_shadow_task.cmd`, whose trailing toast command masked a
+  failed cycle as `Last Result: 0`; it now propagates the cycle's exit code.
+  Verified: a manual trigger now RUNS (it correctly fail-closed with
+  "must run at or after 08:00 UTC" because 16:10 local = 08:10 UTC is the
+  first valid slot). Missed days remain permanently unrecoverable, so the
+  ADR-0011 ≥8-valid-weeks clock restarts from ~2026-07-29. **Watch item:**
+  confirm the 16:10 local run writes new journal dates before treating the
+  clock as running.
 - **Open complete-round automation gap — ADR-0016/F56/F57/I53/I54
   (2026-07-27):** idea generation has a maximum of 15 but no 8/2/10
   executable minimum, literature and existing-strategy iteration inputs are not
