@@ -70,6 +70,12 @@ Machine-readable: rows start with `| F-` (the `| E-` registry parser ignores the
 | F-TAKER-FLOW | 0 | 2 | E-058 is the original zero-trial Stage-2 feasibility probe; E-059 is the zero-trial data-gap repair reprobe and fails statistical power after the repaired data/alias inputs pass. The four-cell Stage-3 grid remains reserved, not consumed; H-022 is shelved with no retune or Stage 3. |
 | F-XS-IDIOVOL | 0 | 2 | E-060 pre-registered the first validation; E-062 failed the prospective power screen at Stage 2, so no grid trials or retry budget were consumed. |
 | F-OPT-HEDGE-DEMAND | 0 | 2 | E-064 is the original zero-trial Stage-2 probe; E-065 assigns H-025 to this family as a duplicate. Both stop before any grid, so trials and K remain unconsumed. |
+| F-VOL-OF-VOL | 0 | 2 | H-032 registered 2026-07-29 (Du et al., JFM 2025); no experiments yet. |
+| F-MACRO-EVENT-DRIFT | 0 | 2 | H-033 registered 2026-07-29 (FOMC drift, FRL/NY Fed); no experiments yet. |
+| F-VARIANCE-DECOMP | 0 | 2 | H-034 registered 2026-07-29 (JFQA variance decomposition); no experiments yet. |
+| F-OPT-LARGE-TRADE-INFO | 0 | 2 | H-035 registered 2026-07-29 (JIFMIM 2022 informed large option trades); no experiments yet. |
+| F-XASSET-MACRO-LEAD | 0 | 2 | H-036 registered 2026-07-29 (IMF WP 2023/213; J. Forecasting 2025); no experiments yet. |
+| F-CME-LEADERSHIP | 0 | 2 | H-037 registered 2026-07-29 (JIMF 2025 price discovery); no experiments yet. |
 | F-INTRABAR-PERIODICITY | 0 | 2 | H-030 registered 2026-07-29 (Kim & Hansen quarter-hour effect); no experiments yet. |
 | F-OPT-EXPIRY-GAMMA | 0 | 2 | H-031 registered 2026-07-29 (FRL 2026 expiry gamma reversal); no experiments yet. |
 | F-LIQUIDATION-REVERSAL | 0 | 2 | H-028 registered 2026-07-29, data-blocked until ~12 months of liq_okx_* events accrue; no experiments. |
