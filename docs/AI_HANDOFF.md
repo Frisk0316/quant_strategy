@@ -419,6 +419,18 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     capital approval. The shadow task's desktop toasts remain independent; its
     8-week clock is still stalled, see KNOWN_ISSUES.
 
+16. AUTHORIZED 2026-07-29 (user, "照你的方向做"): next-batch direction —
+    H-029/F-FUNDING-SETTLEMENT-DRIFT Stage-2 probe (event design; spec
+    `docs/superpowers/specs/2026-07-29-event-probe-hypotheses.md`, task
+    `tasks/2026-07-29-funding-settlement-probe-codex-tasks.md`);
+    H-028/F-LIQUIDATION-REVERSAL registered data-blocked (liq_okx_* has only
+    ~26 days, forward-only — keep quant_liq_okx_ingest healthy, earliest
+    probe ~2027-07); ADR-0016 round-infra slice 1 in parallel
+    (`tasks/2026-07-29-adr0016-round-infra-slice1-codex-tasks.md`).
+    Note: binance funding stale since 2026-07-02 and 1m candles since
+    2026-07-14 (candle top-up rode the stalled H-014 shadow task); H-029's
+    frozen window (ends 2026-07-02) is unaffected.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.

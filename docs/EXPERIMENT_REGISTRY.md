@@ -70,6 +70,8 @@ Machine-readable: rows start with `| F-` (the `| E-` registry parser ignores the
 | F-TAKER-FLOW | 0 | 2 | E-058 is the original zero-trial Stage-2 feasibility probe; E-059 is the zero-trial data-gap repair reprobe and fails statistical power after the repaired data/alias inputs pass. The four-cell Stage-3 grid remains reserved, not consumed; H-022 is shelved with no retune or Stage 3. |
 | F-XS-IDIOVOL | 0 | 2 | E-060 pre-registered the first validation; E-062 failed the prospective power screen at Stage 2, so no grid trials or retry budget were consumed. |
 | F-OPT-HEDGE-DEMAND | 0 | 2 | E-064 is the original zero-trial Stage-2 probe; E-065 assigns H-025 to this family as a duplicate. Both stop before any grid, so trials and K remain unconsumed. |
+| F-LIQUIDATION-REVERSAL | 0 | 2 | H-028 registered 2026-07-29, data-blocked until ~12 months of liq_okx_* events accrue; no experiments. |
+| F-FUNDING-SETTLEMENT-DRIFT | 0 | 2 | H-029 registered + Stage-2 authorized 2026-07-29; no experiments yet. |
 | F-XVOL-RATIO | 0 | 2 | E-066 is the original zero-trial Stage-2 probe; cost and statistical power failed, so the four-cell grid and K remain unconsumed. |
 
 ## Registry
