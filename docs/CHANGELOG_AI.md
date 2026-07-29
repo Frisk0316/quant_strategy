@@ -13,6 +13,21 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-29 - E-025 dated regeneration and H-024..H-027 outcomes (Codex)
+
+- Re-ran the existing C1 pairs-OU implementation at E-025's frozen selected
+  parameters and persisted 898 dated returns. Input coverage and the recorded
+  full-sample Sharpe reproduced exactly; `summary.json`, H-006, F-PAIRS-OU
+  trials, K, and experiment rows remained unchanged.
+- Whole-batch I49 then passed, including 898 H-027/E-025 common days. Executed
+  the limited probe in frozen order and recorded E-064..E-067 with immutable
+  SHA-bound artifacts: H-024 failed data/power; H-025 failed the mint-apart
+  check at corr 0.749580, merged into F-OPT-HEDGE-DEMAND, and also failed
+  data/cost/power; H-027 failed cost/power; H-026 failed cost/power.
+- No candidate reached Stage 3. All new-family trials remain zero; F-VRP-TIMING
+  actual trials remain 4 and K remains 0/2 despite its prospective `n_trials=8`
+  power screen. No retune, promotion, deployment, or trading-mode change.
+
 ## 2026-07-29 - H-024..H-027 registration and I49 contract stop (Codex)
 
 - Registered F-OPT-HEDGE-DEMAND, F-OPT-MONEYNESS-STRUCTURE, F-XVOL-RATIO, and

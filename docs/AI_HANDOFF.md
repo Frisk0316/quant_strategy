@@ -16,18 +16,19 @@ durable backlog.
 
 ## Current goal
 
-Complete the authorized H-024..H-027 limited-probe workflow without bypassing
-I49. Candidate registration and the shared probe implementation are complete,
-but the global pre-flight correctly stopped before DB access because the only
-E-025/F-PAIRS-OU artifact has no dated return series. Claude must provide or
-authorize a dated E-025 reference before any probe may run.
+Close out the completed H-024..H-027 limited probe for Claude review. E-025's
+frozen selected combo now has a faithful 898-day dated reference; whole-batch
+I49 passed, and all four candidates executed in the authorized order. Every
+candidate stopped at Stage 2, so no grid, Stage 3, new trial, or K consumption
+occurred.
 
 ## Branch and working tree
 
-- Current branch: `feature/deribit-moneyness-hypotheses`. The four limited-probe
-  candidates, shared feature/probe module, fail-closed I49 pre-flight, and unit
-  coverage are registered in `4c84a18`. No candidate execution artifact,
-  experiment-ledger row, family trial/K update, or Stage-3 run was created.
+- Current branch: `feature/deribit-moneyness-hypotheses`. Registration is
+  `4c84a18`; dated E-025 regeneration is `094742e`; ordered H-024/H-025/H-027/
+  H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
+  H-025 merged into F-OPT-HEDGE-DEMAND; all four Stage-2 artifacts are
+  immutable and no Stage-3 artifact exists.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -92,13 +93,15 @@ authorize a dated E-025 reference before any probe may run.
   absent, and the fixed zero-trial anchor's median gross capture is 1.3636 bps
   versus 8.0 bps cost across 7,376 episodes. Stage 3 did not run. H-013/E-050 is
   shelved after statistical failure.
-  H-024/F-OPT-HEDGE-DEMAND, H-025/F-OPT-MONEYNESS-STRUCTURE,
-  H-027/F-XVOL-RATIO, and H-026/F-VRP-TIMING are registered in the Stage-2
-  registry. The mandatory whole-batch I49 pre-flight stops before DB access:
-  `results/pipeline_batch2_20260625/c1_pairs_ou/summary.json` contains CPCV
-  `path_returns` but no dates, so it cannot establish the required >=65 common
-  dated days for E-025/F-PAIRS-OU. This is a contract stop, not a candidate
-  distinctness failure; none of the four probes executed.
+  H-024..H-027 limited probe is complete at E-064..E-067. The reference-only
+  E-025 regeneration reproduced its full-sample runner Sharpe exactly and
+  added 898 dated daily returns without changing H-006, trials, or K. H-024
+  stopped on data/power; H-025 failed all four checks and merged into
+  F-OPT-HEDGE-DEMAND at signal corr 0.749580; H-027 passed data/distinctness
+  (E-025 corr 0.027930 over 898 days) but failed cost/power; H-026 passed
+  data/distinctness but failed cost/power. H-026's screen used prospective
+  family `n_trials=8`, while actual trials remain 4 and K remains 0/2 because
+  no Stage 3 ran. No retune is authorized.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
   ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
@@ -258,17 +261,21 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   Config, docs, and final scope checks are recorded in the associated Change
   Manifest. This is implementation evidence only, not activation or deployment
   evidence; portable validation remains blocked on missing adapters.
+- 2026-07-29 H-024..H-027: E-025 regeneration reproduced the recorded runner
+  Sharpe exactly over 898 dated rows; whole-batch I49 passed. Probe tests,
+  aggregate four-check/SHA validation, ledger consistency, and the
+  F-PAIRS-OU/H-006 no-drift guard pass. All four candidates stopped at Stage 2.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
 
-Immediate: Claude supplies or explicitly authorizes a dated E-025/F-PAIRS-OU
-reference, or changes the I49 contract. Then rerun only the whole-batch
-pre-flight. Do not connect to the DB or execute H-024/H-025/H-027/H-026 until
-all required references have at least 65 common dated days. The E-059 review
-remains separate; do not retune or reprobe H-022.
+Immediate: Claude reviews `094742e`, `8f053bb`, `0f572dd`, `084df47`,
+`5ac02a8`, and the wrap-up commit. Confirm E-025 regeneration is
+reference-only, H-025's family merge is correct, every Stage-2 stop is honest,
+and H-026 retained actual family trials=4 and K=0/2. Do not retune or rerun any
+of H-024..H-027; the E-059 review remains separate.
 
 In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
 honest-blocked differential-validation declaration. Continue the independent
@@ -387,16 +394,17 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
     Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
 
-14. REGISTERED, CONTRACT-STOPPED 2026-07-29 (user-authorized 2026-07-28):
+14. COMPLETE AT STAGE 2, 2026-07-29 (user-authorized 2026-07-28):
     execute the H-024..H-027 Deribit
     moneyness/vol limited probe per
     `docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md`
     (order H-024→H-025→H-027→H-026; H-026 = F-VRP-TIMING K retry 1/2,
-    explicitly included). Commit `4c84a18` registers the candidates and shared
-    probes. Global I49 pre-flight refused the undated E-025 artifact before DB
-    access, so the ordered execution has not begun: no artifact, ledger entry,
-    trial/K consumption, retune, or Stage 3. Claude must resolve or authorize
-    the dated reference before execution resumes.
+    explicitly included). Commit `094742e` regenerated the missing E-025 dated
+    reference without changing its outcome/accounting; I49 then passed with
+    898 H-027/E-025 common days. E-064..E-067 record the ordered Stage-2 runs:
+    H-024 data/power fail; H-025 duplicate/data/cost/power fail and family
+    merge; H-027 cost/power fail; H-026 cost/power fail. No grid, trial/K
+    consumption, retune, Stage 3, promotion, or deployment occurred.
 
 15. IMPLEMENTED, NOT ACTIVATED 2026-07-28 (user-approved ADR-0017): H-014
     live-execution layer is implemented in the new `execution/deribit_live/`
