@@ -1,0 +1,222 @@
+{
+  "batch_id": "slate_stage2_20260729",
+  "candidate_dir": "f_xasset_macro_lead",
+  "candidate_id": "H-036",
+  "checks": [
+    {
+      "details": {
+        "grid_trials_evaluated": 0,
+        "i49_preflight": {
+          "candidates": {
+            "H-030": {
+              "E-059/F-TAKER-FLOW": {
+                "achievable_common_days": 779,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-04-29",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-031": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 831,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-032": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 922,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-067/F-VRP-TIMING": {
+                "achievable_common_days": 1771,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2021-06-22",
+                  "2026-07-27"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-034": {
+              "E-062/F-XS-IDIOVOL": {
+                "achievable_common_days": 898,
+                "candidate_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-035": {
+              "E-044/F-OPTFLOW-POSITIONING": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-037": {
+              "E-057/F-XVENUE-LEADLAG": {
+                "achievable_common_days": 91,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2020-01-01",
+                  "2020-04-01"
+                ],
+                "required_common_days": 65
+              },
+              "cme_gap_fill baseline": {
+                "achievable_common_days": 870,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-05-20"
+                ],
+                "required_common_days": 65
+              }
+            }
+          },
+          "status": "PASS"
+        },
+        "missing_datasets": [
+          "vixcls",
+          "dtwexbgs",
+          "goldamgbd228n"
+        ],
+        "stage2_first_grid_cell": {
+          "window_days": 60,
+          "z_cut": 1.0
+        }
+      },
+      "name": "data_availability",
+      "reason": "required frozen macro datasets are unavailable",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "contract_stop_after": "data_availability",
+        "max_abs_correlation": null
+      },
+      "name": "distinctness",
+      "reason": "not evaluated because the frozen return series cannot be constructed",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "annualized_net_sharpe": null,
+        "grid_trials_evaluated": 0,
+        "roundtrip_cost_bps": 8.0
+      },
+      "name": "cost_after_edge",
+      "reason": "not evaluated because the frozen return series cannot be constructed",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "breadth": 2.0,
+        "grid_trials_evaluated": 0,
+        "min_detectable_sharpe": null,
+        "n_obs": 0,
+        "n_trials": 4,
+        "periods_per_year": 365.0,
+        "plausible_net_sharpe": null
+      },
+      "name": "statistical_power",
+      "reason": "not evaluated because measured observations are unavailable",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-XASSET-MACRO-LEAD",
+  "hypothesis_id": "H-036",
+  "schema_version": 1,
+  "stage2_status": "FAIL"
+}
