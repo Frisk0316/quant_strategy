@@ -4,6 +4,7 @@ from okx_quant.data.external_clients.binance_oi import BinanceOIClient
 from okx_quant.data.external_clients.deribit_dvol import (
     DeribitDVOLClient,
     DeribitHistoricalVolatilityClient,
+    DeribitRealizedVolatilityClient,
 )
 from okx_quant.data.external_clients.deribit_funding import DeribitFundingClient
 from okx_quant.data.external_clients.deribit_option_flow import DeribitOptionFlowClient
@@ -18,6 +19,7 @@ __all__ = [
     "BinanceOIClient",
     "DeribitDVOLClient",
     "DeribitHistoricalVolatilityClient",
+    "DeribitRealizedVolatilityClient",
     "DeribitFundingClient",
     "DeribitOptionFlowClient",
     "DeribitOptionSurfaceClient",

@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-05-04
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -63,7 +63,28 @@ superseded_by: null
    - strategy spec 是否被實作歪掉
 5. 使用者決定是否進入 demo/shadow。
 
-### 2. Bugfix 到部署
+### 2. Prompt 觸發的策略 finding
+
+完整一輪依 ADR-0016 執行，必須先以 result-blind manifest 凍結 10–15
+個可執行且不重複的策略，其中至少 8 個來自已驗證論文的新機制、至少
+2 個是既有合格策略的 ex-ante 實質迭代。缺資料、重複、論文來源無法
+驗證、contract 無效或 runner 未實作的候選可以留在 funnel，但不能湊
+入最低數量；不足時必須補候選，否則只能標記 `incomplete_round` 或
+`limited_probe`。
+
+- GenAI/Claude/Codex session：擴展論文查詢、核對來源、解讀機制、提出
+  新策略與舊策略迭代、輸出 schema-valid candidate spec。不得在 manifest
+  凍結前讀取同輪 OOS/fold 結果。
+- Codex implementation：把已核准的 spec 接到既有 `signal_ref`/runner，
+  補最小 timing/leakage 測試，不得把任意 model-generated Python 直接當
+  canonical evidence 執行。
+- 一般 deterministic 程式：驗證 manifest、跑每個候選的 Stage-2
+  screening backtest/research-return evaluation、計算 metrics/trial/K/gate、
+  只讓 Stage-2 PASS 進 Stage 3，並輸出 canonical report。
+- 使用者：可用 terminal 啟動 deterministic 執行，或授權 Codex 執行；
+  這不改變既有 promotion/demo/shadow/live gate。
+
+### 3. Bugfix 到部署
 
 1. Codex 先重現 bug 或定位不一致行為。
 2. Codex 實作最小修補，補測試。
@@ -279,4 +300,3 @@ overview **不取代 source docs**。若兩者衝突，以 source docs 為準，
 3. 已跑的測試/回測指令與結果。
 4. 沒跑測試時的原因。
 5. 剩餘風險或下一步。
-

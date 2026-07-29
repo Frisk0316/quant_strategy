@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from okx_quant.data.external_clients.deribit_dvol import (
     DeribitDVOLClient,
     DeribitHistoricalVolatilityClient,
+    DeribitRealizedVolatilityClient,
 )
 
 
@@ -141,3 +143,48 @@ def test_deribit_historical_volatility_client_filters_and_deduplicates(monkeypat
     assert rows[0]["published_at"] == rows[0]["observed_at"]
     assert rows[0]["value_num"] == 42.0
     assert rows[0]["fields"]["unit"] == "annualized_percent"
+
+
+def test_deribit_realized_volatility_uses_contiguous_hourly_log_returns(monkeypatch):
+    client = DeribitRealizedVolatilityClient()
+    calls = []
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda params: calls.append(params) or {
+            "result": {
+                "status": "ok",
+                "ticks": [
+                    1704067200000,
+                    1704070800000,
+                    1704074400000,
+                    1704081600000,
+                    1704085200000,
+                    1704088800000,
+                ],
+                "close": [100.0, 110.0, 100.0, 200.0, 220.0, 200.0],
+            }
+        },
+    )
+
+    rows = client.fetch(
+        currency="btc",
+        start=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 1, 7, tzinfo=timezone.utc),
+        window_hours=2,
+    )
+
+    expected = abs(math.log(1.1) - math.log(100 / 110))
+    expected = expected / (2 ** 0.5) * (365 * 24) ** 0.5 * 100
+    assert calls == [{
+        "instrument_name": "BTC-PERPETUAL",
+        "start_timestamp": 1704060000000,
+        "end_timestamp": 1704092399999,
+        "resolution": "60",
+    }]
+    assert [row["observed_at"].hour for row in rows] == [2, 6]
+    assert rows[0]["value_num"] == pytest.approx(expected)
+    assert rows[0]["fields"]["window_hours"] == 2
+    assert rows[0]["fields"]["derived"] is True
+    assert rows[0]["quality_status"] == "raw"
+    assert rows[0]["published_at"] == rows[0]["observed_at"] + timedelta(hours=1)

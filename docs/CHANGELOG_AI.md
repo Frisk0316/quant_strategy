@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-21
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,92 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-28 - H-014 live review fixes + differential declaration (Codex)
+
+- Closed the three Claude pre-activation findings at their shared adapter
+  boundary: cancel-race fills are reconciled from terminal venue state,
+  ambiguous transport sends trigger a journaled label-first cancel sweep, and
+  every placed order rests before cancellation, including the final attempt.
+- Kept OAuth secrets out of URL queries, made limit/post-only request semantics
+  executable test invariants, introduced typed reduce-only stop signaling,
+  anchored defaults to the repo root, and verified a pre-existing reduce-only
+  flag blocks a fresh adapter.
+- Declared `h014_vol_regime_options` with vectorbt, Backtrader, and Nautilus all
+  `adapter_required`. The portable gate explicitly remains false; ADR-0011's
+  bias report is designated evidence, and any gate-row acceptance remains a
+  Claude + user activation-review decision.
+- Required unit matrix: `100 passed`; targeted Ruff and diff checks passed. No
+  strategy/runtime-config/gate change, authenticated request, scheduler,
+  activation, or `results/**` artifact occurred.
+
+### Context and session handoff
+
+- Goal/state: the assigned fix wave is implemented on
+  `feature/deribit-moneyness-hypotheses`; no in-progress runtime action remains,
+  and Claude re-review is the next step.
+- Authority/rules: ADR-0017, R5.1-R5.2/R7.2/R8.8-R8.9, and I56 remain in
+  force. `h014_live.enabled` is still false; shadow, strategy, risk, portfolio,
+  config, existing results, scheduling, and activation remain out of scope.
+- Reading list: `AI_CONTEXT.md`, `docs/CONTEXT_INDEX.md`, ADR-0011/0017, the
+  2026-07-28 Claude review and fix task, this changelog entry, the H-014 Change
+  Manifest, and `docs/AI_HANDOFF.md`.
+- Approval/next action: implementation authority was obtained in the task;
+  trading authority was not. Claude reviews this diff before any later
+  activation sequence.
+- Human Learning Notes: a cancel error must be reconciled against terminal
+  venue state, while a transport error leaves send acceptance ambiguous and
+  therefore requires scoped cleanup without replacing the original error.
+
+## 2026-07-28 - H-014 live-execution implementation (Codex, inactive)
+
+- Implemented ADR-0017's testnet-default private Deribit client with OAuth
+  client credentials, one 401 refresh, limit-only public order methods, and
+  post-only entries; plain taker orders are not representable.
+- Added a disabled-by-default adapter that consumes the shadow builder/checks,
+  protects the long put before short legs, enforces allowlist/unit/notional/
+  daily-loss/drawdown gates, bounds maker repricing, and writes append-only
+  order/fill/reject/missed/risk events.
+- Added additive `h014_live` risk config, a cancel-BTC-and-ETH + persistent
+  reduce-only panic command, mocked HTTP/parity/risk/journal tests, runbook
+  operations, and the required Change Manifest.
+- No credentials, authenticated network call, scheduler, mode flip, existing
+  result mutation, or deployment-readiness claim was made. Activation remains
+  gated by ADR-0011 exit, bias review, R7.2, and separate explicit user
+  approval with a capital cap.
+
+## 2026-07-27 - Deribit vol backfill and moneyness buckets (Claude, SDD)
+
+- Backfilled hourly DVOL to inception 2021-03-24 (46,831 rows each, BTC/ETH)
+  and extended derived RV30 to 2018-09-14 (BTC, 68,959 rows) / 2019-04-14
+  (ETH, 63,871 rows). RV30-vs-official-HV overlap calibration (BTC corr 0.745,
+  ETH 0.766, RV30 ≈9 vol pts above HV, n=395) missed the plan's 0.9 gate and
+  was explicitly user-accepted (16-day overlap = weak evidence).
+- Added ATM/ITM/OTM moneyness classification (`moneyness_bucket`, band 0.025)
+  with per-bucket OI/mark-IV fields in the option-surface adapter and per-hour
+  premium/trade buckets + OTM taker-buy amounts in the option-flow adapter
+  (strict TDD); re-ingested optflow history with buckets from 2024-01-01
+  (22,403/22,402 hourly rows).
+- Fixed the ingest CLI's hardcoded www endpoint and added start-age endpoint
+  selection after measuring Deribit serving windows (history archive lags ~7
+  days; www holds ~24 hours). Newest ~day of optflow keeps the pre-bucket
+  schema until a one-off re-ingest after archive catch-up. Branch
+  `feature/deribit-vol-backfill-moneyness`, final whole-branch review clean.
+
+## 2026-07-27 - Deribit RV30 history and frontend fetch (Codex)
+
+- Kept Deribit's native `hv_deribit_*` series unchanged because its public API
+  exposes only a recent rolling response. Added separate BTC/ETH 30-day
+  realized-volatility datasets derived from contiguous hourly Deribit
+  perpetual closes with explicit source/window/formula provenance.
+- Backfilled both derived datasets from 2021-01-01 through 2026-07-26:
+  48,792 unique hourly rows per symbol.
+- Extended the existing Market Data Coverage fetch queue with a Deribit
+  BTC/ETH path that refreshes daily/hourly DVOL, native HV, derived RV30, and
+  the current complete option-chain snapshot.
+- Added F58/I55 and regression coverage so an adaptively downsampled long-range
+  chart response cannot be silently relabeled as hourly. No schema, strategy,
+  risk, result artifact, scheduler, or deployment gate changed.
 
 ## 2026-07-21 - DB and UI data reliability repair (Codex)
 

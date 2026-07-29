@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -73,6 +73,8 @@ delete numbers. To replace an ADR, add a new one and mark the old one
 | [0013](0013-stage2-statistical-power-triage.md) | Stage-2 statistical-power triage | Accepted |
 | [0014](0014-source-aware-canonical-candles.md) | Additive source-aware canonical candles | Accepted |
 | [0015](0015-consumer-time-economic-asset-aliases.md) | Consumer-time economic-asset aliases | Accepted |
+| [0016](0016-genai-discovery-deterministic-strategy-evaluation.md) | GenAI discovery with deterministic strategy evaluation | Accepted |
+| [0017](0017-h014-live-execution-layer.md) | H-014 live-execution layer (parallel-track) | Accepted |
 
 Keep this index in sync when adding an ADR. Related: [[DOMAIN_RULES]] ·
 [[DOC_IMPACT_MATRIX]] · `docs/DOC_LIFECYCLE.md`.

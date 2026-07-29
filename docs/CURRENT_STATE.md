@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -15,10 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Current working branch: `feature/h014-e052-shadow`. The 2026-07-18 shared
-  working tree is now split into five ordered delivery commits at current HEAD;
-  use `git log --oneline -5` for exact hashes. The generated funnel JSON remains
-  ignored on disk and the stray execution-comparison JSON remains untracked.
+- Current working branch: `feature/deribit-vol-backfill-moneyness` (branched
+  2026-07-27 from `feature/h014-e052-shadow` after two wrap-up commits landed
+  the in-flight RV30 and GenAI-pipeline doc work). Five delivery commits on the
+  new branch passed per-task review and a clean final whole-branch review;
+  merge decision pending.
 - PR #9 merged to `main` at `b378e16` (head `00c7a51`). The separate follow-up
   branch `codex/pipeline-batch1-stage3` is pushed through `d046978` and still
   needs a human-reviewed PR. Stacked research branches are also pushed:
@@ -49,6 +50,17 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   detail in the CHANGELOG_AI 2026-07-12 entry.
 - Turtle research runner, Deribit D1-D5 + R1-R5, manual/Progress routes, and
   daily DVOL backfill (2021-03-24→2026-07-11, gap-free) remain accepted.
+- Deribit native hourly HV remains a recent rolling source window (API hard
+  limit, forward-accumulating only). As of 2026-07-27: hourly DVOL is
+  backfilled to DVOL inception 2021-03-24 (46,831 rows each, BTC/ETH);
+  `rv30_deribit_btc_1h` reaches back to 2018-09-14 (68,959 rows) and ETH to
+  2019-04-14 (63,871 rows); the ~16-day HV overlap calibration (BTC corr 0.745,
+  ETH 0.766, RV30 ≈9 vol pts above HV, n=395) was user-accepted as-is. Option
+  surface and flow adapters now emit ATM/ITM/OTM moneyness buckets
+  (`moneyness_atm_band` 0.025); optflow history is re-ingested with buckets
+  from 2024-01-01 (22,403/22,402 hourly rows), and ingestion auto-selects
+  history vs www Deribit endpoints by start age (archive lags ~7 days, www
+  holds ~24h; the newest ~day keeps the pre-bucket schema until re-ingested).
 - H-014/F-VOL-REGIME-OPT is `supported` on double-passed evidence: E-051
   (2022-05→2026-02, DSR=PSR 0.9845, user-ratified checkpoint ①) and **E-052
   extended-window retry PASS** (2020-05→2026-02 incl. COVID aftermath +
@@ -110,6 +122,16 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   power (0.5961 plausible net Sharpe < 0.7134 floor), so no Stage 3, trials, or
   retry budget were consumed. `docs/EXPERIMENT_REGISTRY.md` remains the
   authoritative total.
+  The 2026-07-26 batch is now correctly classified as a limited two-candidate
+  probe: H-023 was its only genuinely new family and H-009 its only
+  existing-family iteration. It did not provide full strategy-finding coverage.
+  ADR-0016 now defines a complete prompt-triggered round as 10–15
+  execution-ready strategies frozen before results, with at least eight
+  verified-paper-backed new mechanisms and two eligible existing-strategy
+  iterations. This is target authority, not current implementation: today's
+  generators lack the minimum/mix validator and unified entry point, literature
+  drafts remain `pending_llm`, and unknown/new families without runners stop
+  before deterministic evaluation.
   H-012 user-shelved, no retry; F36 cost-lag recorded. H-010 E-057 is shelved at
   Stage 2: 3,396,960 aligned candle rows per venue/symbol pass, but no OKX
   funding exists and 7,376 fixed-anchor episodes capture median 1.3636 bps gross
@@ -162,10 +184,14 @@ outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
 4. From Administrator PowerShell, apply the P1.4 RUNBOOK `/NP` registration;
    verify `S4U`/`Limited`, run the task once, and require result `0`.
 5. Pending fact: the user creates the OKX Demo key.
-6. Taxonomy_003, H-013, and H-010 E-057 are closed/shelved; next ideation round
-   only with a genuinely new data family/mechanism, not a DSR-targeting retune.
-   H-009 E-063 and H-023 E-062 are also closed for this round; neither passed,
-   and no follow-on is authorized without a new ex-ante rationale.
+6. Before the next completed strategy-finding round, implement ADR-0016 in the
+   smallest slices: result-blind manifest plus 8/2/10 executable validation and
+   hash-bound resume; joined paper/iteration candidate input with provenance
+   deduplication; registered deterministic Stage-2 evaluation for every counted
+   candidate; then one reconciled report. Keep execution sequential until
+   profiling justifies concurrency. Anything below ten remains incomplete or a
+   limited probe. H-009 E-063 and H-023 E-062 are closed; neither passed, and no
+   follow-on is authorized without a new ex-ante rationale.
 7. Claude review DONE 2026-07-18 and repairs DONE 2026-07-21
    (`tasks/2026-07-18-strategy-history-h010-claude-review.md`): strategy-history
    A/B/C APPROVE-WITH-FINDINGS (minor fixes A1-A3: gitignore funnel JSON,

@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -950,6 +950,67 @@ python scripts/run_server.py --port 8082
   is changed by using this page. H-009's in-memory job list resets on restart;
   written artifacts remain.
 
+## H-014 Deribit Options Live Layer (implemented, disabled)
+
+ADR-0017's private client and adapter exist for review and testnet plumbing,
+but `config/risk.yaml` keeps `h014_live.enabled: false`. There is no runner,
+scheduled task, `config/settings.yaml` mode change, or activation in this
+delivery. Missing credentials fail startup if the adapter is explicitly
+enabled; the disabled path constructs no private client and continues appending
+the supplied ADR-0011 shadow journal record.
+
+The additive config values are USD notional/loss limits, a fractional drawdown
+threshold, testnet/live host selection, and bounded maker repricing. V1 counts
+one proposed tranche as `tranche_units * signal spot` for the per-symbol and
+aggregate notional checks; activation review must confirm those caps and the
+caller-supplied risk snapshot against the approved capital limit.
+
+Run the mocked, no-network plumbing checks:
+
+```powershell
+python -m pytest tests/unit/test_deribit_private_client.py tests/unit/test_h014_live_adapter.py -v
+python scripts/h014_live_panic.py --dry-run
+```
+
+After the user supplies a trade-scoped **testnet** key, the read-only
+authenticated plumbing check below verifies auth, account-summary, and option
+position calls without placing an order or changing `enabled`:
+
+```powershell
+python -c "from okx_quant.execution.deribit_live.private_client import DeribitPrivateClient as C; c=C.from_env(env='test'); print(c.get_account_summary('BTC')); print(c.get_positions('BTC')); c.close()"
+```
+
+Runtime order events are append-only in
+`results/live_h014/orders.jsonl`; the persistent sidecar lock is
+`orders.jsonl.lock`. Placement, rejection, risk-stop, and adapter-failure
+events use the existing Telegram environment variables when configured;
+otherwise the approved fallback is log-only with a code TODO. The separately
+operated ADR-0011 shadow scheduled task retains its existing Windows toasts.
+
+Panic dry-run makes no network call and writes no state. The actual panic
+command first persists reduce-only state, then attempts option-order
+cancellation for both BTC and ETH even if one cancellation fails:
+
+```powershell
+python scripts/h014_live_panic.py --dry-run
+# ONLY during an approved testnet/live incident with scoped credentials:
+python scripts/h014_live_panic.py
+```
+
+`results/live_h014/reduce_only.flag` is intentionally persistent. Do not remove
+it or re-enable entries without human review of the incident and risk state.
+
+Activation remains a later, separate approval in this exact order:
+
+1. Meet ADR-0011's at-least-eight-valid-weeks shadow exit and complete the bias
+   report.
+2. Obtain Claude and human review of that report.
+3. Pass every R7.2 / `docs/ai_collaboration.md` deployment gate, including the
+   H-014 portable differential-validation gate.
+4. Obtain a separate explicit user approval naming the capital cap.
+5. Only then review an `enabled` flip and any scheduler registration as their
+   own deployment change.
+
 ## Scheduled External Ingest (OKX liquidation)
 
 OKX's public liquidation-orders REST endpoint only retains a few hours of
@@ -1057,6 +1118,18 @@ python scripts\market_data\ingest_external.py --dataset hv_deribit_btc_1h --data
 
 `--start`/`--end` only filter the rolling response locally; they cannot request
 older historical-volatility rows from Deribit.
+
+For a reproducible series extending to 2021, use the separate derived RV30
+datasets. They use contiguous hourly Deribit perpetual closes, not Deribit's
+native HV endpoint or adaptively downsampled index-chart history:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset rv30_deribit_btc_1h --dataset rv30_deribit_eth_1h --start 2021-01-01T00:00:00Z --end <UTC_END>
+```
+
+The Market Data Coverage panel exposes the same refresh under Exchange =
+`Deribit`; search BTC/ETH and submit the hourly job. It also refreshes DVOL,
+native rolling HV, and the current option-chain snapshot.
 
 Daily DVOL (`dvol_deribit_btc`/`dvol_deribit_eth`) is manual-update only by the
 2026-07-12 user decision (no scheduled task). Update it with explicit bounds —

@@ -36,3 +36,13 @@ backtest:
   queue_fill_fraction: 0.20
   # Research-only idealized mode: bypass execution/capacity caps and fill every submitted signal order.
   fill_all_signals: false
+
+h014_live:
+  enabled: false
+  max_notional_per_symbol: 5000.0
+  max_notional_aggregate: 10000.0
+  daily_loss_stop: 500.0
+  drawdown_reduce_only_threshold: 0.10
+  env: test
+  reprice_interval_seconds: 30
+  max_reprices: 3

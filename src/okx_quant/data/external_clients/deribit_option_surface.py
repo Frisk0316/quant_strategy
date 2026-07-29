@@ -8,6 +8,27 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+ATM_BAND = 0.025  # |strike/spot - 1| <= band counts as at-the-money
+
+
+def moneyness_bucket(
+    option_type: str,
+    strike: Optional[float],
+    index_price: Optional[float],
+    atm_band: float = ATM_BAND,
+) -> Optional[str]:
+    """Classify an option strike vs current index price: atm / itm / otm."""
+    if strike is None or index_price is None or index_price <= 0:
+        return None
+    if option_type not in {"C", "P"}:
+        return None
+    m = (strike - index_price) / index_price
+    if abs(m) <= atm_band:
+        return "atm"
+    if option_type == "C":
+        return "itm" if m < 0 else "otm"
+    return "itm" if m > 0 else "otm"
+
 
 class DeribitOptionSurfaceClient:
     """Fetch one aggregate option-surface snapshot per currency."""
@@ -63,26 +84,78 @@ def aggregate_option_surface(currency: str, rows: list[dict[str, Any]]) -> Optio
         return None
     snapshot_ms = max(timestamps)
     observed_at = datetime.fromtimestamp(snapshot_ms / 1000, tz=timezone.utc)
+    spot_index = _first_float(rows, "estimated_delivery_price")
+
+    fields: dict[str, Any] = {
+        "put_oi": put_oi,
+        "call_oi": call_oi,
+        "pc_oi_ratio": put_oi / call_oi if call_oi else None,
+        "max_pain_strike": _max_pain_strike(options),
+        "oi_weighted_mark_iv": iv_weight / iv_oi if iv_oi else None,
+        "spot_index": spot_index,
+        "n_instruments": len(options),
+        "raw_payload_scope": "full_current_chain",
+        "unit": "base_contracts",
+    }
+    entries = [
+        (row["option_type"], row["strike"], row["open_interest"], row["mark_iv"])
+        for row in options
+    ]
+    fields.update(_aggregate_moneyness(entries, spot_index))
 
     return {
         "observed_at": observed_at,
         "published_at": observed_at,
         "value_num": total_oi,
         "value_text": None,
-        "fields": {
-            "put_oi": put_oi,
-            "call_oi": call_oi,
-            "pc_oi_ratio": put_oi / call_oi if call_oi else None,
-            "max_pain_strike": _max_pain_strike(options),
-            "oi_weighted_mark_iv": iv_weight / iv_oi if iv_oi else None,
-            "spot_index": _first_float(rows, "estimated_delivery_price"),
-            "n_instruments": len(options),
-            "raw_payload_scope": "full_current_chain",
-            "unit": "base_contracts",
-        },
+        "fields": fields,
         "quality_status": "raw",
         "raw_payload": _organized_chain(options),
     }
+
+
+def _aggregate_moneyness(
+    entries: list[tuple[str, Optional[float], float, Optional[float]]],
+    index_price: Optional[float],
+) -> dict[str, Any]:
+    """entries: (option_type, strike, open_interest, mark_iv) per instrument."""
+    oi_sums = {f"{b}_{s}_oi": 0.0 for b in ("atm", "itm", "otm") for s in ("call", "put")}
+    iv_keys = ("atm", "otm_put", "otm_call")
+    weighted_sum = dict.fromkeys(iv_keys, 0.0)
+    weighted_oi = dict.fromkeys(iv_keys, 0.0)
+    unweighted_sum = dict.fromkeys(iv_keys, 0.0)
+    unweighted_count = dict.fromkeys(iv_keys, 0.0)
+    for option_type, strike, oi, mark_iv in entries:
+        bucket = moneyness_bucket(option_type, strike, index_price)
+        if bucket is None:
+            continue
+        side = "call" if option_type == "C" else "put"
+        oi_sums[f"{bucket}_{side}_oi"] += oi
+        iv_key = "atm" if bucket == "atm" else (f"otm_{side}" if bucket == "otm" else None)
+        if iv_key and mark_iv is not None:
+            weighted_sum[iv_key] += mark_iv * oi
+            weighted_oi[iv_key] += oi
+            unweighted_sum[iv_key] += mark_iv
+            unweighted_count[iv_key] += 1.0
+
+    def _iv(key: str) -> Optional[float]:
+        # OI-weighted average, falling back to a plain mean when the bucket has zero OI.
+        if weighted_oi[key] > 0:
+            return weighted_sum[key] / weighted_oi[key]
+        if unweighted_count[key] > 0:
+            return unweighted_sum[key] / unweighted_count[key]
+        return None
+
+    out: dict[str, Any] = {"moneyness_atm_band": ATM_BAND, **oi_sums}
+    out["atm_mark_iv"] = _iv("atm")
+    out["otm_put_mark_iv"] = _iv("otm_put")
+    out["otm_call_mark_iv"] = _iv("otm_call")
+    out["otm_skew_mark_iv"] = (
+        out["otm_put_mark_iv"] - out["otm_call_mark_iv"]
+        if out["otm_put_mark_iv"] is not None and out["otm_call_mark_iv"] is not None
+        else None
+    )
+    return out
 
 
 def _parse_option(row: dict[str, Any]) -> Optional[dict[str, Any]]:

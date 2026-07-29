@@ -72,6 +72,16 @@ def test_hourly_bucketing_and_imbalance_formula_at_utc_boundary():
         "liq_trade_count": 1,
         "unit": "imbalance_ratio",
         "excluded_linear_usdc_count": 0,
+        "moneyness_atm_band": 0.025,
+        "atm_premium": 0.0,
+        "itm_premium": 0.0,
+        "otm_premium": 0.0,
+        "atm_trades": 0,
+        "itm_trades": 0,
+        "otm_trades": 0,
+        "otm_put_buy_amt": 0.0,
+        "otm_call_buy_amt": 0.0,
+        "unbucketed_trade_count": 3,
     }
 
 
@@ -180,3 +190,37 @@ def test_main_rejects_non_positive_chunk_days(monkeypatch):
 def test_empty_option_flow_chunk_can_advance():
     assert _empty_chunk_error("optflow_deribit_btc", {"fail_on_empty_fetch": True}, []) is None
     assert _empty_chunk_error("optflow_deribit_btc", {"fail_on_empty_fetch": False}, []) is None
+
+
+def test_option_flow_moneyness_bucket_fields(monkeypatch):
+    client = DeribitOptionFlowClient()
+    ts = 1_700_000_000_000  # all in one hour bucket
+    trades = [
+        # atm call buy, itm put buy, otm put buy, otm call sell
+        {"instrument_name": "BTC-26DEC26-100000-C", "timestamp": ts, "direction": "buy",
+         "amount": 1.0, "price": 0.05, "iv": 50.0, "index_price": 100_000.0},
+        {"instrument_name": "BTC-26DEC26-120000-P", "timestamp": ts + 1, "direction": "buy",
+         "amount": 1.0, "price": 0.2, "iv": 55.0, "index_price": 100_000.0},
+        {"instrument_name": "BTC-26DEC26-80000-P", "timestamp": ts + 2, "direction": "buy",
+         "amount": 2.0, "price": 0.01, "iv": 80.0, "index_price": 100_000.0},
+        {"instrument_name": "BTC-26DEC26-120000-C", "timestamp": ts + 3, "direction": "sell",
+         "amount": 1.0, "price": 0.02, "iv": 70.0, "index_price": 100_000.0},
+    ]
+    monkeypatch.setattr(
+        client, "_get", lambda params: {"result": {"trades": trades, "has_more": False}}
+    )
+    from datetime import datetime, timedelta, timezone
+    start = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
+    fields = client.fetch(currency="BTC", start=start, end=start + timedelta(hours=1))[0]["fields"]
+
+    assert fields["moneyness_atm_band"] == 0.025
+    assert fields["atm_trades"] == 1
+    assert fields["itm_trades"] == 1
+    assert fields["otm_trades"] == 2
+    assert fields["unbucketed_trade_count"] == 0
+    # bucket premiums partition total premium volume
+    total = fields["atm_premium"] + fields["itm_premium"] + fields["otm_premium"]
+    assert abs(total - fields["premium_volume"]) < 1e-9
+    # only taker-BUY OTM amounts are tracked per side
+    assert fields["otm_put_buy_amt"] > 0
+    assert fields["otm_call_buy_amt"] == 0.0

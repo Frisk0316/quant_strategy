@@ -467,6 +467,51 @@ REFERENCE_VALIDATION_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "h014_vol_regime_options": {
+        "strategy_class": "options_vol_regime",
+        "minimum_reference_engines": 1,
+        "portable_validation_required": True,
+        "limitation": (
+            "ADR-0011's shadow-vs-research bias report is the designated "
+            "portability evidence for this options strategy; whether it can "
+            "satisfy this gate is an activation-review decision for Claude "
+            "and the user."
+        ),
+        "engines": {
+            "vectorbt": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": [
+                    "summary.json",
+                    "combo_daily_returns.csv",
+                    "bias_report.json",
+                ],
+                "limitation": "No vectorbt adapter can independently replay coin-denominated Deribit option chains and H-014 multi-leg intents.",
+            },
+            "backtrader": {
+                "status": "adapter_required",
+                "role": "reference_signals_only",
+                "strict_scopes": ["signal_logic"],
+                "required_artifacts": [
+                    "summary.json",
+                    "combo_daily_returns.csv",
+                    "bias_report.json",
+                ],
+                "limitation": "No Backtrader adapter can independently replay coin-denominated Deribit option chains and H-014 multi-leg intents.",
+            },
+            "nautilus": {
+                "status": "adapter_required",
+                "role": "advisory",
+                "required_artifacts": [
+                    "summary.json",
+                    "combo_daily_returns.csv",
+                    "bias_report.json",
+                ],
+                "limitation": "No Nautilus adapter or catalog can replay the required historical Deribit option chains and coin-denominated multi-leg execution.",
+            },
+        },
+    },
 }
 REFERENCE_ROLES = {
     "reference_signals_only",

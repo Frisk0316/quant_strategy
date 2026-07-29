@@ -733,6 +733,23 @@ def test_reference_validation_contract_declares_all_engine_portability_paths():
             assert capability.get("limitation"), f"{strategy}:{engine}"
 
 
+def test_h014_reference_validation_contract_is_honestly_blocked():
+    contract = dv.strategy_reference_validation_contract("h014_vol_regime_options")
+    gate = dv._reference_portability_gate(contract, {}, sorted(dv.ENGINE_NAMES))
+
+    assert contract["contract_status"] == "declared"
+    assert contract["portable_validation_required"] is True
+    assert contract["minimum_reference_engines"] == 1
+    assert {
+        capability["status"] for capability in contract["engines"].values()
+    } == {"adapter_required"}
+    assert "ADR-0011" in contract["limitation"]
+    assert "Claude and the user" in contract["limitation"]
+    assert gate["passed"] is False
+    assert set(gate["adapter_required_engines"]) == dv.ENGINE_NAMES
+    assert gate["blocked_reason"] == "no_reference_engine_completed"
+
+
 def test_artifact_loader_reads_replay_rotation_and_daily_winner_shapes(tmp_path):
     replay = _base_run(tmp_path, "replay_run", "ma_crossover")
     rotation = _base_run(tmp_path, "rotation_run", "ohlcv_rotation")

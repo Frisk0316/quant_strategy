@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -33,6 +33,32 @@ over time.
 
 ## Research and operations state
 
+- **Closed — H-014 live layer pre-activation blockers (fixed + re-reviewed
+  2026-07-28):** the three order-lifecycle edge cases are fixed (F59 guards:
+  `get_order_state` reconciliation, journaled cancel sweep, full resting time)
+  and the fix wave re-review is clean. Residual activation-wave polish items
+  (ambiguous HTTPStatusError sweep, `from_env` `.env` anchoring, notify async
+  tightening, official shadow-helper export) are listed in
+  `tasks/2026-07-28-h014-live-execution-claude-review.md` "Fix-wave outcome";
+  they gate activation review, not the merge.
+- **Open — H-014 shadow 8-week clock stalled (found 2026-07-28):** the journal's
+  last valid cycle entries are 2026-07-15; `quant_h014_shadow_daily` last ran
+  2026-07-27 20:25 with result 0xC000013A (console interrupt) and
+  `logs/h014_shadow_daily.log` ends with `run_h014_shadow.py` killed at `^C` —
+  consistent with the machine being off at the 16:10 window and catch-up runs
+  dying at shutdown. Missed shadow days cannot be backfilled, so the ADR-0011
+  ≥8-valid-weeks exit clock is effectively still at ~2 days. Needs: machine on
+  through the task window (or a user-approved schedule change) and a check that
+  a full cycle completes; every stalled day is permanently lost evidence.
+- **Open complete-round automation gap — ADR-0016/F56/F57/I53/I54
+  (2026-07-27):** idea generation has a maximum of 15 but no 8/2/10
+  executable minimum, literature and existing-strategy iteration inputs are not
+  joined by one command, literature drafts normally remain `pending_llm`, and
+  unknown/new families stop for missing registered runners. Resume does not
+  bind to a frozen manifest hash, and current aggregate reports can mix or
+  overwrite funnel stages. Until the manifest validator, candidate-specific
+  deterministic runner path, and reconciled report ship, these commands may
+  produce advisory/limited probes but cannot prove a completed ADR-0016 round.
 - ADR-0011's first H-014 DB smoke found stale canonical/DVOL inputs. A bounded
   refresh through the existing public Binance and Deribit ingestion paths
   restored the exact prior-day signal on 2026-07-14, but freshness remains an
@@ -83,7 +109,11 @@ over time.
   2026-07-26 09:00 UTC, and stored one full current option-chain snapshot
   (BTC 866 instruments/12 expiries/93 strikes; ETH 678/12/85). Historical
   volatility starts only at Deribit's rolling public window
-  (`2026-07-10T13:00Z` in this run) and must accumulate forward. Option flow
+  (`2026-07-10T13:00Z` in this run) and must accumulate forward. Separate
+  derived `rv30_deribit_{btc,eth}_1h` series now cover
+  `2021-01-01T00:00Z` through `2026-07-26T23:00Z` with 48,792 unique rows
+  each; their source is the corresponding Deribit perpetual close, not the
+  native HV or index-price series. Option flow
   still has a source-visibility gap from `2026-07-21T13:00Z` through
   `2026-07-25T09:00Z`; the backfill checkpoints were reset to the last verified
   hour so the history host can be retried without skipping it.

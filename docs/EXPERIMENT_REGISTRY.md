@@ -69,6 +69,9 @@ Machine-readable: rows start with `| F-` (the `| E-` registry parser ignores the
 
 | F-TAKER-FLOW | 0 | 2 | E-058 is the original zero-trial Stage-2 feasibility probe; E-059 is the zero-trial data-gap repair reprobe and fails statistical power after the repaired data/alias inputs pass. The four-cell Stage-3 grid remains reserved, not consumed; H-022 is shelved with no retune or Stage 3. |
 | F-XS-IDIOVOL | 0 | 2 | E-060 pre-registered the first validation; E-062 failed the prospective power screen at Stage 2, so no grid trials or retry budget were consumed. |
+| F-OPT-HEDGE-DEMAND | 0 | 2 | H-024 proposed 2026-07-28 (Deribit moneyness probe spec); no experiments yet. |
+| F-OPT-MONEYNESS-STRUCTURE | 0 | 2 | H-025 proposed 2026-07-28 (same spec); no experiments yet. If it fails to mint apart from F-OPT-HEDGE-DEMAND, the two merge into one family/budget. |
+| F-XVOL-RATIO | 0 | 2 | H-027 proposed 2026-07-28 (same spec); no experiments yet. |
 
 ## Registry
 

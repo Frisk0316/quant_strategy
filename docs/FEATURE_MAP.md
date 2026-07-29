@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -218,9 +218,14 @@ implementation exists.
   Coverage groups external observations once and keeps registered empty datasets
   visible with null timestamps and zero rows rather than timing out the card.
   Deribit external ingestion includes rolling BTC/ETH historical volatility,
-  historical/hourly DVOL and funding/option flow. New option-surface snapshots
+  derived 30-day hourly realized volatility from venue perpetual closes,
+  historical/hourly DVOL and funding/option flow. Selecting Deribit in the
+  existing frontend fetch form searches BTC/ETH and queues the on-demand
+  volatility plus current option-surface refresh. New option-surface snapshots
   preserve the complete current chain sorted by expiry, strike, and option type;
-  they do not fabricate historical strike snapshots.
+  they do not fabricate historical strike snapshots. Native `hv_deribit_*`
+  remains limited to Deribit's rolling response; `rv30_deribit_*` is a separate
+  explicitly derived series backfilled to 2021.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
@@ -570,6 +575,18 @@ implementation exists.
   365-common-day distinctness result remains immutable; future contracts must
   declare a satisfiable formal-window/reference overlap before registration.
   H-022/E-058 Stage-2 ownership is `backtesting/taker_flow_probe.py`: it parses existing Binance 1m `raw_payload.raw[9]/[10]` without download or schema changes and never enters Stage 3.
+- Target behavior (ADR-0016): one user prompt may drive several bounded GenAI
+  calls, then seal a result-blind round manifest containing 10–15 unique
+  executable strategies (at least eight verified-paper-backed new mechanisms
+  and two eligible existing-strategy iterations). Deterministic code evaluates
+  every sealed strategy at Stage 2, runs Stage 3 only for passes, and reconciles
+  the full paper/idea/rejection/execution funnel.
+- Known gap: current generation has only a maximum of 15, no minimum or track
+  quota, and no unified literature-plus-iteration command. Literature candidates
+  normally remain `pending_llm`; unknown/new families stop at
+  `awaiting_stage2_implementation`; resume has no manifest hash; and current
+  aggregate reporting cannot prove that one frozen round completed. Therefore
+  current commands cannot claim a complete ADR-0016 round.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
@@ -620,12 +637,18 @@ implementation exists.
   `tests/unit/test_h021_inverse_perp_accounting.py`.
 - Docs to update: `docs/INVARIANTS.md`, `docs/KNOWN_ISSUES.md`,
   `docs/AI_HANDOFF.md`, `docs/CURRENT_STATE.md`, `config/workstreams.yaml`,
-  relevant Change Manifest, and `docs/ADR/0013-stage2-statistical-power-triage.md`
-  for the Stage-2 power contract.
-- Do-not-touch notes: automation sidecars are advisory research controls only.
-  They must not append durable ledger rows, change `research/strategy_synthesis.md`,
-  enable strategies, run backtests, change CPCV/DSR/gate semantics, alter
-  config gates, or touch demo/shadow/live behavior without explicit approval.
+  relevant Change Manifest, `docs/ADR/0013-stage2-statistical-power-triage.md`
+  for the Stage-2 power contract, and
+  `docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md` plus
+  `docs/superpowers/specs/2026-06-30-drafted-candidate-stage3-contract.md` for
+  the complete-round target.
+- Do-not-touch notes: current automation sidecars are advisory research
+  controls only. They must not append durable ledger rows, change
+  `research/strategy_synthesis.md`, enable strategies, silently start
+  backtests, change CPCV/DSR/gate semantics, alter config gates, or touch
+  demo/shadow/live behavior. ADR-0016 authorizes a separately implemented
+  deterministic manifest/backtest/report path; it does not turn today's
+  sidecar commands into that path.
   H-021 is a one-run explicit exception limited to E-056 checkpoint ①; its
   runner refuses to overwrite an existing summary and never substitutes an
   index price.
@@ -679,7 +702,10 @@ implementation exists.
 - Backtesting files: `backtesting/differential_validation.py`,
   `scripts/run_differential_validation.py`,
   `scripts/run_engine_consistency_smoke.py`, `backtesting/walk_forward.py`,
-  `backtesting/cpcv.py`.
+  `backtesting/cpcv.py`. 2026-07-28: `h014_vol_regime_options` is declared as
+  an honest-blocked contract (all engines `adapter_required`, gate `passed`
+  forced false); whether ADR-0011 shadow-bias evidence satisfies this gate row
+  is an open activation-review decision.
 - Data / DB / artifact files: runtime validation result directories and validation
   artifacts; frozen offline engine-consistency fixtures live under
   `tests/fixtures/engine_consistency/`.
@@ -730,6 +756,34 @@ implementation exists.
 - Do-not-touch notes: no private/authenticated endpoint, broker/order path,
   credential, scheduler registration, strategy/risk/portfolio module, DB
   schema, live gate, or frozen parameter change is allowed.
+
+## H-014 Deribit Options Live Execution (disabled)
+
+- User-facing behavior: no active entrypoint. The ADR-0017 layer is
+  fail-closed behind `h014_live.enabled: false`, defaults to Deribit testnet,
+  consumes byte-identical ADR-0011 intent legs, places only limit orders
+  (post-only except explicit reduce-only risk exits), reprices a bounded number
+  of times, and appends order/fill/reject/missed/risk events.
+- Execution files: `src/okx_quant/execution/deribit_live/`; intent construction,
+  the 1.0-unit cap, and naked-put rejection import the read-only
+  `src/okx_quant/execution/deribit_shadow/` implementation.
+- Operations: `scripts/h014_live_panic.py` cancels option orders for BTC and
+  ETH and writes the persistent reduce-only state; `--dry-run` uses no network.
+- Data / artifacts: runtime-only append-only
+  `results/live_h014/orders.jsonl`, `orders.jsonl.lock`, and
+  `reduce_only.flag`. Unit tests redirect every write to temporary paths and do
+  not create or modify `results/**`.
+- Config: additive `config/risk.yaml` `h014_live` block. Credentials are read
+  only from `.env` / process environment as `DERIBIT_API_KEY` and
+  `DERIBIT_API_SECRET`; no credential is stored in config.
+- Tests: `tests/unit/test_deribit_private_client.py`,
+  `tests/unit/test_h014_live_adapter.py`.
+- Docs: ADR-0017, the 2026-07-28 Change Manifest, this map, and
+  `docs/RUNBOOK.md`.
+- Do-not-touch notes: implementation is not activation. Do not enable the
+  config, register a scheduler, switch `config/settings.yaml`, relax R7.2,
+  modify shadow intent logic, or claim demo/shadow/live readiness without the
+  ADR-0017 gate order and a separate explicit user approval.
 
 ## Shadow / Demo / Live Deployment Gate
 

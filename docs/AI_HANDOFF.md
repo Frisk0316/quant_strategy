@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-28
 expires: none
 superseded_by: null
 ---
@@ -16,9 +16,11 @@ durable backlog.
 
 ## Current goal
 
-Hand the completed E-059 frozen-contract reprobe to Claude for review. T1/T2/T3
-are complete; E-059 fails statistical power, so H-022 is shelved with no retune
-or Stage 3.
+Implement ADR-0016's first safe slice before another complete strategy-finding
+round: a result-blind round manifest, fail-fast 8/2/10 executable-slate
+validation, manifest-hash resume, and a reconciled per-round report. The
+completed E-059 reprobe still awaits Claude review separately; H-022 remains
+shelved with no retune or Stage 3.
 
 ## Branch and working tree
 
@@ -41,9 +43,13 @@ or Stage 3.
 - Turtle: accepted research-only standalone runner; real-data golden parity,
   API/UI, and resumable large sweeps exist. Audit fix restores the documented
   fraction-unit sweep behavior.
-- Deribit: D1-D5 and review fixes accepted; BTC/ETH DVOL/funding/option-flow
-  history is present through 2026-07-10 23:00Z. Forward schedulers are not
-  registered; option-surface remains snapshot-only.
+- Deribit: D1-D5 and review fixes accepted. Native `hv_deribit_*` remains
+  limited to Deribit's recent rolling response; separate derived
+  `rv30_deribit_{btc,eth}_1h` now has 48,792 unique hourly rows per symbol from
+  2021-01-01 through 2026-07-26, sourced from contiguous venue perpetual
+  closes. The Market Data Coverage fetch form can queue BTC/ETH DVOL, native
+  HV, RV30, and current full option-surface refreshes. Forward schedulers are
+  not registered; option-surface history remains snapshot-only.
 - Manual/Progress: all manual chapters exist. The standalone server now wires
   `/api/manual`, chapter frontmatter is removed, and configured Progress markdown
   links are served through a contained allow-list route only on loopback binds.
@@ -70,6 +76,19 @@ or Stage 3.
   CPCV 0.9092, DSR 0.8305, PSR 0.9166; family `n_trials=8`, K 1/2).
   H-023/F-XS-IDIOVOL stopped at E-062 Stage 2 because plausible net Sharpe
   0.5961 was below the 0.7134 power floor; zero grid trials and K 0/2.
+  User correction 2026-07-27: that batch contained only one genuinely new
+  family (H-023) and one existing-family iteration (H-009), so it is a limited
+  two-candidate probe rather than a completed strategy-finding round. Future
+  full rounds follow ADR-0016/R6.8/I53: seal and deterministically evaluate
+  10–15 execution-ready strategies before results, including at least eight
+  verified-paper-backed new mechanisms and two eligible ex-ante
+  existing-strategy iterations.
+  Current automation does not meet that contract: the generators have no
+  minimum/mix validator or unified command, literature drafts normally remain
+  `pending_llm`, and new families without registered runners stop before
+  execution. Until the manifest, candidate-specific runner path, and
+  reconciled report ship, output is advisory/limited rather than a completed
+  round.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
@@ -99,6 +118,17 @@ or Stage 3.
   accumulate an explicitly labeled known trial lower bound; the registry remains
   authoritative. Neither surface changes a verdict, mode, credential boundary,
   or live gate.
+- H-014 live implementation: ADR-0017's new `deribit_live` package is complete
+  but inactive. The review-fix wave now reconciles fills after cancel races,
+  performs journaled label-first orphan sweeps on ambiguous transport sends,
+  rests every placed order before cancellation, keeps OAuth secrets out of the
+  URL, uses a dedicated reduce-only exception, and anchors runtime defaults to
+  the repo root. `h014_vol_regime_options` is now explicitly declared in the
+  differential-validation contract with all candidate engines
+  `adapter_required`; its portable gate is honestly blocked, not passed.
+  No runner, scheduler, settings mode flip, credential, network order, or
+  `results/**` artifact was created. Activation remains shadow exit -> bias
+  review -> R7.2 -> explicit user capital approval.
 - Pipeline observability/triage: under ADR-0013, new registry-written Stage-2
   artifacts fail closed on a fourth `statistical_power` check using
   registry-cumulative trials. `docs/STRATEGY_HISTORY.md` consolidates H-000–H-021
@@ -218,6 +248,12 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   PASS, distinctness 0.043660/0.093939 PASS, cost 42.7529 versus 9.9160 bps
   PASS, power 0.448466 versus 0.754896 FAIL. Artifact SHA-256 is
   `0eefc5531d075202aa688ae052e9d159c6b7f2d494b76ccd0080dea9c352acee`.
+- 2026-07-28 H-014 live implementation + review-fix wave: the two live unit
+  files pass (`36 passed`), and the required live plus differential-validation
+  matrix passes (`100 passed`). Targeted Ruff and panic `--dry-run` pass.
+  Config, docs, and final scope checks are recorded in the associated Change
+  Manifest. This is implementation evidence only, not activation or deployment
+  evidence; portable validation remains blocked on missing adapters.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
@@ -227,6 +263,28 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
 `049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
 Stage 3 remains unauthorized; do not retune or reprobe H-022.
+
+In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
+honest-blocked differential-validation declaration. Continue the independent
+H-014 shadow cycle; do not enable the live block, register a live scheduler, or
+perform an authenticated order test before the remaining gate sequence and
+separate user capital approval.
+
+Before executing another full strategy-finding round:
+
+1. Add the ADR-0016 manifest validator at the orchestrator boundary and reject
+   fewer than eight `new_research`, two `existing_iteration`, or ten executable
+   candidates before DB/backtest access.
+2. Join verified literature candidates and history-led iteration candidates,
+   deduplicate DOI/arXiv/title identity, and have GenAI emit schema-valid specs
+   only.
+3. Reuse the drafted `signal_ref` registry contract so every counted strategy
+   has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
+4. Reconcile one manifest/state/report and bind resume to the manifest hash.
+
+Keep the first implementation sequential. Add bounded concurrency only after
+runtime/DB profiling shows it is needed. A smaller user-approved batch remains
+a limited probe, not a completed round.
 
 First review the five ordered commits plus the 2026-07-21 context/session
 handoffs. Confirm A1-A3/B1-B4 are scoped, E-057 is byte-identical, and each
@@ -312,6 +370,37 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     into five ordered commits. The distinctness amendment is future-only;
     E-057 artifacts/outcome are unchanged. B2 fails closed before probe, the
     full unit suite is green, and the next action is Claude diff review.
+
+13. DONE 2026-07-27 (Claude, subagent-driven, user-directed): Deribit vol
+    backfill + moneyness buckets on `feature/deribit-vol-backfill-moneyness`
+    (e60cb05..2f6ab9e, final review clean). DVOL 1h backfilled to 2021-03-24;
+    RV30 to 2018-09-14 (BTC) / 2019-04-14 (ETH); calibration corr 0.745/0.766
+    user-accepted. Surface + flow adapters emit ATM/ITM/OTM buckets; optflow
+    re-ingested with buckets from 2024-01-01. Ingest CLI now selects the
+    Deribit history vs www endpoint by start age (archive lags ~7 d, www ~24 h;
+    newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
+    Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
+
+14. AUTHORIZED 2026-07-28 (user): execute the H-024..H-027 Deribit
+    moneyness/vol limited probe per
+    `docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md`
+    (order H-024→H-025→H-027→H-026; H-026 = F-VRP-TIMING K retry 1/2,
+    explicitly included). Execution runs in a separate session; Stage-2 stop
+    rules, no retune, one registry entry per executed candidate. Branch:
+    `feature/deribit-moneyness-hypotheses`.
+
+15. IMPLEMENTED, NOT ACTIVATED 2026-07-28 (user-approved ADR-0017): H-014
+    live-execution layer is implemented in the new `execution/deribit_live/`
+    package with additive `h014_live:` risk keys, enabled=false fail-closed,
+    testnet default, bounded post-only repricing, shared shadow intents/checks,
+    cancel-race fill reconciliation, transport-error cancel sweeps, append-only
+    live journal, and panic command. The review-fix wave is ready for Claude
+    re-review; `h014_vol_regime_options` remains portable-validation blocked
+    with three `adapter_required` engines. No authenticated network call,
+    scheduler, settings mode flip, or activation occurred. Activation order
+    remains shadow exit -> bias review -> R7.2 -> separate explicit user
+    capital approval. The shadow task's desktop toasts remain independent; its
+    8-week clock is still stalled, see KNOWN_ISSUES.
 
 ## Open decisions
 

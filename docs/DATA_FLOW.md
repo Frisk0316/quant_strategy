@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 expires: none
 superseded_by: null
 ---
@@ -183,6 +183,15 @@ hourly DVOL and option-flow rows therefore publish one hour after
 public endpoint has no server-side start/end parameters and exposes only a
 recent rolling window, so requested bounds are local filters and longer history
 must accumulate forward.
+`DeribitRealizedVolatilityClient` writes the separate derived
+`rv30_deribit_btc_1h` / `rv30_deribit_eth_1h` series from contiguous hourly
+BTC-PERPETUAL / ETH-PERPETUAL closes. It uses the sample standard deviation of
+720 hourly log returns, annualized by `sqrt(365*24)`, and records the source
+instrument, method, window, and annualization in `fields`. It never fills gaps
+or treats the adaptively downsampled `get_index_chart_data?range=all` output as
+hourly data (F58/I55). As with other hourly bucketed closes, `published_at` is
+one hour after the bucket-label `observed_at`. These rows are not Deribit's
+native HV or index prices.
 `DeribitFundingClient` writes `funding_deribit_btc` / `funding_deribit_eth` as
 hourly BTC-PERPETUAL/ETH-PERPETUAL funding observations with `value_num =
 interest_1h` and `fields.unit = "rate_1h_decimal"`; Deribit funding timestamps
@@ -209,6 +218,9 @@ operators must still inspect the gap report because Deribit's history and live
 hosts can have a temporary visibility gap. The shared client requests explicit
 descending trade order and uses a non-overlapping millisecond page boundary;
 omitting that order silently truncates the live response (F54/I51).
+Backfills add DVOL 1h history to 2021-03-24 (inception), RV30 to 2018-09-14
+(BTC) / 2019-04-14 (ETH), and `optsurf_deribit_*`/`optflow_deribit_*` moneyness
+buckets, with optflow buckets re-ingested from 2024-01-01.
 Other required external datasets marked `fail_on_empty_fetch` still fail closed
 on an empty generic ingest.
 `GET /api/data/external-series` reads `external_observations` by `dataset_id`,
@@ -225,6 +237,11 @@ rows directly, so they are not presented as skipped. The refresh API still
 returns `skipped` for non-on-demand or dynamically registered DB datasets when
 called directly; only datasets unknown in both yaml and `external_datasets` are
 rejected.
+The Market Data Coverage fetch form also accepts `exchange=deribit`. Its
+BTC/ETH search results map one queued background job to on-demand hourly/daily
+DVOL, native rolling HV, derived RV30, and the current complete option-surface
+snapshot. The date range applies to historical series; the option surface
+remains a current snapshot and does not fabricate historical strikes.
 
 Known gap: Binance's public `openInterestHist` endpoint only exposes roughly the
 recent ~30-day window, so that adapter remains forward accumulation; historical

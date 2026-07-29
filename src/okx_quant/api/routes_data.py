@@ -98,6 +98,8 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
     ):
         exchange = _normalize_fetch_exchange(exchange)
         keyword = str(q or "").strip().upper()
+        if exchange == "deribit":
+            return _deribit_instruments(keyword)
         if exchange == "binance":
             rows = await _binance_instruments(quote_ccy=quote_ccy, keyword=keyword)
             return rows
@@ -373,6 +375,8 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
         if not db_dsn:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
         exchange = _normalize_fetch_exchange(req.exchange)
+        if exchange == "deribit" and req.existing_only:
+            raise HTTPException(status_code=400, detail="Deribit context fetch requires BTC and/or ETH")
         symbols = await _resolve_fetch_symbols(req, db_dsn)
         if not symbols:
             detail = "No existing DB trading pairs found for this bar" if req.existing_only else "At least one symbol is required"
@@ -497,9 +501,31 @@ def _ms_to_date(value: int | None) -> str | None:
 
 def _normalize_fetch_exchange(value: str | None) -> str:
     exchange = str(value or "okx").strip().lower()
-    if exchange not in {"okx", "binance"}:
-        raise HTTPException(status_code=400, detail="exchange must be one of: okx, binance")
+    if exchange not in {"okx", "binance", "deribit"}:
+        raise HTTPException(status_code=400, detail="exchange must be one of: okx, binance, deribit")
     return exchange
+
+
+def _deribit_instruments(keyword: str = "") -> list[dict[str, Any]]:
+    rows = [
+        {
+            "exchange": "deribit",
+            "inst_id": currency,
+            "native_symbol": f"{currency}-PERPETUAL",
+            "normalized_symbol": currency,
+            "inst_type": "EXTERNAL",
+            "base_ccy": currency,
+            "quote_ccy": "USD",
+            "settle_ccy": currency,
+            "state": "open",
+            "list_time_ms": None,
+            "list_date": None,
+        }
+        for currency in ("BTC", "ETH")
+    ]
+    if keyword:
+        rows = [row for row in rows if _instrument_matches(row, keyword)]
+    return rows
 
 
 def _binance_native_to_normalized(symbol: str, quote: str = "USDT") -> str:
@@ -1171,8 +1197,8 @@ async def _refresh_external_datasets(
     start: datetime,
     end: datetime,
 ) -> dict[str, Any]:
-    from okx_quant.data.external_clients.yfinance_client import YFinanceClient
     from okx_quant.data.external_store import ExternalDataStore
+    from scripts.market_data.ingest_external import _fetch_rows
     import yaml
 
     config_path = _project_root_path() / "config" / "external_data.yaml"
@@ -1195,7 +1221,7 @@ async def _refresh_external_datasets(
                 continue
             raise HTTPException(status_code=400, detail=f"Unknown external dataset: {dataset_id}")
         adapter = str(cfg.get("adapter") or "")
-        if adapter != "yfinance":
+        if adapter != "yfinance" and not bool(cfg.get("on_demand", False)):
             refreshed.append({
                 "dataset_id": dataset_id,
                 "status": "skipped",
@@ -1212,16 +1238,15 @@ async def _refresh_external_datasets(
             await store.upsert_dataset(dataset_id, cfg)
             job_id = await store.start_fetch_job(dataset_id, str(cfg.get("provider") or "yfinance"), start, end)
             try:
-                client = YFinanceClient(publish_lag_days=int(cfg.get("publish_lag_days", 1)))
                 rows = await asyncio.to_thread(
-                    client.fetch,
-                    ticker=str(cfg.get("ticker") or "BTC=F"),
-                    start=start,
-                    end=end,
-                    interval=str(cfg.get("interval") or "1d"),
+                    _fetch_rows,
+                    dataset_id,
+                    cfg,
+                    start,
+                    end,
                 )
                 if not rows and bool(cfg.get("fail_on_empty_fetch", False)):
-                    raise RuntimeError(f"{dataset_id}: empty yfinance fetch")
+                    raise RuntimeError(f"{dataset_id}: empty on-demand fetch")
                 stats = await store.upsert_observations(dataset_id, rows)
                 await store.finish_fetch_job(
                     job_id,
@@ -1229,7 +1254,7 @@ async def _refresh_external_datasets(
                     rows_fetched=len(rows),
                     rows_inserted=stats["inserted"],
                     rows_updated=stats["updated"],
-                    details={"on_demand_export_refresh": True},
+                    details={"on_demand_refresh": True},
                 )
                 await store.update_checkpoint(
                     dataset_id,
@@ -1587,13 +1612,17 @@ async def _run_fetch(job_id: str, req: FetchRequest, db_dsn: str) -> None:
 
 async def _run_fetch_body(job_id: str, req: FetchRequest, db_dsn: str) -> None:
     try:
+        exchange = _normalize_fetch_exchange(req.exchange)
+        if exchange == "deribit":
+            await _run_deribit_fetch_body(job_id, req, db_dsn)
+            return
+
         import asyncpg
 
         from okx_quant.data.candle_store import CandleStore
         from okx_quant.data.exchange_clients.binance_public import BinancePublicClient
         from okx_quant.data.exchange_clients.okx_public import OKXPublicClient
 
-        exchange = _normalize_fetch_exchange(req.exchange)
         existing_bounds: dict[str, dict[str, Any]] = {}
         if req.existing_only:
             bound_rows = await _existing_db_symbol_bounds(db_dsn, req.bar)
@@ -1850,3 +1879,66 @@ async def _run_fetch_body(job_id: str, req: FetchRequest, db_dsn: str) -> None:
             "message": str(exc),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })
+
+
+def _deribit_dataset_ids(symbols: list[str]) -> list[str]:
+    dataset_ids: list[str] = []
+    for symbol in symbols:
+        currency = str(symbol or "").upper().split("-")[0]
+        if currency not in {"BTC", "ETH"}:
+            raise ValueError(f"unsupported Deribit currency: {symbol}")
+        suffix = currency.lower()
+        dataset_ids.extend(
+            [
+                f"dvol_deribit_{suffix}",
+                f"dvol_deribit_{suffix}_1h",
+                f"hv_deribit_{suffix}_1h",
+                f"rv30_deribit_{suffix}_1h",
+                f"optsurf_deribit_{suffix}",
+            ]
+        )
+    return dataset_ids
+
+
+async def _run_deribit_fetch_body(job_id: str, req: FetchRequest, db_dsn: str) -> None:
+    symbols = _request_symbols(req)
+    if req.bar.upper() != "1H":
+        raise ValueError("Deribit context fetch supports hourly data only")
+    start = _parse_utc(req.start)
+    end = _parse_utc(req.end)
+    if start >= end:
+        raise ValueError("start must be earlier than end")
+    dataset_ids = _deribit_dataset_ids(symbols)
+    _jobs[job_id].update(
+        {
+            "exchange": "deribit",
+            "status": "running",
+            "progress": 10,
+            "message": f"Fetching {len(dataset_ids)} Deribit datasets...",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    _raise_if_fetch_cancelled(job_id)
+    refreshed = await _refresh_external_datasets(db_dsn, dataset_ids, start, end)
+    _raise_if_fetch_cancelled(job_id)
+    results = [
+        {
+            "symbol": row["dataset_id"],
+            "exchange": "deribit",
+            "status": row["status"],
+            "rows": int(row.get("rows_fetched") or 0),
+            "effective_start": start.date().isoformat(),
+            "effective_end": end.date().isoformat(),
+            "message": row.get("reason"),
+        }
+        for row in refreshed["datasets"]
+    ]
+    _jobs[job_id].update(
+        {
+            "status": "done",
+            "progress": 100,
+            "message": f"Fetched {len(results)} Deribit volatility/option datasets",
+            "results": results,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
