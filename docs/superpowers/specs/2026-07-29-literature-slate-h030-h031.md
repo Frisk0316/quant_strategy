@@ -150,6 +150,19 @@ E-050 (advisory, both are options-derived vol conditioning).
 
 ---
 
+## Slate pipeline — vetted, not yet registered (raw material for the complete round)
+
+These cleared the literature bar in the 2026-07-29 research pass but are not
+registered yet; each still needs a frozen signal/grid and a distinctness plan
+before it becomes a hypothesis. Listed so the work is not lost.
+
+| Candidate mechanism | Strongest citation | Our data | Main risk |
+| --- | --- | --- | --- |
+| Vol-of-vol predicts BTC excess returns; VRP sign turns time-varying once VoV is modeled | Du et al., "Pricing Cryptocurrency Options With Volatility of Volatility", *Journal of Futures Markets* (2025) | DVOL + RV30 2021+ | Adjacency to shelved F-VRP-TIMING — must mint apart on the VoV term, not the VRP level |
+| Pre-FOMC drift and multi-day post-FOMC drift in BTC | "Do FOMC and macroeconomic announcements affect Bitcoin prices?", *Finance Research Letters* (2019); "Scheduled FOMC statements and intraday macro event risk in cryptocurrency markets", FRL (2026); NY Fed Staff Report 1052 | FRED + 1m candles; FOMC calendar is public and fixed | Only ~8 events/year (~48 usable) — power screen is the binding constraint |
+| Variance decomposition: positive-jump and jump-robust variance predict *lower* subsequent weekly returns cross-sectionally | "Variance Decomposition and Cryptocurrency Return Prediction", *Journal of Financial and Quantitative Analysis* | 1m candles 2020+ (realized measures computable) | Distinctness vs shelved H-023/F-XS-IDIOVOL is decisive — the claim is that decomposed jump components carry information residual vol does not |
+| Aggregate gamma inventory (dealer rebalancing pressure) drives option illiquidity and loads on the first priced factor | Atanasova, Miao, Segarra & Willeboordse, "Aggregate illiquidity and crypto option returns", FRL (2025) | optflow 2024+ (proxy build) | Same proxy weakness as H-031; likely overlaps H-031's family |
+
 ## Screened out during this research pass (recorded so they are not re-proposed)
 
 - **Implied-volatility skew slope → returns.** "Implied volatility slopes and
