@@ -56,9 +56,16 @@ over time.
   Verified: a manual trigger now RUNS (it correctly fail-closed with
   "must run at or after 08:00 UTC" because 16:10 local = 08:10 UTC is the
   first valid slot). Missed days remain permanently unrecoverable, so the
-  ADR-0011 ≥8-valid-weeks clock restarts from ~2026-07-29. **Watch item:**
-  confirm the 16:10 local run writes new journal dates before treating the
-  clock as running.
+  ADR-0011 ≥8-valid-weeks clock restarts from 2026-07-29 (journal now carries
+  a 2026-07-29 cycle — verified). A SECOND blocker surfaced once the task could
+  finally run: `canonical_candles` had fallen 14 days behind `market_klines`
+  because `research/probes/h014_daily_shadow_ops.py` ingested raw rows but
+  never promoted them, so the cycle fail-closed with "stale DB signal … latest
+  common day 2026-07-15". Fixed by a manual `canonicalize.py` catch-up plus a
+  permanent canonicalize step in the daily ops script. Residual data-quality
+  note: only 9,994 of ~20,160 expected minutes existed in raw for the stalled
+  window, so 2026-07-15..29 intraday candle coverage is partial (daily closes
+  the cycle needs are present).
 - **Open complete-round automation gap — ADR-0016/F56/F57/I53/I54
   (2026-07-27):** idea generation has a maximum of 15 but no 8/2/10
   executable minimum, literature and existing-strategy iteration inputs are not

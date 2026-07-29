@@ -51,6 +51,16 @@ def main() -> None:
     run([PY, "scripts/market_data/ingest.py", "--exchange", "binance",
          "--dataset", "klines_1m", "--symbols", "BTCUSDT,ETHUSDT",
          "--start", start + "Z", "--end", end + "Z"])
+    # Ingest only fills raw market_klines; the shadow cycle reads
+    # canonical_candles, so promote the same window or the cycle fail-closes
+    # with "stale DB signal" once raw runs ahead of canonical (2026-07-29).
+    cstart = (now - timedelta(hours=26)).strftime("%Y-%m-%d")
+    cend = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    for inst in ("BTC-USDT-SWAP", "ETH-USDT-SWAP"):
+        run([PY, "scripts/market_data/canonicalize.py",
+             "--canonical-inst", inst, "--bar", "1m",
+             "--prefer", "binance,okx,bybit",
+             "--start", cstart, "--end", cend])
     run([PY, "scripts/run_h014_shadow.py"])
     run([PY, "scripts/run_h014_shadow.py", "--report"])
 
