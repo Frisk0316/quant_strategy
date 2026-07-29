@@ -13,6 +13,17 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-29 - H-029 Stage 2 + ADR-0016 infrastructure slice 1 (Codex)
+
+- H-029/E-068 passed I49 before DB access, data coverage (1,512/1,512 active
+  symbol-events), and distinctness, then failed cost and power at net Sharpe
+  -0.471876 versus a 0.880629 floor. The stop rule prevented Stage 3; trials
+  and K remain zero. E-026's missing dated series is recorded as a best-effort
+  reference gap.
+- Added the ADR-0016 result-blind manifest boundary: joined input filtering,
+  10–15/8/2 executable validation, hash-bound resume, and strict terminal
+  reconciliation. Synthetic dry validation passed; no real round ran.
+
 ## 2026-07-29 - E-025 dated regeneration and H-024..H-027 outcomes (Codex)
 
 - Re-ran the existing C1 pairs-OU implementation at E-025's frozen selected

@@ -21,6 +21,7 @@ from backtesting.moneyness_vol_probe import (
     validate_power_declaration as validate_moneyness_vol_power_declaration,
 )
 from backtesting.pipeline_power_screen import min_detectable_sharpe
+from backtesting.funding_settlement_probe import probe_funding_settlement
 from backtesting.taker_flow_probe import (
     ARTIFACT_DIR as TAKER_ARTIFACT_DIR,
     FORMAL_WINDOW as TAKER_FORMAL_WINDOW,
@@ -169,6 +170,13 @@ CANDIDATES: dict[str, CandidateSpec] = {
         candidate_dir="f_vrp_timing_retry1",
         hypothesis_id="H-026",
         family_id="F-VRP-TIMING",
+    ),
+    "funding_settlement": CandidateSpec(
+        key="funding_settlement",
+        candidate_id="H-029",
+        candidate_dir="f_funding_settlement_drift",
+        hypothesis_id="H-029",
+        family_id="F-FUNDING-SETTLEMENT-DRIFT",
     ),
 }
 
@@ -1352,6 +1360,7 @@ STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-OPT-MONEYNESS-STRUCTURE": _run_opt_moneyness_structure_probe,
     "F-XVOL-RATIO": _run_xvol_ratio_probe,
     "F-VRP-TIMING": _run_vrp_timing_retry1_probe,
+    "F-FUNDING-SETTLEMENT-DRIFT": probe_funding_settlement,
 }
 
 

@@ -81,12 +81,12 @@ occurred.
   10–15 execution-ready strategies before results, including at least eight
   verified-paper-backed new mechanisms and two eligible ex-ante
   existing-strategy iterations.
-  Current automation does not meet that contract: the generators have no
-  minimum/mix validator or unified command, literature drafts normally remain
-  `pending_llm`, and new families without registered runners stop before
-  execution. Until the manifest, candidate-specific runner path, and
-  reconciled report ship, output is advisory/limited rather than a completed
-  round.
+  ADR-0016 slice 1 now supplies deterministic joined-input filtering,
+  10–15/8/2 executable validation, manifest sealing/hash-bound resume, and
+  terminal-artifact reconciliation. No real round ran. Complete-round
+  automation remains blocked on enough registered candidate-specific runners
+  and the one-command execution path; output remains advisory/limited until
+  those later slices ship.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
@@ -285,15 +285,13 @@ separate user capital approval.
 
 Before executing another full strategy-finding round:
 
-1. Add the ADR-0016 manifest validator at the orchestrator boundary and reject
-   fewer than eight `new_research`, two `existing_iteration`, or ten executable
-   candidates before DB/backtest access.
-2. Join verified literature candidates and history-led iteration candidates,
-   deduplicate DOI/arXiv/title identity, and have GenAI emit schema-valid specs
-   only.
+1. Wire the slice-1 manifest helper into the one-command orchestrator after
+   schema-valid GenAI drafts are available.
+2. Extend verified provenance identity from the current family/provenance key
+   to normalized DOI/arXiv/title identity at the literature adapter boundary.
 3. Reuse the drafted `signal_ref` registry contract so every counted strategy
    has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
-4. Reconcile one manifest/state/report and bind resume to the manifest hash.
+4. Emit the slice-1 reconciled report from the real sequential execution path.
 
 Keep the first implementation sequential. Add bounded concurrency only after
 runtime/DB profiling shows it is needed. A smaller user-approved batch remains
@@ -430,6 +428,10 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     Note: binance funding stale since 2026-07-02 and 1m candles since
     2026-07-14 (candle top-up rode the stalled H-014 shadow task); H-029's
     frozen window (ends 2026-07-02) is unaffected.
+    COMPLETED 2026-07-29: H-029/E-068 Stage 2 passed data and distinctness
+    but failed cost and power (net Sharpe -0.471876 vs 0.880629 floor);
+    zero trials/K and no Stage 3. ADR-0016 slice 1 passed synthetic validation;
+    no real complete round ran.
 
 ## Open decisions
 

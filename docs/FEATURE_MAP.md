@@ -575,6 +575,13 @@ implementation exists.
   365-common-day distinctness result remains immutable; future contracts must
   declare a satisfiable formal-window/reference overlap before registration.
   H-022/E-058 Stage-2 ownership is `backtesting/taker_flow_probe.py`: it parses existing Binance 1m `raw_payload.raw[9]/[10]` without download or schema changes and never enters Stage 3.
+  H-024..H-027 Stage-2 ownership is `backtesting/moneyness_vol_probe.py`
+  (E-064..E-067, all Stage-2 stops). H-029/E-068 Stage-2 ownership is
+  `backtesting/funding_settlement_probe.py`: an event-window design over
+  Binance funding settlements + 1m candles (no new ingestion), refuted on
+  negative net edge at Stage 2. ADR-0016 round-manifest sealing / hash-bound
+  resume / terminal reconciliation library is `backtesting/pipeline_round.py`
+  (build-only; no real round has run).
 - Target behavior (ADR-0016): one user prompt may drive several bounded GenAI
   calls, then seal a result-blind round manifest containing 10–15 unique
   executable strategies (at least eight verified-paper-backed new mechanisms

@@ -87,6 +87,7 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
 
     assert set(registry.STAGE2_PROBES) == {
         "F-FUNDING-XS-DISPERSION",
+        "F-FUNDING-SETTLEMENT-DRIFT",
         "F-OI-POSITIONING",
         "F-XVENUE-LEADLAG",
         "F-XVENUE-FUNDING-SPREAD",
