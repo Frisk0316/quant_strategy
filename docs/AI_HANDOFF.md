@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-29
 expires: none
 superseded_by: null
 ---
@@ -16,21 +16,18 @@ durable backlog.
 
 ## Current goal
 
-Implement ADR-0016's first safe slice before another complete strategy-finding
-round: a result-blind round manifest, fail-fast 8/2/10 executable-slate
-validation, manifest-hash resume, and a reconciled per-round report. The
-completed E-059 reprobe still awaits Claude review separately; H-022 remains
-shelved with no retune or Stage 3.
+Complete the authorized H-024..H-027 limited-probe workflow without bypassing
+I49. Candidate registration and the shared probe implementation are complete,
+but the global pre-flight correctly stopped before DB access because the only
+E-025/F-PAIRS-OU artifact has no dated return series. Claude must provide or
+authorize a dated E-025 reference before any probe may run.
 
 ## Branch and working tree
 
-- Current branch: `feature/h014-e052-shadow`. The 2026-07-18 shared working tree
-  is split into five ordered delivery commits at current HEAD; inspect
-  `git log --oneline -5` for exact hashes. The generated funnel JSON remains on
-  disk but ignored, and the stray execution-comparison JSON remains untracked.
-  The latest scoped commits are E-059 preregistration `592b757` and execution
-  `049d136`; pre-existing runtime/API working-tree changes remain unstaged and
-  untouched.
+- Current branch: `feature/deribit-moneyness-hypotheses`. The four limited-probe
+  candidates, shared feature/probe module, fail-closed I49 pre-flight, and unit
+  coverage are registered in `4c84a18`. No candidate execution artifact,
+  experiment-ledger row, family trial/K update, or Stage-3 run was created.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -95,6 +92,13 @@ shelved with no retune or Stage 3.
   absent, and the fixed zero-trial anchor's median gross capture is 1.3636 bps
   versus 8.0 bps cost across 7,376 episodes. Stage 3 did not run. H-013/E-050 is
   shelved after statistical failure.
+  H-024/F-OPT-HEDGE-DEMAND, H-025/F-OPT-MONEYNESS-STRUCTURE,
+  H-027/F-XVOL-RATIO, and H-026/F-VRP-TIMING are registered in the Stage-2
+  registry. The mandatory whole-batch I49 pre-flight stops before DB access:
+  `results/pipeline_batch2_20260625/c1_pairs_ou/summary.json` contains CPCV
+  `path_returns` but no dates, so it cannot establish the required >=65 common
+  dated days for E-025/F-PAIRS-OU. This is a contract stop, not a candidate
+  distinctness failure; none of the four probes executed.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
   ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
@@ -260,9 +264,11 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 
 ## Next steps
 
-Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
-`049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
-Stage 3 remains unauthorized; do not retune or reprobe H-022.
+Immediate: Claude supplies or explicitly authorizes a dated E-025/F-PAIRS-OU
+reference, or changes the I49 contract. Then rerun only the whole-batch
+pre-flight. Do not connect to the DB or execute H-024/H-025/H-027/H-026 until
+all required references have at least 65 common dated days. The E-059 review
+remains separate; do not retune or reprobe H-022.
 
 In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
 honest-blocked differential-validation declaration. Continue the independent
@@ -381,13 +387,16 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
     Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
 
-14. AUTHORIZED 2026-07-28 (user): execute the H-024..H-027 Deribit
+14. REGISTERED, CONTRACT-STOPPED 2026-07-29 (user-authorized 2026-07-28):
+    execute the H-024..H-027 Deribit
     moneyness/vol limited probe per
     `docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md`
     (order H-024→H-025→H-027→H-026; H-026 = F-VRP-TIMING K retry 1/2,
-    explicitly included). Execution runs in a separate session; Stage-2 stop
-    rules, no retune, one registry entry per executed candidate. Branch:
-    `feature/deribit-moneyness-hypotheses`.
+    explicitly included). Commit `4c84a18` registers the candidates and shared
+    probes. Global I49 pre-flight refused the undated E-025 artifact before DB
+    access, so the ordered execution has not begun: no artifact, ledger entry,
+    trial/K consumption, retune, or Stage 3. Claude must resolve or authorize
+    the dated reference before execution resumes.
 
 15. IMPLEMENTED, NOT ACTIVATED 2026-07-28 (user-approved ADR-0017): H-014
     live-execution layer is implemented in the new `execution/deribit_live/`

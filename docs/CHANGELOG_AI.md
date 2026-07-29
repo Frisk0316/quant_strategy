@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-29
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,21 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-29 - H-024..H-027 registration and I49 contract stop (Codex)
+
+- Registered F-OPT-HEDGE-DEMAND, F-OPT-MONEYNESS-STRUCTURE, F-XVOL-RATIO, and
+  F-VRP-TIMING in the Stage-2 registry with one shared probe module for the
+  frozen feature definitions, cost/data/distinctness checks, power ceilings,
+  and H-026 family-cumulative `n_trials=8`.
+- Added a whole-batch I49 pre-flight that validates every distinctness
+  reference before DB access. It refused the only E-025/F-PAIRS-OU artifact
+  because its CPCV `path_returns` have no dates; therefore none of the four
+  probes ran and no result artifact, experiment row, trial/K update, or Stage 3
+  was created.
+- Registration commit `4c84a18`; targeted registry/probe tests passed
+  (`20 passed`) and targeted Ruff passed. Claude must provide or authorize a
+  dated E-025 reference, or change the contract, before execution resumes.
 
 ## 2026-07-28 - H-014 live review fixes + differential declaration (Codex)
 
