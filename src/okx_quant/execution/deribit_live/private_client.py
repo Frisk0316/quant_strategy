@@ -61,12 +61,17 @@ class DeribitPrivateClient:
         self._client.close()
 
     def _authenticate(self) -> str:
-        response = self._client.get(
+        response = self._client.post(
             "public/auth",
-            params={
-                "grant_type": "client_credentials",
-                "client_id": self._client_id,
-                "client_secret": self._client_secret,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "public/auth",
+                "params": {
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                },
             },
         )
         response.raise_for_status()
@@ -173,6 +178,23 @@ class DeribitPrivateClient:
         if not order_id:
             raise ValueError("order_id is required")
         return dict(self._private_get("private/cancel", order_id=order_id) or {})
+
+    def cancel_by_label(self, label: str, *, currency: str | None = None) -> Any:
+        label = str(label).strip()
+        if not label:
+            raise ValueError("label is required")
+        params = {"label": label[:64]}
+        if currency:
+            params["currency"] = str(currency).upper()
+        return self._private_get("private/cancel_by_label", **params)
+
+    def get_order_state(self, order_id: str) -> dict[str, Any]:
+        order_id = str(order_id).strip()
+        if not order_id:
+            raise ValueError("order_id is required")
+        return dict(
+            self._private_get("private/get_order_state", order_id=order_id) or {}
+        )
 
     def cancel_all_by_currency(self, currency: str) -> Any:
         return self._private_get(

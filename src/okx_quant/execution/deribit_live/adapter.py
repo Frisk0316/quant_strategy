@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+import httpx
 import yaml
 from dotenv import dotenv_values
 from loguru import logger
@@ -25,9 +26,21 @@ from okx_quant.monitoring.telegram_alert import TelegramMonitor
 from .private_client import DeribitPrivateClient
 
 _OPTION_NAME = re.compile(r"^(BTC|ETH)-\d{1,2}[A-Z]{3}\d{2}-\d+(?:\.\d+)?-[CP]$")
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_RISK_CONFIG = _REPO_ROOT / "config" / "risk.yaml"
+_DEFAULT_ENV_FILE = _REPO_ROOT / ".env"
+_DEFAULT_LIVE_JOURNAL = _REPO_ROOT / "results" / "live_h014" / "orders.jsonl"
+_DEFAULT_SHADOW_JOURNAL = _REPO_ROOT / "results" / "shadow_h014" / "journal.jsonl"
+_DEFAULT_REDUCE_ONLY_STATE = (
+    _REPO_ROOT / "results" / "live_h014" / "reduce_only.flag"
+)
 
 
 class OrderRejectedError(RuntimeError):
+    pass
+
+
+class ReduceOnlyError(RuntimeError):
     pass
 
 
@@ -64,10 +77,10 @@ class LiveConfig:
             )
         if (
             not math.isfinite(config.reprice_interval_seconds)
-            or config.reprice_interval_seconds < 0
+            or config.reprice_interval_seconds <= 0
         ):
             raise ValueError(
-                "h014_live.reprice_interval_seconds must be finite and non-negative"
+                "h014_live.reprice_interval_seconds must be positive and finite"
             )
         if (
             not isinstance(config.max_reprices, int)
@@ -85,7 +98,7 @@ class RiskSnapshot:
     notional_by_symbol: Mapping[str, float] = field(default_factory=dict)
 
 
-def load_live_config(path: str | Path = "config/risk.yaml") -> LiveConfig:
+def load_live_config(path: str | Path = _DEFAULT_RISK_CONFIG) -> LiveConfig:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if "h014_live" not in raw:
         raise RuntimeError("config/risk.yaml is missing the h014_live block")
@@ -161,7 +174,7 @@ def _append_jsonl(path: str | Path, record: dict[str, Any]) -> bool:
 def _default_notify(event: str, message: str) -> None:
     level = "ERROR" if event in {"rejection", "risk_stop", "adapter_failure"} else "INFO"
     logger.log(level, "H-014 live {}: {}", event, message)
-    values = dotenv_values(".env") if Path(".env").exists() else {}
+    values = dotenv_values(_DEFAULT_ENV_FILE) if _DEFAULT_ENV_FILE.exists() else {}
     token = os.environ.get("TELEGRAM_TOKEN") or values.get("TELEGRAM_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID") or values.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
@@ -193,12 +206,19 @@ class H014LiveAdapter:
         *,
         client: DeribitPrivateClient | None = None,
         quote_provider: Callable[[str], Mapping[str, Any]] | None = None,
-        live_journal_path: str | Path = "results/live_h014/orders.jsonl",
-        shadow_journal_path: str | Path = "results/shadow_h014/journal.jsonl",
-        reduce_only_state_path: str | Path = "results/live_h014/reduce_only.flag",
+        live_journal_path: str | Path = _DEFAULT_LIVE_JOURNAL,
+        shadow_journal_path: str | Path = _DEFAULT_SHADOW_JOURNAL,
+        reduce_only_state_path: str | Path = _DEFAULT_REDUCE_ONLY_STATE,
         sleep: Callable[[float], None] = time.sleep,
         notifier: Callable[[str, str], None] = _default_notify,
     ) -> None:
+        if (
+            not math.isfinite(config.reprice_interval_seconds)
+            or config.reprice_interval_seconds <= 0
+        ):
+            raise ValueError(
+                "h014_live.reprice_interval_seconds must be positive and finite"
+            )
         if config.enabled and client is None:
             raise RuntimeError("enabled H-014 live adapter requires a private client")
         self.config = config
@@ -226,7 +246,7 @@ class H014LiveAdapter:
         config: LiveConfig,
         *,
         client_factory: Callable[[str], DeribitPrivateClient] | None = None,
-        env_file: str | Path = ".env",
+        env_file: str | Path = _DEFAULT_ENV_FILE,
         **kwargs: Any,
     ) -> "H014LiveAdapter":
         if not config.enabled:
@@ -369,6 +389,48 @@ class H014LiveAdapter:
         order = result.get("order")
         return order if isinstance(order, Mapping) else result
 
+    def _cancel_sweep(
+        self,
+        intent_id: str,
+        currency: str,
+        label: str,
+        leg: str,
+        attempt: int,
+    ) -> None:
+        client = self.client
+        if client is None:
+            return
+        scope = "label"
+        status = "succeeded"
+        label_error = ""
+        reason = ""
+        try:
+            client.cancel_by_label(label, currency=currency)
+        except Exception as exc:
+            scope = "currency"
+            label_error = str(exc)
+            try:
+                client.cancel_all_by_currency(currency)
+            except Exception as fallback_exc:
+                status = "failed"
+                reason = str(fallback_exc)
+        try:
+            self._event(
+                "cancel_sweep",
+                intent_id,
+                suffix=f"{leg}:{attempt}",
+                currency=currency,
+                label=label,
+                leg=leg,
+                attempt=attempt,
+                scope=scope,
+                status=status,
+                label_error=label_error,
+                reason=reason,
+            )
+        except Exception as exc:
+            logger.warning("H-014 cancel sweep journal failed: {}", exc)
+
     def _execute_leg(
         self,
         intent_id: str,
@@ -388,6 +450,7 @@ class H014LiveAdapter:
             price = float(quote["bid"] if side == "buy" else quote["ask"])
             remaining = requested - filled_total
             method = self.client.buy if side == "buy" else self.client.sell
+            label = f"h014:{intent_id}:{leg['leg']}"[:64]
             recorded = self._event(
                 "order_attempt",
                 intent_id,
@@ -406,13 +469,23 @@ class H014LiveAdapter:
                 raise RuntimeError(
                     f"duplicate H-014 order attempt refused for {instrument} attempt {attempt}"
                 )
-            result = method(
-                instrument,
-                remaining,
-                price,
-                reduce_only=reduce_only,
-                label=f"h014:{intent_id}:{leg['leg']}",
-            )
+            try:
+                result = method(
+                    instrument,
+                    remaining,
+                    price,
+                    reduce_only=reduce_only,
+                    label=label,
+                )
+            except httpx.TransportError:
+                self._cancel_sweep(
+                    intent_id,
+                    currency,
+                    label,
+                    str(leg["leg"]),
+                    attempt,
+                )
+                raise
             order = self._order_view(result)
             order_id = str(order.get("order_id") or "")
             order_filled = min(remaining, float(order.get("filled_amount") or 0))
@@ -436,26 +509,69 @@ class H014LiveAdapter:
                 return {"status": "filled", "filled_amount": filled_total}
             if not order_id:
                 raise RuntimeError(f"Deribit returned no order_id for {instrument}")
-            if attempt < self.config.max_reprices:
-                self.sleep(self.config.reprice_interval_seconds)
-            cancelled = self.client.cancel(order_id)
-            cancel_filled = min(remaining, float(cancelled.get("filled_amount") or 0))
-            if cancel_filled > order_filled:
-                delta = cancel_filled - order_filled
-                filled_total += delta
-                self._event(
-                    "fill",
-                    intent_id,
-                    suffix=f"{leg['leg']}:{attempt}:cancel",
-                    currency=currency,
-                    instrument=instrument,
-                    leg=leg["leg"],
-                    filled_amount=delta,
-                    cumulative_filled=filled_total,
-                    average_price=cancelled.get("average_price"),
+            self.sleep(self.config.reprice_interval_seconds)
+            cancel_failure: Exception | None = None
+            for recovery_attempt in range(2):
+                if recovery_attempt == 0:
+                    try:
+                        cancelled = self.client.cancel(order_id)
+                        cancel_failure = None
+                    except Exception as exc:
+                        cancel_failure = exc
+                        try:
+                            cancelled = self._order_view(
+                                self.client.get_order_state(order_id)
+                            )
+                        except Exception:
+                            continue
+                else:
+                    self._cancel_sweep(
+                        intent_id,
+                        currency,
+                        label,
+                        str(leg["leg"]),
+                        attempt,
+                    )
+                    try:
+                        cancelled = self._order_view(
+                            self.client.get_order_state(order_id)
+                        )
+                    except Exception:
+                        raise cancel_failure
+                cancel_filled = min(
+                    remaining,
+                    float(cancelled.get("filled_amount") or 0),
                 )
-            if filled_total + 1e-12 >= requested:
-                return {"status": "filled", "filled_amount": filled_total}
+                if cancel_filled > order_filled:
+                    delta = cancel_filled - order_filled
+                    filled_total += delta
+                    suffix = f"{leg['leg']}:{attempt}:cancel"
+                    if recovery_attempt:
+                        suffix += ":sweep"
+                    self._event(
+                        "fill",
+                        intent_id,
+                        suffix=suffix,
+                        currency=currency,
+                        instrument=instrument,
+                        leg=leg["leg"],
+                        filled_amount=delta,
+                        cumulative_filled=filled_total,
+                        average_price=cancelled.get("average_price"),
+                    )
+                    order_filled = cancel_filled
+                if filled_total + 1e-12 >= requested:
+                    return {"status": "filled", "filled_amount": filled_total}
+                if cancel_failure is None or cancelled.get("order_state") in {
+                    "cancelled",
+                    "filled",
+                    "rejected",
+                }:
+                    break
+            else:
+                if cancel_failure is None:
+                    raise RuntimeError(f"unable to reconcile {order_id}")
+                raise cancel_failure
         self._event(
             "missed",
             intent_id,
@@ -518,7 +634,7 @@ class H014LiveAdapter:
                     reason=stop_reason,
                 )
                 self._notify("risk_stop", stop_reason)
-                raise RuntimeError(f"H-014 live is reduce-only: {stop_reason}")
+                raise ReduceOnlyError(f"H-014 live is reduce-only: {stop_reason}")
             # Establish the protective long put before either short option.
             ordered = sorted(
                 legs,
@@ -564,16 +680,17 @@ class H014LiveAdapter:
             )
             self._notify("rejection", str(exc))
             raise
+        except ReduceOnlyError:
+            raise
         except RuntimeError as exc:
-            if not str(exc).startswith("H-014 live is reduce-only"):
-                self._event(
-                    "adapter_failure",
-                    intent_id,
-                    suffix="runtime",
-                    currency=currency,
-                    reason=str(exc),
-                )
-                self._notify("adapter_failure", str(exc))
+            self._event(
+                "adapter_failure",
+                intent_id,
+                suffix="runtime",
+                currency=currency,
+                reason=str(exc),
+            )
+            self._notify("adapter_failure", str(exc))
             raise
         except Exception as exc:
             self._event(

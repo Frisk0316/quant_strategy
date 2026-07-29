@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_RISK_CONFIG = ROOT / "config" / "risk.yaml"
+DEFAULT_ENV_FILE = ROOT / ".env"
+DEFAULT_STATE_PATH = ROOT / "results" / "live_h014" / "reduce_only.flag"
 for search_path in (ROOT, ROOT / "src"):
     if str(search_path) not in sys.path:
         sys.path.insert(0, str(search_path))
@@ -28,7 +31,7 @@ class _DryRunClient:
 def run_panic(
     client: Any,
     *,
-    state_path: str | Path = "results/live_h014/reduce_only.flag",
+    state_path: str | Path = DEFAULT_STATE_PATH,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     results: dict[str, Any] = {}
@@ -51,8 +54,8 @@ def run_panic(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="use a no-network client")
-    parser.add_argument("--risk-config", default="config/risk.yaml")
-    parser.add_argument("--env-file", default=".env")
+    parser.add_argument("--risk-config", default=str(DEFAULT_RISK_CONFIG))
+    parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE))
     args = parser.parse_args()
 
     config = load_live_config(args.risk_config)
@@ -63,7 +66,7 @@ def main() -> int:
             client = DeribitPrivateClient.from_env(env=config.env, env_file=args.env_file)
         except Exception:
             # Fail closed even when credentials are unavailable.
-            set_reduce_only_state("results/live_h014/reduce_only.flag", "manual panic command")
+            set_reduce_only_state(DEFAULT_STATE_PATH, "manual panic command")
             raise
     try:
         print(json.dumps(run_panic(client, dry_run=args.dry_run), indent=2, sort_keys=True))

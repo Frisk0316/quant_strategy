@@ -124,3 +124,82 @@ A2 execution and A3 risk/config.
   hand-maintained strategy definition.
 - Panic state is persistent by design: cancellation handles resting orders,
   while the reduce-only flag prevents the next process from recreating risk.
+
+## 2026-07-28 review-fix wave
+
+### Scope and behavior delta
+
+- Closed the three pre-activation review blockers in the shared live adapter:
+  cancel failures now reconcile terminal order state and newly filled amount;
+  ambiguous order-send transport failures attempt label-scoped cancellation
+  before the task-authorized currency fallback and journal `cancel_sweep`;
+  every unfilled placed order, including the final attempt, rests for the
+  configured interval before cancellation.
+- Moved OAuth client credentials from URL query parameters into the JSON-RPC
+  POST body, replaced the taker annotations check with outgoing-request
+  invariants, introduced a dedicated reduce-only exception, anchored default
+  config/journal/state/env paths to the repository root, and guarded restart
+  behavior with a pre-existing-flag regression.
+- Added `h014_vol_regime_options` to the reference-validation contracts with
+  all three candidate engines declared `adapter_required`. The portable gate
+  remains honestly blocked with `passed: false`; ADR-0011's shadow-vs-research
+  bias report is designated evidence, while whether it can satisfy this gate
+  remains an activation-review decision for Claude and the user.
+- No strategy assumption, risk limit, runtime config value, shadow
+  implementation, credential, network order, scheduler, settings mode,
+  existing result, or deployment gate changed.
+
+### Impact review
+
+- Trigger rows: A2 (execution), A5/A9 (additive differential-validation
+  declaration). R5.1-R5.2, R7.2, and R8.8-R8.9 were reviewed; the accepted
+  ADR-0017 policy and existing I56 remain unchanged.
+- `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md`,
+  `docs/ai_collaboration.md`, ADR-0005, `docs/DATA_FLOW.md`,
+  `docs/FEATURE_MAP.md`, and `docs/GOLDEN_CASES.md` were reviewed unchanged.
+  The task whitelist does not permit edits to those files, and this wave
+  implements already-approved safety behavior rather than changing a rule.
+- `docs/RUNBOOK.md` remains unchanged because panic command syntax and operator
+  steps did not change; only its defaults are now independent of CWD.
+
+### Files changed in this wave
+
+- `src/okx_quant/execution/deribit_live/{__init__,adapter,private_client}.py`
+- `scripts/h014_live_panic.py`
+- `tests/unit/test_deribit_private_client.py`
+- `tests/unit/test_h014_live_adapter.py`
+- `backtesting/differential_validation.py` (contract entry only)
+- `tests/unit/test_differential_validation.py`
+- This manifest, `docs/AI_HANDOFF.md`, `config/workstreams.yaml`, and
+  `docs/CHANGELOG_AI.md`
+
+### Verification
+
+- Required focused matrix: `100 passed`; the 1,195 numerical precision warnings
+  are pre-existing differential-validation fixture warnings, and pytest also
+  reported one environment-only cache write warning.
+- Targeted Ruff: passed.
+- Docs metadata/feature-map/ledger checks passed; metadata retained two
+  pre-existing warnings for unrelated 2026-07-26/27 documents.
+- Config-only validation and panic `--dry-run`: passed.
+- `git diff --check`: passed apart from informational LF-to-CRLF notices.
+- `python scripts/docs/check_doc_impact.py`: exited 0 with three expected
+  advisory A2/A5/A9 warnings because the exhaustive task whitelist excludes
+  their registry docs; the reviewed/unchanged disposition is recorded above.
+
+### Deferred and rollback
+
+- Deferred exactly as assigned: official exports for shadow private helpers and
+  async `_default_notify` tightening remain activation-wave work.
+- Rollback: revert this fix-wave diff. The committed config remains disabled,
+  no migration or result artifact exists, and no operational live rollback is
+  required.
+
+### Human Learning Notes
+
+- A failed cancel response is not proof that an order remains open: terminal
+  venue state and cumulative filled amount must be reconciled before the local
+  journal classifies the leg.
+- A transport timeout leaves order acceptance ambiguous, so recovery uses the
+  already-bound label first; currency-wide cancellation is only the fallback
+  and is explicitly journaled.

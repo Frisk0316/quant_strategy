@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -27,6 +28,19 @@ def test_private_client_auth_and_method_request_shapes():
             return httpx.Response(200, json={"result": [{"instrument_name": "BTC-OPT"}]})
         if request.url.path.endswith("/private/get_account_summary"):
             return httpx.Response(200, json={"result": {"equity": 1.25}})
+        if request.url.path.endswith("/private/get_order_state"):
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "order_id": "order-1",
+                        "order_state": "filled",
+                        "filled_amount": 0.1,
+                    }
+                },
+            )
+        if request.url.path.endswith("/private/cancel_by_label"):
+            return httpx.Response(200, json={"result": 1})
         if request.url.path.endswith("/private/cancel_all_by_currency"):
             return httpx.Response(200, json={"result": 2})
         return httpx.Response(
@@ -47,6 +61,12 @@ def test_private_client_auth_and_method_request_shapes():
         client.buy("BTC-30AUG26-100000-C", 0.1, 0.01, label="entry")
         client.sell("BTC-30AUG26-90000-P", 0.1, 0.02, reduce_only=True)
         client.cancel("order-1")
+        assert client.cancel_by_label("entry", currency="btc") == 1
+        assert client.get_order_state("order-1") == {
+            "order_id": "order-1",
+            "order_state": "filled",
+            "filled_amount": 0.1,
+        }
         assert client.cancel_all_by_currency("btc") == 2
         assert client.get_positions("BTC") == [{"instrument_name": "BTC-OPT"}]
         assert client.get_account_summary("BTC") == {"equity": 1.25}
@@ -55,9 +75,13 @@ def test_private_client_auth_and_method_request_shapes():
 
     auth = requests[0]
     assert auth.url.host == "test.deribit.com"
-    assert auth.url.params["grant_type"] == "client_credentials"
-    assert auth.url.params["client_id"] == "unit-key"
-    assert auth.url.params["client_secret"] == "unit-secret"
+    assert auth.method == "POST"
+    assert "client_secret" not in auth.url.params
+    assert json.loads(auth.content)["params"] == {
+        "grant_type": "client_credentials",
+        "client_id": "unit-key",
+        "client_secret": "unit-secret",
+    }
 
     private = requests[1:]
     assert all(request.headers["Authorization"] == "Bearer token-1" for request in private)
@@ -76,13 +100,18 @@ def test_private_client_auth_and_method_request_shapes():
 
     cancel = private[2]
     assert cancel.url.params["order_id"] == "order-1"
-    cancel_all = private[3]
+    cancel_by_label = private[3]
+    assert cancel_by_label.url.params["label"] == "entry"
+    assert cancel_by_label.url.params["currency"] == "BTC"
+    order_state = private[4]
+    assert order_state.url.params["order_id"] == "order-1"
+    cancel_all = private[5]
     assert cancel_all.url.params["currency"] == "BTC"
     assert cancel_all.url.params["kind"] == "option"
-    positions = private[4]
+    positions = private[6]
     assert positions.url.params["currency"] == "BTC"
     assert positions.url.params["kind"] == "option"
-    summary = private[5]
+    summary = private[7]
     assert summary.url.params["currency"] == "BTC"
     assert summary.url.params["extended"] == "false"
 
@@ -151,8 +180,46 @@ def test_private_client_loads_dotenv_and_rejects_missing_credentials(
         DeribitPrivateClient.from_env(env_file=tmp_path / "absent")
 
 
-def test_plain_taker_order_is_not_expressible():
-    assert "type" not in DeribitPrivateClient.buy.__annotations__
-    assert "post_only" not in DeribitPrivateClient.buy.__annotations__
-    assert "type" not in DeribitPrivateClient.sell.__annotations__
-    assert "post_only" not in DeribitPrivateClient.sell.__annotations__
+@pytest.mark.parametrize("method_name", ["buy", "sell"])
+@pytest.mark.parametrize(
+    ("kwargs", "expected_post_only"),
+    [
+        ({}, "true"),
+        ({"reduce_only": False}, "true"),
+        ({"reduce_only": True}, "false"),
+    ],
+)
+def test_order_requests_cannot_express_plain_taker(
+    method_name: str,
+    kwargs: dict[str, bool],
+    expected_post_only: str,
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/public/auth"):
+            return httpx.Response(200, json={"result": {"access_token": "token"}})
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "order": {
+                        "order_id": "order-1",
+                        "order_state": "open",
+                        "filled_amount": 0,
+                    }
+                }
+            },
+        )
+
+    client = _client(handler)
+    try:
+        getattr(client, method_name)("BTC-30AUG26-100000-C", 0.1, 0.01, **kwargs)
+    finally:
+        client.close()
+
+    params = requests[-1].url.params
+    assert params["type"] == "limit"
+    assert params["post_only"] == expected_post_only
+    assert params.get("reduce_only") == ("true" if kwargs.get("reduce_only") else None)

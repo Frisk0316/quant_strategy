@@ -13,6 +13,42 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-07-28 - H-014 live review fixes + differential declaration (Codex)
+
+- Closed the three Claude pre-activation findings at their shared adapter
+  boundary: cancel-race fills are reconciled from terminal venue state,
+  ambiguous transport sends trigger a journaled label-first cancel sweep, and
+  every placed order rests before cancellation, including the final attempt.
+- Kept OAuth secrets out of URL queries, made limit/post-only request semantics
+  executable test invariants, introduced typed reduce-only stop signaling,
+  anchored defaults to the repo root, and verified a pre-existing reduce-only
+  flag blocks a fresh adapter.
+- Declared `h014_vol_regime_options` with vectorbt, Backtrader, and Nautilus all
+  `adapter_required`. The portable gate explicitly remains false; ADR-0011's
+  bias report is designated evidence, and any gate-row acceptance remains a
+  Claude + user activation-review decision.
+- Required unit matrix: `100 passed`; targeted Ruff and diff checks passed. No
+  strategy/runtime-config/gate change, authenticated request, scheduler,
+  activation, or `results/**` artifact occurred.
+
+### Context and session handoff
+
+- Goal/state: the assigned fix wave is implemented on
+  `feature/deribit-moneyness-hypotheses`; no in-progress runtime action remains,
+  and Claude re-review is the next step.
+- Authority/rules: ADR-0017, R5.1-R5.2/R7.2/R8.8-R8.9, and I56 remain in
+  force. `h014_live.enabled` is still false; shadow, strategy, risk, portfolio,
+  config, existing results, scheduling, and activation remain out of scope.
+- Reading list: `AI_CONTEXT.md`, `docs/CONTEXT_INDEX.md`, ADR-0011/0017, the
+  2026-07-28 Claude review and fix task, this changelog entry, the H-014 Change
+  Manifest, and `docs/AI_HANDOFF.md`.
+- Approval/next action: implementation authority was obtained in the task;
+  trading authority was not. Claude reviews this diff before any later
+  activation sequence.
+- Human Learning Notes: a cancel error must be reconciled against terminal
+  venue state, while a transport error leaves send acceptance ambiguous and
+  therefore requires scoped cleanup without replacing the original error.
+
 ## 2026-07-28 - H-014 live-execution implementation (Codex, inactive)
 
 - Implemented ADR-0017's testnet-default private Deribit client with OAuth

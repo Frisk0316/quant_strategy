@@ -119,12 +119,15 @@ shelved with no retune or Stage 3.
   authoritative. Neither surface changes a verdict, mode, credential boundary,
   or live gate.
 - H-014 live implementation: ADR-0017's new `deribit_live` package is complete
-  but inactive. It imports the frozen shadow intent builder/checks, defaults to
-  testnet with `h014_live.enabled: false`, makes a plain taker order
-  unrepresentable, persists append-only order/risk events, and supplies a
-  cancel-both-currencies + reduce-only panic command. No runner, scheduler,
-  settings mode flip, credential, network order, or `results/**` artifact was
-  created by implementation/testing. Activation remains shadow exit -> bias
+  but inactive. The review-fix wave now reconciles fills after cancel races,
+  performs journaled label-first orphan sweeps on ambiguous transport sends,
+  rests every placed order before cancellation, keeps OAuth secrets out of the
+  URL, uses a dedicated reduce-only exception, and anchors runtime defaults to
+  the repo root. `h014_vol_regime_options` is now explicitly declared in the
+  differential-validation contract with all candidate engines
+  `adapter_required`; its portable gate is honestly blocked, not passed.
+  No runner, scheduler, settings mode flip, credential, network order, or
+  `results/**` artifact was created. Activation remains shadow exit -> bias
   review -> R7.2 -> explicit user capital approval.
 - Pipeline observability/triage: under ADR-0013, new registry-written Stage-2
   artifacts fail closed on a fourth `statistical_power` check using
@@ -245,10 +248,12 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   PASS, distinctness 0.043660/0.093939 PASS, cost 42.7529 versus 9.9160 bps
   PASS, power 0.448466 versus 0.754896 FAIL. Artifact SHA-256 is
   `0eefc5531d075202aa688ae052e9d159c6b7f2d494b76ccd0080dea9c352acee`.
-- 2026-07-28 H-014 live implementation: the two new focused unit files pass
-  (`23 passed`); targeted Ruff and panic `--dry-run` pass. Config, docs, and
-  final scope checks are recorded in the associated Change Manifest. This is
-  implementation evidence only, not activation or deployment evidence.
+- 2026-07-28 H-014 live implementation + review-fix wave: the two live unit
+  files pass (`36 passed`), and the required live plus differential-validation
+  matrix passes (`100 passed`). Targeted Ruff and panic `--dry-run` pass.
+  Config, docs, and final scope checks are recorded in the associated Change
+  Manifest. This is implementation evidence only, not activation or deployment
+  evidence; portable validation remains blocked on missing adapters.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
@@ -259,10 +264,11 @@ Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
 `049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
 Stage 3 remains unauthorized; do not retune or reprobe H-022.
 
-In parallel, Claude reviews the ADR-0017 H-014 private-client/adapter/risk/panic
-diff. Continue the independent H-014 shadow cycle; do not enable the live block,
-register a live scheduler, or perform an authenticated order test before the
-remaining gate sequence and separate user capital approval.
+In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
+honest-blocked differential-validation declaration. Continue the independent
+H-014 shadow cycle; do not enable the live block, register a live scheduler, or
+perform an authenticated order test before the remaining gate sequence and
+separate user capital approval.
 
 Before executing another full strategy-finding round:
 
@@ -387,11 +393,14 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     live-execution layer is implemented in the new `execution/deribit_live/`
     package with additive `h014_live:` risk keys, enabled=false fail-closed,
     testnet default, bounded post-only repricing, shared shadow intents/checks,
-    append-only live journal, and panic command. No authenticated network call,
-    scheduler, settings mode flip, or activation occurred. Next: Claude reviews
-    the diff; activation order remains shadow exit -> bias review -> R7.2 ->
-    separate explicit user capital approval. The shadow task's desktop toasts
-    remain independent; its 8-week clock is still stalled, see KNOWN_ISSUES.
+    cancel-race fill reconciliation, transport-error cancel sweeps, append-only
+    live journal, and panic command. The review-fix wave is ready for Claude
+    re-review; `h014_vol_regime_options` remains portable-validation blocked
+    with three `adapter_required` engines. No authenticated network call,
+    scheduler, settings mode flip, or activation occurred. Activation order
+    remains shadow exit -> bias review -> R7.2 -> separate explicit user
+    capital approval. The shadow task's desktop toasts remain independent; its
+    8-week clock is still stalled, see KNOWN_ISSUES.
 
 ## Open decisions
 
