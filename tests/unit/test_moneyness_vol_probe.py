@@ -12,6 +12,7 @@ from backtesting.moneyness_vol_probe import (
     E044,
     E050,
     H014,
+    REFERENCE_PATHS,
     extract_bucket_shares,
     extract_dvol_ratio,
     extract_vrp_regime_series,
@@ -116,6 +117,12 @@ def test_i49_preflight_refuses_missing_dated_e025_before_probe(tmp_path):
             reference_series={E044: days, E050: days, H014: days},
             reference_paths={E025: undated},
         )
+
+
+def test_default_e025_reference_is_dated_csv():
+    assert REFERENCE_PATHS[E025].as_posix().endswith(
+        "c1_pairs_ou/combo_daily_returns.csv"
+    )
 
 
 def test_registry_wires_all_four_frozen_candidates():

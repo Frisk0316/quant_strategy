@@ -90,7 +90,9 @@ REFERENCE_PATHS: dict[str, Path] = {
         "results/idea_batch_20260713_taxonomy_003/"
         "f_optflow_positioning/combo_daily_returns.csv"
     ),
-    E025: Path("results/pipeline_batch2_20260625/c1_pairs_ou/summary.json"),
+    E025: Path(
+        "results/pipeline_batch2_20260625/c1_pairs_ou/combo_daily_returns.csv"
+    ),
     E050: Path("results/h013_vrp_timing_20260714/combo_daily_returns.csv"),
     H014: Path("results/h014_stage3_20260714/combo_daily_returns.csv"),
 }
