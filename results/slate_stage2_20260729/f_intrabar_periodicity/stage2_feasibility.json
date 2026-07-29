@@ -1,0 +1,249 @@
+{
+  "batch_id": "slate_stage2_20260729",
+  "candidate_dir": "f_intrabar_periodicity",
+  "candidate_id": "H-030",
+  "checks": [
+    {
+      "details": {
+        "boundary_rows": 172224,
+        "event_count": 22159,
+        "expected_formal_boundary_rows": 154944,
+        "formal_boundary_rows": 154944,
+        "formal_parseable_rows": 154940,
+        "formal_unpriced_rows": 0,
+        "i49_preflight": {
+          "candidates": {
+            "H-030": {
+              "E-059/F-TAKER-FLOW": {
+                "achievable_common_days": 779,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-04-29",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-031": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 831,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              },
+              "F-VOL-REGIME-OPT": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2022-05-12",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-032": {
+              "E-050/F-VRP-TIMING": {
+                "achievable_common_days": 922,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-07-11"
+                ],
+                "required_common_days": 65
+              },
+              "E-067/F-VRP-TIMING": {
+                "achievable_common_days": 1771,
+                "candidate_window": [
+                  "2021-09-20",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2021-06-22",
+                  "2026-07-27"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-034": {
+              "E-062/F-XS-IDIOVOL": {
+                "achievable_common_days": 898,
+                "candidate_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-06-17"
+                ],
+                "required_common_days": 365
+              }
+            },
+            "H-035": {
+              "E-044/F-OPTFLOW-POSITIONING": {
+                "achievable_common_days": 698,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-02-28"
+                ],
+                "required_common_days": 65
+              },
+              "E-064/F-OPT-HEDGE-DEMAND": {
+                "achievable_common_days": 841,
+                "candidate_window": [
+                  "2024-04-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-03-31",
+                  "2026-07-21"
+                ],
+                "required_common_days": 65
+              }
+            },
+            "H-037": {
+              "E-057/F-XVENUE-LEADLAG": {
+                "achievable_common_days": 91,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2020-01-01",
+                  "2020-04-01"
+                ],
+                "required_common_days": 65
+              },
+              "cme_gap_fill baseline": {
+                "achievable_common_days": 870,
+                "candidate_window": [
+                  "2020-01-01",
+                  "2026-07-29"
+                ],
+                "reference_window": [
+                  "2024-01-01",
+                  "2026-05-20"
+                ],
+                "required_common_days": 65
+              }
+            }
+          },
+          "status": "PASS"
+        },
+        "malformed_rows": 6,
+        "parseable_rows": 172218,
+        "priced_coverage": 0.9999741842213962,
+        "stage2_first_grid_cell": {
+          "hold_hours": 4,
+          "z_cut": 1.5
+        },
+        "unpriced_rows": 0,
+        "vol_target": {
+          "annual_target": 0.175,
+          "estimator": "lagged quarter-hour 4h forward-return volatility",
+          "leverage_cap": 3.0,
+          "lookback_days": 28
+        },
+        "window": [
+          "2024-04-01T00:00:00+00:00",
+          "2026-06-17T00:00:00+00:00"
+        ]
+      },
+      "name": "data_availability",
+      "reason": "priced quarter-hour coverage=0.999974",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "correlations": {
+          "E-059/F-TAKER-FLOW": {
+            "abs_correlation": 0.017349620962908468,
+            "common_days": 777
+          },
+          "F-VOL-REGIME-OPT": {
+            "abs_correlation": 0.04245927394724861,
+            "common_days": 698
+          }
+        },
+        "decisive_reference": "E-059/F-TAKER-FLOW",
+        "required_common_days": 365,
+        "threshold": 0.3
+      },
+      "name": "distinctness",
+      "reason": "all decisive daily correlations have >=365 days and abs(corr)<0.30",
+      "status": "PASS"
+    },
+    {
+      "details": {
+        "annualized_net_sharpe": -97.30611421292365,
+        "grid_trials_evaluated": 0,
+        "mean_event_gross_bps": 0.15168872757678964,
+        "n_obs": 22159,
+        "roundtrip_cost_bps": 8.0
+      },
+      "name": "cost_after_edge",
+      "reason": "mean event gross=0.151689 bps; annualized net Sharpe=-97.306114",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "breadth": 1.5,
+        "grid_trials_evaluated": 0,
+        "min_detectable_sharpe": 1.4810244020911072,
+        "n_obs": 22159,
+        "n_trials": 4,
+        "periods_per_year": 10022.348203221809,
+        "plausible_net_sharpe": -97.30611421292365
+      },
+      "name": "statistical_power",
+      "reason": "plausible_net_sharpe=-97.306114 < min_detectable_sharpe=1.481024",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-INTRABAR-PERIODICITY",
+  "hypothesis_id": "H-030",
+  "schema_version": 1,
+  "stage2_status": "FAIL"
+}
