@@ -433,6 +433,22 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     zero trials/K and no Stage 3. ADR-0016 slice 1 passed synthetic validation;
     no real complete round ran.
 
+17. DONE 2026-07-29 (Claude): (a) H-014 shadow clock ROOT-CAUSED and REPAIRED —
+    the two-week stall was Task Scheduler power conditions (refused on battery,
+    no catch-up), not user downtime; settings flipped with user approval, the
+    wrapper's exit-code masking fixed, and a second blocker cleared
+    (`canonical_candles` ran 14 days behind raw because the daily ops script
+    never promoted). Scheduled 16:10 run now completes unattended (Last Result
+    0) and the journal carries 2026-07-29 — the ≥8-week clock restarts there.
+    (b) Literature slate built for ADR-0016: H-030…H-037 registered as eight
+    verified-paper-backed new mechanisms, each with its decisive distinctness
+    gate and honest power/data limits ex ante; H-038 registered as the ONLY
+    eligible existing-strategy iteration after auditing every K-remaining
+    family. **The 8/2/10 contract still cannot be met honestly** (9 of 10–15;
+    a second iteration would be gate-chasing) — specs
+    `docs/superpowers/specs/2026-07-29-literature-slate-h03{0,2}-*.md`.
+    Next: Stage-2 probe modules per candidate (ADR-0016 phase 3).
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.
