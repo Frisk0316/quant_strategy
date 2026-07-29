@@ -91,6 +91,10 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
         "F-XVENUE-LEADLAG",
         "F-XVENUE-FUNDING-SPREAD",
         "F-TAKER-FLOW",
+        "F-OPT-HEDGE-DEMAND",
+        "F-OPT-MONEYNESS-STRUCTURE",
+        "F-XVOL-RATIO",
+        "F-VRP-TIMING",
     }
 
     funding = await registry.STAGE2_PROBES["F-FUNDING-XS-DISPERSION"]("conn", ctx)

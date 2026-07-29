@@ -13,6 +13,13 @@ from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
+from backtesting.moneyness_vol_probe import (
+    probe_opt_hedge_demand,
+    probe_opt_moneyness_structure,
+    probe_vrp_timing_retry1,
+    probe_xvol_ratio,
+    validate_power_declaration as validate_moneyness_vol_power_declaration,
+)
 from backtesting.pipeline_power_screen import min_detectable_sharpe
 from backtesting.taker_flow_probe import (
     ARTIFACT_DIR as TAKER_ARTIFACT_DIR,
@@ -134,6 +141,34 @@ CANDIDATES: dict[str, CandidateSpec] = {
         candidate_dir="f_taker_flow",
         hypothesis_id="H-022",
         family_id="F-TAKER-FLOW",
+    ),
+    "opt_hedge": CandidateSpec(
+        key="opt_hedge",
+        candidate_id="B-f-opt-hedge-demand",
+        candidate_dir="f_opt_hedge_demand",
+        hypothesis_id="H-024",
+        family_id="F-OPT-HEDGE-DEMAND",
+    ),
+    "opt_moneyness": CandidateSpec(
+        key="opt_moneyness",
+        candidate_id="B-f-opt-moneyness-structure",
+        candidate_dir="f_opt_moneyness_structure",
+        hypothesis_id="H-025",
+        family_id="F-OPT-MONEYNESS-STRUCTURE",
+    ),
+    "xvol_ratio": CandidateSpec(
+        key="xvol_ratio",
+        candidate_id="B-f-xvol-ratio",
+        candidate_dir="f_xvol_ratio",
+        hypothesis_id="H-027",
+        family_id="F-XVOL-RATIO",
+    ),
+    "vrp_regime": CandidateSpec(
+        key="vrp_regime",
+        candidate_id="B-f-vrp-timing-retry1",
+        candidate_dir="f_vrp_timing_retry1",
+        hypothesis_id="H-026",
+        family_id="F-VRP-TIMING",
     ),
 }
 
@@ -1234,12 +1269,89 @@ async def _run_taker_flow_probe(conn: Any, ctx: Stage2Context) -> FeasibilityRes
     return _with_context_power_screen(result, power_ctx)
 
 
+async def _run_moneyness_vol_probe(
+    conn: Any,
+    ctx: Stage2Context,
+    *,
+    family_id: str,
+    probe: Stage2Probe,
+) -> FeasibilityResult:
+    power = validate_moneyness_vol_power_declaration(
+        family_id,
+        ctx.get("statistical_power"),
+    )
+    probe_ctx = dict(ctx)
+    probe_ctx["statistical_power"] = power
+    result = await probe(conn, probe_ctx)
+    cost = next((check for check in result.checks if check.name == "cost_after_edge"), None)
+    if cost is None:
+        return _failed_statistical_power_result(
+            result,
+            "moneyness/vol statistical power inputs unavailable: cost_after_edge check is missing",
+        )
+    n_obs = cost.details.get("n_obs")
+    plausible = cost.details.get("plausible_net_sharpe")
+    if type(n_obs) is not int or n_obs <= 0 or plausible is None or not math.isfinite(float(plausible)):
+        return _failed_statistical_power_result(
+            result,
+            "moneyness/vol statistical power inputs unavailable or invalid",
+        )
+    power_ctx = dict(ctx)
+    power_ctx["statistical_power"] = {
+        "breadth": power["breadth"],
+        "n_obs": n_obs,
+        "n_trials": power["n_trials"],
+        "plausible_net_sharpe": float(plausible),
+    }
+    return _with_context_power_screen(result, power_ctx)
+
+
+async def _run_opt_hedge_demand_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-OPT-HEDGE-DEMAND",
+        probe=probe_opt_hedge_demand,
+    )
+
+
+async def _run_opt_moneyness_structure_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-OPT-MONEYNESS-STRUCTURE",
+        probe=probe_opt_moneyness_structure,
+    )
+
+
+async def _run_xvol_ratio_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-XVOL-RATIO",
+        probe=probe_xvol_ratio,
+    )
+
+
+async def _run_vrp_timing_retry1_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-VRP-TIMING",
+        probe=probe_vrp_timing_retry1,
+    )
+
+
 STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
     "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
     "F-XVENUE-FUNDING-SPREAD": _run_xvenue_funding_spread_probe,
     "F-TAKER-FLOW": _run_taker_flow_probe,
+    "F-OPT-HEDGE-DEMAND": _run_opt_hedge_demand_probe,
+    "F-OPT-MONEYNESS-STRUCTURE": _run_opt_moneyness_structure_probe,
+    "F-XVOL-RATIO": _run_xvol_ratio_probe,
+    "F-VRP-TIMING": _run_vrp_timing_retry1_probe,
 }
 
 
