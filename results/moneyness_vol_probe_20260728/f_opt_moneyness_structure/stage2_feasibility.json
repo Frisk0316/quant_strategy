@@ -1,0 +1,269 @@
+{
+  "batch_id": "moneyness_vol_probe_20260728",
+  "candidate_dir": "f_opt_moneyness_structure",
+  "candidate_id": "B-f-opt-moneyness-structure",
+  "checks": [
+    {
+      "details": {
+        "family_id": "F-OPT-MONEYNESS-STRUCTURE",
+        "formal_window": {
+          "end_exclusive": "2026-07-21",
+          "n_obs": 842,
+          "start": "2024-03-31"
+        },
+        "funding_settlements": {
+          "BTC-USDT-SWAP": 2477,
+          "ETH-USDT-SWAP": 2477
+        },
+        "i49_preflight": {
+          "candidates": {
+            "H-024": {
+              "E-044/F-OPTFLOW-POSITIONING": {
+                "common_days_by_field": {
+                  "L=1|z_cut=1.0": 830,
+                  "L=1|z_cut=1.5": 830,
+                  "L=3|z_cut=1.0": 830,
+                  "L=3|z_cut=1.5": 830
+                },
+                "minimum_common_days": 830,
+                "role": "gating"
+              },
+              "F-VOL-REGIME-OPT": {
+                "common_days_by_field": {
+                  "ivp_min=75.0|z_min=0.5": 698,
+                  "ivp_min=75.0|z_min=1.0": 698,
+                  "ivp_min=85.0|z_min=0.5": 698,
+                  "ivp_min=85.0|z_min=1.0": 698
+                },
+                "minimum_common_days": 698,
+                "role": "gating"
+              }
+            },
+            "H-025": {
+              "E-044/F-OPTFLOW-POSITIONING": {
+                "common_days_by_field": {
+                  "L=1|z_cut=1.0": 830,
+                  "L=1|z_cut=1.5": 830,
+                  "L=3|z_cut=1.0": 830,
+                  "L=3|z_cut=1.5": 830
+                },
+                "minimum_common_days": 830,
+                "role": "gating"
+              },
+              "F-VOL-REGIME-OPT": {
+                "common_days_by_field": {
+                  "ivp_min=75.0|z_min=0.5": 698,
+                  "ivp_min=75.0|z_min=1.0": 698,
+                  "ivp_min=85.0|z_min=0.5": 698,
+                  "ivp_min=85.0|z_min=1.0": 698
+                },
+                "minimum_common_days": 698,
+                "role": "gating"
+              },
+              "H-024/F-OPT-HEDGE-DEMAND": {
+                "common_days_by_field": {
+                  "same_window_candidate_signal": 849
+                },
+                "minimum_common_days": 849,
+                "role": "gating"
+              }
+            },
+            "H-026": {
+              "E-050/F-VRP-TIMING": {
+                "common_days_by_field": {
+                  "W=14|z_min=0.0": 921,
+                  "W=14|z_min=0.5": 921,
+                  "W=28|z_min=0.0": 921,
+                  "W=28|z_min=0.5": 921
+                },
+                "minimum_common_days": 921,
+                "role": "advisory"
+              },
+              "F-VOL-REGIME-OPT": {
+                "common_days_by_field": {
+                  "ivp_min=75.0|z_min=0.5": 1388,
+                  "ivp_min=75.0|z_min=1.0": 1388,
+                  "ivp_min=85.0|z_min=0.5": 1388,
+                  "ivp_min=85.0|z_min=1.0": 1388
+                },
+                "minimum_common_days": 1388,
+                "role": "gating"
+              }
+            },
+            "H-027": {
+              "E-025/F-PAIRS-OU": {
+                "common_days_by_field": {
+                  "lookback_days=14|max_half_life_days=3.0|z_enter=2.5|z_exit=0.0": 898
+                },
+                "minimum_common_days": 898,
+                "role": "gating"
+              },
+              "F-VOL-REGIME-OPT": {
+                "common_days_by_field": {
+                  "ivp_min=75.0|z_min=0.5": 1388,
+                  "ivp_min=75.0|z_min=1.0": 1388,
+                  "ivp_min=85.0|z_min=0.5": 1388,
+                  "ivp_min=85.0|z_min=1.0": 1388
+                },
+                "minimum_common_days": 1388,
+                "role": "gating"
+              }
+            }
+          },
+          "required_common_days": 65
+        },
+        "last_complete_external_day": "2026-07-20",
+        "minimum_coverage": 0.95,
+        "price_days": {
+          "BTC-USDT-SWAP": 835,
+          "ETH-USDT-SWAP": 835
+        },
+        "stage2_first_grid_cell": {
+          "lookback_hours": 24,
+          "z_cut": 1.0
+        },
+        "valid_feature_days": 649
+      },
+      "name": "data_availability",
+      "reason": "formal-window daily feature/price coverage=0.770784",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "correlations": {
+          "E-044/F-OPTFLOW-POSITIONING:L=1|z_cut=1.0": {
+            "abs_correlation": 0.02222675727054359,
+            "common_days": 921,
+            "reference": "E-044/F-OPTFLOW-POSITIONING",
+            "role": "gating"
+          },
+          "E-044/F-OPTFLOW-POSITIONING:L=1|z_cut=1.5": {
+            "abs_correlation": 0.012045634846136187,
+            "common_days": 921,
+            "reference": "E-044/F-OPTFLOW-POSITIONING",
+            "role": "gating"
+          },
+          "E-044/F-OPTFLOW-POSITIONING:L=3|z_cut=1.0": {
+            "abs_correlation": 0.008447231087698587,
+            "common_days": 921,
+            "reference": "E-044/F-OPTFLOW-POSITIONING",
+            "role": "gating"
+          },
+          "E-044/F-OPTFLOW-POSITIONING:L=3|z_cut=1.5": {
+            "abs_correlation": 0.011982615367737754,
+            "common_days": 921,
+            "reference": "E-044/F-OPTFLOW-POSITIONING",
+            "role": "gating"
+          },
+          "F-VOL-REGIME-OPT:ivp_min=75.0|z_min=0.5": {
+            "abs_correlation": 0.09574961503538511,
+            "common_days": 789,
+            "reference": "F-VOL-REGIME-OPT",
+            "role": "gating"
+          },
+          "F-VOL-REGIME-OPT:ivp_min=75.0|z_min=1.0": {
+            "abs_correlation": 0.07699963306031928,
+            "common_days": 789,
+            "reference": "F-VOL-REGIME-OPT",
+            "role": "gating"
+          },
+          "F-VOL-REGIME-OPT:ivp_min=85.0|z_min=0.5": {
+            "abs_correlation": 0.14463061216999387,
+            "common_days": 789,
+            "reference": "F-VOL-REGIME-OPT",
+            "role": "gating"
+          },
+          "F-VOL-REGIME-OPT:ivp_min=85.0|z_min=1.0": {
+            "abs_correlation": 0.12505119050790434,
+            "common_days": 789,
+            "reference": "F-VOL-REGIME-OPT",
+            "role": "gating"
+          },
+          "H-024/F-OPT-HEDGE-DEMAND:same_window_candidate_signal": {
+            "abs_correlation": 0.7495799110331433,
+            "common_days": 933,
+            "reference": "H-024/F-OPT-HEDGE-DEMAND",
+            "role": "gating"
+          }
+        },
+        "family_assignment": "F-OPT-HEDGE-DEMAND",
+        "reference_artifacts": {
+          "E-025/F-PAIRS-OU": {
+            "path": "results/pipeline_batch2_20260625/c1_pairs_ou/combo_daily_returns.csv",
+            "sha256": "115b128cc84860c43f219ac61c98706b058da29fb779f2eb40f5b66c67bf15bb"
+          },
+          "E-044/F-OPTFLOW-POSITIONING": {
+            "path": "results/idea_batch_20260713_taxonomy_003/f_optflow_positioning/combo_daily_returns.csv",
+            "sha256": "49f4108db9fefd5a95a3d1b9891e8b82cc2d5cc3a3aedbb4f563d738f0037561"
+          },
+          "E-050/F-VRP-TIMING": {
+            "path": "results/h013_vrp_timing_20260714/combo_daily_returns.csv",
+            "sha256": "67ea057dba6e4a526b7cc9e13bc9db78d82f84bf2a51a5cf9a40b59dbe3bcbba"
+          },
+          "F-VOL-REGIME-OPT": {
+            "path": "results/h014_stage3_20260714/combo_daily_returns.csv",
+            "sha256": "e3f353a71da4ae43eae80a85f007f29aab558055f5977e463d8dfa33110753bd"
+          }
+        },
+        "required_common_days": 65,
+        "threshold": 0.3,
+        "undefined_fails_closed": true
+      },
+      "name": "distinctness",
+      "reason": "H-025 assigns to F-OPT-HEDGE-DEMAND and stops as a duplicate",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "annualized_net_sharpe": -0.3054987306907477,
+        "daily_rebalance": true,
+        "grid_trials_evaluated": 0,
+        "mean_daily_cost_bps": 0.4627893907993214,
+        "mean_daily_gross_bps": -1.0808063448464285,
+        "n_obs": 842,
+        "one_way_turnover_cost_bps": 4.0,
+        "plausible_net_sharpe": -0.3054987306907477,
+        "roundtrip_cost_bps": 8.0,
+        "statistical_power_inputs": {
+          "breadth": 2.0,
+          "n_obs": 842,
+          "n_trials": 4,
+          "plausible_net_sharpe": -0.3054987306907477
+        }
+      },
+      "name": "cost_after_edge",
+      "reason": "mean daily gross=-1.0808 bps <= mean turnover cost=0.4628 bps",
+      "status": "FAIL"
+    },
+    {
+      "details": {
+        "breadth": 2.0,
+        "caller_declared_n_trials": 4,
+        "dsr_probability": 0.95,
+        "effective_n_obs": 1684.0,
+        "grid_trials_on_unoverridden_fail": 0,
+        "kurtosis": 3.0,
+        "measured_status": "FAIL",
+        "min_detectable_sharpe": 1.2568048283481672,
+        "n_obs": 842,
+        "n_trials": 4,
+        "n_trials_provenance": "max_registry_actual_and_ex_ante_declared_cumulative",
+        "n_trials_registry_path": "docs/EXPERIMENT_REGISTRY.md",
+        "overridden": false,
+        "override_rationale": null,
+        "periods_per_year": 365.0,
+        "plausible_net_sharpe": -0.3054987306907477,
+        "psr_probability": 0.95,
+        "registry_cumulative_n_trials": 0,
+        "skew": 0.0
+      },
+      "name": "statistical_power",
+      "reason": "plausible_net_sharpe=-0.3055 < min_detectable_sharpe=1.2568",
+      "status": "FAIL"
+    }
+  ],
+  "family_id": "F-OPT-HEDGE-DEMAND",
+  "hypothesis_id": "H-025",
+  "schema_version": 1,
+  "stage2_status": "FAIL"
+}
