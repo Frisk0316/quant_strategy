@@ -198,16 +198,44 @@ vs H-010/E-057 and the existing `cme_gap_fill` research baseline is mandatory.
 
 ---
 
+## Iteration-eligibility audit (2026-07-29) — only ONE qualifies
+
+Every family with remaining K budget was checked against I28 (a refuted /
+shelved / inconclusive family may only be re-entered with an explicit twist,
+never as a bare rerun). Result:
+
+| Family | K | Prior outcome | Eligible? |
+| --- | --- | --- | --- |
+| F-S5-RESIDUAL-MEANREV | 1/2 | E-014 produced **no grid activity** — recorded explicitly as "a data-universe artifact, not strategy refutation or support" | **YES** — the blocker was data, and the data has since been materially repaired (ADR-0014 source-aware canonical candles, ADR-0015 economic-asset aliases, universe rebuild). Same class of legitimate data-repair twist that justified E-059 for H-022. |
+| F-S7-BASIS-MEANREV | 1/2 | E-016 statistical fail (WF −0.44, CPCV −1.11) | No — bare rerun would be gate-chasing |
+| F-S6-TS-MOMENTUM | 1/2 | E-015 statistical fail (WF 0.009, DSR 0.20) | No — same |
+| F-FUNDING-CARRY | 1/2 | E-026 refuted after realism re-cost | No — terminal |
+| F-FUNDING-XS-DISPERSION | 1/2 | E-063 retry already failed | No — twist already spent |
+| F-XS-ILLIQUIDITY | 0/2 | E-045 statistical fail | No twist available |
+| F-STABLECOIN-LIQUIDITY | 0/2 | E-046 WF −0.91, labelled one-regime inconclusive | No — deeply negative WF; more regimes is not a mechanism twist |
+| F-ONCHAIN-FLOW | 0/2 | E-048 WF −0.22, breadth-1 | No |
+| F-XVENUE-LEADLAG | 0/2 | E-057 shelved on missing OKX funding | No — blocked on data we do not have |
+| F-XVENUE-FUNDING-SPREAD | 0/2 | E-056 refuted at Stage-3 full PnL | No — explicitly terminal |
+| F-OPT-HEDGE-DEMAND | 0/2 | H-024 inconclusive, observed Sharpe 0.17 vs floor 1.26 | No — data accrual cannot close a gap that size; proposing it would contradict the honest read already recorded |
+
+**Consequence, stated plainly:** the ADR-0016 8/2/10 contract **cannot honestly
+be met today**. One eligible iteration exists, not two, and manufacturing a
+second would require exactly the gate-chasing the rules forbid. A manifest
+built from this slate will therefore be labelled `limited_probe` by
+`pipeline_round.validate_round_manifest` — which is the validator working
+correctly, not a defect.
+
+The honest routes to a second iteration are (a) wait for a currently-blocked
+family's data to arrive (e.g. OKX funding for F-XVENUE-LEADLAG), or (b) let one
+of the eight new mechanisms fail in a way that produces a genuine twist for an
+existing family. Neither is available on demand.
+
 ## Remaining gap to a complete ADR-0016 round
 
-Eight new mechanisms are now registered (H-030…H-037). Still outstanding:
-1. **≥2 eligible existing-strategy iterations** with fresh ex-ante rationale.
-   Most families are refuted/shelved and several carry K constraints, so
-   eligibility must be checked family by family against the K-budget table
-   before any is counted.
-2. **10–15 total** executable candidates — currently 8 + iterations.
+1. **≥2 eligible existing-strategy iterations** — audited above: only 1
+   (H-038). Blocking.
+2. **10–15 total** executable candidates — currently 8 new + 1 iteration = 9.
+   Blocking.
 3. **Registered deterministic Stage-2 runners** for each counted candidate
-   (ADR-0016 phase 3): every one of these still needs a probe module before it
-   is "execution ready" for a sealed manifest.
-Until all three hold, `pipeline_round.validate_round_manifest` will correctly
-label any manifest built from this slate a `limited_probe`.
+   (ADR-0016 phase 3): every candidate still needs a probe module before it is
+   "execution ready" for a sealed manifest. Blocking.
