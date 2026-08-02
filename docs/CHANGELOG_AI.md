@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-02
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,67 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-08-03 - External-data verification, schedules, worklog automation (Claude)
+
+- Fresh-context verification of the xvenue/COT/Cboe delivery passed (scope,
+  units, as-of, 11/11 new tests); Claude restarted TimescaleDB and landed all
+  17 datasets with SQL-checked invariants, closing the DB-blocked acceptance
+  items. Cross-venue IV normalization confirmed in storage (BTC 30d ATM within
+  0.2 vol pts across OKX/Bybit/Deribit).
+- Registered scheduled tasks: `quant_xvenue_options_iv` (hourly H-039
+  collector; accumulation clock starts 2026-08-02, earliest Stage-2 ~2027-05)
+  and `quant_weekly_worklog` (SUN 21:07 headless Claude writes plain-language
+  weekly logs to `docs/worklogs/`, next-week directions included).
+- Archived NAAIM weekly exposure history 2006-2026 hours before its
+  2026-08-01 paywall; free-source screening ranked CFTC COT / Cboe / FRED /
+  Treasury / DefiLlama as top zero-cost adds.
+- Committed the week in six reviewed batches and pushed; first weekly worklog
+  `docs/worklogs/2026-07-27_2026-08-02.md` written. H-033/H-036 are now
+  data-unblocked awaiting user rerun authorization; Tardis paid backfill
+  declined, keeping H-039 forward-only.
+
+## 2026-08-02 - Free-data, paper, and limited-probe research (Codex)
+
+- Added credential-free Wikimedia and Coin Metrics Community adapters and
+  stored four new daily research datasets (attention, BTC/ETH active addresses,
+  and USDT reference price), plus DGS10 and bounded refreshes. The selected
+  task-attributable slice is 13,347 durable unique rows, not the whole-day total.
+- Pre-registered and executed H-040 through H-046 once. Frozen artifacts report
+  seven terminal FAILs. A post-run ADR-0013 audit found that the runner inferred
+  power breadth from active legs; conservative breadth=1 makes H-041/H-045/H-046
+  Stage-2 power FAILs, so all generated Stage-3 metrics are diagnostic-only.
+- Repaired the shared root cause by requiring explicit pre-DB `power_breadth`;
+  also fixed Binance OI/page-boundary duplicate accounting at adapter and store
+  boundaries. Observed family trials remain counted; no rerun or gate change.
+- Delivered a detailed Markdown synthesis and a verified portable HTML report.
+  No new strategy is usable or governance-valid near-pass; H-014 remains
+  research/shadow only, while prior H-023 is the closest valid Stage-2 power gap.
+
+## 2026-08-02 - Credential-free OKX public-data scheduler (Codex)
+
+- Extended the existing chunked public WebSocket collector to persist BTC/ETH
+  Spot and SWAP books, trades, and funding-rate updates without API keys or an
+  order path; added a 10 GiB free-space stop.
+- Registered `quant_okx_market_data` as a Limited/S4U Windows startup task with
+  battery/start-when-available/unlimited-duration settings and one-minute
+  failure restart. A real four-symbol smoke persisted all three data kinds.
+- This accumulates forward market data only. It does not activate Demo strategy
+  execution, Binance strategy wiring, or any live/promotion gate.
+
+## 2026-08-02 - Binance/OKX Demo execution and funding plumbing (Codex)
+
+- Binance Spot moved from legacy Testnet to the official unified Demo endpoint,
+  signed clients now synchronize venue time, and the unified Demo key can back
+  USD-M unless separately overridden. Spot completed a real Demo place/cancel
+  with no open orders; USD-M authenticated and correctly refused to create a
+  position on the flat account.
+- OKX Demo completed REST balance/place/cancel and private-WS authentication.
+  Shared execution now sanitizes tags, checks nested venue codes, tick-aligns
+  directional orders, uses Spot `cash`, and subscribes to Spot order fills.
+- The current BTC funding rate annualized to about 0.229%, below the frozen 12%
+  gate, so no entry was correct. Dual-leg execution/replay tests pass, while
+  non-atomic cross-leg submission remains an explicit non-promotion gap.
 
 ## 2026-07-31 - H-039 + CFTC COT + Cboe external-data delivery (Codex)
 

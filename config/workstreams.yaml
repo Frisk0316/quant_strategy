@@ -14,12 +14,12 @@ workstreams:
 
   - name: Local runtime reliability
     status: blocked
-    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth]
-    current: private_ws_auth
-    state: "External coverage now uses one grouped scan: the current real endpoint returned 137 rows in 1.704 seconds after the old query exceeded a 12-second cold timeout. Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. Standalone Manual/Progress and terminal private-WS auth-loop fixes remain implemented. Demo private WS still returns OKX 60005 Invalid apiKey; engine-dashboard API-key flow remains unresolved."
+    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth, engine_dashboard_auth]
+    current: engine_dashboard_auth
+    state: "External coverage uses one grouped scan; Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. OKX Demo REST place/cancel and private WS orders:ANY/positions:SWAP now authenticate successfully, closing the old 60005 blocker. Binance Spot Demo place/cancel passes and USD-M Demo auth passes with flat-account exposure blocked. The credential-free quant_okx_market_data task now accumulates chunked BTC/ETH public books, trades, and funding from a Limited/S4U startup task with a 10 GiB disk reserve. The engine-dashboard API-key flow remains unresolved."
     next: "Choose the engine-dashboard auth contract, extend explicit DB outage handling to remaining per-artifact endpoints, and measure concurrent UI connection overhead before adding a bounded pool. Run the P1.4 Administrator task activation separately; do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, tasks/2026-07-21-db-coverage-performance-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-21
+    updated: 2026-08-02
 
   - name: XS momentum
     status: shelved
@@ -51,20 +51,20 @@ workstreams:
   - name: H-039 cross-venue options IV
     status: active
     milestones: [design, collector_impl, live_schema_smoke, first_db_snapshot, scheduler, data_window, stage2]
-    current: first_db_snapshot
-    state: "Stage 0 implements six forward-only hourly xvenue_opt_iv_* datasets with two-expiry 30d total-variance interpolation, nearest fallback, full normalized-chain retention, source-failure isolation, and 1.5-hour gap detection. Unit/config checks and all six official public source smokes pass. The configured TimescaleDB connection is refused; no scheduler is registered, no persisted data window has started, and trials remain 0 with K 0/2."
-    next: "Start TimescaleDB, run scripts/market_data/snapshot_xvenue_options.py once successfully for all six datasets, then the user registers and verifies the hourly task from RUNBOOK. Do not use proxy history or start Stage 2 before at least 270 persisted daily observations."
+    current: data_window
+    state: "Collector verified end-to-end 2026-08-02: fresh-context review passed, all six datasets land DB rows with consistent cross-venue iv_decimal normalization (BTC 30d ATM within 0.2 vol pts across OKX/Bybit/Deribit), and hourly scheduled task quant_xvenue_options_iv is registered and smoke-run. Accumulation clock started 2026-08-02; trials 0, K 0/2."
+    next: "Keep Docker Desktop + TimescaleDB up (missed hours are permanent losses); check xvenue_options_snapshot.log gap alerts same-day. No proxy history; Stage 2 blocked until >=270 persisted daily observations (~2027-05)."
     links: [docs/superpowers/specs/2026-07-31-xvenue-options-iv-hypothesis.md, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/RUNBOOK.md]
-    updated: 2026-07-31
+    updated: 2026-08-03
 
   - name: CFTC COT and Cboe histories
-    status: blocked
+    status: active
     milestones: [adapter, source_validation, db_backfill, recurring_ingest]
-    current: db_backfill
-    state: "CFTC TFF/disaggregated and Cboe VIX9D/VIX/VIX3M/VIX6M/total-PCR adapters, config, tests, and official-source row/range/as-of checks pass. Counts are source evidence only because TimescaleDB refuses connections. The official Cboe total-PCR archive ends 2019-10-04 and is not a current feed."
-    next: "Restore the configured TimescaleDB listener, run and verify the COT and Cboe backfills, then schedule only sources that remain current. Keep total-PCR archive-only; confirm a historical COT holiday-release calendar before treating scheduled-Friday timestamps as exact."
+    current: recurring_ingest
+    state: "Full backfills verified in DB 2026-08-02: six COT markets (ES/10Y/DXY/gold 1,051 rows each from 2006; CME BTC 434, ETH 278) all satisfying published_at >= observed_at + 2 days, and five Cboe series (VIX 9,241 rows from 1990; 9D/3M/6M term structure; total-PCR 3,253 rows ending 2019-10-04 as documented). FRED unblock for H-033/H-036 is data-complete."
+    next: "Decide the recurring weekly/daily incremental ingest schedule; keep total-PCR archive-only. H-033/H-036 Stage-2 reruns await user authorization."
     links: [tasks/2026-07-31-xvenue-iv-collector-cot-cboe-codex-tasks.md, docs/DATA_FLOW.md, docs/RUNBOOK.md]
-    updated: 2026-07-31
+    updated: 2026-08-03
 
   - name: Deribit derivatives data
     status: active

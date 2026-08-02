@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-02
 expires: none
 superseded_by: null
 ---
@@ -319,12 +319,16 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 
 ## Next steps
 
-Immediate: Claude/user decides the Deribit immutability conflict before any
-backfill resume: restore the pre-task DB aggregates from a backup, explicitly
-accept and record the upstream archive revision, or approve a payload-only
-enrichment contract that may leave retained-tape counts inconsistent with
-frozen aggregates. Separately decide whether H-036 may use research-only Yahoo
-`GC=F`; no H-031/H-033/H-035/H-036 rerun is authorized by this task.
+Immediate (2026-08-03): the Deribit immutability conflict is RESOLVED — the
+count-invariant pagination + payload-only contract landed in `5920380` and the
+root cause was pagination, not an archive revision. All 17 new external
+datasets (FRED, COT, Cboe, six xvenue IV) are DB-verified; the H-039 hourly
+collector and the Sunday worklog generator are registered scheduled tasks.
+Keep Docker Desktop + TimescaleDB up or collector hours are permanently lost.
+Remaining user decisions: (a) authorize H-033/H-036 Stage-2 reruns and rule on
+research-only Yahoo `GC=F` as the H-036 gold proxy; (b) H-038 Stage-2 go/no-go;
+(c) merge decision for `feature/deribit-moneyness-hypotheses`. No H-031/H-035
+rerun is possible (Deribit first-20 history gap persists for pre-2024 ranges).
 
 In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
 honest-blocked differential-validation declaration. Continue the independent
@@ -538,6 +542,31 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     outputs; Claude then gives an explicit Phase 2 go or no-go. Until then, no
     H-014 signal drives even a testnet order and `KNOWN_ISSUES` 60005 stays
     open.
+
+21. BINANCE/OKX DEMO AUTHENTICATED 2026-08-02 (user-authorized): Binance Spot
+    now uses the official unified Demo endpoint `demo-api.binance.com`, syncs
+    venue time before signing, and completed a real Demo place/cancel round
+    trip with no open orders. The same Demo key authenticated against USD-M
+    `demo-fapi.binance.com`; the flat account correctly blocked the reduce-only
+    smoke instead of creating exposure. OKX Demo REST completed balance,
+    place, and cancel, and private WS authenticated plus subscribed to
+    `orders:ANY` and `positions:SWAP`. Shared OKX execution now sanitizes the
+    venue tag, checks nested `sCode`, aligns directional prices to tick size,
+    uses `cash` for Spot, and observes Spot fills. The current BTC funding rate
+    annualized to about 0.229%, below the configured 12% gate, so the real-time
+    funding strategy correctly emitted no order; targeted synthetic/replay
+    tests verify the dual-leg path. This is paper connectivity and strategy
+    plumbing evidence only. Cross-leg execution is not atomic, no promotion
+    gate moved, and Deribit H-014 Phase 2 remains separately gated.
+
+22. OKX PUBLIC DATA ACCUMULATION ACTIVE 2026-08-02 (user-authorized): the
+    `quant_okx_market_data` Windows task starts at boot as
+    `woody`/S4U/Limited and continuously writes chunked BTC/ETH Spot and
+    SWAP books, public trades, and funding-rate Parquet files. The path loads no
+    credentials, broker, strategy, or order method. A real four-symbol smoke
+    persisted all three data kinds; the task stores no password, is battery-safe, start-when-
+    available, unlimited-duration, and configured for one-minute failure
+    restart. A 10 GiB free-space guard stops safely; retention is manual.
 
 ## Open decisions
 

@@ -73,3 +73,17 @@ omission cost a full build-and-run cycle across five candidates.
 Rule: a spec may only name data whose existence, granularity, and date range
 have been verified in this session. "The adapter exists" is not "the data is
 ingested"; "we have option flow" is not "we have per-trade option flow".
+
+## 2026-08-03 — Verify DB landings, not source fetches; delegate to the format that survives
+
+Trigger: Codex's 2026-07-31 delivery reported "live source evidence" row counts
+for 17 datasets, all fetched in-memory from the source APIs while the DB was
+down; the numbers looked like ingestion evidence but zero rows had landed.
+Wrong: reading a row-count table in a task file as proof of persistence. Source
+fetch counts drift within days (COT gained a week, Cboe a day) and say nothing
+about upsert semantics, as-of columns, or unit normalization in storage.
+Right: acceptance criteria for ingestion must be checked with SQL against the
+landed rows (counts, ranges, published_at invariants, derived-field sanity),
+which a fresh session did in minutes once the DB was up.
+Rule: "fetched=N" is source evidence; only a DB query is landing evidence. An
+acceptance box for ingestion may only be ticked from a query against storage.
