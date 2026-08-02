@@ -135,7 +135,13 @@ class ExternalDataStore:
                 json.dumps(details or {}),
             )
 
-    async def upsert_observations(self, dataset_id: str, rows: list[dict[str, Any]]) -> dict[str, int]:
+    async def upsert_observations(
+        self,
+        dataset_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        payload_only: bool = False,
+    ) -> dict[str, int]:
         if not rows:
             return {"rows": 0, "inserted": 0, "updated": 0}
         before = await self._existing_observed_at(dataset_id, [row["observed_at"] for row in rows])
@@ -152,15 +158,13 @@ class ExternalDataStore:
             )
             for row in rows
         ]
-        async with self._pool.acquire() as conn:
-            await conn.executemany(
-                """
-                INSERT INTO external_observations (
-                    dataset_id, observed_at, published_at, value_num, value_text,
-                    fields, quality_status, raw_payload, ingested_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, NOW())
-                ON CONFLICT (dataset_id, observed_at) DO UPDATE SET
+        conflict_update = (
+            """
+                    raw_payload = EXCLUDED.raw_payload,
+                    ingested_at = NOW()
+            """
+            if payload_only
+            else """
                     published_at = EXCLUDED.published_at,
                     value_num = EXCLUDED.value_num,
                     value_text = EXCLUDED.value_text,
@@ -168,6 +172,18 @@ class ExternalDataStore:
                     quality_status = EXCLUDED.quality_status,
                     raw_payload = EXCLUDED.raw_payload,
                     ingested_at = NOW()
+            """
+        )
+        async with self._pool.acquire() as conn:
+            await conn.executemany(
+                f"""
+                INSERT INTO external_observations (
+                    dataset_id, observed_at, published_at, value_num, value_text,
+                    fields, quality_status, raw_payload, ingested_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, NOW())
+                ON CONFLICT (dataset_id, observed_at) DO UPDATE SET
+                    {conflict_update}
                 """,
                 payload,
             )

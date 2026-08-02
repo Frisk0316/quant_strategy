@@ -152,7 +152,12 @@ async def _backfill(args: argparse.Namespace) -> None:
             run_start = resume_start(start, cursor)
             client = DeribitOptionFlowClient(endpoint=DeribitOptionFlowClient.history_endpoint)
             for chunk_start, chunk_end in _chunks(run_start, end, days=args.chunk_days):
-                trades = client.fetch_trades(currency=currency, start=chunk_start, end=chunk_end)
+                trades = client.fetch_trades(
+                    currency=currency,
+                    start=chunk_start,
+                    end=chunk_end,
+                    count=args.count,
+                )
                 rows = aggregate_hourly_option_flow(currency, trades)
                 job_id = await store.start_fetch_job(dataset_id, str(cfg["provider"]), chunk_start, chunk_end)
                 try:
@@ -169,7 +174,11 @@ async def _backfill(args: argparse.Namespace) -> None:
                             last_error=empty_error,
                         )
                         raise RuntimeError(empty_error)
-                    stats = await store.upsert_observations(dataset_id, rows)
+                    stats = await store.upsert_observations(
+                        dataset_id,
+                        rows,
+                        payload_only=args.payload_only,
+                    )
                     await store.finish_fetch_job(
                         job_id,
                         status="success",
@@ -200,7 +209,8 @@ async def _backfill(args: argparse.Namespace) -> None:
                     raise
                 print(
                     f"[deribit_option_flow] {currency} {chunk_start.isoformat()} -> {chunk_end.isoformat()} "
-                    f"pages={client.last_page_count} trades={len(trades)} hours={len(rows)} "
+                    f"count={args.count} chunk_days={args.chunk_days} pages={client.last_page_count} "
+                    f"trades={len(trades)} hours={len(rows)} payload_only={args.payload_only} "
                     f"inserted={stats['inserted']} updated={stats['updated']} cursor={cursor_time.isoformat()}",
                     flush=True,
                 )
@@ -214,6 +224,8 @@ def main() -> None:
     parser.add_argument("--start", required=True)
     parser.add_argument("--end", required=True)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--payload-only", action="store_true")
+    parser.add_argument("--count", type=int, default=1000)
     parser.add_argument("--chunk-days", type=int, default=1)
     parser.add_argument("--gap-hours", type=int, default=6)
     parser.add_argument("--config", default="config/external_data.yaml")
@@ -224,6 +236,8 @@ def main() -> None:
         args.currency = ["BTC", "ETH"]
     if args.chunk_days <= 0:
         raise SystemExit("chunk-days must be positive")
+    if args.count <= 0:
+        raise SystemExit("count must be positive")
     asyncio.run(_backfill(args))
 
 
