@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-29
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,48 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-07-31 - H-039 + CFTC COT + Cboe external-data delivery (Codex)
+
+- Added stdlib-based clients for OKX/Bybit/Deribit option IV, CFTC Socrata COT,
+  and official Cboe CSV histories, reusing the existing external-observation
+  store without a schema migration or new dependency.
+- H-039 now registers six `xvenue_opt_iv_*` hourly datasets and implements the
+  frozen full-chain contract: two-expiry 30d total-variance interpolation with
+  nearest fallback, call-minus-put 25-delta RR, venue-native full-chain OI,
+  bucket-end publication, source-failure isolation, and gap alerting. All six
+  public source smokes passed and retained 702/644/584/474/854/708 instruments.
+- Registered six weekly COT datasets and five Cboe daily datasets. Official
+  source validation returned 433/277 crypto COT rows; 1,050 rows each for ES,
+  UST10Y, USD Index, and Gold; 3,915/9,240/4,241/4,673 rows for the four Cboe
+  volatility series; and 3,253 total put/call rows. The official put/call file
+  ends 2019-10-04 and is treated as a discontinued archive, with no scrape.
+- Unit/config/source checks pass, but the configured TimescaleDB endpoint
+  refuses connections. No task dataset has persisted rows, no scheduler was
+  registered, and the H-039 accumulation window has not started. H-039 remains
+  proposed/data-blocked with family trials 0 and K 0/2; no experiment, Stage
+  2/3, strategy, result, gate, or deployment change occurred.
+
+## 2026-07-30 - FRED ingest complete; Deribit full-tape backfill hard-stopped (Codex)
+
+- Added config-only DGS2, VIXCLS, DTWEXBGS, and research-only Yahoo `GC=F`
+  datasets. The 2020-01-01 onward ingest wrote 1,643 / 1,682 / 1,640 / 1,653
+  rows respectively; every FRED row has `published_at > observed_at`, no series
+  has a gap over seven days, and non-target dataset count/max-ingest fingerprints
+  stayed unchanged.
+- Removed the option-flow first-20 guard. New rows retain every inverse trade
+  and `trade_id`; the >20 duplicate-millisecond unit fixture locks the existing
+  aggregate values and full payload.
+- A six-hour real pre-flight passed exact `value_num`/fields equality and
+  retained 2,182/2,182 trade IDs. The wider historical run nevertheless exposed
+  upstream archive revisions: BTC aggregate trades ended at 12,724,092 versus
+  the pre-task 12,724,097 baseline. All workers were stopped per the task's
+  immutability rule. Only 2,304 BTC and 744 ETH hours are enriched; total hourly
+  row counts remain 22,403/22,402. Partial hypertable growth is 76,021,760 bytes
+  (optflow raw-payload growth 72,936,371 bytes), not a completed full-run size.
+- H-031/H-035 remain data-blocked. H-033/H-036 inputs landing in DB does not
+  authorize probe reruns; H-036's unofficial gold proxy still requires
+  Claude/user acceptance.
 
 ## 2026-07-29 - H-030..H-037 Stage-2 slate (Codex)
 

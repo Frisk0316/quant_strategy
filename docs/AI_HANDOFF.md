@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-29
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -16,10 +16,13 @@ durable backlog.
 
 ## Current goal
 
-Close out the completed H-030..H-037 limited slate probe for Claude review.
-Whole-batch I49 passed before DB access and all eight frozen first cells ran in
-the authorized order as E-069..E-076. Every candidate stopped at Stage 2, so
-no grid, Stage 3, new trial, or K consumption occurred.
+Review the 2026-07-31 external-data delivery. The H-039 cross-venue options-IV,
+CFTC COT, and Cboe history adapters pass unit/config and official-source
+validation, but the configured TimescaleDB endpoint refuses connections, so
+none of those source observations are persistence evidence. The older Deribit
+full-tape backfill also remains stopped and partial after the current archive
+changed the stored BTC aggregate trade total by -5; Claude/user must resolve
+that separate immutability conflict before any resume or H-031/H-035 rerun.
 
 ## Branch and working tree
 
@@ -50,7 +53,30 @@ no grid, Stage 3, new trial, or K consumption occurred.
   2021-01-01 through 2026-07-26, sourced from contiguous venue perpetual
   closes. The Market Data Coverage fetch form can queue BTC/ETH DVOL, native
   HV, RV30, and current full option-surface refreshes. Forward schedulers are
-  not registered; option-surface history remains snapshot-only.
+  not registered; option-surface history remains snapshot-only. New option-flow
+  ingests retain every inverse trade and its `trade_id`. Historical full-tape
+  enrichment is partial only: 2,304 BTC hours and 744 ETH hours were enriched
+  before the hard stop. Total hourly row counts remain 22,403/22,402, but BTC
+  aggregate `trade_count` now sums to 12,724,092 versus the pre-task
+  12,724,097 baseline; do not resume or treat H-031/H-035 as unblocked until
+  Claude/user resolves restoration or source-revision policy.
+- H-039/F-XVENUE-OPT-IV Stage 0 now has six forward-only hourly
+  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` datasets. The collector brackets
+  30 days, interpolates ATM/25-delta legs in total variance with nearest-expiry
+  fallback, retains the full normalized chain, isolates source failures, and
+  alerts on gaps over 1.5 hours. All six official public source normalizations
+  pass. Accumulation has not started: the configured TimescaleDB connection is
+  refused and no scheduler is registered. Trials stay 0 and K stays 0/2. Start
+  the DB, run one manual six-dataset snapshot, then have the user register and
+  verify the hourly task; do not start Stage 2 before at least 270 persisted
+  daily observations.
+- CFTC COT and Cboe adapters/config/tests are complete. Official-source
+  validation returned 433/277 crypto COT rows, 1,050 rows for each of ES,
+  UST10Y, USD Index, and Gold, plus 3,915/9,240/4,241/4,673 rows for
+  VIX9D/VIX/VIX3M/VIX6M. These are source counts only; DB backfill remains
+  blocked. Cboe's official total put/call CSV has 3,253 rows through
+  2019-10-04 and is discontinued, so it must not be scheduled as a current
+  feed or replaced with a scraped source.
 - Manual/Progress: all manual chapters exist. The standalone server now wires
   `/api/manual`, chapter frontmatter is removed, and configured Progress markdown
   links are served through a contained allow-list route only on loopback binds.
@@ -109,9 +135,12 @@ no grid, Stage 3, new trial, or K consumption occurred.
   passed data and decisive E-059 distinctness, then failed cost/power
   (-97.306114 net Sharpe after 8 bps/event). H-032 and H-034 passed data but
   failed their decisive mint-apart checks (0.561490 vs E-067; 0.494810 vs
-  E-062), cost, and power. H-031/H-035 are blocked because option-flow rows
-  retain only first-20 hourly trade samples; H-033/H-036 lack their required
-  FRED series; H-037 lacks official CME settlements. All family trials/K
+  E-062), cost, and power. H-031/H-035 remain blocked because historical
+  option-flow full-tape retention is partial and aggregate immutability is
+  unresolved. H-033's DGS2 and two H-036 macro inputs (VIXCLS/DTWEXBGS) are
+  now ingested; H-036's gold leg is an explicitly research-only Yahoo `GC=F`
+  futures proxy and still needs Claude/user acceptance before any rerun. H-037
+  lacks official CME settlements. All family trials/K
   remain zero and no retune or Stage 3 is authorized.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
@@ -276,17 +305,26 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   Sharpe exactly over 898 dated rows; whole-batch I49 passed. Probe tests,
   aggregate four-check/SHA validation, ledger consistency, and the
   F-PAIRS-OU/H-006 no-drift guard pass. All four candidates stopped at Stage 2.
+- 2026-07-30 data unblock: FRED API smoke and 2020+ ingest passed with 1,682
+  VIXCLS, 1,640 DTWEXBGS, 1,643 DGS2, and 1,653 research-only GC=F rows; every
+  FRED row has `published_at > observed_at` and no dataset has a gap over seven
+  days. Deribit six-hour pre-flight passed exact aggregate equality, but the
+  wider archive changed the BTC aggregate total by -5. Workers were stopped;
+  only 2,304 BTC and 744 ETH hours are enriched. Targeted ingestion tests pass;
+  full unit reported 1,036 passed, 1 skipped, and 1 unrelated pre-existing
+  frontend contract failure.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
 
-Immediate: Claude reviews `094742e`, `8f053bb`, `0f572dd`, `084df47`,
-`5ac02a8`, and the wrap-up commit. Confirm E-025 regeneration is
-reference-only, H-025's family merge is correct, every Stage-2 stop is honest,
-and H-026 retained actual family trials=4 and K=0/2. Do not retune or rerun any
-of H-024..H-027; the E-059 review remains separate.
+Immediate: Claude/user decides the Deribit immutability conflict before any
+backfill resume: restore the pre-task DB aggregates from a backup, explicitly
+accept and record the upstream archive revision, or approve a payload-only
+enrichment contract that may leave retained-tape counts inconsistent with
+frozen aggregates. Separately decide whether H-036 may use research-only Yahoo
+`GC=F`; no H-031/H-033/H-035/H-036 rerun is authorized by this task.
 
 In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
 honest-blocked differential-validation declaration. Continue the independent
@@ -469,6 +507,37 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     promotion, or deployment ran. The 8/2/10 complete-round contract remains
     blocked because H-038 is still unauthorized and only one eligible
     iteration exists.
+
+19. AUTHORIZED 2026-07-30 (user, "接受" on ADR-0018): paper-trade testnet
+    connectivity handed to Codex —
+    `tasks/2026-07-30-paper-trade-testnet-connectivity-codex-tasks.md`. T1
+    activates H-014's disabled live-execution adapter to run its real
+    signal-driven order loop on Deribit **testnet only**
+    (`docs/ADR/0018-h014-testnet-signal-driven-execution-exception.md`,
+    accepted; `docs/DOMAIN_RULES.md` R8.9 now cross-references the
+    exception). Testnet fills are explicitly non-evidentiary — they do not
+    advance the ADR-0011 8-week shadow clock or R7.2/live gates, which
+    remain unmoved for real capital. T1 has an internal Phase 1 (build/
+    verify, `enabled` stays false) → Phase 2 (activate) checkpoint requiring
+    Claude's go-ahead. T2 (new Binance spot+futures testnet clients) and T3
+    (verify existing OKX demo connectivity, still blocked on the user
+    creating a Demo API key) are connectivity-only, no gate, no strategy
+    wiring. Next: Codex executes; Claude reviews Phase 1 before Phase 2.
+
+20. PHASE 1 IMPLEMENTED / AUTHENTICATED RUNS BLOCKED 2026-07-30: Deribit
+    private execution now rejects every non-test host and the mocked
+    auth/place/check/cancel lifecycle passes; `h014_live.enabled` remains
+    false and `config/risk.yaml` is unchanged. New Binance Spot and USD-M
+    clients are fixed to their test/demo hosts, use separate blank credential
+    names, and have a manual no-strategy smoke; the futures API can express
+    only `reduceOnly=true` one-way reductions. A bounded OKX demo smoke reuses
+    `OKX_API_KEY` / `OKX_SECRET` / `OKX_PASSPHRASE` through
+    `OKXBroker(demo=True)`. No valid Deribit, Binance, or OKX paper key is
+    available, so no authenticated venue request or real test order was made.
+    Next: the user supplies scoped paper keys; Codex captures the real Phase 1
+    outputs; Claude then gives an explicit Phase 2 go or no-go. Until then, no
+    H-014 signal drives even a testnet order and `KNOWN_ISSUES` 60005 stays
+    open.
 
 ## Open decisions
 

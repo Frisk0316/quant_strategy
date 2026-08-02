@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -15,7 +15,7 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Current working branch: `feature/deribit-vol-backfill-moneyness` (branched
+- Current working branch: `feature/deribit-moneyness-hypotheses` (branched
   2026-07-27 from `feature/h014-e052-shadow` after two wrap-up commits landed
   the in-flight RV30 and GenAI-pipeline doc work). Five delivery commits on the
   new branch passed per-task review and a clean final whole-branch review;
@@ -109,6 +109,20 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Active / blocked
 
+- H-039/F-XVENUE-OPT-IV Stage 0 is implemented with six forward-only hourly
+  OKX/Bybit/Deribit BTC/ETH datasets, 30d total-variance interpolation with
+  nearest fallback, full normalized-chain retention, source-failure isolation,
+  and a 1.5-hour gap alert. All six official public source snapshots pass.
+  Forward accumulation is not active: the configured TimescaleDB endpoint
+  refuses connections, no scheduled task was registered, and the family
+  remains at zero persisted observations, trials 0, K 0/2. Start the DB and
+  obtain one successful manual six-dataset snapshot before the user registers
+  the hourly task; Stage 2 remains blocked until at least 270 persisted daily
+  observations exist.
+- CFTC COT and Cboe term-structure/history ingestion are implemented and pass
+  official-source row/range and as-of checks, but no source row has landed in
+  the DB. The official Cboe total put/call archive stops at 2019-10-04 and is
+  not a current daily feed; no scraped substitute is authorized.
 - PR #9 follow-up repair is verified: unit `841 passed, 1 skipped`, integration
   `38 passed`, lab `18 passed`, Ruff/docs/config/backtest smoke PASS, and strict
   doc impact from `00c7a51` PASS. The branch is pushed; only the separate PR and
@@ -151,6 +165,12 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
   deployment remain unauthorized.
 - Demo engine blocked by OKX `60005 Invalid apiKey`; user creates the Demo key
   later. Port 8080 abandoned; use another port.
+- Paper-trade connectivity Phase 1 is implemented but not authenticated:
+  Deribit H-014 is still disabled and now hard-locked to testnet; Binance Spot
+  and USD-M have fixed-host, unscheduled connectivity smokes; OKX has a bounded
+  demo smoke using the existing shared credential names. Deribit, Binance, and
+  OKX real smoke output is blocked pending user-supplied paper keys, and H-014
+  Phase 2 additionally needs Claude's explicit post-evidence go.
 - Deribit forward schedulers stay unregistered (stale accepted, manual RUNBOOK
   updates). OKX liquidation P1.4 repo support is implemented with an explicit
   Python path and documented S4U/Limited task lifecycle, but the host task still
@@ -171,6 +191,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 Immediate gate: Claude reviews the ordered E-059 registration, execution, and
 outcome-sync commits. Do not retune or rerun H-022; Stage 3 is unauthorized.
+
+Independent paper-trade gate: the user supplies trade-scoped test/demo
+credentials, Codex runs the three authenticated smokes, and Claude reviews the
+Deribit Phase 1 output before any `h014_live.enabled` change. Do not enable
+H-014 or run a signal-driven order cycle before that explicit go.
 
 1. Claude reviews the five ordered delivery commits and A1-A3/B1-B4 fixes,
    including E-057 byte-hash preservation and per-commit diff stats.
