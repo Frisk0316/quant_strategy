@@ -75,6 +75,7 @@ delete numbers. To replace an ADR, add a new one and mark the old one
 | [0015](0015-consumer-time-economic-asset-aliases.md) | Consumer-time economic-asset aliases | Accepted |
 | [0016](0016-genai-discovery-deterministic-strategy-evaluation.md) | GenAI discovery with deterministic strategy evaluation | Accepted |
 | [0017](0017-h014-live-execution-layer.md) | H-014 live-execution layer (parallel-track) | Accepted |
+| [0018](0018-h014-testnet-signal-driven-execution-exception.md) | H-014 testnet signal-driven execution exception | Accepted |
 
 Keep this index in sync when adding an ADR. Related: [[DOMAIN_RULES]] ·
 [[DOC_IMPACT_MATRIX]] · `docs/DOC_LIFECYCLE.md`.

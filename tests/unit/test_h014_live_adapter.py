@@ -217,6 +217,18 @@ def test_enabled_adapter_missing_credentials_fails_at_startup(
         )
 
 
+def test_enabled_adapter_rejects_live_env_before_client_factory():
+    constructed: list[str] = []
+
+    with pytest.raises(ValueError, match="testnet only"):
+        H014LiveAdapter.from_config(
+            LiveConfig(enabled=True, env="live"),
+            client_factory=lambda env: constructed.append(env),  # type: ignore[arg-type]
+        )
+
+    assert constructed == []
+
+
 def test_repo_live_config_is_disabled_and_testnet_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -29,14 +29,13 @@ class DeribitPrivateClient:
             raise RuntimeError(
                 "H-014 live execution requires DERIBIT_API_KEY and DERIBIT_API_SECRET"
             )
-        if env not in {"test", "live"}:
-            raise ValueError("h014_live.env must be 'test' or 'live'")
-        host = "test.deribit.com" if env == "test" else "www.deribit.com"
+        if env != "test":
+            raise ValueError("ADR-0018 permits H-014 private execution on testnet only")
         self._client_id = client_id
         self._client_secret = client_secret
         self._token: str | None = None
         self._client = httpx.Client(
-            base_url=f"https://{host}/api/v2/",
+            base_url="https://test.deribit.com/api/v2/",
             timeout=timeout,
             transport=transport,
             headers={"User-Agent": "quant-strategy-h014-live/1"},

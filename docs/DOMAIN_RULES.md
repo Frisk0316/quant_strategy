@@ -232,7 +232,11 @@ real execution requires a new ADR and R7.2 approval.
   stop, drawdown threshold) set a persistent reduce-only state that survives
   restarts and blocks new entries. Activation order is fixed: ADR-0011 shadow
   exit → bias-report review → every R7.2 gate → explicit user capital
-  approval with a stated cap.
+  approval with a stated cap. **Exception (ADR-0018, accepted 2026-07-30):**
+  while `h014_live.env == "test"` only, `enabled: true` may run the
+  signal-driven adapter loop ahead of this sequence; resulting testnet
+  fills are non-evidentiary and `env: live` still requires the full sequence
+  above unchanged.
 
 ## R9. Coin-margined perpetuals (research) — ADR-0012
 

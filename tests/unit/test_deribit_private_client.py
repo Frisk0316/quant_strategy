@@ -179,6 +179,53 @@ def test_private_client_loads_dotenv_and_rejects_missing_credentials(
     with pytest.raises(RuntimeError, match="DERIBIT_API_KEY and DERIBIT_API_SECRET"):
         DeribitPrivateClient.from_env(env_file=tmp_path / "absent")
 
+    with pytest.raises(ValueError, match="testnet only"):
+        DeribitPrivateClient("unit-key", "unit-secret", env="live")
+
+
+def test_private_client_testnet_place_check_cancel_round_trip():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/public/auth"):
+            return httpx.Response(200, json={"result": {"access_token": "token"}})
+        if request.url.path.endswith("/private/buy"):
+            return httpx.Response(
+                200,
+                json={"result": {"order": {"order_id": "order-1", "order_state": "open"}}},
+            )
+        if request.url.path.endswith("/private/get_order_state"):
+            return httpx.Response(
+                200,
+                json={"result": {"order_id": "order-1", "order_state": "open"}},
+            )
+        if request.url.path.endswith("/private/cancel"):
+            return httpx.Response(
+                200,
+                json={"result": {"order_id": "order-1", "order_state": "cancelled"}},
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    client = _client(handler)
+    try:
+        placed = client.buy("BTC-30AUG26-100000-C", 0.1, 0.01, label="round-trip")
+        order_id = placed["order"]["order_id"]
+        checked = client.get_order_state(order_id)
+        cancelled = client.cancel(order_id)
+    finally:
+        client.close()
+
+    assert checked["order_state"] == "open"
+    assert cancelled["order_state"] == "cancelled"
+    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == [
+        "auth",
+        "buy",
+        "get_order_state",
+        "cancel",
+    ]
+    assert all(request.url.host == "test.deribit.com" for request in requests)
+
 
 @pytest.mark.parametrize("method_name", ["buy", "sell"])
 @pytest.mark.parametrize(
