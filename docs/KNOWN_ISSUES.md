@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -272,5 +272,24 @@ over time.
 
 ## Operations
 
+- H-039's six-dataset cross-venue option-IV collector is implemented with the
+  task-exact 30d total-variance interpolation, nearest fallback, full-chain
+  retention, and source-failure isolation; all six official public source
+  smokes pass. Forward accumulation has not started because the configured
+  TimescaleDB endpoint refuses connections and the Docker service could not be
+  started from this session; no Windows scheduled task is registered. Start
+  the DB, run one successful manual six-dataset snapshot, then let the user
+  register and verify the hourly task before treating the 270-day clock as
+  started.
+- CFTC COT and Cboe source histories pass parsing, range, and conservative
+  as-of checks, but their full backfills are not persisted while TimescaleDB is
+  unavailable. COT `published_at` is the standard scheduled Friday 15:30 ET,
+  not a historical holiday-release calendar; keep research use fail-closed on
+  holiday-delay weeks until that calendar is supplied or this conservative gap
+  is accepted explicitly.
+- Cboe's official `totalpc.csv` is a discontinued archive ending 2019-10-04.
+  Do not schedule it as a current feed or substitute an unaudited scraped
+  source; a new official current endpoint requires a separately reviewed
+  config/source update.
 - Monitoring modules exist, but this map does not prove production alert coverage.
   Treat Telegram/metrics deployment readiness as a separate operational check.

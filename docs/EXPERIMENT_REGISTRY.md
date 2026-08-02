@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-29
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -79,6 +79,7 @@ Machine-readable: rows start with `| F-` (the `| E-` registry parser ignores the
 | F-LIQUIDATION-REVERSAL | 0 | 2 | H-028 registered 2026-07-29, data-blocked until ~12 months of liq_okx_* events accrue; no experiments. |
 | F-FUNDING-SETTLEMENT-DRIFT | 0 | 2 | E-068 Stage-2 failed cost and power before the frozen four-cell grid; family trials and K remain 0. |
 | F-XVOL-RATIO | 0 | 2 | E-066 is the original zero-trial Stage-2 probe; cost and statistical power failed, so the four-cell grid and K remain unconsumed. |
+| F-XVENUE-OPT-IV | 0 | 2 | H-039 is registered data-blocked. Stage 0 only builds forward collection; no experiment, grid trial, or retry has run. |
 
 ## Registry
 

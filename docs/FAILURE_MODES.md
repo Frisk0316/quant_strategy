@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -81,6 +81,9 @@ failure modes say how it silently breaks.
 | F57 | GenAI output becomes canonical backtest evidence | Hallucinated paper provenance, hidden same-round retuning, generated-code drift, or model-authored metrics produce plausible but irreproducible passes | I54 freezes source/prompt/model/spec hashes and keeps code execution, metrics, trial/K, gates, and reporting deterministic | R6.9 |
 | F58 | Adaptively downsampled chart history is labeled hourly | A long-range response looks complete but older 6h points are used as 1h returns, producing plausible yet mis-scaled realized volatility | I55 requires exact hourly continuity, explicit perpetual-close provenance, and no interpolation; `test_deribit_realized_volatility_uses_contiguous_hourly_log_returns` | R6.2 |
 | F59 | Live order lifecycle diverges from the journal under races | An order that fills during a reprice wait makes the follow-up cancel error out, or a transport timeout after venue accept leaves an orphan resting order — venue position and journal silently disagree, later legs abort on stale state | Cancel failures reconcile via `get_order_state` and journal the real fill before classification; transport errors trigger a label/currency `cancel_sweep` journaled before re-raise; every placed order gets full resting time; `test_cancel_error_reconciles_*`, `test_transport_error_attempts_label_sweep_and_reraises_original` | R8.8, R8.9 |
+| F60 | Option symbol parsing assumes the option type is the final token | Bybit adds a settlement suffix (for example `BTC-25DEC26-66000-C-USDT`), every live option fails parsing, and the venue appears to have no active chain | I57 covers legacy and suffixed symbols; the six-dataset live smoke must return a 30d row with a full chain before scheduler activation | R6.2 |
+| F61 | COT report date is treated as publication time or hard-coded as Tuesday | A backtest sees trader positions before CFTC's Friday release, or rejects official holiday-week rows such as 2018-12-24 because the reference date moved to Monday | I58 preserves the source reference date, assigns DST-aware following-Friday 15:30 ET publication with a minimum two-day lag, and tests both mapping and lag | R6.1, R6.2 |
+| F62 | A Cboe CSV parser assumes the first line is the header or treats a discontinued archive as current | The total put/call preamble yields plausible empty data, or a series ending 2019-10-04 appears healthy in current research | I59 searches for the exact header, fails closed on drift, enforces +1-day publication, and documents the official archive ceiling | R6.1, R6.2 |
 
 ## How to add a failure mode
 

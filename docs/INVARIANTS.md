@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -77,6 +77,9 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I54 | GenAI may discover papers and draft schema-valid candidates but cannot see same-round OOS/fold results before manifest sealing, execute arbitrary generated code as canonical evidence, compute/override gates, or author the canonical report. Frozen provenance/spec hashes and deterministic repository code own execution, metrics, trial/K accounting, verdicts, and reporting. | R6.9 | REVIEW of `round_manifest.json`, candidate artifacts, and report until automated boundary tests ship |
 | I55 | An hourly derived-volatility row uses only a fully contiguous hourly source window, publishes no earlier than the source bucket end, records the exact source instrument and formula, and never interpolates or relabels an adaptively downsampled long-range response as hourly | R6.1, R6.2 | `tests/unit/test_deribit_dvol_client.py::test_deribit_realized_volatility_uses_contiguous_hourly_log_returns` |
 | I56 | H-014 live execution fails closed: with `h014_live.enabled=false` or absent credentials no private client is constructed and no authenticated request is possible; entry orders are structurally post-only (a plain taker order is unrepresentable in the client API) and taker exists only as reduce-only exits; live intents byte-match the frozen shadow builder on identical inputs; order/risk events append to a locked JSONL journal; a risk-stop breach sets a persistent reduce-only flag that still blocks new entries after restart | R8.8, R8.9 | `tests/unit/test_deribit_private_client.py`, `tests/unit/test_h014_live_adapter.py` |
+| I57 | The H-039 collector accepts both legacy Bybit option symbols ending in `-C`/`-P` and current symbols with an additional settlement suffix such as `-C-USDT`; both forms must preserve expiry, strike, and option type instead of silently dropping the full venue chain | R6.2 | `tests/unit/test_xvenue_options_iv.py::test_bybit_settlement_suffix_is_parsed` |
+| I58 | A CFTC COT row preserves the official report reference date even when a holiday moves it away from Tuesday, and its `published_at` is the following Friday 15:30 America/New_York converted DST-aware to UTC with at least a two-day lag; report date is never reused as publication time | R6.1, R6.2 | `tests/unit/test_cftc_cot.py` |
+| I59 | Cboe CSV ingestion finds and validates the real schema header, including the legal/preamble lines before `totalpc.csv`; daily rows publish one day after observation, and the official put/call archive ending 2019-10-04 is never presented or scheduled as a current feed | R6.1, R6.2 | `tests/unit/test_cboe.py` |
 
 ## Usage
 

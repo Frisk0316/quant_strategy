@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -156,7 +156,12 @@ Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
 Deribit historical volatility, Deribit funding, Deribit option-surface
 snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
-yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
+yfinance. FRED business-daily `DGS10`, `DGS2`, `VIXCLS`, and `DTWEXBGS`
+observations carry a conservative one-day `published_at` lag. The
+`gold_yfinance` daily `GC=F` continuous-futures series is an unofficial,
+research-only proxy for the discontinued FRED gold input; it is not equivalent
+to the paper's gold series and is not promotion evidence. Built-in
+`ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
 the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
 `oi_binance_btc` / `oi_binance_eth` as hourly USDT-notional open-interest
@@ -202,14 +207,57 @@ are treated as accrual-period end and are safe to use as both `observed_at` and
 `value_num` is total option open interest, fields carry put/call OI, put/call
 ratio, max pain pooled across all listed expiries in the one-row-per-currency
 snapshot, OI-weighted mark IV, and spot index, and raw payloads retain the
-complete current listed chain sorted by expiry, strike, and option type,
-with normalized `expiry`, `strike`, and `option_type` fields on every
-instrument. `DeribitOptionFlowClient`
+  complete current listed chain sorted by expiry, strike, and option type,
+  with normalized `expiry`, `strike`, and `option_type` fields on every
+  instrument.
+`CrossVenueOptionsIVClient` writes forward-only
+`xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` rows from the venues' public
+option summary/ticker endpoints. Per valid expiry it selects ATM call/put by
+strike distance to the venue underlying/forward and 25-delta call/put by delta
+distance. It linearly interpolates each leg's total variance to 30 calendar
+days, falling back to one nearest expiry with `fields.interp = "nearest"` when
+the target is unbracketed. `value_num = fields.atm_iv_30d`; fields also carry
+call-minus-put `rr_25d`, ATM bid/ask IV spread, full-chain OI and units, expiry
+metadata, and selected legs. `observed_at` is the UTC hour bucket and
+`published_at` is the bucket end. `raw_payload` retains every normalized active
+instrument and its source summary so the metrics can be re-derived.
+`snapshot_xvenue_options.py` attempts all six rows even when one venue fails,
+then returns non-zero for source failures or a prior-bucket gap over 1.5 hours.
+It creates no synthetic history and has no strategy or deployment path.
+
+`CFTCCOTClient` writes six weekly futures-only datasets from official Socrata
+reports. `cot_cme_btc`, `cot_cme_eth`, `cot_es`, `cot_ust10y`, and
+`cot_usd_index` use TFF dataset `gpe5-46if`, with leveraged-money net contracts
+as `value_num`; `cot_gold` uses disaggregated dataset `72hh-3qpy`, with
+managed-money net contracts. Stable CFTC contract-market codes select markets.
+`observed_at` preserves the official report reference date (normally Tuesday,
+but holiday weeks can differ); `published_at` is the following Friday at 15:30
+America/New_York converted to UTC and never less than two days later. Raw
+Socrata fields and category positions remain available for audit.
+
+`CBOEClient` writes official daily CSV rows for `cboe_vix9d`, `cboe_vix`,
+`cboe_vix3m`, and `cboe_vix6m`; `value_num` is close in index points and
+fields retain OHLC. `cboe_pcr_total` stores the official total put/call ratio
+archive after locating its header below the Cboe legal/preamble lines.
+All Cboe rows publish one day after the observation date. The official
+put/call CSV ends 2019-10-04; it is an archive only, and no scraped current-page
+substitute is allowed.
+`DeribitOptionFlowClient`
 and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
 `optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
 Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
 fields carry buy/sell premium amounts, IV, trade/liquidation counts, and the
-USDC-linear exclusion count, and raw payloads keep only a bounded trade sample.
+USDC-linear exclusion count. New hourly `raw_payload` rows retain the full
+inverse trade tape with `sample_rule = all_inverse_trades_in_hour`; every stored
+trade keeps its Deribit `trade_id`. Duplicate-millisecond fills are valid, so
+timestamps are not a trade identity or deduplication key. The 2024-01 onward
+BTC+ETH enrichment is expected to add about 1.5-2.0 GB without changing the
+hourly primary key or aggregate fields. Current known gap: the historical
+re-backfill is stopped and partial because Deribit's current archive changed
+the previously stored BTC aggregate trade total by -5 despite a six-hour
+pre-flight passing. Most historical rows therefore still retain the old
+first-20 sample; Claude/user must resolve source-revision vs aggregate
+immutability policy before the bulk enrichment resumes.
 Hours containing only excluded USDC-linear option trades still emit a row with
 `value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
 v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks

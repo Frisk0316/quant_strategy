@@ -175,6 +175,90 @@ datasets:
     required: true
     notes: "Value is hourly Deribit ETH-PERPETUAL interest_1h in rate_1h_decimal; fields include interest_8h and index prices."
 
+  xvenue_opt_iv_okx_btc:
+    provider: okx
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.okx.com/api/v5/public/opt-summary
+    attribution: "Data source: OKX public option summary and open interest"
+    adapter: xvenue_options_iv
+    venue: okx
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
+  xvenue_opt_iv_okx_eth:
+    provider: okx
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.okx.com/api/v5/public/opt-summary
+    attribution: "Data source: OKX public option summary and open interest"
+    adapter: xvenue_options_iv
+    venue: okx
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
+  xvenue_opt_iv_bybit_btc:
+    provider: bybit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://api.bybit.com/v5/market/tickers
+    attribution: "Data source: Bybit public option tickers"
+    adapter: xvenue_options_iv
+    venue: bybit
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, venue-native OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
+  xvenue_opt_iv_bybit_eth:
+    provider: bybit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://api.bybit.com/v5/market/tickers
+    attribution: "Data source: Bybit public option tickers"
+    adapter: xvenue_options_iv
+    venue: bybit
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, venue-native OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
+  xvenue_opt_iv_deribit_btc:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_book_summary_by_currency
+    attribution: "Data source: Deribit public option summary and top-of-book"
+    adapter: xvenue_options_iv
+    venue: deribit
+    currency: BTC
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. Deribit percent IV is normalized to decimal; value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, base-coin/USD OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
+  xvenue_opt_iv_deribit_eth:
+    provider: deribit
+    frequency: hourly
+    value_kind: scalar
+    max_age_seconds: 7200
+    source_url: https://www.deribit.com/api/v2/public/get_book_summary_by_currency
+    attribution: "Data source: Deribit public option summary and top-of-book"
+    adapter: xvenue_options_iv
+    venue: deribit
+    currency: ETH
+    fail_on_empty_fetch: true
+    required: true
+    notes: "Forward-only H-039 snapshot. Deribit percent IV is normalized to decimal; value_num/fields.atm_iv_30d use total-variance interpolation between expiries bracketing 30 days, or nearest expiry when unbracketed. Fields include call-minus-put rr_25d, ATM bid/ask IV spread, base-coin/USD OI, expiry metadata, and raw_payload retains the full normalized current chain."
+
   optsurf_deribit_btc:
     provider: deribit
     frequency: hourly
@@ -214,7 +298,7 @@ datasets:
     currency: BTC
     fail_on_empty_fetch: true
     required: true
-    notes: "Hourly inverse BTC option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record BTC premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. Fields now also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts; history re-ingested with buckets from 2024-01-01 (22,403 hourly rows). Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise, so the newest ~day of rows keeps the pre-bucket schema until the archive catches up and is re-ingested."
+    notes: "Hourly inverse BTC option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record BTC premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. New ingests retain the full inverse trade tape in raw_payload (sample_rule=all_inverse_trades_in_hour, including trade_id); a complete BTC+ETH history enrichment is estimated at 1.5-2.0 GB. The 2024-01+ re-backfill is STOPPED/PARTIAL after upstream archive revisions changed the previously stored BTC aggregate trade total by -5; do not treat historical retention as complete until Claude/user resolves aggregate immutability. Fields also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts. Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise."
 
   optflow_deribit_eth:
     provider: deribit
@@ -227,7 +311,7 @@ datasets:
     currency: ETH
     fail_on_empty_fetch: true
     required: true
-    notes: "Hourly inverse ETH option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record ETH premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. Fields now also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts; history re-ingested with buckets from 2024-01-01 (22,402 hourly rows). Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise, so the newest ~day of rows keeps the pre-bucket schema until the archive catches up and is re-ingested."
+    notes: "Hourly inverse ETH option-flow aggregate. value_num is put-vs-call taker-buy premium imbalance; fields record ETH premium volumes, IV, trade counts, liquidation count, and USDC-linear exclusion count. New ingests retain the full inverse trade tape in raw_payload (sample_rule=all_inverse_trades_in_hour, including trade_id); a complete BTC+ETH history enrichment is estimated at 1.5-2.0 GB. The 2024-01+ re-backfill is STOPPED/PARTIAL because the paired BTC history showed aggregate drift; do not treat historical retention as complete until Claude/user resolves aggregate immutability. Fields also include per-hour moneyness premium/trade buckets and OTM taker-buy amounts. Ingestion auto-selects history.deribit.com for starts older than 2 days and www.deribit.com otherwise."
 
   fear_greed_btc:
     provider: alternative_me
@@ -239,6 +323,161 @@ datasets:
     adapter: fear_greed
     required: true
 
+  cot_cme_btc:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+    attribution: "Data source: CFTC Traders in Financial Futures - Futures Only"
+    adapter: cftc_cot
+    report_type: tff
+    contract_market_code: "133741"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "CME Bitcoin TFF futures-only. value_num is leveraged-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cot_cme_eth:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+    attribution: "Data source: CFTC Traders in Financial Futures - Futures Only"
+    adapter: cftc_cot
+    report_type: tff
+    contract_market_code: "146021"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "CME Ether cash-settled TFF futures-only. value_num is leveraged-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cot_es:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+    attribution: "Data source: CFTC Traders in Financial Futures - Futures Only"
+    adapter: cftc_cot
+    report_type: tff
+    contract_market_code: "13874A"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "CME E-mini S&P 500 TFF futures-only. value_num is leveraged-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cot_ust10y:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+    attribution: "Data source: CFTC Traders in Financial Futures - Futures Only"
+    adapter: cftc_cot
+    report_type: tff
+    contract_market_code: "043602"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "CBOT UST 10Y Note TFF futures-only. value_num is leveraged-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cot_usd_index:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+    attribution: "Data source: CFTC Traders in Financial Futures - Futures Only"
+    adapter: cftc_cot
+    report_type: tff
+    contract_market_code: "098662"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "ICE U.S. Dollar Index TFF futures-only. value_num is leveraged-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cot_gold:
+    provider: cftc
+    frequency: weekly
+    value_kind: scalar
+    max_age_seconds: 1209600
+    source_url: https://publicreporting.cftc.gov/resource/72hh-3qpy.json
+    attribution: "Data source: CFTC Disaggregated - Futures Only"
+    adapter: cftc_cot
+    report_type: disaggregated
+    contract_market_code: "088691"
+    fail_on_empty_fetch: true
+    required: false
+    notes: "COMEX Gold disaggregated futures-only. value_num is managed-money net contracts; observed_at is the official reference date (normally Tuesday; holidays can differ) and published_at is the scheduled following Friday 15:30 America/New_York."
+
+  cboe_vix9d:
+    provider: cboe
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX9D_History.csv
+    attribution: "Data source: Cboe VIX9D historical daily prices"
+    adapter: cboe
+    series: VIX9D
+    kind: index
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+
+  cboe_vix:
+    provider: cboe
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv
+    attribution: "Data source: Cboe VIX historical daily prices"
+    adapter: cboe
+    series: VIX
+    kind: index
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+
+  cboe_vix3m:
+    provider: cboe
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv
+    attribution: "Data source: Cboe VIX3M historical daily prices"
+    adapter: cboe
+    series: VIX3M
+    kind: index
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+
+  cboe_vix6m:
+    provider: cboe
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX6M_History.csv
+    attribution: "Data source: Cboe VIX6M historical daily prices"
+    adapter: cboe
+    series: VIX6M
+    kind: index
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+
+  cboe_pcr_total:
+    provider: cboe
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/totalpc.csv
+    attribution: "Data source: Cboe total option volume and put/call ratio"
+    adapter: cboe
+    series: TOTAL_PUT_CALL
+    kind: put_call
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    notes: "Official Cboe archive only: 3,253 rows from 2006-11-01 through 2019-10-04. Cboe marks this CSV as discontinued for current history; do not scrape the daily statistics page or schedule this dataset as a current feed."
+
   dgs10:
     provider: fred
     frequency: business_daily
@@ -248,6 +487,48 @@ datasets:
     attribution: "Data source: FRED DGS10"
     adapter: fred
     series_id: DGS10
+    api_key_env: FRED_API_KEY
+    vintage_policy: latest
+    publish_lag_days: 1
+    required: false
+
+  vixcls:
+    provider: fred
+    frequency: business_daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://fred.stlouisfed.org/series/VIXCLS
+    attribution: "Data source: FRED VIXCLS"
+    adapter: fred
+    series_id: VIXCLS
+    api_key_env: FRED_API_KEY
+    vintage_policy: latest
+    publish_lag_days: 1
+    required: false
+
+  dtwexbgs:
+    provider: fred
+    frequency: business_daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://fred.stlouisfed.org/series/DTWEXBGS
+    attribution: "Data source: FRED DTWEXBGS"
+    adapter: fred
+    series_id: DTWEXBGS
+    api_key_env: FRED_API_KEY
+    vintage_policy: latest
+    publish_lag_days: 1
+    required: false
+
+  dgs2:
+    provider: fred
+    frequency: business_daily
+    value_kind: scalar
+    max_age_seconds: 604800
+    source_url: https://fred.stlouisfed.org/series/DGS2
+    attribution: "Data source: FRED DGS2"
+    adapter: fred
+    series_id: DGS2
     api_key_env: FRED_API_KEY
     vintage_policy: latest
     publish_lag_days: 1
@@ -287,3 +568,19 @@ datasets:
     required: false
     research_only: true
     notes: "Unofficial delayed/proxy CME Bitcoin futures data. Use only for preliminary research sanity checks; not for promotion/deployment evidence."
+
+  gold_yfinance:
+    provider: yahoo_finance
+    frequency: daily
+    value_kind: ohlcv
+    max_age_seconds: 604800
+    source_url: https://finance.yahoo.com/quote/GC%3DF/history/
+    attribution: "Research-only proxy: Yahoo Finance GC=F via yfinance; not official CME or spot gold data"
+    adapter: yfinance
+    ticker: GC=F
+    interval: 1d
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Unofficial COMEX gold-futures continuous proxy via Yahoo/yfinance, standing in for a discontinued FRED gold series. This is not equivalent to the paper's gold input; H-036's gold leg remains research-only and is not promotion/deployment evidence."

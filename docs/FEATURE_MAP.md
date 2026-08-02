@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -219,7 +219,15 @@ implementation exists.
   visible with null timestamps and zero rows rather than timing out the card.
   Deribit external ingestion includes rolling BTC/ETH historical volatility,
   derived 30-day hourly realized volatility from venue perpetual closes,
-  historical/hourly DVOL and funding/option flow. Selecting Deribit in the
+  historical/hourly DVOL and funding/option flow. New hourly option-flow rows
+  retain the full inverse per-trade tape in `raw_payload` (including
+  `trade_id`). Historical enrichment is partial and stopped after the archive
+  changed the stored BTC aggregate trade total by -5; most prior rows remain
+  capped until Claude/user resolves the immutability conflict. FRED ingestion
+  includes DGS2, DGS10,
+  VIXCLS, and DTWEXBGS with a one-day publication lag; `gold_yfinance` is an
+  explicitly research-only `GC=F` futures proxy, not a FRED/spot-gold
+  equivalent. Selecting Deribit in the
   existing frontend fetch form searches BTC/ETH and queues the on-demand
   volatility plus current option-surface refresh. New option-surface snapshots
   preserve the complete current chain sorted by expiry, strike, and option type;
@@ -229,6 +237,20 @@ implementation exists.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
+  H-039's forward collector writes six hourly
+  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` observations. `value_num` and
+  `fields.atm_iv_30d` use total-variance interpolation between the two valid
+  expiries bracketing 30 days, with explicit nearest-expiry fallback. Fields
+  retain call-minus-put `rr_25d`, ATM bid/ask IV spread, OI and expiry metadata;
+  `raw_payload` retains the full normalized current chain. The snapshot command
+  attempts every venue/currency before returning failure and alerts when the
+  prior successful hour is more than 1.5 hours away; the user owns scheduler
+  registration.
+  CFTC COT ingestion adds six weekly futures-only series keyed by stable CFTC
+  contract-market codes; TFF datasets store leveraged-money net positions and
+  Gold stores managed-money net positions. Cboe ingestion adds official VIX9D,
+  VIX, VIX3M, and VIX6M daily CSV histories plus the discontinued official
+  total put/call archive. The latter ends 2019-10-04 and is not a current feed.
   The checkpointed CLI also backfills and forward-tops-up Deribit public
   BTC/ETH-PERPETUAL 1m candles under native canonical ids with venue-scoped
   `source_primary='deribit'`; index prices are never a fallback.
@@ -244,6 +266,9 @@ implementation exists.
   `src/okx_quant/data/external_clients/deribit_funding.py`,
   `src/okx_quant/data/external_clients/deribit_option_surface.py`,
   `src/okx_quant/data/external_clients/deribit_option_flow.py`,
+  `src/okx_quant/data/external_clients/xvenue_options_iv.py`,
+  `src/okx_quant/data/external_clients/cftc_cot.py`,
+  `src/okx_quant/data/external_clients/cboe.py`,
   `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
@@ -251,6 +276,8 @@ implementation exists.
   `scripts/market_data/ingest_external.py`,
   `scripts/market_data/run_liq_ingest_task.cmd`,
   `scripts/market_data/snapshot_deribit_options.py`,
+  `scripts/market_data/snapshot_xvenue_options.py`,
+  `scripts/market_data/run_xvenue_options_snapshot_task.cmd`,
   `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
@@ -264,6 +291,8 @@ implementation exists.
   `tests/unit/test_deribit_funding_client.py`,
   `tests/unit/test_deribit_option_surface.py`,
   `tests/unit/test_deribit_option_flow.py`,
+  `tests/unit/test_xvenue_options_iv.py`,
+  `tests/unit/test_cftc_cot.py`, `tests/unit/test_cboe.py`,
   `tests/unit/test_ingest_external_liquidation.py`,
   `tests/unit/test_snapshot_deribit_options.py`,
   `tests/unit/test_routes_data_external_series.py`.
@@ -782,7 +811,8 @@ implementation exists.
 ## H-014 Deribit Options Live Execution (disabled)
 
 - User-facing behavior: no active entrypoint. The ADR-0017 layer is
-  fail-closed behind `h014_live.enabled: false`, defaults to Deribit testnet,
+  fail-closed behind `h014_live.enabled: false`; ADR-0018 activation and the
+  private client reject any environment other than Deribit testnet. The layer
   consumes byte-identical ADR-0011 intent legs, places only limit orders
   (post-only except explicit reduce-only risk exits), reprices a bounded number
   of times, and appends order/fill/reject/missed/risk events.
@@ -800,12 +830,31 @@ implementation exists.
   `DERIBIT_API_SECRET`; no credential is stored in config.
 - Tests: `tests/unit/test_deribit_private_client.py`,
   `tests/unit/test_h014_live_adapter.py`.
-- Docs: ADR-0017, the 2026-07-28 Change Manifest, this map, and
-  `docs/RUNBOOK.md`.
+- Docs: ADR-0017, ADR-0018, the 2026-07-28 and 2026-07-30 Change Manifests,
+  this map, and `docs/RUNBOOK.md`.
 - Do-not-touch notes: implementation is not activation. Do not enable the
   config, register a scheduler, switch `config/settings.yaml`, relax R7.2,
   modify shadow intent logic, or claim demo/shadow/live readiness without the
   ADR-0017 gate order and a separate explicit user approval.
+
+## Binance testnet connectivity (no strategy)
+
+- User-facing behavior: a manual bounded smoke authenticates independently to
+  Binance Spot Test Network and USD-M demo, prints an account/position
+  snapshot, places a far limit order, and attempts cancellation in `finally`.
+  Futures placement is blocked unless it can reduce an existing non-zero
+  one-way position; the smoke never seeds exposure or changes position mode.
+- Execution files: `src/okx_quant/execution/binance_testnet/`.
+- Operations: `scripts/run_binance_testnet_smoke.py`; no scheduler or strategy
+  calls these clients.
+- Hosts and credentials: Spot is fixed to `testnet.binance.vision` and uses
+  `BINANCE_API_KEY` / `BINANCE_SECRET`; USD-M is fixed to
+  `demo-fapi.binance.com` and uses separately issued
+  `BINANCE_FUTURES_API_KEY` / `BINANCE_FUTURES_SECRET`.
+- Tests: `tests/unit/test_binance_testnet_client.py`.
+- Do-not-touch notes: connectivity output is not strategy evidence or
+  deployment readiness. Do not add a mainnet host, strategy/signal wiring,
+  scheduler, or automatic futures position creation.
 
 ## Shadow / Demo / Live Deployment Gate
 

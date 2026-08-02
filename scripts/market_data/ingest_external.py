@@ -17,6 +17,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from okx_quant.core.config import load_config
 from okx_quant.data.external_clients import (
     BinanceOIClient,
+    CBOEClient,
+    CFTCCOTClient,
+    CrossVenueOptionsIVClient,
     DeribitDVOLClient,
     DeribitFundingClient,
     DeribitHistoricalVolatilityClient,
@@ -133,6 +136,14 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
     adapter = str(cfg.get("adapter") or "")
     if adapter == "binance_oi":
         return BinanceOIClient()
+    if adapter == "xvenue_options_iv":
+        return CrossVenueOptionsIVClient()
+    if adapter == "cftc_cot":
+        return CFTCCOTClient()
+    if adapter == "cboe":
+        return CBOEClient(
+            publish_lag_days=int(cfg.get("publish_lag_days", 1)),
+        )
     if adapter == "deribit_dvol":
         return DeribitDVOLClient()
     if adapter == "deribit_historical_volatility":
@@ -175,6 +186,26 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
             start=start,
             end=end,
             interval=str(cfg.get("interval") or "1h"),
+        )
+    if adapter == "xvenue_options_iv":
+        return client.fetch(
+            venue=str(cfg["venue"]),
+            currency=str(cfg["currency"]),
+        )
+    if adapter == "cftc_cot":
+        return client.fetch(
+            report_type=str(cfg["report_type"]),
+            contract_market_code=str(cfg["contract_market_code"]),
+            start=start,
+            end=end,
+        )
+    if adapter == "cboe":
+        return client.fetch(
+            source_url=str(cfg["source_url"]),
+            series=str(cfg["series"]),
+            kind=str(cfg["kind"]),
+            start=start,
+            end=end,
         )
     if adapter == "deribit_dvol":
         return client.fetch(
@@ -326,8 +357,27 @@ async def _main(
     if not dsn:
         raise click.ClickException("storage.timescale_dsn is not set")
     async with await ExternalDataStore.from_dsn(dsn, min_size=1, max_size=2) as store:
+        failures = []
         for dataset_id in selected:
-            await _ingest_one(store, dataset_id, datasets[dataset_id], start, end, dry_run)
+            try:
+                await _ingest_one(
+                    store,
+                    dataset_id,
+                    datasets[dataset_id],
+                    start,
+                    end,
+                    dry_run,
+                )
+            except Exception as exc:
+                if str(datasets[dataset_id].get("adapter")) != "xvenue_options_iv":
+                    raise
+                failures.append(f"{dataset_id}: {exc}")
+                click.echo(f"{dataset_id}: failed; continuing: {exc}", err=True)
+        if failures:
+            raise click.ClickException(
+                "cross-venue snapshot failures after attempting all datasets: "
+                + "; ".join(failures)
+            )
 
 
 @click.command()

@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-31
 expires: none
 superseded_by: null
 ---
@@ -998,6 +998,22 @@ position calls without placing an order or changing `enabled`:
 python -c "from okx_quant.execution.deribit_live.private_client import DeribitPrivateClient as C; c=C.from_env(env='test'); print(c.get_account_summary('BTC')); print(c.get_positions('BTC')); c.close()"
 ```
 
+### Binance and OKX paper connectivity (no strategy)
+
+Manual, unscheduled smokes; none of these are wired to any strategy signal.
+After the user supplies testnet/demo keys in `.env`
+(`BINANCE_API_KEY`/`BINANCE_SECRET`, `BINANCE_FUTURES_API_KEY`/
+`BINANCE_FUTURES_SECRET`, or the existing `OKX_API_KEY`/`OKX_SECRET`/
+`OKX_PASSPHRASE` with `config/settings.yaml` `system.mode: demo`):
+
+```powershell
+python scripts/run_binance_testnet_smoke.py           # spot + USD-M, JSON report
+python scripts/run_okx_demo_smoke.py                  # OKX demo balance + place/cancel
+```
+
+The Binance futures leg only reduces an existing non-zero one-way position —
+it reports `blocked` rather than opening new exposure on a flat/hedge account.
+
 Runtime order events are append-only in
 `results/live_h014/orders.jsonl`; the persistent sidecar lock is
 `orders.jsonl.lock`. Placement, rejection, risk-stop, and adapter-failure
@@ -1068,6 +1084,26 @@ The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if
 the machine or DB is off for longer than the retention window — check the log
 and `external_observations` first/last timestamps when auditing coverage.
 
+## FRED Macro And Research-Only Gold Ingest
+
+Add `FRED_API_KEY=<key>` to `.env`; never commit the real key. The ingest
+client reads `FRED_API_KEY` from the process environment, so use
+`python-dotenv` to load the repository `.env` for the command:
+
+```powershell
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset dgs2 --start 2026-01-01 --dry-run
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset dgs2 --start 2026-01-01 --end 2026-01-10
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset vixcls --dataset dtwexbgs --dataset dgs2 --dataset gold_yfinance --start 2020-01-01T00:00:00Z --end <UTC_TODAY>T00:00:00Z
+```
+
+`vixcls`, `dtwexbgs`, and `dgs2` are FRED business-daily series with
+`publish_lag_days: 1`; verify every stored FRED row has
+`published_at > observed_at`. `gold_yfinance` is Yahoo/yfinance `GC=F`, an
+unofficial continuous COMEX futures proxy used because FRED no longer provides
+the intended gold series. It is research-only, may contain roll/adjustment
+artefacts, and must not be presented as the paper's gold input or as promotion
+evidence.
+
 ## Scheduled External Ingest (Deribit option surface)
 
 Deribit option-surface OI/IV snapshots are live-only and cannot be backfilled.
@@ -1091,6 +1127,73 @@ new snapshots retain the complete current listed chain in `raw_payload`, sorted
 by expiry, strike, and option type. Audit first/last timestamps and gaps before
 using the series in research; past full chains cannot be reconstructed from this
 live endpoint.
+
+## H-039 Cross-venue Options IV Forward Snapshot
+
+The H-039 collector writes the current OKX, Bybit, and Deribit BTC/ETH
+constant-maturity option-IV rows. It interpolates total variance between the
+two valid expiries bracketing 30 days, explicitly labels nearest-expiry
+fallback, and stores the full normalized active chain. It cannot reconstruct
+hours before scheduler activation.
+TimescaleDB must be running before the first manual snapshot:
+
+```powershell
+python scripts\market_data\snapshot_xvenue_options.py
+```
+
+The command stores the current snapshot first, then returns a non-zero
+`snapshot gap alert` if the prior successful bucket is more than 1.5 hours
+away. Inspect `logs\xvenue_options_snapshot.log` and DB coverage after any
+alert; do not fill the missing hour with a proxy.
+
+Codex provides the wrapper, but the user registers and owns the least-privilege
+Windows task:
+
+```powershell
+schtasks /Create /TN quant_xvenue_options_iv /TR "C:\quant_strategy\scripts\market_data\run_xvenue_options_snapshot_task.cmd" /SC HOURLY /MO 1 /ST 00:15 /RL LIMITED /F
+schtasks /Run /TN quant_xvenue_options_iv
+schtasks /Query /TN quant_xvenue_options_iv /V /FO LIST
+```
+
+Verify `Last Run Result: 0`, the six `xvenue_opt_iv_*` datasets advancing by one UTC
+hour, and no gap alert in the log. Remove the task without deleting stored
+observations:
+
+```powershell
+schtasks /Delete /TN quant_xvenue_options_iv /F
+```
+
+Scheduler registration starts forward accumulation; Stage 2 remains blocked
+until at least 270 honest daily observations exist.
+
+## CFTC COT and Cboe Historical Backfill
+
+Run the six CFTC futures-only histories and the four current Cboe volatility
+histories after TimescaleDB is healthy:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset cot_cme_btc --dataset cot_cme_eth --dataset cot_es --dataset cot_ust10y --dataset cot_usd_index --dataset cot_gold --start 2006-01-01
+python scripts\market_data\ingest_external.py --dataset cboe_vix9d --dataset cboe_vix --dataset cboe_vix3m --dataset cboe_vix6m --start 1990-01-01
+```
+
+Every COT row must have `published_at >= observed_at + 2 days`; the reference
+date is usually Tuesday but can be another weekday in holiday weeks. Cboe rows
+must have `published_at = observed_at + 1 day`.
+
+The only official CSV tried for total put/call history is:
+
+```text
+https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/totalpc.csv
+```
+
+Cboe documents this archive as 2006-11-01 through 2019-10-04. It can be loaded
+once with the command below, but it is discontinued and must not be registered
+as a current daily scheduler or replaced by scraping the Daily Market
+Statistics page:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset cboe_pcr_total --start 2006-11-01 --end 2019-10-04
+```
 
 ## Scheduled External Ingest (Deribit funding, volatility, option flow)
 
@@ -1167,7 +1270,9 @@ the manual 2026-07-26 top-up.
 Deribit option-flow aggregates use the public history host for backfill and the
 `optflow_deribit_btc` / `optflow_deribit_eth` datasets. The script aggregates
 hourly inverse-option trades only; USDC-linear instruments are counted as
-excluded in `fields.excluded_linear_usdc_count`.
+excluded in `fields.excluded_linear_usdc_count`. Each hourly
+`raw_payload.sample` retains the full inverse tape with `trade_id`; row keys
+and aggregate fields stay unchanged.
 
 Pilot one month first:
 
@@ -1176,14 +1281,17 @@ python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00
 ```
 
 Proceed to the full run only if the pilot reports per-currency rows in
-`[670, 744]`. The full run is checkpointed and resumable:
+`[670, 744]`. Run the full enrichment one calendar month at a time and retry a
+failed month once:
 
 ```powershell
-python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00:00:00+00:00 --end 2026-07-11T00:00:00+00:00 --resume
+python scripts\market_data\backfill_deribit_option_flow.py --start <MONTH_START> --end <NEXT_MONTH_OR_LAST_COMPLETE_UTC_HOUR> --chunk-days 1
 ```
 
-At completion, review the script's JSON coverage summary and list any gaps over
-6 hours before using `optflow_deribit_*` in research.
+At completion, require retained-trade count to equal `fields.trade_count` on
+sampled hours, review the script's JSON coverage summary, list gaps over 6
+hours, and measure the `external_observations` hypertable size delta before
+using `optflow_deribit_*` in research.
 
 ## Strategy Signal Validation
 
