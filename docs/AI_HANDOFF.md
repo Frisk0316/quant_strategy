@@ -16,18 +16,17 @@ durable backlog.
 
 ## Current goal
 
-Push and review the four verified local delivery commits, then continue the
-remaining whole-repo optimization audit items. External-data persistence and
-the Deribit pagination conflict are resolved; the remaining research choices
-are H-033/H-036, H-038, and the H-014 shadow/parity path.
+Decide the WS-C authorization sequence for the whole-repo optimization audit —
+every ungated item is now delivered and Claude-APPROVED. External-data
+persistence and the Deribit pagination conflict are resolved; the remaining
+research choices are H-033/H-036, H-038, and the H-014 shadow/parity path.
 
 ## Branch and working tree
 
-- Origin is at `67a7d26`. Local commits `37ad794`, `1992ac2`, `2c87047`, and
-  `fe94065` contain the paper-data probe, paper Demo reliability, OKX public
-  collector, and audit/security records. They are verified but unpushed because
-  the execution environment requires fresh explicit approval for export to
-  `https://github.com/Frisk0316/quant_strategy.git`.
+- Local and origin are both at `c9fa77b` with a clean working tree. The audit's
+  ungated work is fully landed: F1 + WS-A A1-A5 + B1 (`181f82b`), A6
+  (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the two research/
+  probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
 - Current branch: `feature/deribit-moneyness-hypotheses`. Registration is
   `4c84a18`; dated E-025 regeneration is `094742e`; ordered H-024/H-025/H-027/
   H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
