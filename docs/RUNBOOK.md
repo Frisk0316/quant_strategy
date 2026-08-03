@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -36,6 +36,15 @@ This standalone entrypoint includes the backtest/data APIs, Progress panel, and
 in-dashboard user manual; it does not start the trading engine. Progress document
 links are clickable only on the default loopback bind. A non-loopback bind shows
 paths without exposing repository files.
+
+A non-loopback bind also requires both an explicit `--allow-remote` flag and a
+non-empty `API_KEY`; backtest, data, and config routes then require
+`X-API-Key`, and `/api/docs` is disabled remotely:
+
+```powershell
+$env:API_KEY = '<strong-random-value>'
+python scripts/run_server.py --host 0.0.0.0 --allow-remote
+```
 
 ## No-DB Mode
 
@@ -998,21 +1007,42 @@ position calls without placing an order or changing `enabled`:
 python -c "from okx_quant.execution.deribit_live.private_client import DeribitPrivateClient as C; c=C.from_env(env='test'); print(c.get_account_summary('BTC')); print(c.get_positions('BTC')); c.close()"
 ```
 
-### Binance and OKX paper connectivity (no strategy)
+### Binance and OKX Demo connectivity
 
-Manual, unscheduled smokes; none of these are wired to any strategy signal.
-After the user supplies testnet/demo keys in `.env`
-(`BINANCE_API_KEY`/`BINANCE_SECRET`, `BINANCE_FUTURES_API_KEY`/
-`BINANCE_FUTURES_SECRET`, or the existing `OKX_API_KEY`/`OKX_SECRET`/
-`OKX_PASSPHRASE` with `config/settings.yaml` `system.mode: demo`):
+These are manual, unscheduled connectivity smokes, not strategy promotion
+evidence. Binance uses the unified Demo Trading key in
+`BINANCE_API_KEY`/`BINANCE_SECRET`; optional `BINANCE_FUTURES_*` values override
+it for USD-M. OKX uses only `OKX_DEMO_API_KEY`/`OKX_DEMO_SECRET`/
+`OKX_DEMO_PASSPHRASE` and requires `config/settings.yaml` `system.mode: demo`.
+The live-labeled `OKX_API_KEY`/`OKX_SECRET`/`OKX_PASSPHRASE` names are never
+read by this smoke.
 
 ```powershell
-python scripts/run_binance_testnet_smoke.py           # spot + USD-M, JSON report
-python scripts/run_okx_demo_smoke.py                  # OKX demo balance + place/cancel
+python scripts/run_binance_testnet_smoke.py --venue spot     # demo-api.binance.com
+python scripts/run_binance_testnet_smoke.py --venue futures  # demo-fapi.binance.com
+python scripts/run_okx_demo_smoke.py                         # demo balance + place/cancel
 ```
 
 The Binance futures leg only reduces an existing non-zero one-way position —
 it reports `blocked` rather than opening new exposure on a flat/hedge account.
+
+The Binance clients synchronize venue time before signed requests. Spot places
+and cancels one resting Demo order. The futures leg never opens exposure on a
+flat account. OKX uses simulated-trading routing, a venue-valid resting price,
+and confirms nested order/cancel result codes.
+
+Funding-carry validation must preserve the configured APR gate. Run the
+targeted dual-leg replay and execution checks; a current rate below the 12% APR
+threshold correctly produces no signal and must not be forced by lowering the
+threshold:
+
+```powershell
+python -m pytest tests/unit/test_execution_flow.py tests/unit/test_backtesting.py tests/integration/test_signal_strategy_integration.py -k funding_carry -q
+python scripts/smoke/backtest_smoke.py
+```
+
+The demo funding pair is not atomic across legs. Do not interpret connectivity,
+synthetic dual-leg tests, or Demo fills as live/deployment readiness.
 
 Runtime order events are append-only in
 `results/live_h014/orders.jsonl`; the persistent sidecar lock is
@@ -1612,16 +1642,54 @@ If `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`:
 ```text
 /status   — current mode, equity, drawdown
 /kill     — trigger hard stop and halt engine
-/reset    — reset daily loss counter
+/reset confirm — reset RiskGuard after explicit confirmation
 /help     — list commands
 ```
 
-### Stream live L2 order book to Parquet
+Commands are accepted only from the configured `TELEGRAM_CHAT_ID`; updates
+from every other chat are ignored.
 
-For tick-level microstructure data collection:
+### Continuously collect public OKX market data
 
-```bash
-python scripts/stream_orderbook.py --symbol BTC-USDT-SWAP
+`quant_okx_market_data` starts at Windows boot and runs the credential-free public
+collector continuously. It reads OKX books, public trades, and funding-rate
+updates for BTC/ETH Spot and SWAP; it does not load `.env`, construct a broker,
+or expose an order path. Chunked Parquet files land under
+`data/ticks/<instrument>/` as `ob_ticks_*`, `trades_*`, and `funding_*`.
+
+The task runs as `woody` / `S4U` / `Limited` without storing a password, may
+start and continue on battery, catches up after a missed boot trigger, has no
+execution-time limit, and retries unexpected failures after one minute. The
+collector stops cleanly before free space falls below 10 GiB; storage retention
+remains manual. Run the registration script once through a UAC-approved
+Administrator PowerShell:
+
+```powershell
+Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File C:\quant_strategy\scripts\market_data\register_okx_market_data_task.ps1'
+```
+
+```powershell
+Get-ScheduledTask -TaskName quant_okx_market_data | Format-List TaskName,State
+Get-ScheduledTaskInfo -TaskName quant_okx_market_data | Format-List LastRunTime,LastTaskResult
+Get-Content logs\okx_market_data_collector.log -Tail 30
+
+# Manual bounded smoke, in minutes:
+python scripts\stream_orderbook.py --duration 0.15 --symbols BTC-USDT-SWAP BTC-USDT ETH-USDT-SWAP ETH-USDT
+
+# Reversible stop / restart:
+Stop-ScheduledTask -TaskName quant_okx_market_data
+Start-ScheduledTask -TaskName quant_okx_market_data
+Disable-ScheduledTask -TaskName quant_okx_market_data
+
+# Permanent removal only when intended:
+Unregister-ScheduledTask -TaskName quant_okx_market_data -Confirm
+```
+
+`LastTaskResult = 267009` (`0x41301`) means the continuous task is currently
+running. Check remaining disk space periodically:
+
+```powershell
+python -c "import shutil; print(round(shutil.disk_usage('C:/quant_strategy').free / 2**30, 1), 'GiB free')"
 ```
 
 ## Engine Dashboard and REST API
@@ -1629,6 +1697,10 @@ python scripts/stream_orderbook.py --symbol BTC-USDT-SWAP
 The web UI is a React SPA served by the FastAPI engine at **`http://localhost:8080`**.
 It starts automatically when the engine runs. No separate server command is needed.
 (For the standalone no-engine dashboard, see "Local Dev" above and `docs/UI_MAP.md`.)
+The engine API defaults to loopback. A non-loopback `API_HOST` fails startup
+unless `API_KEY` is set. Compose additionally binds the host port to
+`127.0.0.1` and requires `API_KEY`, `TIMESCALE_PASSWORD`, and
+`GRAFANA_PASSWORD` during interpolation.
 
 ### Views
 
@@ -1686,6 +1758,11 @@ cp .env.example .env
 #   OKX_API_KEY=...
 #   OKX_SECRET=...
 #   OKX_PASSPHRASE=...
+#   OKX_DEMO_API_KEY=...        (OKX Demo smoke only)
+#   OKX_DEMO_SECRET=...
+#   OKX_DEMO_PASSPHRASE=...
+#   API_KEY=...                 (dashboard API / Compose)
+#   GRAFANA_PASSWORD=...        (Compose)
 #   TELEGRAM_TOKEN=...      (optional — for alerts and kill switch)
 #   TELEGRAM_CHAT_ID=...    (optional)
 ```

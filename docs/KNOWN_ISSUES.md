@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -32,6 +32,13 @@ over time.
   exception PR with `verify-full`; no force-push is authorized.
 
 ## Research and operations state
+
+- **Open — funding-carry cross-leg atomicity:** OKX Demo connectivity, private
+  fill subscriptions, venue formatting, and the synthetic/replay dual-leg path
+  pass. Perp and Spot orders are still independent venue submissions; one leg
+  can accept/fill while the other rejects. Do not promote or use real capital
+  until a reviewed compensating/hedge-reconciliation policy and integration
+  test close this gap.
 
 - **Closed — H-014 live layer pre-activation blockers (fixed + re-reviewed
   2026-07-28):** the three order-lifecycle edge cases are fixed (F59 guards:
@@ -147,6 +154,15 @@ over time.
   `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
 
 ## Runtime and API reliability
+
+- **Closed — F1 + WS-A + B1 security batch (2026-08-03):** Telegram commands
+  now require the configured chat and `/reset confirm`; pair deletion rejects
+  unsafe path components before DB/filesystem access; engine/standalone remote
+  binds fail closed without `API_KEY`; standalone destructive routers share
+  auth; job status omits DSNs while the OHLCV rotation child reads
+  `DATABASE_URL`; Compose is loopback-bound with required secrets; and the OKX
+  smoke reads only `OKX_DEMO_*`. F52's separate browser credential
+  UX contract remains open.
 
 - **Closed coverage bottleneck (F28, 2026-07-21):** external coverage now scans
   and groups `external_observations` once, then joins the 46 registered datasets.

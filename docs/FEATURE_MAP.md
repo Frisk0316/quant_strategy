@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -100,7 +100,9 @@ implementation exists.
 - User-facing behavior: list runs, start runs/sweeps, read saved result artifacts,
   delete runs, and expose chart-specific endpoints. Run-list/result-summary DB
   outages without an exact file fallback return 503; a healthy missing run stays
-  404 and an existing file artifact remains usable.
+  404 and an existing file artifact remains usable. Engine and standalone binds
+  default to loopback; non-loopback startup requires an API key, and standalone
+  backtest/data/config routes share the API-key dependency.
 - Frontend files: `frontend/data.js`, `frontend/view-backtest.js`,
   `frontend/view-results.js`, `frontend/view-config.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -113,7 +115,7 @@ implementation exists.
 - Config files: `config/settings.yaml`, `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
   `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
-  `tests/integration/test_api_endpoints.py`.
+  `tests/unit/test_api_security.py`, `tests/integration/test_api_endpoints.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`, `docs/DATA_FLOW.md`,
   `docs/RUNBOOK.md`.
 - Do-not-touch notes: API schema changes require matching frontend and test updates;
@@ -246,6 +248,10 @@ implementation exists.
   attempts every venue/currency before returning failure and alerts when the
   prior successful hour is more than 1.5 hours away; the user owns scheduler
   registration.
+  The credential-free `quant_okx_market_data` S4U startup task continuously captures
+  OKX BTC/ETH Spot and SWAP books, public trades, and funding-rate updates into
+  chunked local Parquet files. It has no broker, API key, or order path and
+  stops before free disk falls below 10 GiB.
   CFTC COT ingestion adds six weekly futures-only series keyed by stable CFTC
   contract-market codes; TFF datasets store leveraged-money net positions and
   Gold stores managed-money net positions. Cboe ingestion adds official VIX9D,
@@ -275,6 +281,9 @@ implementation exists.
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   `scripts/market_data/ingest_external.py`,
   `scripts/market_data/run_liq_ingest_task.cmd`,
+  `scripts/stream_orderbook.py`,
+  `scripts/market_data/run_okx_market_data_collector.cmd`,
+  `scripts/market_data/register_okx_market_data_task.ps1`,
   `scripts/market_data/snapshot_deribit_options.py`,
   `scripts/market_data/snapshot_xvenue_options.py`,
   `scripts/market_data/run_xvenue_options_snapshot_task.cmd`,
@@ -294,6 +303,7 @@ implementation exists.
   `tests/unit/test_xvenue_options_iv.py`,
   `tests/unit/test_cftc_cot.py`, `tests/unit/test_cboe.py`,
   `tests/unit/test_ingest_external_liquidation.py`,
+  `tests/unit/test_stream_orderbook.py`,
   `tests/unit/test_snapshot_deribit_options.py`,
   `tests/unit/test_routes_data_external_series.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
@@ -847,14 +857,28 @@ implementation exists.
 - Execution files: `src/okx_quant/execution/binance_testnet/`.
 - Operations: `scripts/run_binance_testnet_smoke.py`; no scheduler or strategy
   calls these clients.
-- Hosts and credentials: Spot is fixed to `testnet.binance.vision` and uses
-  `BINANCE_API_KEY` / `BINANCE_SECRET`; USD-M is fixed to
-  `demo-fapi.binance.com` and uses separately issued
-  `BINANCE_FUTURES_API_KEY` / `BINANCE_FUTURES_SECRET`.
+- Hosts and credentials: Spot is fixed to `demo-api.binance.com` and USD-M to
+  `demo-fapi.binance.com`; neither client exposes a mainnet host. Both sign with
+  the unified `BINANCE_API_KEY` / `BINANCE_SECRET`, and USD-M additionally
+  accepts optional `BINANCE_FUTURES_API_KEY` / `BINANCE_FUTURES_SECRET`
+  overrides (`futures_client.from_env` falls back to the unified pair).
+  Both clients call `sync_clock()` and sign with the server-time offset.
 - Tests: `tests/unit/test_binance_testnet_client.py`.
 - Do-not-touch notes: connectivity output is not strategy evidence or
   deployment readiness. Do not add a mainnet host, strategy/signal wiring,
   scheduler, or automatic futures position creation.
+
+## OKX Demo connectivity (no strategy)
+
+- User-facing behavior: a manual bounded smoke checks Demo balance, submits one
+  resting Spot order, and cancels it in `finally`; `demo=True` is fixed.
+- Operations: `scripts/run_okx_demo_smoke.py`; no scheduler or strategy calls it.
+- Credentials: only `OKX_DEMO_API_KEY`, `OKX_DEMO_SECRET`, and
+  `OKX_DEMO_PASSPHRASE` from process environment or repo-root `.env`. The
+  live-labeled `OKX_API_KEY` names are unreachable from this script.
+- Tests: `tests/unit/test_okx_demo_smoke.py`.
+- Do-not-touch notes: connectivity output is not strategy evidence or
+  deployment readiness; do not substitute a live-labeled credential.
 
 ## Shadow / Demo / Live Deployment Gate
 
@@ -879,7 +903,8 @@ implementation exists.
 ## Telegram / Monitoring
 
 - User-facing behavior: expose operational metrics and Telegram-style alert hooks
-  where configured.
+  where configured. Remote commands are accepted only from the configured chat;
+  RiskGuard reset additionally requires `/reset confirm`.
 - Frontend files: `frontend/app.js`, `frontend/view-results.js`.
 - Backend/API files: `src/okx_quant/api/routes_live.py`,
   `src/okx_quant/api/server.py`.

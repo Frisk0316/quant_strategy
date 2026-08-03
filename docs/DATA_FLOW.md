@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-02
 expires: none
 superseded_by: null
 ---
@@ -110,6 +110,7 @@ Deribit hourly BTC/ETH funding + Binance 8h BTC/ETH funding + venue-scoped Derib
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
+
 The coverage API labels funding provider/exchange from `funding_rates.source`
 instead of a hard-coded venue label. `backfill_universe_funding.py` is a
 research-pipeline utility for Binance universe-wide funding coverage and writes
@@ -144,6 +145,20 @@ Binance funding + Deribit hourly funding + venue-scoped Binance/Deribit 1m marks
 Missing 8h events or venue marks fail closed without time compression. The
 runner assumes adequate coin collateral for the unlevered gross-1 pair and has
 no margin/liquidation, index-price, engine, demo, shadow, or live path.
+
+## Forward OKX Public Tick Flow
+
+```text
+OKX public WebSocket books/trades/funding-rate -> scripts/stream_orderbook.py -> chunked data/ticks/<instrument>/{ob_ticks,trades,funding}_*.parquet -> offline research inputs
+```
+
+Current: Windows S4U task `quant_okx_market_data` starts at boot and captures
+BTC/ETH Spot and SWAP without credentials or any broker/order path. The writer
+uses bounded chunk files instead of repeatedly rewriting a growing daily file,
+flushes remaining rows on a normal stop, reconnects after WebSocket failures,
+and stops before free space falls below 10 GiB. Retention and downstream import
+remain manual; these forward files are data evidence, not strategy or deployment
+evidence.
 
 ## External Observations Ingestion Flow
 

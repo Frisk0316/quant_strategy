@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-02
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -16,16 +16,18 @@ durable backlog.
 
 ## Current goal
 
-Review the 2026-07-31 external-data delivery. The H-039 cross-venue options-IV,
-CFTC COT, and Cboe history adapters pass unit/config and official-source
-validation, but the configured TimescaleDB endpoint refuses connections, so
-none of those source observations are persistence evidence. The older Deribit
-full-tape backfill also remains stopped and partial after the current archive
-changed the stored BTC aggregate trade total by -5; Claude/user must resolve
-that separate immutability conflict before any resume or H-031/H-035 rerun.
+Push and review the four verified local delivery commits, then continue the
+remaining whole-repo optimization audit items. External-data persistence and
+the Deribit pagination conflict are resolved; the remaining research choices
+are H-033/H-036, H-038, and the H-014 shadow/parity path.
 
 ## Branch and working tree
 
+- Origin is at `67a7d26`. Local commits `37ad794`, `1992ac2`, `2c87047`, and
+  `fe94065` contain the paper-data probe, paper Demo reliability, OKX public
+  collector, and audit/security records. They are verified but unpushed because
+  the execution environment requires fresh explicit approval for export to
+  `https://github.com/Frisk0316/quant_strategy.git`.
 - Current branch: `feature/deribit-moneyness-hypotheses`. Registration is
   `4c84a18`; dated E-025 regeneration is `094742e`; ordered H-024/H-025/H-027/
   H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
@@ -94,6 +96,19 @@ that separate immutability conflict before any resume or H-031/H-035 rerun.
   result-summary DB outages without file fallback return 503 instead of empty or
   missing data. F52 browser authentication and remaining per-artifact/pool work
   stay explicit follow-ups; no schema or API payload shape changed.
+- Security hardening: the 2026-08-03 F1 + WS-A Codex task (A1-A5) + B1 batch
+  is implemented. Telegram commands require the configured chat and
+  `/reset confirm`; API pair deletion is contained; engine/standalone remote
+  binds fail closed without an API key; standalone destructive routers share
+  auth; job status no longer carries DSNs and the OHLCV rotation child consumes
+  them from `DATABASE_URL`; Compose is loopback-bound with required secrets;
+  and the OKX smoke reads only `OKX_DEMO_*`. Targeted safety
+  tests and Compose fail/pass validation are green. Claude reviewed and
+  APPROVED the batch (`tasks/2026-08-03-security-batch-claude-review.md`); it
+  is committed and pushed at `181f82b`. The review caught and Codex closed one
+  regression (the rotation child needed a `DATABASE_URL` fallback once `--dsn`
+  left argv). WS-A A6 and WS-B B2-B5
+  remain separate follow-ups; WS-C/F2 remain authorization-gated.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
@@ -335,6 +350,18 @@ honest-blocked differential-validation declaration. Continue the independent
 H-014 shadow cycle; do not enable the live block, register a live scheduler, or
 perform an authenticated order test before the remaining gate sequence and
 separate user capital approval.
+
+Also open (2026-08-03): a two-round whole-repo optimization audit produced
+`tasks/2026-08-03-project-optimization-codex-plan.md` (11 areas, 24 agents, all
+findings adversarially verified; Codex-ready). F1, WS-A's A1-A5 Codex task, and
+B1 were committed and pushed at `181f82b`. Remaining audit scope is
+WS-A A6, WS-B B2-B5, WS-D/E/F3-F8, and the authorization-gated work. WS-C
+trading-safety and F2 (rate limiter) touch
+execution/risk/portfolio and each need explicit per-item authorization + a
+Change Manifest before Codex acts. Round 2 cleared five previously unaudited
+areas: git history holds no real credentials (`.env` never tracked), no
+notebooks exist, tests make no real network/DB calls, the frontend has one
+latent (non-exploitable) markdown sink, and no untrusted deserialization exists.
 
 Before executing another full strategy-finding round:
 

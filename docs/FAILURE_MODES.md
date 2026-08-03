@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -84,6 +84,14 @@ failure modes say how it silently breaks.
 | F60 | Option symbol parsing assumes the option type is the final token | Bybit adds a settlement suffix (for example `BTC-25DEC26-66000-C-USDT`), every live option fails parsing, and the venue appears to have no active chain | I57 covers legacy and suffixed symbols; the six-dataset live smoke must return a 30d row with a full chain before scheduler activation | R6.2 |
 | F61 | COT report date is treated as publication time or hard-coded as Tuesday | A backtest sees trader positions before CFTC's Friday release, or rejects official holiday-week rows such as 2018-12-24 because the reference date moved to Monday | I58 preserves the source reference date, assigns DST-aware following-Friday 15:30 ET publication with a minimum two-day lag, and tests both mapping and lag | R6.1, R6.2 |
 | F62 | A Cboe CSV parser assumes the first line is the header or treats a discontinued archive as current | The total put/call preamble yields plausible empty data, or a series ending 2019-10-04 appears healthy in current research | I59 searches for the exact header, fails closed on drift, enforces +1-day publication, and documents the official archive ceiling | R6.1, R6.2 |
+| F63 | A paper-order lifecycle trusts local time, an outer success code, or derivative-only fill subscriptions | A valid Demo key fails intermittently, a nested venue rejection is reported as accepted, or the Spot hedge fills without local accounting while the strategy appears healthy | I60 fixed-host clock-sync, nested-code, tag/tick, Spot-fill, and authenticated round-trip guards | R5.1, R5.2, R7.2 |
+| F64 | An unattended tick collector exhausts the workstation disk | Collection looks healthy until Parquet/log writes fail or the host becomes unstable, losing the newest buffered rows | I61 chunked writes plus a tested 10 GiB free-space stop; task/log/disk checks in RUNBOOK | — |
+| F65 | A delayed macro observation is joined to the event/decision date, or business-day coverage is divided by all calendar days | A strategy sees data before publication or an otherwise complete weekday series fails an unreachable coverage gate; both can look like legitimate economic results | I62 publication-time/t+1 regression and E-089/E-090 source/held-day census; the immutable E-072 definition remains historical evidence, not reusable implementation | R5.3, R6.1, R6.2 |
+| F66 | A paginated time-bucket API repeats an inclusive or floored page-boundary bucket | The database silently overwrites one key while provenance reports too many fetched/inserted rows, making coverage and ingestion accounting disagree | I63 adapter-boundary and shared-store duplicate-key regressions | R6.2 |
+| F67 | Active asset legs are inferred as independently justified statistical-power breadth | A correlated BTC/ETH or multi-name book receives an artificially low minimum detectable Sharpe, incorrectly passes Stage 2, and exposes an ineligible Stage-3 result | I64 explicit pre-DB breadth contract; post-run E-091/E-092/E-093 breadth-1 reconciliation | R6.3, R7.4 |
+| F68 | A destructive API accepts path traversal, binds remotely without credentials, exposes a DSN in job status, or uses a secret transport its child cannot consume | Remote input can delete a parent data directory, unauthenticated clients reach internal controls, DB credentials persist in API responses, or every PostgreSQL/market backtest exits before loading data | I65 path/bind/parent-child transport regressions and loopback-only Compose port | — |
+| F69 | Telegram command polling trusts any bot sender or resets risk state without confirmation | An unknown user can halt trading or clear a legitimate hard/soft stop and restore full size multipliers | I66 configured-chat and reset-confirmation regression | R7.2 |
+| F70 | A demo smoke shares live-labeled exchange credentials | A mode/config mistake gives a connectivity-only script access to a real-trade-permission key | I67 demo-only environment names and fail-closed live-only fixture | R7.2 |
 
 ## How to add a failure mode
 

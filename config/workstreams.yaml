@@ -3,6 +3,15 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Whole-repo optimization audit (2026-08-03)
+    status: active
+    milestones: [audit, ungated_security, remaining_ungated, protected_fixes]
+    current: remaining_ungated
+    state: "F1, WS-A A1-A5, and B1 are implemented with fail-closed Telegram/API/path/DSN/Compose/demo-credential regressions; no trading rule or deployment gate changed."
+    next: "Review WS-A A6, WS-B B2-B5, and WS-D/E/F3-F8. WS-C and F2 still require explicit per-item user authorization and Change Manifests where marked."
+    links: [tasks/2026-08-03-project-optimization-codex-plan.md, tasks/2026-08-03-f1-wsa-b1-session-handoff.md]
+    updated: 2026-08-03
+
   - name: Project audit and hardening
     status: active
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
