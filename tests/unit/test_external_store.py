@@ -144,3 +144,23 @@ async def test_default_upsert_still_updates_all_columns():
     assert record["fields"] == {"trade_count": 4}
     assert record["quality_status"] == "validated"
     assert record["raw_payload"] == {"changed": True}
+
+
+@pytest.mark.asyncio
+async def test_batch_duplicate_key_counts_one_insert_and_persists_last_row():
+    observed_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    records = {}
+    store = ExternalDataStore(_Pool(records))
+
+    stats = await store.upsert_observations(
+        "duplicate_dataset",
+        [
+            _row(observed_at, value_num=1.0, raw_payload={"page": 1}),
+            _row(observed_at, value_num=2.0, raw_payload={"page": 2}),
+        ],
+    )
+
+    assert stats == {"rows": 1, "inserted": 1, "updated": 0}
+    assert records[("duplicate_dataset", observed_at)]["value_num"] == 2.0
+    assert records[("duplicate_dataset", observed_at)]["raw_payload"] == {"page": 2}
+    assert records[("duplicate_dataset", observed_at)]["ingested_at"] == 1

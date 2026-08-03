@@ -19,6 +19,7 @@ from okx_quant.data.external_clients import (
     BinanceOIClient,
     CBOEClient,
     CFTCCOTClient,
+    CoinMetricsCommunityClient,
     CrossVenueOptionsIVClient,
     DeribitDVOLClient,
     DeribitFundingClient,
@@ -31,6 +32,7 @@ from okx_quant.data.external_clients import (
     NasdaqDataLinkClient,
     OKXLiquidationClient,
     YFinanceClient,
+    WikimediaPageviewsClient,
 )
 from okx_quant.data.external_store import ExternalDataStore
 
@@ -144,6 +146,10 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
         return CBOEClient(
             publish_lag_days=int(cfg.get("publish_lag_days", 1)),
         )
+    if adapter == "coinmetrics_community":
+        return CoinMetricsCommunityClient(
+            publish_lag_days=int(cfg.get("publish_lag_days", 1)),
+        )
     if adapter == "deribit_dvol":
         return DeribitDVOLClient()
     if adapter == "deribit_historical_volatility":
@@ -174,6 +180,14 @@ def _build_client(dataset_id: str, cfg: dict[str, Any]):
         return NasdaqDataLinkClient(api_key=api_key, publish_lag_days=int(cfg.get("publish_lag_days", 1)))
     if adapter == "yfinance":
         return YFinanceClient(publish_lag_days=int(cfg.get("publish_lag_days", 1)))
+    if adapter == "wikimedia_pageviews":
+        return WikimediaPageviewsClient(
+            publish_lag_days=int(cfg.get("publish_lag_days", 1)),
+            user_agent=str(
+                cfg.get("request_user_agent")
+                or "quant_strategy/1.0 (https://github.com/Frisk0316/quant_strategy)"
+            ),
+        )
     raise click.ClickException(f"{dataset_id} has unsupported adapter: {adapter}")
 
 
@@ -204,6 +218,15 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
             source_url=str(cfg["source_url"]),
             series=str(cfg["series"]),
             kind=str(cfg["kind"]),
+            start=start,
+            end=end,
+        )
+    if adapter == "coinmetrics_community":
+        return client.fetch(
+            asset=str(cfg["asset"]),
+            metric=str(cfg["metric"]),
+            frequency=str(cfg.get("metric_frequency") or "1d"),
+            unit=str(cfg.get("unit") or "metric_value"),
             start=start,
             end=end,
         )
@@ -271,6 +294,15 @@ def _fetch_rows(dataset_id: str, cfg: dict[str, Any], start: Optional[datetime],
             start=start,
             end=end,
             interval=str(cfg.get("interval") or "1d"),
+        )
+    if adapter == "wikimedia_pageviews":
+        return client.fetch(
+            project=str(cfg.get("project") or "en.wikipedia.org"),
+            article=str(cfg.get("article") or "Bitcoin"),
+            access=str(cfg.get("access") or "all-access"),
+            agent=str(cfg.get("agent") or "user"),
+            start=start,
+            end=end,
         )
     return []
 

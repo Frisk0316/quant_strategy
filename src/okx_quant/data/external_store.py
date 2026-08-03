@@ -144,7 +144,10 @@ class ExternalDataStore:
     ) -> dict[str, int]:
         if not rows:
             return {"rows": 0, "inserted": 0, "updated": 0}
-        before = await self._existing_observed_at(dataset_id, [row["observed_at"] for row in rows])
+        rows_by_time = {_as_utc_dt(row["observed_at"]): row for row in rows}
+        # Match PostgreSQL's durable batch behavior explicitly: the last row for a key wins.
+        rows = list(rows_by_time.values())
+        before = await self._existing_observed_at(dataset_id, list(rows_by_time))
         payload = [
             (
                 dataset_id,
@@ -187,7 +190,7 @@ class ExternalDataStore:
                 """,
                 payload,
             )
-        updated = sum(1 for row in rows if _as_utc_dt(row["observed_at"]) in before)
+        updated = len(before)
         inserted = len(rows) - updated
         return {"rows": len(rows), "inserted": inserted, "updated": updated}
 

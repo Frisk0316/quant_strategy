@@ -62,7 +62,7 @@ class BinanceOIClient:
                 break
             cursor_ms = next_cursor
 
-        rows: list[dict[str, Any]] = []
+        rows_by_time: dict[datetime, dict[str, Any]] = {}
         for item in payload:
             try:
                 observed_at = datetime.fromtimestamp(int(item["timestamp"]) / 1000, tz=timezone.utc)
@@ -76,7 +76,7 @@ class BinanceOIClient:
             contracts = _to_float(item.get("sumOpenInterest"))
             if notional is None:
                 continue
-            rows.append({
+            row = {
                 "observed_at": observed_at,
                 "published_at": observed_at,
                 "value_num": notional,
@@ -91,8 +91,10 @@ class BinanceOIClient:
                 },
                 "quality_status": "raw",
                 "raw_payload": item,
-            })
-        return sorted(rows, key=lambda row: row["observed_at"])
+            }
+            # Binance can repeat the boundary bucket after startTime=max+1ms.
+            rows_by_time[observed_at] = row
+        return sorted(rows_by_time.values(), key=lambda row: row["observed_at"])
 
 
 def _as_utc(value: datetime) -> datetime:

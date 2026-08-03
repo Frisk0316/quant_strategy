@@ -323,6 +323,79 @@ datasets:
     adapter: fear_greed
     required: true
 
+  wiki_pageviews_bitcoin_en:
+    provider: wikimedia
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Bitcoin/daily
+    attribution: "Data source: Wikimedia Analytics API, English Wikipedia Bitcoin pageviews"
+    adapter: wikimedia_pageviews
+    project: en.wikipedia.org
+    article: Bitcoin
+    access: all-access
+    agent: user
+    request_user_agent: "quant_strategy/1.0 (https://github.com/Frisk0316/quant_strategy)"
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Daily human-user pageviews; start is inclusive and end is exclusive. value_num is views."
+
+  cm_btc_active_addresses:
+    provider: coinmetrics_community
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://community-api.coinmetrics.io/v4/timeseries/asset-metrics
+    attribution: "Data source: Coin Metrics Community API"
+    adapter: coinmetrics_community
+    asset: btc
+    metric: AdrActCnt
+    metric_frequency: 1d
+    unit: active_addresses
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Daily BTC active-address count; Community catalog support is verified before each fetch."
+
+  cm_eth_active_addresses:
+    provider: coinmetrics_community
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://community-api.coinmetrics.io/v4/timeseries/asset-metrics
+    attribution: "Data source: Coin Metrics Community API"
+    adapter: coinmetrics_community
+    asset: eth
+    metric: AdrActCnt
+    metric_frequency: 1d
+    unit: active_addresses
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Daily ETH active-address count; Community catalog support is verified before each fetch."
+
+  cm_usdt_price_usd:
+    provider: coinmetrics_community
+    frequency: daily
+    value_kind: scalar
+    max_age_seconds: 259200
+    source_url: https://community-api.coinmetrics.io/v4/timeseries/asset-metrics
+    attribution: "Data source: Coin Metrics Community API"
+    adapter: coinmetrics_community
+    asset: usdt
+    metric: PriceUSD
+    metric_frequency: 1d
+    unit: USD
+    publish_lag_days: 1
+    fail_on_empty_fetch: true
+    required: false
+    research_only: true
+    notes: "Daily USDT USD reference price; Community catalog support is verified before each fetch."
+
   cot_cme_btc:
     provider: cftc
     frequency: weekly
