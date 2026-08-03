@@ -537,8 +537,9 @@ frontend Run Backtest form -> POST /api/backtest/run -> routes_backtest.py backg
 
 Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
 momentum has a separate research-only vectorized runner and is not wired into
-the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
-does not yet run a tiny frozen replay fixture.
+the UI/API run flow or promotion gates. The `backtest-smoke` target runs
+`scripts/smoke/backtest_smoke.py`, a tiny frozen no-DB replay fixture. This is
+smoke coverage only, not promotion evidence.
 Run and sweep requests use `config/settings.yaml` primary exchange only when the
 field is omitted/blank; any explicit unknown exchange returns HTTP 400 before a
 background job is queued.

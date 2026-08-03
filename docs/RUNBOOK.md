@@ -1461,6 +1461,44 @@ $env:DIFF_VALIDATION_DB_DSN = "postgresql://user:pass@localhost:5432/quant"
 python scripts/run_source_provenance_validation.py --run-id <run_id> --engines vectorbt --validation-id <validation_id>
 ```
 
+## Windows without make
+
+From the repository root, run any supported Makefile-equivalent target through
+[`scripts/verify.ps1`](../scripts/verify.ps1). The script prints every command
+before running it and exits nonzero as soon as a command fails:
+
+```powershell
+pwsh scripts/verify.ps1 -Target <target>
+```
+
+If PowerShell 7 is not installed, the same script also runs under the built-in
+Windows PowerShell:
+
+```powershell
+powershell.exe -NoProfile -File scripts/verify.ps1 -Target <target>
+```
+
+`PYTHON`, `PYTEST`, `RUFF`, and `NODE` environment variables override the same
+tool defaults as the Makefile. The target mappings are:
+
+| Target | Equivalent command or ordered target sequence |
+| --- | --- |
+| `test-unit` | `pytest tests/unit/ -v --tb=short` |
+| `test-lab` | `pytest research/crypto-alpha-lab/tests -q -p no:cacheprovider` |
+| `test-integration` | `pytest tests/integration/ -v --tb=short` |
+| `check-config` | `python scripts/validate_pipeline.py --check-config-only` |
+| `lint` | `ruff check src/ tests/ backtesting/ scripts/` |
+| `docs-check` | `python scripts/docs/check_doc_metadata.py`<br>`python scripts/docs/check_feature_map_links.py`<br>`python scripts/docs/check_ledger_consistency.py` |
+| `docs-impact` | `python scripts/docs/check_doc_impact.py` |
+| `frontend-check` | Run `node --check` separately for `frontend/data.js`, `tweaks-panel.js`, `charts.js`, `view-config.js`, `view-backtest.js`, `view-results.js`, `view-validation.js`, `view-trades.js`, `view-glossary.js`, `view-manual.js`, `view-progress.js`, `view-ledger.js`, `view-research.js`, and `app.js`. |
+| `api-smoke` | `python scripts/smoke/api_smoke.py` |
+| `backtest-smoke` | `python scripts/smoke/backtest_smoke.py` |
+| `verify` | `lint` → `docs-check` → `frontend-check` → `check-config` → `test-unit` → `test-lab` → `api-smoke` → `backtest-smoke` |
+| `verify-full` | The complete `verify` sequence above → `test-integration` → `python scripts/validate_pipeline.py --data-dir data/ticks --inst BTC-USDT-SWAP` |
+
+The parent unit suite and the lab suite intentionally remain separate pytest
+invocations so the lab package imports do not enter the parent suite.
+
 ## Full Verification
 
 Lightweight, no-DB-oriented verification:
@@ -1694,7 +1732,7 @@ python -c "import shutil; print(round(shutil.disk_usage('C:/quant_strategy').fre
 
 ## Engine Dashboard and REST API
 
-The web UI is a React SPA served by the FastAPI engine at **`http://localhost:8080`**.
+The web UI is a Preact/htm SPA served by the FastAPI engine at **`http://localhost:8080`**.
 It starts automatically when the engine runs. No separate server command is needed.
 (For the standalone no-engine dashboard, see "Local Dev" above and `docs/UI_MAP.md`.)
 The engine API defaults to loopback. A non-loopback `API_HOST` fails startup
@@ -1704,19 +1742,14 @@ unless `API_KEY` is set. Compose additionally binds the host port to
 
 ### Views
 
-| View | URL path | Description |
-| ---- | -------- | ----------- |
-| Overview | `/` | Live equity curve, open positions, recent fills |
-| Backtest Results | `/results` | All saved runs in `results/`; click to inspect equity curve, trade log, performance stats |
-| Walk-Forward | `/walk-forward` | Per-window IS/OOS Sharpe table from the latest replay validation run |
-| CPCV | `/cpcv` | CPCV path Sharpes, DSR, PSR for the last validation run |
-| Trades | `/trades` | Live trade log with fill_px, fill_sz, fee, strategy |
-| Risk | `/risk` | Live: daily loss %, drawdown %, positions per instrument, circuit breaker status |
-| Config | `/config` | Read-only view of current `config/` YAML values |
+The left navigation changes the Preact component's internal `view` state and
+renders the selected panel in the same document. These views do not have URL
+routes; the browser location is used only to derive the WebSocket host.
 
 ### WebSocket live feed
 
-The dashboard connects to `ws://localhost:8080/api/ws` automatically. Events pushed in real-time:
+The dashboard connects to the current host at `/api/ws` automatically (for
+example, `ws://localhost:8080/api/ws`). Events pushed in real-time:
 
 - `FILL` — every fill with inst_id, side, fill_px, fill_sz, fee, strategy
 - `RISK_SNAPSHOT` — equity, drawdown, daily_loss_pct, positions every 2 seconds
