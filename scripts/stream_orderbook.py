@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import signal
 import sys
 import time
@@ -58,6 +59,9 @@ from okx_quant.signals.obi_ofi import compute_obi_features, compute_ofi, book_to
 # ── Constants ─────────────────────────────────────────────────────────────────
 WS_PUBLIC_URL = "wss://ws.okx.com:8443/ws/v5/public"
 FLUSH_EVERY   = 500       # flush buffer to Parquet every N ticks per symbol
+TRADE_FLUSH_EVERY = 2_000
+FUNDING_FLUSH_EVERY = 10
+MIN_FREE_BYTES = 10 * 1024 ** 3
 OB_DEPTH      = 10        # depth for OBI signal (5 levels with decay)
 HEARTBEAT_S   = 25        # OKX drops connection after 30s silence
 
@@ -81,13 +85,39 @@ SCHEMA = pa.schema([
     ("ask_sz",     pa.float64()),
 ])
 
+TRADE_SCHEMA = pa.schema([
+    ("ts",       pa.int64()),
+    ("trade_id", pa.string()),
+    ("price",    pa.float64()),
+    ("size",     pa.float64()),
+    ("side",     pa.string()),
+])
+
+FUNDING_SCHEMA = pa.schema([
+    ("received_ts",      pa.int64()),
+    ("funding_time",     pa.int64()),
+    ("next_funding_time", pa.int64()),
+    ("funding_rate",     pa.float64()),
+])
+
 
 class TickBuffer:
     """Accumulate tick dicts and flush to Parquet."""
 
-    def __init__(self, inst_id: str, session_tag: str) -> None:
+    def __init__(
+        self,
+        inst_id: str,
+        session_tag: str,
+        *,
+        prefix: str = "ob_ticks",
+        schema: pa.Schema = SCHEMA,
+        flush_every: int = FLUSH_EVERY,
+    ) -> None:
         self.inst_id     = inst_id
         self.session_tag = session_tag
+        self.prefix      = prefix
+        self.schema      = schema
+        self.flush_every = flush_every
         self._rows: list[dict] = []
         self._file_idx   = 0
         self._total      = 0
@@ -103,13 +133,13 @@ class TickBuffer:
     def flush(self, force: bool = False) -> None:
         if not self._rows:
             return
-        if not force and len(self._rows) < FLUSH_EVERY:
+        if not force and len(self._rows) < self.flush_every:
             return
 
         df = pd.DataFrame(self._rows)
-        table = pa.Table.from_pandas(df, schema=SCHEMA, preserve_index=False)
+        table = pa.Table.from_pandas(df, schema=self.schema, preserve_index=False)
 
-        path = self._out_dir / f"ob_ticks_{self.session_tag}_{self._file_idx:04d}.parquet"
+        path = self._out_dir / f"{self.prefix}_{self.session_tag}_{self._file_idx:04d}.parquet"
         pq.write_table(table, path, compression="snappy")
         logger.info(f"[{self.inst_id}] flushed {len(self._rows):,} ticks → {path.name}")
         self._rows = []
@@ -118,6 +148,36 @@ class TickBuffer:
     @property
     def total(self) -> int:
         return self._total
+
+
+def _trade_rows(msg: dict) -> list[dict]:
+    return [
+        {
+            "ts": int(row.get("ts", 0)),
+            "trade_id": str(row.get("tradeId", "")),
+            "price": float(row.get("px", 0)),
+            "size": float(row.get("sz", 0)),
+            "side": str(row.get("side", "")),
+        }
+        for row in msg.get("data", [])
+    ]
+
+
+def _funding_rows(msg: dict) -> list[dict]:
+    received_ts = time.time_ns() // 1_000_000
+    return [
+        {
+            "received_ts": received_ts,
+            "funding_time": int(row.get("fundingTime", 0)),
+            "next_funding_time": int(row.get("nextFundingTime", 0)),
+            "funding_rate": float(row.get("fundingRate", 0)),
+        }
+        for row in msg.get("data", [])
+    ]
+
+
+def _has_disk_capacity(path: Path) -> bool:
+    return shutil.disk_usage(path).free >= MIN_FREE_BYTES
 
 
 class BookState:
@@ -199,6 +259,27 @@ async def stream(
     session_tag = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     states  = {s: BookState(s)    for s in symbols}
     buffers = {s: TickBuffer(s, session_tag) for s in symbols}
+    trade_buffers = {
+        s: TickBuffer(
+            s,
+            session_tag,
+            prefix="trades",
+            schema=TRADE_SCHEMA,
+            flush_every=TRADE_FLUSH_EVERY,
+        )
+        for s in symbols
+    }
+    funding_buffers = {
+        s: TickBuffer(
+            s,
+            session_tag,
+            prefix="funding",
+            schema=FUNDING_SCHEMA,
+            flush_every=FUNDING_FLUSH_EVERY,
+        )
+        for s in symbols
+        if "SWAP" in s
+    }
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else float("inf")
 
     logger.info(f"Connecting to {WS_PUBLIC_URL}")
@@ -211,6 +292,9 @@ async def stream(
     while not stop_event.is_set():
         if time.monotonic() >= deadline:
             logger.info("Duration reached — stopping.")
+            break
+        if not _has_disk_capacity(DATA_DIR):
+            logger.error("Free disk below 10 GiB — stopping collector safely")
             break
 
         try:
@@ -225,9 +309,15 @@ async def stream(
                 # Subscribe: books (400-level) + trades
                 book_args  = [{"channel": "books", "instId": s} for s in symbols]
                 trade_args = [{"channel": "trades", "instId": s} for s in symbols]
+                funding_args = [
+                    {"channel": "funding-rate", "instId": s}
+                    for s in funding_buffers
+                ]
                 await ws.send(json.dumps({"op": "subscribe", "args": book_args}))
                 await ws.send(json.dumps({"op": "subscribe", "args": trade_args}))
-                logger.info("Subscribed to books + trades")
+                if funding_args:
+                    await ws.send(json.dumps({"op": "subscribe", "args": funding_args}))
+                logger.info("Subscribed to books + trades + funding-rate")
 
                 hb_task = asyncio.create_task(_heartbeat(ws))
 
@@ -253,6 +343,18 @@ async def stream(
                         channel = msg.get("arg", {}).get("channel", "")
                         inst_id = msg.get("arg", {}).get("instId", "")
 
+                        if channel == "trades" and inst_id in trade_buffers:
+                            for row in _trade_rows(msg):
+                                trade_buffers[inst_id].append(row)
+                            trade_buffers[inst_id].flush()
+                            continue
+
+                        if channel == "funding-rate" and inst_id in funding_buffers:
+                            for row in _funding_rows(msg):
+                                funding_buffers[inst_id].append(row)
+                            funding_buffers[inst_id].flush()
+                            continue
+
                         if channel != "books" or inst_id not in states:
                             continue
 
@@ -269,6 +371,10 @@ async def stream(
                         # Log stats every 30 s
                         now = time.monotonic()
                         if now - last_log >= 30:
+                            if not _has_disk_capacity(DATA_DIR):
+                                logger.error("Free disk below 10 GiB — stopping collector safely")
+                                stop_event.set()
+                                break
                             remaining = max(0, deadline - now)
                             rem_str = f"{remaining/60:.1f}min left" if duration_min > 0 else "∞"
                             for s in symbols:
@@ -293,9 +399,15 @@ async def stream(
 
     # Final flush
     logger.info("Flushing remaining buffers …")
+    for group in (buffers, trade_buffers, funding_buffers):
+        for buf in group.values():
+            buf.flush(force=True)
     for s, buf in buffers.items():
-        buf.flush(force=True)
-        logger.info(f"[{s}] total ticks collected: {buf.total:,}")
+        logger.info(
+            f"[{s}] totals: books={buf.total:,}, "
+            f"trades={trade_buffers[s].total:,}, "
+            f"funding={funding_buffers[s].total if s in funding_buffers else 0:,}"
+        )
 
     _print_summary(buffers, session_tag, symbols)
 
