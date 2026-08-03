@@ -173,28 +173,201 @@ ACCEPTANCE CRITERIA:
 (未實現虧損不觸發)、無啟動對帳、CircuitBreaker 無人餵資料、WS 靜默斷線無偵測、
 mid 取自原始 delta 而非維護中的訂單簿、`reduceOnly` 未送交易所、ctVal fallback 錯 10 倍。
 
-| # | Sev | 檔案:行 | 問題 → 後果 | 修法 |
+> 行號已於 2026-08-03 對照 `6bdafa0` 重新驗證(paper-demo 批次 `1992ac2` 動過
+> `broker.py`/`portfolio_manager.py`/`engine.py`,舊行號已失效)。
+
+| # | Sev | 檔案:行(已驗證) | 問題 → 後果 | 修法 |
 |---|-----|--------|-------------|------|
 | C1 | **high** | engine.py:339; state.py:85 | 回撤/日虧只在 on_fill 更新,`tick_risk_snapshot` 是 `pass` → 未實現虧損不觸發 5%/15% 鐵律 | 週期(每 2s)以 `positions.get_equity()`(已是 mark-to-market)餵 `dd_tracker.update`,由該迴圈觸發軟/硬停 |
 | C2 | **high** | engine.py:442-446; risk_guard.py:194; telegram:63 | 硬停/關機/`/kill` 只設旗標,不撤 resting 單、不平倉 → 全曝險無人看管 | 關機與 hard-stop:掃 `order_manager.get_pending()` 逐一撤單,hard-stop 額外(旗標控)`broker.close_all()`;加測試 |
-| C3 | **high** | broker.py:87-97 | `reduceOnly` 未送 OKX,但 RiskGuard 因它放行 kill/fat-finger/倉位上限 → 「只減倉」單可能開/翻倉 | `place_order` 帶 `reduceOnly="true"`(及 posSide);加測試斷言 kwargs 含旗標 |
+| C3 | **high** | broker.py:88-97 | `reduceOnly` 未送 OKX,但 RiskGuard 因它放行 kill/fat-finger/倉位上限 → 「只減倉」單可能開/翻倉 | `place_order` 帶 `reduceOnly="true"`(及 posSide);加測試斷言 kwargs 含旗標 |
 | C4 | **high** | broker.py:135-137 | submit 逾時(交易所已收單)回 None → 孤兒掛單、重新報價成雙倍曝險 | 區分交易所拒單 vs 傳輸例外;傳輸例外時以 clOrdId 查單對帳或撤單,鏡像 deribit_live F59 |
 | C5 | **high** | engine.py:121-126; portfolio_manager.py:349 | get_instruments 失敗即 fabricates `ctVal=0.01`(ETH 實為 0.1)→ 下單量錯 10 倍且 notional 低估 10 倍,還繞過拒絕 fallback 的守衛 | fail-closed:規格抓不到就中止/停止下單;移除 BTC/ETH 特例或改正 0.1 |
 | C6 | **high** | positions.py:51,58,81 | 無啟動對帳、`_redis` 從未連線、`load_from_okx`/`load_snapshot` 零呼叫 → 重啟後帳本歸零、reduce-only 被跳過、倉位/權益數學失真 | 啟動時 `rest.get_positions()` + `load_from_okx`(帶各標的 ctVal);Redis 真接或刪死碼與文件宣稱 |
 | C7 | **high** | market_data_handler.py:70,96,246 | `ping_interval=None` + 心跳不驗 pong + 無資料齡看門狗 → 半開連線靜默永掛,對 stale book 交易、權益凍結 | 記每 socket 最後訊息時間,>~35s 無訊息/pong 就關 socket 重連;加「資料過期即拒單」時間閘 |
 | C8 | **high** | circuit_breaker.py:36,47; market_data_handler.py:72,102; engine.py:405 | CircuitBreaker 無 caller(REST breaker 永不觸發);WS breaker 在 public 靜默殺 task、在 private 被自家 except 吞掉;引擎無 task 監督 | 由 REST/MDH 呼叫 `record_*`;MDH task 加 done-callback → `on_circuit_trip`(硬停+告警);`engine.main` 監督背景 task,任一退出視為致命 |
 | C9 | medium | positions.py:227 | `apply_cashflow` 零呼叫 → funding 結算never入帳(但旗艦策略就是 funding carry)→ PnL/回撤/日虧全少一條主要金流 | 訂閱 OKX private account/bills 或輪詢 bills,每次結算 `apply_cashflow(...,reason='funding')` 後 `dd_tracker.update` |
-| C10 | high | portfolio_manager.py:53; execution_handler.py:47; engine.py:299 | mid 取自原始 `books` delta(`bids[0][0]` 可能是深層或剛移除價)→ 權益爆量/歸零誤觸停損;維護良好的 `OkxBook` 卻沒被用 | 三個 consumer 改用 `book.mid()/best_bid()/best_ask()`;加深層-only 更新的回歸測試 |
-| C11 | medium | portfolio_manager.py:207 | funding carry 對沖腿無 mid/風控擋下時**靜默跳過** → 裸方向曝險,無告警無 journal(已列 KNOWN_ISSUES) | 依 KNOWN_ISSUES:補償/對沖對帳政策(撤或平已成交腿、journal、告警)+ 整合測試;至少 error log + RISK event |
+| C10 | high | portfolio_manager.py:53-54; execution_handler.py:49; engine.py:300 | mid 取自原始 `books` delta(`bids[0][0]` 可能是深層或剛移除價)→ 權益爆量/歸零誤觸停損;維護良好的 `OkxBook` 卻沒被用 | 三個 consumer 改用 `okx_book.py` 的 `mid()`(:122)/`best_bid()`(:108)/`best_ask()`(:115);加深層-only 更新的回歸測試 |
+| C11 | medium | portfolio_manager.py:207, 290-323 | funding carry 對沖腿無 mid/風控擋下時**靜默跳過** → 裸方向曝險,無告警無 journal(已列 KNOWN_ISSUES);另 :314 現貨腿誤用永續價定價 | **完整設計見下方「C11 設計」節**(前置定價修補 + 四層方案 + 驗收條件) |
 | C-x | low | run_demo.py:20; engine.py:501 | demo gate 是可被 `python -O` 移除的 assert;`python -m engine` 可直接跑 config 內的 live | 改 `if cfg.system.mode!='demo': sys.exit(...)`;`engine.main` 非 `allow_live=True` 拒 mode==live |
 
 **額外(附帶但屬 correctness/安全鄰接):**
 - C-vol `sizing.py:51`(medium):vol targeting 用 `sqrt(365*24)` 年化,但 `update_return` 只在成交時餵「成交間報酬」→ 波動估計依交易頻率失真、下單量錯一個 regime-dependent 倍數。改以固定時距(如 1m/1h close-to-close)取樣餵入。
 - C-login `market_data_handler.py:257`(medium, KNOWN F29 鄰接):private WS 登入用原始本地時間簽章,忽略已同步的 clock offset;>30s 漂移即登入失敗且 F29 使 `run_private` 永久返回 → 私有成交/倉位更新全斷。把 REST clock offset 傳入 `_ws_login`。
 
-### 建議執行順序(逐項授權後)
-先做「失效方向錯誤、可致裸曝險」的:**C5 → C3 → C2 → C6 → C1 → C7 → C8**,
-再 C10 → C4 → C9 → C11。每項一個 Change Manifest。
+### 建議執行順序 — 2026-08-03 修正版(取代原順序)
+
+> **原順序 `C5 → C3 → C2 → C6 → C1 → C7 → C8` 已作廢。**
+> Claude 覆核時發現兩個相依性缺陷,其中一個會讓系統比現狀更危險。
+> 行號皆已對照 `6bdafa0` 重新驗證。
+
+#### 缺陷一(嚴重):C1 必須排在 C10 之後
+
+C1 要每 ~2 秒用 `positions.get_equity()` 餵 drawdown tracker;但在 C10 修好前,
+mid 取自原始 WS delta([portfolio_manager.py:53-54](src/okx_quant/portfolio/portfolio_manager.py#L53-L54)),
+`bids[0][0]` 可能是深層價或剛被移除的 `sz=0` 價位。先做 C1 等於**把一個會亂跳
+的權益數字以 2 秒頻率接到硬停邏輯上** → 誤觸發硬停(停掉健康部位)或反向遮蔽
+真實回撤。這比現狀(只在成交時更新)更糟:現狀是遲鈍,那個是會自己亂動手。
+
+#### 缺陷二:C2 必須與 close_all 修補綁在一起
+
+C2 會呼叫 [`broker.close_all()`](src/okx_quant/execution/broker.py#L153),但該函式
+`instType="SWAP"` 寫死(:159)、`mgnMode="cross"` 寫死(:167)、整個迴圈包在單一
+try 內(:170,一次例外就放棄剩餘部位)。雙腿 funding 帳本**持有現貨**,close_all
+根本不會碰到現貨腿 → 做出一個「看起來有平倉、實際沒平乾淨」的硬停。假保證比
+沒有保證更危險。
+
+#### 四階段順序(每項一個 Change Manifest,逐項授權)
+
+**Phase 1 — 先把輸入弄對(不新增任何自動動作)**
+
+| 順序 | 項目 | 錨點(已驗證) |
+| --- | --- | --- |
+| 1 | C5 ctVal fail-closed | `engine.py:114`(live 預設)、`engine.py:124/126`(fallback);`portfolio_manager.py:134/274` 與 `_fallback_ct_val`(:345-350) |
+| 2 | C10 改用維護中的訂單簿取 mid | `portfolio_manager.py:53-54`、`execution_handler.py:49`;改用 `okx_book.py` 的 `mid()`(:122)/`best_bid()`(:108)/`best_ask()`(:115) |
+| 3 | C6 啟動對帳 | `positions.py:58` `load_from_okx`、:81 `load_snapshot`(皆零呼叫);`_redis` 於 :51 設 None 後從未被賦值 |
+| 4 | **C11 Layer 1 pre-flight**(見下節) | `portfolio_manager.py:290-323` |
+
+C11 的 Layer 1 刻意提前:它很小、純預防、且立刻關掉最大的裸露路徑。
+
+**Phase 2 — 讓交易所真正執行程式已經假設的約束**
+
+| 順序 | 項目 | 錨點 |
+| --- | --- | --- |
+| 5 | C3 送出 `reduceOnly` | `broker.py:88` 的 `place_order` kwargs |
+| 6 | close_all 修補(C2 的前置) | `broker.py:153/159/167/170` |
+
+**Phase 3 — 輸入與原語可信之後,才接上守衛**
+
+| 順序 | 項目 | 錨點 |
+| --- | --- | --- |
+| 7 | C7 資料過期看門狗 + 過期拒單 | `market_data_handler.py:70/96`(`ping_interval=None`)、:246-252(`_heartbeat` 不驗 pong) |
+| 8 | C1 mark-to-market 回撤 | `engine.py:339`(目前唯一的 `dd_tracker.update`) |
+| 9 | C2 硬停撤單 + 平倉 | `engine.py:445-446`(只 cancel task,不撤單不平倉) |
+| 10 | C8 breaker 接線 + task 監督 | `circuit_breaker.py:36/47`(**已再次確認零呼叫**);`market_data_handler.py:72`(在 try 外→靜默殺 task)與 :102(在 try 內→被自家 except 吞掉) |
+
+**Phase 4 — 帳務完整性**
+
+| 順序 | 項目 | 錨點 |
+| --- | --- | --- |
+| 11 | C4 孤兒單對帳 | `broker.py:135`(任何例外都回 None) |
+| 12 | C9 funding 現金流入帳 | `positions.py:227` `apply_cashflow`(零呼叫) |
+| 13 | C11 Layer 2-3 | 見下節 |
+
+**保留自原順序:** C3 排在 C6 之前是對的——C3 讓交易所端強制 only-shrink,正好
+在 C6 施工期間防住「本地帳本過期」這個風險。
+
+**C5 是否該第一:** C5 只在 `get_instruments` 失敗時觸發(罕見但單次後果重:ETH
+下單量 10 倍且 notional 低估 10 倍,連 fat-finger 上限都攔不住);C10 每個 tick 都
+錯但在 C1 落地前 blast radius 較小。兩者互換可接受,不強制。
+
+---
+
+### C11 — funding cross-leg reconciliation 設計(回覆 Codex 提問)
+
+#### 前置修補:現貨腿目前用永續價格掛單(新發現,必須先修)
+
+[portfolio_manager.py:314](src/okx_quant/portfolio/portfolio_manager.py#L314):
+
+```python
+spot_price = self._resolve_price(spot_symbol, self._resolve_price(sig.inst_id))
+```
+
+而 `_resolve_price`(:104-107)是 **`preferred` 優先**:
+
+```python
+if preferred and preferred > 0:
+    return preferred
+return self._last_mids.get(inst_id, 0.0)
+```
+
+所以只要永續 mid 存在,現貨腿就用**永續的價格**掛單,`spot_symbol` 自己的 mid
+完全不會被讀取。這不是「找不到時的 fallback」,是「有就優先用」。
+
+這直接造成對沖腿失敗:正價差時永續價高於現貨,以永續價掛現貨**買單**會穿過
+現貨價差 → `post_only` 被拒 → **對沖腿沒送出、主腿已成交 → 裸方向曝險**。
+funding carry 的利潤只有幾 bps,腿價錯掉就吃光。
+
+**修法:** 現貨腿改用現貨自己的 book 定價。**這必須先修**,否則下面 Layer 1 驗證
+的是一個不是現貨真實價格的數字。
+
+#### 目前的四條靜默失敗路徑
+
+流程是**主腿先送、對沖腿後送**([:100-102](src/okx_quant/portfolio/portfolio_manager.py#L100-L102)),
+且對沖腿有四條路徑靜默跳過,四種情況主腿**都已送出**,且無 log、無告警、無 journal:
+
+| # | 觸發條件 | 位置 |
+| --- | --- | --- |
+| 1 | 對沖標的無 mid → `price <= 0` | `:207` 靜默 `return` |
+| 2 | metadata 缺 `spot_symbol` | `:310-312` 靜默 `return` |
+| 3 | 對沖腿自己的 RiskGuard 檢查擋下 | `:261` |
+| 4 | 尺寸 `ROUND_DOWN` 後歸零 | `_compute_order_quantity`(`:277` 起) |
+
+第五個結構性問題:**兩腿無關聯識別**,各自 `uuid4().hex[:32]`,事後無從查詢兄弟腿
+狀態,重啟後無法重建配對。
+
+#### 設計原則:不追求 atomicity,追求「有界、可偵測、可補償」
+
+兩張分開的交易所訂單本質上無法原子化。目標改為:不對稱窗口是有界的、被偵測到
+的、有明確補償動作。
+
+**Layer 1 — Pre-flight 驗證(Phase 1 就做,價值/成本比最高)**
+
+送出**任何一條腿之前**,先驗證所有腿都可送出:兩邊都有夠新的 mid(帶時效上限,
+與 C7 共用)、尺寸格式化後皆非零、皆通過 RiskGuard、規格齊備。任一不過 →
+**一張都不送**,記 ERROR + 發 RISK event。
+
+這一層單獨關掉上表全部四條路徑。對 carry 策略而言「不交易」永遠是安全方向。
+
+**Layer 2 — 腿的關聯識別**
+
+同組腿共用 `group_id`,編進 clOrdId(OKX 允許 32 字元英數,例如
+`g` + 16 hex group + 8 hex leg)並存進 OrderManager。沒有這層 Layer 3 做不出來,
+重啟後也無法重建配對。
+
+**Layer 3 — 成交後對帳與補償**
+
+週期性檢查每個未平組:
+
+- 兩腿都成交 → 平衡,結案
+- 一腿成交、兄弟腿仍掛著 → 等到期限,逾時則撤兄弟腿並平掉已成交腿
+- 一腿成交、兄弟腿被拒/不存在 → **補償平倉**,journal + 告警
+- 兩腿部分成交且數量不等 → 把多的那腿削到相等
+
+**政策明確採「拆解」而非「追價」。** funding carry 只有兩腿同時存在才賺得到錢;
+追價完成配對等於把對沖套利變成進場時點的方向性賭注,那不是本策略的 edge。
+
+**Layer 4 — 報表與告警**
+
+每次補償動作寫 journal、critical 等級告警,並把「未配對腿事件次數」納入 shadow
+報表作為**晉級 gate 指標**,而不只是 log。
+
+**相依性:** Layer 3 跨重啟要有意義需要 C6;PnL 要誠實需要 C9。故 Layer 1
+(+前置定價修補)排 Phase 1,Layer 2-3 排 Phase 4。
+
+#### C11 驗收條件(binary)
+
+- [ ] 現貨腿使用 `spot_symbol` 自己的 mid 定價;有測試證明永續 mid 存在時不再被優先採用
+- [ ] 四條靜默路徑各有一個測試:對沖腿不可送出時**主腿也不送出**
+- [ ] 任一腿被跳過時產生 ERROR log + RISK event(可被測試觀察)
+- [ ] 同組兩腿共用可查詢的 `group_id`
+- [ ] 單腿成交且兄弟腿失敗時,補償平倉被觸發並寫入 journal(整合測試)
+- [ ] 未配對腿事件計數出現在 shadow 報表
+
+---
+
+### WS-C 通則(給 Codex)
+
+- **不要整批授權、不要整批實作。** 逐項取得使用者授權,每項一個 Change Manifest
+  (`docs/CHANGE_MANIFEST_TEMPLATE.md`)+ `python scripts/docs/check_doc_impact.py --strict`。
+- Phase 3 的每一項都是「把自動動作接到風控上」。若輸入尚未修好就接線,失效方向
+  是**會自己動手停掉交易或平掉部位**——所以 Phase 1→2→3 的順序不可跳。
+- 每項需更新 `docs/FAILURE_MODES.md` / `docs/INVARIANTS.md` 並附守護測試。
+- 修完**不得**宣稱 live/demo/shadow 就緒;仍受 `docs/ai_collaboration.md` gate 管。
+- paper-demo 批次(`1992ac2`)已經改過 `broker.py`/`portfolio_manager.py`/
+  `engine.py`,**不要重做**它已完成的部分:巢狀 `sCode` 驗證、`tag` 淨化、
+  價格 tick 對齊(買 `ROUND_DOWN` / 賣 `ROUND_CEILING`)、SPOT `tdMode=cash`、
+  private `orders` 頻道改 `ANY`。C4(逾時孤兒單)**仍未解決**。
 
 ---
 
