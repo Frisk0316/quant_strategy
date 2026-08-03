@@ -21,6 +21,8 @@ async def test_engine_server_rejects_remote_bind_without_api_key(tmp_path, monke
 
 def test_standalone_sensitive_routes_use_api_key(tmp_path, monkeypatch):
     monkeypatch.setenv("API_KEY", "unit-key")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(run_server, "_db_dsn", lambda: None)
     app = run_server.create_app(tmp_path, Path("frontend"))
     client = TestClient(app)
 
