@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from okx_quant.api import routes_backtest
-from okx_quant.api.server import run_api_server
+from okx_quant.api.server import create_app, run_api_server
 from scripts import backtest_ohlcv_rotation
 from scripts import run_server
+
+
+def _engine_client(tmp_path: Path, *, host: str = "127.0.0.1") -> TestClient:
+    frontend = tmp_path / "frontend"
+    frontend.mkdir(exist_ok=True)
+    (frontend / "index.html").write_text("<html></html>", encoding="utf-8")
+    results = tmp_path / "results"
+    results.mkdir(exist_ok=True)
+    return TestClient(create_app(MagicMock(), results, frontend, host=host))
 
 
 @pytest.mark.asyncio
@@ -17,6 +28,74 @@ async def test_engine_server_rejects_remote_bind_without_api_key(tmp_path, monke
 
     with pytest.raises(RuntimeError, match="API_KEY is required"):
         await run_api_server(None, tmp_path, tmp_path, host="0.0.0.0")  # type: ignore[arg-type]
+
+
+def test_engine_manual_and_progress_routes_require_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("API_KEY", "unit-key")
+    client = _engine_client(tmp_path)
+
+    assert client.get("/api/manual").status_code == 401
+    assert client.get("/api/progress").status_code == 401
+
+
+def test_non_ascii_auth_header_returns_401(tmp_path, monkeypatch):
+    monkeypatch.setenv("API_KEY", "unit-key")
+    client = _engine_client(tmp_path)
+
+    response = client.get("/api/manual", headers=[(b"x-api-key", b"\xff")])
+
+    assert response.status_code == 401
+
+
+def test_websocket_uses_protocol_header_not_query_string(tmp_path, monkeypatch):
+    monkeypatch.setenv("API_KEY", "unit-key")
+    client = _engine_client(tmp_path)
+
+    with client.websocket_connect("/api/ws?api_key=unit-key") as websocket:
+        with pytest.raises(WebSocketDisconnect) as rejected:
+            websocket.receive_text()
+    assert rejected.value.code == 4001
+
+    with client.websocket_connect(
+        "/api/ws",
+        headers={"Sec-WebSocket-Protocol": "unit-key"},
+    ):
+        pass
+
+
+def test_remote_websocket_without_api_key_closes_4001(tmp_path, monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    client = _engine_client(tmp_path, host="0.0.0.0")
+
+    with client.websocket_connect("/api/ws") as websocket:
+        with pytest.raises(WebSocketDisconnect) as rejected:
+            websocket.receive_text()
+
+    assert rejected.value.code == 4001
+
+
+@pytest.mark.parametrize("origins", ["*", "dashboard.example.com"])
+def test_credentialed_cors_rejects_wildcard_or_missing_scheme(tmp_path, monkeypatch, origins):
+    monkeypatch.setenv("ALLOWED_ORIGINS", origins)
+
+    with pytest.raises(RuntimeError, match="credentialed CORS origins"):
+        _engine_client(tmp_path)
+
+
+def test_cors_allows_only_dashboard_methods_and_headers(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://dashboard.example.com")
+    client = _engine_client(tmp_path)
+    headers = {
+        "Origin": "https://dashboard.example.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type, X-API-Key, X-Research-Action",
+    }
+
+    assert client.options("/api/live/status", headers=headers).status_code == 200
+    assert client.options(
+        "/api/live/status",
+        headers={**headers, "Access-Control-Request-Method": "PATCH"},
+    ).status_code == 400
 
 
 def test_standalone_sensitive_routes_use_api_key(tmp_path, monkeypatch):
