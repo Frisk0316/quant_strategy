@@ -11,6 +11,7 @@ import logging
 import mimetypes
 import os
 import secrets
+from ipaddress import ip_address
 from pathlib import Path
 
 import uvicorn
@@ -41,6 +42,20 @@ logger = logging.getLogger(__name__)
 
 def _api_key() -> str:
     return os.environ.get("API_KEY", "")
+
+
+def is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def require_remote_api_key(host: str) -> None:
+    if not is_loopback_host(host) and not _api_key():
+        raise RuntimeError("API_KEY is required for a non-loopback API bind")
 
 
 async def verify_api_key(x_api_key: str = Header(default="")) -> None:
@@ -170,13 +185,15 @@ async def run_api_server(
     state: EngineState,
     results_dir: Path,
     frontend_dir: Path,
-    host: str = "0.0.0.0",
+    host: str | None = None,
     port: int = 8080,
 ) -> None:
     """
     Coroutine — await this inside engine.main() as an asyncio.create_task().
     Never call uvicorn.run() here; that would create a new event loop.
     """
+    host = host or os.environ.get("API_HOST") or "127.0.0.1"
+    require_remote_api_key(host)
     app = create_app(state, results_dir, frontend_dir)
     config = uvicorn.Config(
         app=app,

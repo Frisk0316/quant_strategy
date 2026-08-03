@@ -465,8 +465,6 @@ def _run_ohlcv_rotation_job(
         ] + list(req.universe or [])
         if req.fill_all_signals:
             cmd.append("--fill-all-signals")
-        if backend == "postgres" and dsn:
-            cmd.extend(["--dsn", dsn])
         cmd.extend(["--exchange", exchange])
         if req.start:
             cmd.extend(["--start", req.start])
@@ -481,6 +479,8 @@ def _run_ohlcv_rotation_job(
         })
         env = os.environ.copy()
         env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        if backend == "postgres" and dsn:
+            env["DATABASE_URL"] = dsn
         _run_jobs[job_id]["progress"] = 30
         # Popen + communicate (not subprocess.run) so /run/cancel can terminate it.
         proc = subprocess.Popen(

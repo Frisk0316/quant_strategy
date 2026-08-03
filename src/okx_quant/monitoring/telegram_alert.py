@@ -46,6 +46,8 @@ class TelegramMonitor:
                 for update in data.get("result", []):
                     self._last_update_id = update["update_id"]
                     msg = update.get("message", {})
+                    if str(msg.get("chat", {}).get("id")) != self._chat_id:
+                        continue
                     text = msg.get("text", "").strip().lower()
                     await self._handle_command(text, risk_guard, positions)
             except asyncio.CancelledError:
@@ -75,11 +77,14 @@ class TelegramMonitor:
                 f"Kill: {kill}"
             )
             await self.send_alert(status, level="info")
-        elif text == "/reset":
+        elif text == "/reset confirm":
             risk_guard.reset()
             await self.send_alert("RiskGuard reset by operator.", level="warning")
+        elif text == "/reset":
+            await self.send_alert("Confirmation required: /reset confirm", level="warning")
         elif text == "/help":
             await self.send_alert(
-                "/kill — hard stop all\n/status — current equity+DD\n/reset — manual reset\n/help — this message",
+                "/kill — hard stop all\n/status — current equity+DD\n"
+                "/reset confirm — manual reset\n/help — this message",
                 level="info",
             )

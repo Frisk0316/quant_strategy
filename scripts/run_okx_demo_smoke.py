@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from decimal import Decimal, ROUND_CEILING, ROUND_DOWN
@@ -11,12 +12,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from dotenv import dotenv_values
+
 from okx_quant.core.config import load_config
 from okx_quant.data.rest_client import OKXRestClient
 from okx_quant.execution.broker import OKXBroker
 
 
 _PLACEHOLDERS = {"your_api_key_here", "your_secret_here", "your_passphrase_here"}
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
+
+def _demo_credentials(env_file: str | Path = _ENV_FILE) -> tuple[str, str, str]:
+    values = dotenv_values(env_file) if env_file and Path(env_file).exists() else {}
+    names = ("OKX_DEMO_API_KEY", "OKX_DEMO_SECRET", "OKX_DEMO_PASSPHRASE")
+    return tuple(str(os.environ.get(name) or values.get(name) or "") for name in names)
 
 
 def _data(response: dict, operation: str) -> list[dict]:
@@ -32,20 +42,23 @@ def _aligned(value: Decimal, step: Decimal, rounding: str) -> Decimal:
     return (value / step).to_integral_value(rounding=rounding) * step
 
 
-async def smoke(inst_id: str) -> None:
-    cfg = load_config()
+def _resting_buy_price(bid: Decimal, tick_size: Decimal) -> Decimal:
+    price = _aligned(bid * Decimal("0.999"), tick_size, ROUND_DOWN)
+    if price <= 0 or price >= bid:
+        raise RuntimeError("could not derive a positive below-market demo price")
+    return price
+
+
+async def smoke(inst_id: str, *, env_file: str | Path = _ENV_FILE) -> None:
+    cfg = load_config(require_secrets=False)
     if not cfg.is_demo():
         raise RuntimeError(f"blocked: config mode is {cfg.system.mode!r}, expected 'demo'")
 
-    credentials = (
-        cfg.secrets.okx_api_key,
-        cfg.secrets.okx_secret,
-        cfg.secrets.okx_passphrase,
-    )
+    credentials = _demo_credentials(env_file)
     if any(not value or value.strip().lower() in _PLACEHOLDERS for value in credentials):
         raise RuntimeError(
             "blocked-pending-user-key: set a valid OKX Demo Trading "
-            "OKX_API_KEY/OKX_SECRET/OKX_PASSPHRASE"
+            "OKX_DEMO_API_KEY/OKX_DEMO_SECRET/OKX_DEMO_PASSPHRASE"
         )
 
     rest = OKXRestClient(*credentials, demo=True)
@@ -75,7 +88,7 @@ async def smoke(inst_id: str) -> None:
         market_px = Decimal(ticker_rows[0].get("bidPx") or ticker_rows[0]["last"])
         tick_sz = Decimal(spec["tickSz"])
         lot_sz = Decimal(spec["lotSz"])
-        price = _aligned(market_px * Decimal("0.90"), tick_sz, ROUND_DOWN)
+        price = _resting_buy_price(market_px, tick_sz)
         size = _aligned(Decimal(spec["minSz"]), lot_sz, ROUND_CEILING)
         if price <= 0 or size <= 0:
             raise RuntimeError("instrument returned a non-positive price or size")

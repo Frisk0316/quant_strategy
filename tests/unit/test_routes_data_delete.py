@@ -2,10 +2,22 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import okx_quant.api.routes_data as routes_data
+
+
+@pytest.mark.parametrize("inst_id", ["%2e%2e", "%2e", "%2e%2e%2fBTC-USDT-SWAP"])
+def test_delete_pair_route_rejects_unsafe_path_before_db(inst_id):
+    app = FastAPI()
+    app.include_router(routes_data.make_data_router("postgresql://unused"), prefix="/api/data")
+
+    response = TestClient(app).delete(f"/api/data/pairs/{inst_id}")
+
+    assert response.status_code == 400
 
 
 def test_coverage_exchange_label_and_mixed_flag():
