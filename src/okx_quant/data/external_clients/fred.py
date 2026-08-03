@@ -24,7 +24,12 @@ class FREDClient:
     def _get(self, params: dict[str, Any]) -> dict[str, Any]:
         with httpx.Client(timeout=self.timeout) as client:
             response = client.get(self.endpoint, params=params)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(
+                    f"HTTP {exc.response.status_code} for {exc.request.url.path}?api_key=***"
+                ) from None
             return response.json()
 
     def fetch(

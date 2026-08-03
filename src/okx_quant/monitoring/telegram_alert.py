@@ -32,7 +32,11 @@ class TelegramMonitor:
                 json={"chat_id": self._chat_id, "text": text},
             )
         except Exception as e:
-            logger.warning("Telegram send failed", exc=str(e))
+            logger.warning(
+                "Telegram send failed: {}: {}",
+                type(e).__name__,
+                str(e).replace(self._token, "***"),
+            )
 
     async def command_loop(self, risk_guard: "RiskGuard", positions: "PositionLedger") -> None:
         """Poll for Telegram commands."""
@@ -53,7 +57,11 @@ class TelegramMonitor:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.warning("Telegram poll error", exc=str(e))
+                logger.warning(
+                    "Telegram poll error: {}: {}",
+                    type(e).__name__,
+                    str(e).replace(self._token, "***"),
+                )
                 await asyncio.sleep(5)
 
     async def _handle_command(

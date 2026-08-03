@@ -44,10 +44,14 @@ over time.
   2026-07-28):** the three order-lifecycle edge cases are fixed (F59 guards:
   `get_order_state` reconciliation, journaled cancel sweep, full resting time)
   and the fix wave re-review is clean. Residual activation-wave polish items
-  (ambiguous HTTPStatusError sweep, `from_env` `.env` anchoring, notify async
-  tightening, official shadow-helper export) are listed in
+  (ambiguous HTTPStatusError sweep, notify async tightening, official
+  shadow-helper export) are listed in
   `tasks/2026-07-28-h014-live-execution-claude-review.md` "Fix-wave outcome";
   they gate activation review, not the merge.
+- **Closed — testnet `from_env` repo-root anchoring (2026-08-03):** Binance
+  futures and Deribit private clients now resolve their default `.env` from the
+  repository root, independent of the caller's current working directory;
+  explicit `env_file` overrides and fail-closed empty-credential behavior remain.
 - **Root-caused and repaired 2026-07-29 — H-014 shadow 8-week clock stalled:**
   the journal's last valid cycle entries are 2026-07-15. The cause was NOT
   machine downtime: `quant_h014_shadow_daily` carried the default power

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -39,7 +40,7 @@ HYPOTHESIS_ID = "H-009"
 FAMILY_ID = "F-FUNDING-XS-DISPERSION"
 START = "2024-01-01"
 END = "2026-06-17"
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 EXCHANGE = "binance"
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
 STAGE2_PASS_PATH = Path(

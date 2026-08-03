@@ -63,11 +63,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _default_dsn() -> str | None:
-    return (
-        os.getenv("TIMESCALE_DSN")
-        or os.getenv("DATABASE_URL")
-        or "postgresql://quant:changeme@127.0.0.1:5432/quant"
-    )
+    return os.getenv("TIMESCALE_DSN") or os.getenv("DATABASE_URL")
 
 
 def _json_default(value):

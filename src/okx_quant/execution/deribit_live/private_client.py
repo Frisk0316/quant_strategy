@@ -46,10 +46,15 @@ class DeribitPrivateClient:
         cls,
         *,
         env: str = "test",
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = None,
         **kwargs: Any,
     ) -> "DeribitPrivateClient":
-        values = dotenv_values(env_file) if env_file and Path(env_file).exists() else {}
+        env_path = (
+            Path(env_file)
+            if env_file is not None
+            else Path(__file__).resolve().parents[4] / ".env"
+        )
+        values = dotenv_values(env_path) if env_path.exists() else {}
         client_id = os.environ.get("DERIBIT_API_KEY") or values.get("DERIBIT_API_KEY")
         client_secret = os.environ.get("DERIBIT_API_SECRET") or values.get(
             "DERIBIT_API_SECRET"

@@ -61,9 +61,9 @@ def _build_broker(
         return ShadowBroker(
             primary=SimBroker(slippage_bps=2.0, instrument_specs=instrument_specs or {}),
             mirror=OKXBroker(
-                api_key=cfg.secrets.okx_api_key,
-                secret=cfg.secrets.okx_secret,
-                passphrase=cfg.secrets.okx_passphrase,
+                api_key=cfg.secrets.okx_api_key.get_secret_value(),
+                secret=cfg.secrets.okx_secret.get_secret_value(),
+                passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
                 demo=True,
             ),
             calibration_log=calibration_log,
@@ -73,9 +73,9 @@ def _build_broker(
         return SimBroker(slippage_bps=2.0)
 
     return OKXBroker(
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         demo=cfg.is_demo(),
     )
 
@@ -89,9 +89,9 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # REST client + clock sync
     # ------------------------------------------------------------------
     rest = OKXRestClient(
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         base_url=cfg.okx.base_url,
         demo=use_demo_environment,
     )
@@ -155,10 +155,16 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # Monitoring & Telegram
     # ------------------------------------------------------------------
     telegram: Optional[TelegramMonitor] = None
-    if cfg.secrets.telegram_token and cfg.secrets.telegram_chat_id:
+    telegram_token = (
+        cfg.secrets.telegram_token.get_secret_value() if cfg.secrets.telegram_token else ""
+    )
+    telegram_chat_id = (
+        cfg.secrets.telegram_chat_id.get_secret_value() if cfg.secrets.telegram_chat_id else ""
+    )
+    if telegram_token and telegram_chat_id:
         telegram = TelegramMonitor(
-            token=cfg.secrets.telegram_token,
-            chat_id=cfg.secrets.telegram_chat_id,
+            token=telegram_token,
+            chat_id=telegram_chat_id,
         )
 
     # ------------------------------------------------------------------
@@ -267,9 +273,9 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     mdh = MarketDataHandler(
         bus=bus,
         symbols=market_symbols,
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         ws_public_url=cfg.okx.ws_public,
         ws_private_url=cfg.okx.ws_private,
         demo=use_demo_environment,

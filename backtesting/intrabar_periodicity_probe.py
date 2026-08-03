@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -494,7 +495,7 @@ async def _run(dsn: str, output_root: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dsn", default="postgresql://quant:changeme@localhost:5432/quant")
+    parser.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--output-root", type=Path, default=Path("results") / BATCH_ID)
     args = parser.parse_args()
     asyncio.run(_run(args.dsn, args.output_root))

@@ -16,6 +16,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 from bisect import bisect_left
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
@@ -728,7 +729,7 @@ def write_evidence(path: Path, payload: Mapping[str, Any]) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dsn", default="postgresql://quant:changeme@localhost:5432/quant")
+    parser.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     payload = asyncio.run(calibrate_from_db(args.dsn))

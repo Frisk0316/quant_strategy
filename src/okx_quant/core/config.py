@@ -11,7 +11,7 @@ from typing import Literal, Optional
 
 import pandas as pd
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from okx_quant.core.symbols import normalize_spot_symbol, normalize_swap_symbol
@@ -37,11 +37,11 @@ class OKXSecrets(BaseSettings):
         extra="ignore",
     )
 
-    okx_api_key: str = Field(..., alias="OKX_API_KEY")
-    okx_secret: str = Field(..., alias="OKX_SECRET")
-    okx_passphrase: str = Field(..., alias="OKX_PASSPHRASE")
-    telegram_token: Optional[str] = Field(None, alias="TELEGRAM_TOKEN")
-    telegram_chat_id: Optional[str] = Field(None, alias="TELEGRAM_CHAT_ID")
+    okx_api_key: SecretStr = Field(..., alias="OKX_API_KEY")
+    okx_secret: SecretStr = Field(..., alias="OKX_SECRET")
+    okx_passphrase: SecretStr = Field(..., alias="OKX_PASSPHRASE")
+    telegram_token: Optional[SecretStr] = Field(None, alias="TELEGRAM_TOKEN")
+    telegram_chat_id: Optional[SecretStr] = Field(None, alias="TELEGRAM_CHAT_ID")
 
 
 # ---------------------------------------------------------------------------
@@ -449,9 +449,9 @@ def load_config(
         secrets = OKXSecrets(_env_file=env_file)
     else:
         secrets = OKXSecrets.model_construct(
-            okx_api_key="",
-            okx_secret="",
-            okx_passphrase="",
+            okx_api_key=SecretStr(""),
+            okx_secret=SecretStr(""),
+            okx_passphrase=SecretStr(""),
             telegram_token=None,
             telegram_chat_id=None,
         )

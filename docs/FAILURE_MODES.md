@@ -92,6 +92,7 @@ failure modes say how it silently breaks.
 | F68 | A destructive API accepts path traversal, binds remotely without credentials, exposes a DSN in job status, or uses a secret transport its child cannot consume | Remote input can delete a parent data directory, unauthenticated clients reach internal controls, DB credentials persist in API responses, or every PostgreSQL/market backtest exits before loading data | I65 path/bind/parent-child transport regressions and loopback-only Compose port | — |
 | F69 | Telegram command polling trusts any bot sender or resets risk state without confirmation | An unknown user can halt trading or clear a legitimate hard/soft stop and restore full size multipliers | I66 configured-chat and reset-confirmation regression | R7.2 |
 | F70 | A demo smoke shares live-labeled exchange credentials | A mode/config mistake gives a connectivity-only script access to a real-trade-permission key | I67 demo-only environment names and fail-closed live-only fixture | R7.2 |
+| F71 | A credential-bearing HTTP exception is persisted or logged verbatim | A query-string API key survives in fetch-job/checkpoint storage, traceback output, or alert logs after a provider error | FRED/Nasdaq clients discard credential-bearing URLs before rethrow, ingestion redacts `api_key` before persistence, and `tests/unit/test_credential_handling.py` covers 4xx storage plus Telegram logging | — |
 
 ## How to add a failure mode
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,6 +40,13 @@ from okx_quant.data.external_store import ExternalDataStore
 
 class _EmptyFetchError(click.ClickException):
     pass
+
+
+_API_KEY_QUERY_RE = re.compile(r"(?i)(api_key=)[^&\s\"']+")
+
+
+def _redact_error(exc: Exception) -> str:
+    return _API_KEY_QUERY_RE.sub(r"\1***", str(exc))
 
 
 _OKX_LIQUIDATION_NOTES = (
@@ -353,7 +361,8 @@ async def _ingest_one(
         await store.finish_fetch_job(job_id, status="failed", error_message=str(exc))
         raise
     except Exception as exc:
-        await store.finish_fetch_job(job_id, status="failed", error_message=str(exc))
+        error = _redact_error(exc)
+        await store.finish_fetch_job(job_id, status="failed", error_message=error)
         await store.update_checkpoint(
             dataset_id,
             direction="backfill" if start else "forward",
@@ -361,7 +370,7 @@ async def _ingest_one(
             request_count=1,
             row_count=0,
             status="failed",
-            last_error=str(exc),
+            last_error=error,
         )
         raise
 

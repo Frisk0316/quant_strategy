@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict, replace
 from itertools import product
@@ -40,7 +41,7 @@ from okx_quant.strategies.s7_basis_meanrev import S7BasisMeanReversionParams
 BATCH_ID = "pipeline_batch1_20260625"
 START = "2024-01-01"
 END = "2026-06-17"
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 EXCHANGE = "binance"
 OUT = Path("results") / BATCH_ID
 REFIT_OUT = Path("results") / f"{BATCH_ID}_refit"

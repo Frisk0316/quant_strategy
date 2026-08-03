@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from pydantic import SecretStr
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
@@ -144,9 +145,9 @@ class DummyCfg:
             "Secrets",
             (),
             {
-                "okx_api_key": "test-key",
-                "okx_secret": "test-secret",
-                "okx_passphrase": "test-passphrase",
+                "okx_api_key": SecretStr("test-key"),
+                "okx_secret": SecretStr("test-secret"),
+                "okx_passphrase": SecretStr("test-passphrase"),
             },
         )()
 

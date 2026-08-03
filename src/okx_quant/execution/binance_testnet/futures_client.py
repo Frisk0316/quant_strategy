@@ -57,10 +57,15 @@ class BinanceFuturesTestnetClient:
     def from_env(
         cls,
         *,
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = None,
         **kwargs: Any,
     ) -> "BinanceFuturesTestnetClient":
-        values = dotenv_values(env_file) if env_file and Path(env_file).exists() else {}
+        env_path = (
+            Path(env_file)
+            if env_file is not None
+            else Path(__file__).resolve().parents[4] / ".env"
+        )
+        values = dotenv_values(env_path) if env_path.exists() else {}
         api_key = (
             os.environ.get("BINANCE_FUTURES_API_KEY")
             or values.get("BINANCE_FUTURES_API_KEY")

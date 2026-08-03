@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -55,7 +56,7 @@ from backtesting.xvenue_funding_spread_probe import probe_xvenue_funding_spread
 BATCH_ID = "idea_batch_20260701_taxonomy_002"
 START = "2024-01-01"
 END_EXCLUSIVE = "2026-06-17"
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
 EXPERIMENT_REGISTRY_PATH = Path("docs/EXPERIMENT_REGISTRY.md")
 STATISTICAL_POWER_INPUT_FIELDS = (

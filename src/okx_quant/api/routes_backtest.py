@@ -660,7 +660,11 @@ def _run_daily_winner_job(
         out_dir = resolve_artifact_child(results_dir, run_id, "run_id")
         out_dir.mkdir(parents=True, exist_ok=True)
         universe = list(dict.fromkeys(req.universe or DEFAULT_DAILY_WINNER_UNIVERSE))
-        dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+        from okx_quant.core.config import load_config
+
+        dsn = os.environ.get("DATABASE_URL") or load_config(
+            require_secrets=False
+        ).storage.timescale_dsn
         exchange = _normalize_exchange(req.exchange)
         # daily_winner is Postgres-only; if an exchange is selected, switch from
         # the canonical "postgres" view to the per-exchange "market" view.
@@ -1005,8 +1009,11 @@ def _turtle_params_from_request(req: "RunBacktestRequest | ParameterSweepRequest
 
 def _turtle_load_daily_candles(req: "RunBacktestRequest | ParameterSweepRequest", symbol: str) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     from backtesting.data_loader import load_candles
+    from okx_quant.core.config import load_config
 
-    dsn = os.environ.get("DATABASE_URL") or "postgresql://quant:changeme@127.0.0.1:5432/quant"
+    dsn = os.environ.get("DATABASE_URL") or load_config(
+        require_secrets=False
+    ).storage.timescale_dsn
     exchange = _normalize_exchange(req.exchange)
     load_backend = "market" if exchange else "postgres"
     attempts: list[dict[str, Any]] = []
