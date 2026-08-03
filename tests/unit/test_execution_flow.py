@@ -13,6 +13,7 @@ from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload, Sig
 from okx_quant.engine import _build_broker, _should_use_demo_environment
 from okx_quant.execution.broker import (
     Broker,
+    OKXBroker,
     SimBroker,
     ShadowBroker,
     is_shadow_mirror_cl_ord_id,
@@ -78,6 +79,45 @@ class PendingBroker(Broker):
 
     async def close_all(self) -> None:
         return None
+
+
+def test_okx_broker_sanitizes_tag_and_checks_nested_result_codes():
+    class FakeTrade:
+        def __init__(self) -> None:
+            self.orders: list[dict] = []
+
+        def place_order(self, **kwargs):
+            self.orders.append(kwargs)
+            if len(self.orders) == 1:
+                return {"code": "0", "data": [{"sCode": "0", "ordId": "demo-1"}]}
+            return {"code": "0", "data": [{"sCode": "51000", "sMsg": "bad order"}]}
+
+        def cancel_order(self, **_kwargs):
+            return {"code": "0", "data": [{"sCode": "51400"}]}
+
+    trade = FakeTrade()
+    broker = OKXBroker.__new__(OKXBroker)
+    broker._trade = trade
+    broker._strategy = ""
+    broker._demo = True
+    order = {
+        "inst_id": "BTC-USDT",
+        "td_mode": "cash",
+        "side": "buy",
+        "ord_type": "post_only",
+        "sz": "0.00001",
+        "px": "100000",
+        "cl_ord_id": "demo1",
+        "strategy": "funding_carry-test",
+    }
+
+    accepted = asyncio.run(broker.submit(order))
+    rejected = asyncio.run(broker.submit(order))
+
+    assert accepted is not None and accepted.ord_id == "demo-1"
+    assert trade.orders[0]["tag"] == "fundingcarrytest"
+    assert rejected is None
+    assert asyncio.run(broker.cancel("BTC-USDT", "demo1")) is False
 
 
 class DummyRisk:
@@ -610,6 +650,61 @@ async def test_portfolio_manager_non_long_flat_reduce_keeps_legacy_sizing():
     assert order.metadata["position_size_before"] == pytest.approx(0.37)
     assert order.metadata["reduce_only"] is False
     assert risk.calls[-1][1] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_funding_carry_queues_tick_aligned_swap_and_cash_spot_legs():
+    bus = EventBus()
+    pm = PortfolioManager(
+        bus=bus,
+        positions=PositionLedger(initial_equity=10_000.0),
+        risk_guard=DummyRisk(),
+        instrument_specs={
+            "BTC-USDT-SWAP": {
+                "ctVal": 0.01,
+                "minSz": 1,
+                "lotSz": 1,
+                "tickSz": 0.1,
+                "tdMode": "cross",
+            },
+            "BTC-USDT": {
+                "ctVal": 1.0,
+                "minSz": 0.0001,
+                "lotSz": 0.0001,
+                "tickSz": 0.1,
+                "tdMode": "cash",
+            },
+        },
+    )
+    for inst_id in ("BTC-USDT-SWAP", "BTC-USDT"):
+        market = make_market_payload(bid_px=100.0, ask_px=100.1)
+        market.inst_id = inst_id
+        pm.on_market(market)
+    signal = SignalPayload(
+        strategy="funding_carry",
+        inst_id="BTC-USDT-SWAP",
+        side="sell",
+        strength=1.0,
+        fair_value=0.0,
+        metadata={"leg": "dual", "spot_symbol": "BTC-USDT", "action": "entry"},
+    )
+
+    await pm.on_signal(Event(EvtType.SIGNAL, payload=signal))
+
+    swap = (await asyncio.wait_for(bus._queue.get(), timeout=0.1)).payload
+    spot = (await asyncio.wait_for(bus._queue.get(), timeout=0.1)).payload
+    assert (swap.inst_id, swap.side, swap.px, swap.td_mode) == (
+        "BTC-USDT-SWAP",
+        "sell",
+        "100.1",
+        "cross",
+    )
+    assert (spot.inst_id, spot.side, spot.px, spot.td_mode) == (
+        "BTC-USDT",
+        "buy",
+        "100.0",
+        "cash",
+    )
 
 
 def test_portfolio_manager_reduce_quantity_treats_float_dust_as_full_lot():

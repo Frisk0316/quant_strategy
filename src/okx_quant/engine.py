@@ -115,7 +115,7 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
                         "minSz": float(instr.get("minSz", 1 if inst_type == "SWAP" else 0.0001)),
                         "lotSz": float(instr.get("lotSz", 1 if inst_type == "SWAP" else 0.0001)),
                         "tickSz": float(instr.get("tickSz", 0.1)),
-                        "tdMode": "cross",
+                        "tdMode": "cash" if inst_type == "SPOT" else "cross",
                     }
         logger.info("Instrument specs loaded", count=len(instrument_specs))
     except Exception as e:
@@ -123,7 +123,7 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
         for s in cfg.system.symbols:
             instrument_specs[s] = {"ctVal": 0.01, "minSz": 1, "lotSz": 1, "tickSz": 0.1, "tdMode": "cross"}
         for s in cfg.system.spot_symbols:
-            instrument_specs[s] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
+            instrument_specs[s] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cash"}
 
     # ------------------------------------------------------------------
     # Initial equity from account balance

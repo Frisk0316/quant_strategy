@@ -82,7 +82,7 @@ def test_spot_official_signature_vector_and_order_round_trip():
             return httpx.Response(200, json=[])
         raise AssertionError(f"unexpected request {request.method} {request.url.path}")
 
-    # Public HMAC example from Binance's Spot Test Network documentation.
+    # Public HMAC example from Binance's Spot API documentation.
     client = BinanceSpotTestnetClient(
         "vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zvsw0MuIgwCIPy6utIco14y7Ju91duEh8A",
         "NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j",
@@ -102,7 +102,7 @@ def test_spot_official_signature_vector_and_order_round_trip():
     assert cancelled == {"symbol": "LTCBTC", "orderId": 7, "status": "CANCELED"}
 
     signed = requests[0]
-    assert signed.url.host == "testnet.binance.vision"
+    assert signed.url.host == "demo-api.binance.com"
     assert signed.url.path == "/api/v3/order/test"
     assert signed.headers["X-MBX-APIKEY"].startswith("vmPUZ")
     assert signed.url.query.decode("ascii") == (
@@ -210,6 +210,56 @@ def test_futures_signed_v3_reads_and_reduce_only_order_round_trip():
     assert requests[-2].url.params["orderId"] == "42"
 
 
+@pytest.mark.parametrize(
+    ("client_class", "time_path", "account_path", "account_call"),
+    [
+        (
+            BinanceSpotTestnetClient,
+            "/api/v3/time",
+            "/api/v3/account",
+            lambda client: client.account_info(),
+        ),
+        (
+            BinanceFuturesTestnetClient,
+            "/fapi/v1/time",
+            "/fapi/v3/balance",
+            lambda client: client.balance(),
+        ),
+    ],
+)
+def test_clock_sync_applies_server_offset_to_signed_requests(
+    client_class,
+    time_path: str,
+    account_path: str,
+    account_call,
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == time_path:
+            return httpx.Response(200, json={"serverTime": 1_000})
+        if request.url.path == account_path:
+            return httpx.Response(200, json={} if account_path.endswith("account") else [])
+        raise AssertionError(f"unexpected request {request.method} {request.url.path}")
+
+    client = client_class(
+        "unit-key",
+        "unit-secret",
+        clock_ms=lambda: 2_500,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert client.sync_clock() == -1_500
+        account_call(client)
+    finally:
+        client.close()
+
+    assert requests[0].url.path == time_path
+    assert requests[1].url.path == account_path
+    assert requests[1].url.params["timestamp"] == "1000"
+
+
 def test_from_env_uses_distinct_spot_and_futures_credentials(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -255,6 +305,35 @@ def test_from_env_uses_distinct_spot_and_futures_credentials(
         spot.close()
 
     assert seen_headers == ["spot-key", "futures-key"]
+
+
+def test_futures_demo_falls_back_to_unified_demo_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    for name in (
+        "BINANCE_API_KEY",
+        "BINANCE_SECRET",
+        "BINANCE_FUTURES_API_KEY",
+        "BINANCE_FUTURES_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("BINANCE_API_KEY=demo-key\nBINANCE_SECRET=demo-secret\n", encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-MBX-APIKEY"] == "demo-key"
+        return httpx.Response(200, json=[])
+
+    client = BinanceFuturesTestnetClient.from_env(
+        env_file=env_file,
+        clock_ms=lambda: 1,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert client.balance() == []
+    finally:
+        client.close()
 
 
 def test_smoke_blocks_flat_or_hedge_accounts_and_derives_safe_one_way_orders():

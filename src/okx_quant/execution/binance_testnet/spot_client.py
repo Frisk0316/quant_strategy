@@ -1,4 +1,4 @@
-"""Small signed REST client for the Binance Spot Test Network."""
+"""Small signed REST client for Binance Spot Demo Mode."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from dotenv import dotenv_values
 
 
 class BinanceSpotTestnetClient:
-    """Authenticated Spot Test Network client with no mainnet host option."""
+    """Authenticated Spot Demo client with no mainnet host option."""
 
-    BASE_URL = "https://testnet.binance.vision"
+    BASE_URL = "https://demo-api.binance.com"
     _CLIENT_ORDER_ID = re.compile(r"^[A-Za-z0-9_-]{1,36}$")
 
     def __init__(
@@ -35,9 +35,10 @@ class BinanceSpotTestnetClient:
         api_key = str(api_key).strip()
         secret = str(secret).strip()
         if not api_key or not secret:
-            raise RuntimeError("Binance Spot Testnet requires BINANCE_API_KEY and BINANCE_SECRET")
+            raise RuntimeError("Binance Spot Demo requires BINANCE_API_KEY and BINANCE_SECRET")
         self._secret = secret.encode("utf-8")
         self._clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+        self._clock_offset_ms = 0
         self._client = httpx.Client(
             base_url=self.BASE_URL,
             timeout=timeout,
@@ -102,14 +103,13 @@ class BinanceSpotTestnetClient:
             payload = response.json()
         except ValueError as exc:
             raise RuntimeError(
-                f"Binance Spot Testnet returned non-JSON for {endpoint} "
-                f"(HTTP {response.status_code})"
+                f"Binance Spot Demo returned non-JSON for {endpoint} (HTTP {response.status_code})"
             ) from exc
         if response.is_error:
             detail = payload.get("msg") if isinstance(payload, dict) else None
             suffix = f": {detail}" if detail else ""
             raise RuntimeError(
-                f"Binance Spot Testnet HTTP {response.status_code} for {endpoint}{suffix}"
+                f"Binance Spot Demo HTTP {response.status_code} for {endpoint}{suffix}"
             )
         if (
             isinstance(payload, dict)
@@ -117,7 +117,7 @@ class BinanceSpotTestnetClient:
             and payload["code"] < 0
         ):
             raise RuntimeError(
-                f"Binance Spot Testnet API error for {endpoint}: "
+                f"Binance Spot Demo API error for {endpoint}: "
                 f"{payload['code']} {payload.get('msg', '')}".rstrip()
             )
         return payload
@@ -132,7 +132,7 @@ class BinanceSpotTestnetClient:
         signed_params.extend(
             [
                 ("recvWindow", "5000"),
-                ("timestamp", str(int(self._clock_ms()))),
+                ("timestamp", str(int(self._clock_ms()) + self._clock_offset_ms)),
             ]
         )
         payload = urlencode(signed_params)
@@ -142,6 +142,13 @@ class BinanceSpotTestnetClient:
             f"{endpoint}?{payload}&signature={signature}",
         )
         return self._decode(response, endpoint)
+
+    def sync_clock(self) -> int:
+        payload = self._public_get("/api/v3/time", [])
+        if not isinstance(payload, dict) or not isinstance(payload.get("serverTime"), int):
+            raise RuntimeError("Binance Spot Demo time response must include integer serverTime")
+        self._clock_offset_ms = payload["serverTime"] - int(self._clock_ms())
+        return self._clock_offset_ms
 
     def _public_get(
         self,
@@ -154,7 +161,7 @@ class BinanceSpotTestnetClient:
     def account_info(self) -> dict[str, Any]:
         payload = self._signed_request("GET", "/api/v3/account")
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet account response must be an object")
+            raise RuntimeError("Binance Spot Demo account response must be an object")
         return payload
 
     def test_limit_order(
@@ -170,7 +177,7 @@ class BinanceSpotTestnetClient:
             self._limit_params(symbol, side, quantity, price),
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet test-order response must be an object")
+            raise RuntimeError("Binance Spot Demo test-order response must be an object")
         return payload
 
     def place_limit_order(
@@ -191,7 +198,7 @@ class BinanceSpotTestnetClient:
             params,
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet order response must be an object")
+            raise RuntimeError("Binance Spot Demo order response must be an object")
         return payload
 
     def cancel_order(
@@ -216,14 +223,14 @@ class BinanceSpotTestnetClient:
             [("symbol", self._symbol(symbol)), identifier],
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet cancel response must be an object")
+            raise RuntimeError("Binance Spot Demo cancel response must be an object")
         return payload
 
     def open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
         params = [("symbol", self._symbol(symbol))] if symbol else []
         payload = self._signed_request("GET", "/api/v3/openOrders", params)
         if not isinstance(payload, list):
-            raise RuntimeError("Binance Spot Testnet open-orders response must be an array")
+            raise RuntimeError("Binance Spot Demo open-orders response must be an array")
         return payload
 
     def book_ticker(self, symbol: str) -> dict[str, Any]:
@@ -232,7 +239,7 @@ class BinanceSpotTestnetClient:
             [("symbol", self._symbol(symbol))],
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet book-ticker response must be an object")
+            raise RuntimeError("Binance Spot Demo book-ticker response must be an object")
         return payload
 
     def exchange_info(self, symbol: str) -> dict[str, Any]:
@@ -241,7 +248,7 @@ class BinanceSpotTestnetClient:
             [("symbol", self._symbol(symbol))],
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Binance Spot Testnet exchange-info response must be an object")
+            raise RuntimeError("Binance Spot Demo exchange-info response must be an object")
         return payload
 
     def _limit_params(

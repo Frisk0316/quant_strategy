@@ -41,6 +41,7 @@ class BinanceFuturesTestnetClient:
             )
         self._secret = secret.encode("utf-8")
         self._clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+        self._clock_offset_ms = 0
         self._client = httpx.Client(
             base_url=self.BASE_URL,
             timeout=timeout,
@@ -60,8 +61,18 @@ class BinanceFuturesTestnetClient:
         **kwargs: Any,
     ) -> "BinanceFuturesTestnetClient":
         values = dotenv_values(env_file) if env_file and Path(env_file).exists() else {}
-        api_key = os.environ.get("BINANCE_FUTURES_API_KEY") or values.get("BINANCE_FUTURES_API_KEY")
-        secret = os.environ.get("BINANCE_FUTURES_SECRET") or values.get("BINANCE_FUTURES_SECRET")
+        api_key = (
+            os.environ.get("BINANCE_FUTURES_API_KEY")
+            or values.get("BINANCE_FUTURES_API_KEY")
+            or os.environ.get("BINANCE_API_KEY")
+            or values.get("BINANCE_API_KEY")
+        )
+        secret = (
+            os.environ.get("BINANCE_FUTURES_SECRET")
+            or values.get("BINANCE_FUTURES_SECRET")
+            or os.environ.get("BINANCE_SECRET")
+            or values.get("BINANCE_SECRET")
+        )
         return cls(str(api_key or ""), str(secret or ""), **kwargs)
 
     def close(self) -> None:
@@ -135,7 +146,7 @@ class BinanceFuturesTestnetClient:
         signed_params.extend(
             [
                 ("recvWindow", "5000"),
-                ("timestamp", str(int(self._clock_ms()))),
+                ("timestamp", str(int(self._clock_ms()) + self._clock_offset_ms)),
             ]
         )
         payload = urlencode(signed_params)
@@ -145,6 +156,15 @@ class BinanceFuturesTestnetClient:
             f"{endpoint}?{payload}&signature={signature}",
         )
         return self._decode(response, endpoint)
+
+    def sync_clock(self) -> int:
+        payload = self._public_get("/fapi/v1/time", [])
+        if not isinstance(payload, dict) or not isinstance(payload.get("serverTime"), int):
+            raise RuntimeError(
+                "Binance USD-M Futures Testnet time response must include integer serverTime"
+            )
+        self._clock_offset_ms = payload["serverTime"] - int(self._clock_ms())
+        return self._clock_offset_ms
 
     def _public_get(
         self,

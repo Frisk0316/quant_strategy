@@ -473,6 +473,7 @@ def main() -> int:
                     "host": BinanceSpotTestnetClient.BASE_URL,
                 }
         else:
+            spot.sync_clock()
             venues["spot"] = _capture_venue(
                 BinanceSpotTestnetClient.BASE_URL,
                 lambda: _run_spot(spot, spot_symbol=args.spot_symbol),
@@ -499,6 +500,7 @@ def main() -> int:
                     "host": BinanceFuturesTestnetClient.BASE_URL,
                 }
         else:
+            futures.sync_clock()
             venues["futures"] = _capture_venue(
                 BinanceFuturesTestnetClient.BASE_URL,
                 lambda: _run_futures(
