@@ -200,10 +200,10 @@ implementation exists.
 - Published files: the separate orphan `public-status` branch contains only
   index.html, status.json, and .nojekyll; the user creates the branch,
   enables Pages, and registers the local daily task.
-- Data files: read-only allow-list of `config/workstreams.yaml`,
-  `results/shadow_h014/bias_report.json`,
-  `results/shadow_h014/journal.jsonl`, and
-  `frontend/research_funnel.json`. Missing inputs are reported as unavailable;
+- Data files: read-only allow-list of `config/workstreams.yaml` plus the
+  generated results/shadow_h014/bias_report.json,
+  results/shadow_h014/journal.jsonl, and frontend/research_funnel.json
+  (none checked in). Missing inputs are reported as unavailable;
   no DB or network access is used.
 - Tests: `tests/unit/test_publish_public_status.py`.
 - Docs to update: `docs/RUNBOOK.md`, `docs/AI_HANDOFF.md`,
