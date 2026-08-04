@@ -60,6 +60,9 @@ current/target/known-gap distinction — do not silently "fix" either side.
   every configured symbol before constructing a broker. A missing endpoint,
   symbol, field, or SWAP `ct_val` fails startup; execution must never invent a
   BTC/ETH SWAP multiplier. Spot uses its structural base-unit identity of 1.0.
+- **R1.7** Runtime mark-to-market, stale-order checks, and persisted top-of-book
+  snapshots must use the sequence-maintained `OkxBook`. A WebSocket `books`
+  update is a delta, not a complete or best-price-ordered snapshot.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

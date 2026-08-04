@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload, SignalPayload
+from okx_quant.data.okx_book import OkxBook
 from okx_quant.engine import _build_broker, _should_use_demo_environment
 from okx_quant.execution.broker import (
     Broker,
@@ -680,7 +681,18 @@ async def test_funding_carry_queues_tick_aligned_swap_and_cash_spot_legs():
     for inst_id in ("BTC-USDT-SWAP", "BTC-USDT"):
         market = make_market_payload(bid_px=100.0, ask_px=100.1)
         market.inst_id = inst_id
-        pm.on_market(market)
+        book = OkxBook(inst_id)
+        book.handle({
+            "action": "snapshot",
+            "data": [{
+                "bids": market.bids,
+                "asks": market.asks,
+                "seqId": 1,
+                "prevSeqId": -1,
+                "checksum": 0,
+            }],
+        })
+        pm.on_market(market, book)
     signal = SignalPayload(
         strategy="funding_carry",
         inst_id="BTC-USDT-SWAP",

@@ -5,9 +5,11 @@ import pytest
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig, OKXSecrets, SystemConfig
-from okx_quant.core.events import OrderPayload
+from okx_quant.core.events import Event, EvtType, MarketPayload, OrderPayload
+from okx_quant.data.okx_book import OkxBook
 from okx_quant.engine import main
 from okx_quant.execution.broker import OKXBroker
+from okx_quant.execution.execution_handler import ExecutionHandler
 from okx_quant.execution.order_manager import OrderManager
 from okx_quant.execution.rate_limiter import RateLimiter
 from okx_quant.portfolio.portfolio_manager import PortfolioManager
@@ -214,3 +216,57 @@ async def test_reduce_only_risk_bypass_reaches_okx_payload():
     assert fill is not None
     assert trade.kwargs["reduceOnly"] == "true"
     assert trade.kwargs["posSide"] == "short"
+
+
+@pytest.mark.asyncio
+async def test_market_consumers_use_maintained_book_mid_for_deltas():
+    inst_id = "BTC-USDT-SWAP"
+    book = OkxBook(inst_id)
+    ledger = PositionLedger(initial_equity=10_000.0)
+    ledger.on_fill(
+        inst_id,
+        "buy",
+        fill_px=100.0,
+        fill_sz=1.0,
+        fee=0.0,
+        strategy="test",
+        metadata={"ct_val": 1.0},
+    )
+    manager = PortfolioManager(EventBus(), ledger, _Risk())
+    handler = ExecutionHandler(
+        EventBus(),
+        OrderManager(OKXBroker.__new__(OKXBroker), RateLimiter()),
+    )
+
+    async def update(bids, asks, seq_id, prev_seq_id, action="update"):
+        book.handle({
+            "action": action,
+            "data": [{
+                "bids": bids,
+                "asks": asks,
+                "seqId": seq_id,
+                "prevSeqId": prev_seq_id,
+                "checksum": 0,
+            }],
+        })
+        payload = MarketPayload(
+            inst_id=inst_id,
+            ts=seq_id,
+            bids=bids,
+            asks=asks,
+            seq_id=seq_id,
+            channel="books",
+        )
+        event = Event(EvtType.MARKET, payload=payload)
+        manager.on_market(payload, book)
+        await handler.on_market(event, book)
+
+    await update([["100", "1"], ["99", "1"]], [["101", "1"]], 1, -1, "snapshot")
+    await update([["98", "2"]], [], 2, 1)
+    assert manager._last_mids[inst_id] == pytest.approx(100.5)
+    assert handler._last_mids[inst_id] == pytest.approx(100.5)
+
+    await update([["100", "0"]], [], 3, 2)
+    assert manager._last_mids[inst_id] == pytest.approx(100.0)
+    assert handler._last_mids[inst_id] == pytest.approx(100.0)
+    assert ledger.get_position(inst_id).last_price == pytest.approx(100.0)

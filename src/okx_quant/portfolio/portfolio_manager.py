@@ -11,6 +11,7 @@ from loguru import logger
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload, OrderPayload, SignalPayload
+from okx_quant.data.okx_book import OkxBook
 from okx_quant.portfolio.positions import PositionLedger
 from okx_quant.portfolio.sizing import fixed_fractional, validate_ct_val, vol_target_size
 from okx_quant.risk.risk_guard import RiskGuard
@@ -47,14 +48,9 @@ class PortfolioManager:
         if len(self._returns[inst_id]) > 500:
             self._returns[inst_id].pop(0)
 
-    def on_market(self, payload: MarketPayload) -> None:
-        if payload.bids and payload.asks:
-            try:
-                bid = float(payload.bids[0][0])
-                ask = float(payload.asks[0][0])
-            except (IndexError, TypeError, ValueError):
-                return
-            mid = 0.5 * (bid + ask)
+    def on_market(self, payload: MarketPayload, book: OkxBook) -> None:
+        if book.is_valid():
+            mid = book.mid()
             self._last_mids[payload.inst_id] = mid
             self._positions.update_price(payload.inst_id, mid)
 

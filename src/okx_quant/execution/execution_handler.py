@@ -14,6 +14,7 @@ from loguru import logger
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, OrderPayload
+from okx_quant.data.okx_book import OkxBook
 from okx_quant.execution.broker import is_shadow_mirror_cl_ord_id
 from okx_quant.execution.order_manager import OrderManager
 
@@ -42,14 +43,10 @@ class ExecutionHandler:
     # Market event handler — update mid prices for stale check
     # ------------------------------------------------------------------
 
-    async def on_market(self, event: Event) -> None:
+    async def on_market(self, event: Event, book: OkxBook) -> None:
         payload = event.payload
-        if hasattr(payload, "bids") and payload.bids and payload.asks:
-            try:
-                mid = 0.5 * (float(payload.bids[0][0]) + float(payload.asks[0][0]))
-                self._last_mids[payload.inst_id] = mid
-            except (IndexError, TypeError, ValueError):
-                pass
+        if book.is_valid():
+            self._last_mids[payload.inst_id] = book.mid()
         for fill in self._order_manager.on_market(payload):
             await self._bus.put(Event(EvtType.FILL, payload=fill))
 

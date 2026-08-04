@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-02
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -36,6 +36,11 @@ An empty venue series still errors, and an internal hole below
 substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
+
+Live and replay market-event flows update a sequence-maintained `OkxBook`
+before dispatch. Portfolio marks, execution stale checks, and top-of-book
+persistence consume that same maintained book; raw `books` messages are deltas
+and are never interpreted as complete snapshots by those consumers.
 
 ADR-0014 keeps `canonical_candles` and its 5m/15m/1H aggregates as the
 priority-resolved default. Explicitly source-filtered `CandleStore` reads and
