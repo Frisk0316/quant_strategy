@@ -201,7 +201,7 @@ async def test_reduce_only_risk_bypass_reaches_okx_payload():
         td_mode="cross",
         strategy="ma_crossover",
         reduce_only=True,
-        pos_side="net",
+        pos_side="short",
         notional_usd=100.0,
     )
     assert risk.check(order, current_pos_notional=100.0, current_mid=100.0) is True
@@ -215,7 +215,7 @@ async def test_reduce_only_risk_bypass_reaches_okx_payload():
 
     assert fill is not None
     assert trade.kwargs["reduceOnly"] == "true"
-    assert trade.kwargs["posSide"] == "net"
+    assert trade.kwargs["posSide"] == "short"
 
 
 @pytest.mark.asyncio

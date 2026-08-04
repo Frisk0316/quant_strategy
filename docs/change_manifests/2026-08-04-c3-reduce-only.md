@@ -21,12 +21,13 @@ A2 execution.
 
 ## Files changed
 - `src/okx_quant/execution/broker.py` — propagate reduce-only venue kwargs.
+- `src/okx_quant/execution/order_manager.py` — preserve `OrderPayload.pos_side` at the broker boundary.
 - `tests/unit/test_wsc_trade_safety.py` — bind RiskGuard admission through OrderManager to the captured OKX request.
 - `docs/DOMAIN_RULES.md`, `docs/INVARIANTS.md`, `docs/FAILURE_MODES.md` — strengthen R4.2 and add I70/F73.
 
 ## Behavior delta
 - Before: RiskGuard could admit a reduce-only close, but the OKX request omitted the constraint.
-- After: admitted reduce-only orders reach OKX with `reduceOnly=true` and `posSide=net` for the current net-position execution path.
+- After: admitted reduce-only orders reach OKX with `reduceOnly=true` and the unchanged `OrderPayload.pos_side` value.
 - Money/risk impact: prevents an intended close from opening or flipping venue exposure after local risk bypass.
 
 ## Source-of-truth updates
@@ -45,13 +46,13 @@ A2 execution.
 - Golden cases affected: N/A — no PnL formula changed.
 
 ## Tests / checks run
-- `python -m pytest tests/unit/test_wsc_trade_safety.py -k "reduce_only" -v` — 2 passed.
-- `python -m pytest tests/unit -q` — 1133 passed, 1 skipped.
-- `ruff check src/okx_quant/execution/broker.py tests/unit/test_wsc_trade_safety.py` — passed.
+- Combined C3/C5 targeted selection (`instrument or ct_val or reduce_only`) — 8 passed, 1 deselected.
+- Prior dedicated-commit baseline, `python -m pytest tests/unit -q` — 1133 passed, 1 skipped.
+- `ruff check src/okx_quant/engine.py src/okx_quant/execution/order_manager.py tests/unit/test_wsc_trade_safety.py` — passed.
 - `python scripts/docs/check_doc_impact.py --strict` — passed.
 
 ## Risks and rollback
-- Risks: incorrect position-mode metadata could cause venue rejection; current runtime uses OKX net position mode and sends `posSide=net`.
+- Risks: incorrect position-mode metadata can cause venue rejection; the venue now receives the caller's explicit position side instead of an implicit default.
 - Rollback: revert the dedicated C3 commit.
 
 ## Approval

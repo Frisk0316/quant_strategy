@@ -16,10 +16,10 @@ durable backlog.
 
 ## Current goal
 
-Decide the WS-C authorization sequence for the whole-repo optimization audit —
-every ungated item is now delivered and Claude-APPROVED. External-data
-persistence and the Deribit pagination conflict are resolved; the remaining
-research choices are H-033/H-036, H-038, and the H-014 shadow/parity path.
+Execute the 2026-08-04 decision batch. Merge PR #19, publish the public status
+page, and hand the two new authorized task files to Codex. H-033/H-036 are
+closed (superseded by H-045/H-046, both Stage-2 power FAIL), so the only open
+research choice is H-038 — now authorized — plus the H-014 shadow/parity path.
 
 ## Branch and working tree
 
@@ -615,6 +615,20 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     user reviews/merges, then creates the orphan branch, enables Pages, verifies
     the first page, and registers the daily task. `docs/CURRENT_STATE.md`
     next-actions were reordered on the same date at the user's request.
+
+24. DECISION BATCH 2026-08-04 (user): (a) merge — PR #19 is open/MERGEABLE and
+    `origin/main` already holds PRs #9/#14/#16/#18, so nothing is pushed to
+    `main` directly; (b) H-033/H-036 — no action, closed by H-045/H-046;
+    (c) H-038 AUTHORIZED, `tasks/2026-08-04-h038-residual-meanrev-stage2-codex-tasks.md`,
+    terminal for F-S5 at K 2/2, breadth must be derived not declared;
+    (d) WS-C partially authorized for C3/C5/C10 only,
+    `tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md`, one commit and one Change
+    Manifest each — C1/C2/C4/C6/C7/C8/C9/C11 and F2 stay ungated;
+    (e) ADR-0016 deferred. The deferral reason is now invariant I68: R6.8/I53
+    used "execution-ready" without defining it, so candidates counted with
+    unverified data, a declared breadth, and no gross-edge estimate. Evidence
+    is the `docs/ai/LESSONS.md` 2026-08-04 sweep of 38 Stage-2 artifacts.
+    I68 enforcement is REVIEW until the ADR-0016 manifest validator ships.
 
 ## Open decisions
 

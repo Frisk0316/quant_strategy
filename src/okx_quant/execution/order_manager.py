@@ -48,6 +48,7 @@ class OrderManager:
             "td_mode": order.td_mode,
             "cl_ord_id": order.cl_ord_id,
             "reduce_only": order.reduce_only,
+            "pos_side": order.pos_side,
             "strategy": order.strategy,
             "metadata": order.metadata,
         }

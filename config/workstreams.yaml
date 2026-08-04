@@ -15,11 +15,11 @@ workstreams:
   - name: Whole-repo optimization audit (2026-08-03)
     status: active
     milestones: [audit, ungated_security, remaining_ungated, protected_fixes]
-    current: remaining_ungated
-    state: "F1, WS-A A1-A5, and B1 are implemented with fail-closed Telegram/API/path/DSN/Compose/demo-credential regressions; no trading rule or deployment gate changed."
-    next: "Review WS-A A6, WS-B B2-B5, and WS-D/E/F3-F8. WS-C and F2 still require explicit per-item user authorization and Change Manifests where marked."
-    links: [tasks/2026-08-03-project-optimization-codex-plan.md, tasks/2026-08-03-f1-wsa-b1-session-handoff.md]
-    updated: 2026-08-03
+    current: protected_fixes
+    state: "All ungated audit work is landed and Claude-APPROVED. User authorized WS-C C3 (reduceOnly never sent to the venue), C5 (fabricated ctVal=0.01 sizing 10x error), and C10 (mid read from raw books delta) on 2026-08-04 — the three order-correctness defects reachable from the already-exercised Demo order path."
+    next: "Codex executes tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md in order C5 then C3 then C10, one commit and one Change Manifest each. C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated and must not be touched."
+    links: [tasks/2026-08-03-project-optimization-codex-plan.md, tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md]
+    updated: 2026-08-04
 
   - name: Project audit and hardening
     status: active
@@ -62,7 +62,7 @@ workstreams:
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review, slate_stage2_runners, full_round_contract]
     current: full_round_contract
     state: "ADR-0016 slice 1 plus deterministic H-030..H-037 Stage-2 runners are implemented. E-069..E-076 all stopped at Stage 2: H-030 cost/power fail; H-032/H-034 decisive distinctness + cost/power fail; five data-blocked. Eight SHA-bound artifacts exist, trials/K are unchanged, and no Stage 3 or real complete round ran. 2026-07-30: DGS2/VIXCLS/DTWEXBGS and research-only GC=F are ingested from 2020 onward; Deribit full-tape history remains partial/stopped after a -5 BTC aggregate drift."
-    next: "Claude/user resolves Deribit aggregate immutability before H-031/H-035 or any backfill resume, and separately decides whether research-only Yahoo GC=F is acceptable for H-036. H-033/H-036 macro rows existing in DB does not authorize a rerun. The 8/2/10 contract remains honestly blocked: H-038 is still separately unauthorized, only one eligible iteration exists, and total candidates remain 9. Do not add a gate-chasing iteration, retune, run Stage 3, or change promotion/deployment gates."
+    next: "H-038 is AUTHORIZED 2026-08-04 (tasks/2026-08-04-h038-residual-meanrev-stage2-codex-tasks.md) and is terminal for F-S5 at K 2/2. H-033/H-036 are closed by H-045/H-046, so no rerun and no GC=F ruling is pending. ADR-0016 round infra is DEFERRED: invariant I68 now defines 'execution-ready' after a 38-artifact sweep showed data_availability is the first failing check 16 times and 11 of ~20 power-check candidates have negative or zero Sharpe. Fix candidate inputs before building more pipeline. No gate-chasing iteration, retune, or Stage 3."
     links: [docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md, docs/change_manifests/2026-07-27-genai-strategy-finding-pipeline.md, docs/superpowers/specs/2026-06-30-drafted-candidate-stage3-contract.md, docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-26-strategy-finding-round.md, results/strategy_finding_20260726/checkpoint_review.json, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
     updated: 2026-07-30
 
