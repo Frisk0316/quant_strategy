@@ -96,6 +96,7 @@ failure modes say how it silently breaks.
 | F72 | Runtime instrument-spec failure fabricates a SWAP multiplier | A failed metadata request silently assigns ETH the BTC multiplier, making contract quantity and risk notional wrong by 10x | I69 startup and ETH missing-spec regressions; all retrieved SWAP multipliers pass shared `validate_ct_val()` | R1.2, R1.5, R1.6 |
 | F73 | Reduce-only intent is consumed locally but omitted from the venue order | RiskGuard allows a close through kill/fat-finger/position gates, while the exchange may open or flip exposure | I70 end-to-end RiskGuard → OrderManager → OKX request regression | R4.2 |
 | F74 | A `books` delta is treated as a complete top-of-book snapshot | A deep or removed level becomes the mark, causing equity spikes/zeros and false risk-stop inputs | I71 maintained-book delta regression; engine consumers share `MarketDataHandler.books` | R1.7 |
+| F75 | Derivative-only order parameters are attached to a spot `tdMode=cash` request | OKX rejects the cash order carrying `reduceOnly`/`posSide`, so an intended spot exit never executes and exposure persists | I70 spot exemption; `test_okx_broker_omits_reduce_only_kwargs_for_spot_cash` | R4.2 |
 
 ## How to add a failure mode
 

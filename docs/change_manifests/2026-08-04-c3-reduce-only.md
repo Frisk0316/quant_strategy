@@ -28,6 +28,10 @@ A2 execution.
 ## Behavior delta
 - Before: RiskGuard could admit a reduce-only close, but the OKX request omitted the constraint.
 - After: admitted reduce-only orders reach OKX with `reduceOnly=true` and the unchanged `OrderPayload.pos_side` value.
+- Review fix (Claude, 2026-08-04, MAJOR 1 of `tasks/2026-08-04-h038-wsc-claude-review.md`):
+  `tdMode=cash` (spot) orders send neither key — OKX rejects them on cash
+  orders, so the unconditional attach would have blocked spot exits. Guarded in
+  `broker.py`; I70 scoped accordingly; new failure mode F75.
 - Money/risk impact: prevents an intended close from opening or flipping venue exposure after local risk bypass.
 
 ## Source-of-truth updates
@@ -47,6 +51,7 @@ A2 execution.
 
 ## Tests / checks run
 - Combined C3/C5 targeted selection (`instrument or ct_val or reduce_only`) — 8 passed, 1 deselected.
+- Review fix: `tests/unit/test_wsc_trade_safety.py` — 10 passed (red-first spot cash regression).
 - Prior dedicated-commit baseline, `python -m pytest tests/unit -q` — 1133 passed, 1 skipped.
 - `ruff check src/okx_quant/engine.py src/okx_quant/execution/order_manager.py tests/unit/test_wsc_trade_safety.py` — passed.
 - `python scripts/docs/check_doc_impact.py --strict` — passed.
