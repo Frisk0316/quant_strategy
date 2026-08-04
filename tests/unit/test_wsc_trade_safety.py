@@ -69,7 +69,7 @@ async def test_engine_instrument_fetch_failure_stops_before_broker(monkeypatch):
 
 @pytest.mark.parametrize(
     "response",
-    [{"data": []}, {"data": [_instrument("")]}],
+    [{"code": "0", "data": []}, {"code": "0", "data": [_instrument("")]}],
     ids=["configured-symbol-missing", "empty-ct-val"],
 )
 @pytest.mark.asyncio
@@ -88,9 +88,28 @@ async def test_engine_incomplete_instrument_specs_stop_before_broker(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_engine_nonzero_instrument_response_stops_before_broker(monkeypatch):
+    rest = Mock()
+    rest.get_instruments.return_value = {
+        "code": "51000",
+        "msg": "instrument request rejected",
+        "data": [_instrument("0.1")],
+    }
+    broker_factory = Mock()
+    monkeypatch.setattr("okx_quant.engine.setup_logging", Mock())
+    monkeypatch.setattr("okx_quant.engine.OKXRestClient", Mock(return_value=rest))
+    monkeypatch.setattr("okx_quant.engine._build_broker", broker_factory)
+
+    with pytest.raises(RuntimeError, match="Could not fetch complete instrument specs"):
+        await main(_engine_config())
+
+    broker_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_engine_preserves_exchange_eth_ct_val(monkeypatch):
     rest = Mock()
-    rest.get_instruments.return_value = {"data": [_instrument("0.1")]}
+    rest.get_instruments.return_value = {"code": "0", "data": [_instrument("0.1")]}
     rest.get_balance.return_value = {"data": [{"details": []}]}
     captured = {}
 

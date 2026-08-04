@@ -27,7 +27,7 @@ A2 portfolio/execution and A7 API/runtime orchestration.
 
 ## Behavior delta
 - Before: instrument lookup failure fabricated `ctVal=0.01`; missing BTC/ETH SWAP specs could do the same during sizing.
-- After: missing or incomplete configured-symbol specs stop startup, and missing SWAP `ct_val` stops sizing.
+- After: a nonzero/missing OKX response code or missing/incomplete configured-symbol specs stop startup, and missing SWAP `ct_val` stops sizing.
 - Money/risk impact: prevents 10x ETH contract-quantity and notional errors.
 
 ## Source-of-truth updates
@@ -48,13 +48,13 @@ A2 portfolio/execution and A7 API/runtime orchestration.
 - Golden cases affected: N/A — no accounting formula changed.
 
 ## Tests / checks run
-- `python -m pytest tests/unit/test_wsc_trade_safety.py -k "instrument or ct_val" -v` — 5 passed.
-- `python -m pytest tests/unit -q` — 1131 passed, 1 skipped.
-- `ruff check src/okx_quant/engine.py src/okx_quant/portfolio/portfolio_manager.py tests/unit/test_wsc_trade_safety.py` — passed.
+- Combined C3/C5 targeted selection (`instrument or ct_val or reduce_only`) — 8 passed, 1 deselected.
+- Prior dedicated-commit baseline, `python -m pytest tests/unit -q` — 1131 passed, 1 skipped.
+- `ruff check src/okx_quant/engine.py src/okx_quant/execution/order_manager.py tests/unit/test_wsc_trade_safety.py` — passed.
 - `python scripts/docs/check_doc_impact.py --strict` — passed.
 
 ## Risks and rollback
-- Risks: a venue metadata outage now prevents startup instead of using guessed quantities; this is the intended fail-closed direction.
+- Risks: a venue metadata outage or rejected/malformed successful HTTP body now prevents startup instead of using guessed quantities; this is the intended fail-closed direction.
 - Rollback: revert the dedicated C5 commit.
 
 ## Approval

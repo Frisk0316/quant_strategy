@@ -109,6 +109,11 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
             if not symbols:
                 continue
             instr_resp = rest.get_instruments(inst_type)
+            if instr_resp.get("code") != "0":
+                raise RuntimeError(
+                    f"OKX get_instruments {inst_type} failed: "
+                    f"code={instr_resp.get('code')}, msg={instr_resp.get('msg', '')}"
+                )
             symbol_set = set(symbols)
             for instr in instr_resp.get("data", []):
                 inst_id = instr.get("instId", "")
