@@ -87,3 +87,37 @@ landed rows (counts, ranges, published_at invariants, derived-field sanity),
 which a fresh session did in minutes once the DB was up.
 Rule: "fetched=N" is source evidence; only a DB query is landing evidence. An
 acceptance box for ingestion may only be ticked from a query against storage.
+
+## 2026-08-04 — The candidate funnel is failing at the input, not at the gate
+
+Trigger: 38 Stage-2 artifacts were tabulated after the user asked why every
+candidate keeps failing. The failure profile is not "the gate is too strict".
+
+Measured, across all 38 `stage2_feasibility.json` files:
+- First failing check: `data_availability` 16, `cost_after_edge` 8,
+  `distinctness` 2, `statistical_power` 2. **Nearly half never produce a return
+  series at all** — a spec, a runner, and an immutable artifact are built before
+  anyone confirms the data supports the mechanism.
+- Of the ~20 that reach the power check, **11 have negative or zero plausible
+  Sharpe** (H-030 -97.31, H-034 -0.97, xs_salience -0.61, H-029 -0.47, ...).
+  A negative Sharpe fails any floor; loosening the gate changes nothing.
+- Only one candidate ever passed all four cleanly on honest inputs
+  (`f-funding-xs-dispersion-retry1`, 0.9687 vs 0.8113) and it reached Stage 3
+  at DSR 0.8305 / PSR 0.9166. Three others "passed" on an assumed `breadth=2`
+  and were retracted by E-092/E-093 when breadth was not derived from realized
+  positions.
+
+Wrong: treating low pass rates as evidence that the gates or the cost model
+need revisiting, and building round-infrastructure to push more candidates
+through the same funnel faster.
+Right: the binding constraints are upstream — (a) data existence is confirmed
+after registration instead of before, (b) `breadth` is declared rather than
+derived, (c) no ex-ante gross-edge estimate is required, so mechanisms whose
+gross capture is an order of magnitude below cost (H-010 1.3636 bps vs 8.0 bps;
+H-030 8 bps/event) still get built.
+Rule: before a candidate gets an H-number it must carry three verified numbers:
+the DB-confirmed row count/range for every named dataset, the expected gross
+capture per event in bps against the cost per event in bps, and the breadth its
+realized position series can support. Fail closed to breadth=1. A candidate
+that cannot supply all three is not execution-ready and does not count toward
+an ADR-0016 sealed manifest.
