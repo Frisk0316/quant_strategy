@@ -95,8 +95,9 @@ class OKXBroker(Broker):
                 clOrdId=order.get("cl_ord_id", "")[:32],
                 tag=tag,
                 **(
+                    # OKX rejects reduceOnly/posSide on tdMode=cash (spot) orders
                     {"reduceOnly": "true", "posSide": order.get("pos_side", "net")}
-                    if order.get("reduce_only")
+                    if order.get("reduce_only") and order.get("td_mode", "cross") != "cash"
                     else {}
                 ),
             )

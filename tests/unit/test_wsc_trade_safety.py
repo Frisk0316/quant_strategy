@@ -174,6 +174,37 @@ async def test_okx_broker_sends_reduce_only_kwargs():
 
 
 @pytest.mark.asyncio
+async def test_okx_broker_omits_reduce_only_kwargs_for_spot_cash():
+    trade = Mock()
+    trade.place_order.return_value = {
+        "code": "0",
+        "data": [{"sCode": "0", "ordId": "spot-exit"}],
+    }
+    broker = OKXBroker.__new__(OKXBroker)
+    broker._trade = trade
+    broker._strategy = ""
+    broker._demo = True
+
+    await broker.submit(
+        {
+            "cl_ord_id": "spot-exit",
+            "inst_id": "BTC-USDT",
+            "side": "sell",
+            "ord_type": "post_only",
+            "sz": "0.01",
+            "px": "100",
+            "td_mode": "cash",
+            "strategy": "test",
+            "reduce_only": True,
+            "pos_side": "net",
+        }
+    )
+
+    assert "reduceOnly" not in trade.place_order.call_args.kwargs
+    assert "posSide" not in trade.place_order.call_args.kwargs
+
+
+@pytest.mark.asyncio
 async def test_reduce_only_risk_bypass_reaches_okx_payload():
     class Trade:
         def __init__(self) -> None:
