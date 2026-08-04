@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -16,21 +16,28 @@ durable backlog.
 
 ## Current goal
 
-Implement ADR-0016's first safe slice before another complete strategy-finding
-round: a result-blind round manifest, fail-fast 8/2/10 executable-slate
-validation, manifest-hash resume, and a reconciled per-round report. The
-completed E-059 reprobe still awaits Claude review separately; H-022 remains
-shelved with no retune or Stage 3.
+Review the completed H-038/E-094 and WS-C C3/C5/C10 task batch. E-094 stopped
+at its strict data gate and permanently closed F-S5 at K 2/2; the three WS-C
+order-correctness fixes are implemented locally with manifests and tests. PR
+#19/public-status publication and the H-014 shadow/parity path remain human work.
 
 ## Branch and working tree
 
-- Current branch: `feature/h014-e052-shadow`. The 2026-07-18 shared working tree
-  is split into five ordered delivery commits at current HEAD; inspect
-  `git log --oneline -5` for exact hashes. The generated funnel JSON remains on
-  disk but ignored, and the stray execution-comparison JSON remains untracked.
-  The latest scoped commits are E-059 preregistration `592b757` and execution
-  `049d136`; pre-existing runtime/API working-tree changes remain unstaged and
-  untouched.
+- The pushed task baseline is `3e7d26f`; H-038/E-094 and WS-C C3/C5/C10 are
+  local and unpushed, alongside the preserved public-status handoff/state
+  edits. The audit's
+  ungated work is fully landed: F1 + WS-A A1-A5 + B1 (`181f82b`), A6
+  (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the two research/
+  probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
+- Current branch: `feature/deribit-moneyness-hypotheses`. Registration is
+  `4c84a18`; dated E-025 regeneration is `094742e`; ordered H-024/H-025/H-027/
+  H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
+  H-025 merged into F-OPT-HEDGE-DEMAND; all four Stage-2 artifacts are
+  immutable and no Stage-3 artifact exists.
+- H-030..H-037 implementation/outcome slices are `69fae10`, `1f5f8df`,
+  `d482a17`, and `9f3023d`; the registry/docs wrap-up is the following ordered
+  commit. Eight SHA-bound Stage-2 artifacts exist under
+  `results/slate_stage2_20260729/`; no Stage-3 artifact exists.
 - Pushed 2026-07-14: `origin/codex/pipeline-batch1-stage3` through `d046978`,
   F-VOL research delivery `d66f08a`, and Taxonomy_003 research delivery
   `821f761`; the final shared-state commit is on the Taxonomy_003 branch.
@@ -49,7 +56,30 @@ shelved with no retune or Stage 3.
   2021-01-01 through 2026-07-26, sourced from contiguous venue perpetual
   closes. The Market Data Coverage fetch form can queue BTC/ETH DVOL, native
   HV, RV30, and current full option-surface refreshes. Forward schedulers are
-  not registered; option-surface history remains snapshot-only.
+  not registered; option-surface history remains snapshot-only. New option-flow
+  ingests retain every inverse trade and its `trade_id`. Historical full-tape
+  enrichment is partial only: 2,304 BTC hours and 744 ETH hours were enriched
+  before the hard stop. Total hourly row counts remain 22,403/22,402, but BTC
+  aggregate `trade_count` now sums to 12,724,092 versus the pre-task
+  12,724,097 baseline; do not resume or treat H-031/H-035 as unblocked until
+  Claude/user resolves restoration or source-revision policy.
+- H-039/F-XVENUE-OPT-IV Stage 0 now has six forward-only hourly
+  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` datasets. The collector brackets
+  30 days, interpolates ATM/25-delta legs in total variance with nearest-expiry
+  fallback, retains the full normalized chain, isolates source failures, and
+  alerts on gaps over 1.5 hours. All six official public source normalizations
+  pass. Accumulation has not started: the configured TimescaleDB connection is
+  refused and no scheduler is registered. Trials stay 0 and K stays 0/2. Start
+  the DB, run one manual six-dataset snapshot, then have the user register and
+  verify the hourly task; do not start Stage 2 before at least 270 persisted
+  daily observations.
+- CFTC COT and Cboe adapters/config/tests are complete. Official-source
+  validation returned 433/277 crypto COT rows, 1,050 rows for each of ES,
+  UST10Y, USD Index, and Gold, plus 3,915/9,240/4,241/4,673 rows for
+  VIX9D/VIX/VIX3M/VIX6M. These are source counts only; DB backfill remains
+  blocked. Cboe's official total put/call CSV has 3,253 rows through
+  2019-10-04 and is discontinued, so it must not be scheduled as a current
+  feed or replaced with a scraped source.
 - Manual/Progress: all manual chapters exist. The standalone server now wires
   `/api/manual`, chapter frontmatter is removed, and configured Progress markdown
   links are served through a contained allow-list route only on loopback binds.
@@ -67,6 +97,19 @@ shelved with no retune or Stage 3.
   result-summary DB outages without file fallback return 503 instead of empty or
   missing data. F52 browser authentication and remaining per-artifact/pool work
   stay explicit follow-ups; no schema or API payload shape changed.
+- Security hardening: the 2026-08-03 F1 + WS-A Codex task (A1-A5) + B1 batch
+  is implemented. Telegram commands require the configured chat and
+  `/reset confirm`; API pair deletion is contained; engine/standalone remote
+  binds fail closed without an API key; standalone destructive routers share
+  auth; job status no longer carries DSNs and the OHLCV rotation child consumes
+  them from `DATABASE_URL`; Compose is loopback-bound with required secrets;
+  and the OKX smoke reads only `OKX_DEMO_*`. Targeted safety
+  tests and Compose fail/pass validation are green. Claude reviewed and
+  APPROVED the batch (`tasks/2026-08-03-security-batch-claude-review.md`); it
+  is committed and pushed at `181f82b`. The review caught and Codex closed one
+  regression (the rotation child needed a `DATABASE_URL` fallback once `--dsn`
+  left argv). WS-A A6 and WS-B B2-B5
+  remain separate follow-ups; WS-C/F2 remain authorization-gated.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
@@ -83,18 +126,38 @@ shelved with no retune or Stage 3.
   10–15 execution-ready strategies before results, including at least eight
   verified-paper-backed new mechanisms and two eligible ex-ante
   existing-strategy iterations.
-  Current automation does not meet that contract: the generators have no
-  minimum/mix validator or unified command, literature drafts normally remain
-  `pending_llm`, and new families without registered runners stop before
-  execution. Until the manifest, candidate-specific runner path, and
-  reconciled report ship, output is advisory/limited rather than a completed
-  round.
+  ADR-0016 slice 1 now supplies deterministic joined-input filtering,
+  10–15/8/2 executable validation, manifest sealing/hash-bound resume, and
+  terminal-artifact reconciliation. No real round ran. Complete-round
+  automation remains blocked on enough registered candidate-specific runners
+  and the one-command execution path; output remains advisory/limited until
+  those later slices ship.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
   absent, and the fixed zero-trial anchor's median gross capture is 1.3636 bps
   versus 8.0 bps cost across 7,376 episodes. Stage 3 did not run. H-013/E-050 is
   shelved after statistical failure.
+  H-024..H-027 limited probe is complete at E-064..E-067. The reference-only
+  E-025 regeneration reproduced its full-sample runner Sharpe exactly and
+  added 898 dated daily returns without changing H-006, trials, or K. H-024
+  stopped on data/power; H-025 failed all four checks and merged into
+  F-OPT-HEDGE-DEMAND at signal corr 0.749580; H-027 passed data/distinctness
+  (E-025 corr 0.027930 over 898 days) but failed cost/power; H-026 passed
+  data/distinctness but failed cost/power. H-026's screen used prospective
+  family `n_trials=8`, while actual trials remain 4 and K remains 0/2 because
+  no Stage 3 ran. No retune is authorized.
+  H-030..H-037 limited slate execution is complete at E-069..E-076. H-030
+  passed data and decisive E-059 distinctness, then failed cost/power
+  (-97.306114 net Sharpe after 8 bps/event). H-032 and H-034 passed data but
+  failed their decisive mint-apart checks (0.561490 vs E-067; 0.494810 vs
+  E-062), cost, and power. H-031/H-035 remain blocked because historical
+  option-flow full-tape retention is partial and aggregate immutability is
+  unresolved. H-033's DGS2 and two H-036 macro inputs (VIXCLS/DTWEXBGS) are
+  now ingested; H-036's gold leg is an explicitly research-only Yahoo `GC=F`
+  futures proxy and still needs Claude/user acceptance before any rerun. H-037
+  lacks official CME settlements. All family trials/K
+  remain zero and no retune or Stage 3 is authorized.
   Taxonomy_003 E-044..E-049 completed and all six candidates failed their
   statistical gates. H-014/E-051/E-052 is supported but promotion-blocked;
   ADR-0011's >=8-week manual shadow gate is next. Taxonomy_004 H-021/E-056 is
@@ -254,15 +317,34 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   Config, docs, and final scope checks are recorded in the associated Change
   Manifest. This is implementation evidence only, not activation or deployment
   evidence; portable validation remains blocked on missing adapters.
+- 2026-07-29 H-024..H-027: E-025 regeneration reproduced the recorded runner
+  Sharpe exactly over 898 dated rows; whole-batch I49 passed. Probe tests,
+  aggregate four-check/SHA validation, ledger consistency, and the
+  F-PAIRS-OU/H-006 no-drift guard pass. All four candidates stopped at Stage 2.
+- 2026-07-30 data unblock: FRED API smoke and 2020+ ingest passed with 1,682
+  VIXCLS, 1,640 DTWEXBGS, 1,643 DGS2, and 1,653 research-only GC=F rows; every
+  FRED row has `published_at > observed_at` and no dataset has a gap over seven
+  days. Deribit six-hour pre-flight passed exact aggregate equality, but the
+  wider archive changed the BTC aggregate total by -5. Workers were stopped;
+  only 2,304 BTC and 744 ETH hours are enriched. Targeted ingestion tests pass;
+  full unit reported 1,036 passed, 1 skipped, and 1 unrelated pre-existing
+  frontend contract failure.
 - `make` is unavailable in this Windows environment. Use the absolute Python
   executable and Makefile-equivalent commands; report API smoke SKIP unless a
   healthy server is explicitly provided.
 
 ## Next steps
 
-Immediate: Claude reviews the ordered E-059 commits `592b757` (registration),
-`049d136` (alias wiring + immutable artifact), and the outcome-sync commit.
-Stage 3 remains unauthorized; do not retune or reprobe H-022.
+Immediate (2026-08-03): the Deribit immutability conflict is RESOLVED — the
+count-invariant pagination + payload-only contract landed in `5920380` and the
+root cause was pagination, not an archive revision. All 17 new external
+datasets (FRED, COT, Cboe, six xvenue IV) are DB-verified; the H-039 hourly
+collector and the Sunday worklog generator are registered scheduled tasks.
+Keep Docker Desktop + TimescaleDB up or collector hours are permanently lost.
+Remaining user decisions: (a) authorize H-033/H-036 Stage-2 reruns and rule on
+research-only Yahoo `GC=F` as the H-036 gold proxy; (b) H-038 Stage-2 go/no-go;
+(c) merge decision for `feature/deribit-moneyness-hypotheses`. No H-031/H-035
+rerun is possible (Deribit first-20 history gap persists for pre-2024 ranges).
 
 In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
 honest-blocked differential-validation declaration. Continue the independent
@@ -270,17 +352,27 @@ H-014 shadow cycle; do not enable the live block, register a live scheduler, or
 perform an authenticated order test before the remaining gate sequence and
 separate user capital approval.
 
+Also open (2026-08-03): a two-round whole-repo optimization audit produced
+`tasks/2026-08-03-project-optimization-codex-plan.md` (11 areas, 24 agents, all
+findings adversarially verified; Codex-ready). F1, WS-A's A1-A5 Codex task, and
+B1 were committed and pushed at `181f82b`. Remaining audit scope is
+WS-A A6, WS-B B2-B5, WS-D/E/F3-F8, and the authorization-gated work. WS-C
+trading-safety and F2 (rate limiter) touch
+execution/risk/portfolio and each need explicit per-item authorization + a
+Change Manifest before Codex acts. Round 2 cleared five previously unaudited
+areas: git history holds no real credentials (`.env` never tracked), no
+notebooks exist, tests make no real network/DB calls, the frontend has one
+latent (non-exploitable) markdown sink, and no untrusted deserialization exists.
+
 Before executing another full strategy-finding round:
 
-1. Add the ADR-0016 manifest validator at the orchestrator boundary and reject
-   fewer than eight `new_research`, two `existing_iteration`, or ten executable
-   candidates before DB/backtest access.
-2. Join verified literature candidates and history-led iteration candidates,
-   deduplicate DOI/arXiv/title identity, and have GenAI emit schema-valid specs
-   only.
+1. Wire the slice-1 manifest helper into the one-command orchestrator after
+   schema-valid GenAI drafts are available.
+2. Extend verified provenance identity from the current family/provenance key
+   to normalized DOI/arXiv/title identity at the literature adapter boundary.
 3. Reuse the drafted `signal_ref` registry contract so every counted strategy
    has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
-4. Reconcile one manifest/state/report and bind resume to the manifest hash.
+4. Emit the slice-1 reconciled report from the real sequential execution path.
 
 Keep the first implementation sequential. Add bounded concurrency only after
 runtime/DB profiling shows it is needed. A smaller user-approved batch remains
@@ -381,13 +473,17 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     newest ~day keeps pre-bucket schema until archive catch-up re-ingest).
     Next: human merge decision, then a one-off optflow re-ingest ~9 days back.
 
-14. AUTHORIZED 2026-07-28 (user): execute the H-024..H-027 Deribit
+14. COMPLETE AT STAGE 2, 2026-07-29 (user-authorized 2026-07-28):
+    execute the H-024..H-027 Deribit
     moneyness/vol limited probe per
     `docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md`
     (order H-024→H-025→H-027→H-026; H-026 = F-VRP-TIMING K retry 1/2,
-    explicitly included). Execution runs in a separate session; Stage-2 stop
-    rules, no retune, one registry entry per executed candidate. Branch:
-    `feature/deribit-moneyness-hypotheses`.
+    explicitly included). Commit `094742e` regenerated the missing E-025 dated
+    reference without changing its outcome/accounting; I49 then passed with
+    898 H-027/E-025 common days. E-064..E-067 record the ordered Stage-2 runs:
+    H-024 data/power fail; H-025 duplicate/data/cost/power fail and family
+    merge; H-027 cost/power fail; H-026 cost/power fail. No grid, trial/K
+    consumption, retune, Stage 3, promotion, or deployment occurred.
 
 15. IMPLEMENTED, NOT ACTIVATED 2026-07-28 (user-approved ADR-0017): H-014
     live-execution layer is implemented in the new `execution/deribit_live/`
@@ -402,6 +498,152 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     capital approval. The shadow task's desktop toasts remain independent; its
     8-week clock is still stalled, see KNOWN_ISSUES.
 
+16. AUTHORIZED 2026-07-29 (user, "照你的方向做"): next-batch direction —
+    H-029/F-FUNDING-SETTLEMENT-DRIFT Stage-2 probe (event design; spec
+    `docs/superpowers/specs/2026-07-29-event-probe-hypotheses.md`, task
+    `tasks/2026-07-29-funding-settlement-probe-codex-tasks.md`);
+    H-028/F-LIQUIDATION-REVERSAL registered data-blocked (liq_okx_* has only
+    ~26 days, forward-only — keep quant_liq_okx_ingest healthy, earliest
+    probe ~2027-07); ADR-0016 round-infra slice 1 in parallel
+    (`tasks/2026-07-29-adr0016-round-infra-slice1-codex-tasks.md`).
+    Note: binance funding stale since 2026-07-02 and 1m candles since
+    2026-07-14 (candle top-up rode the stalled H-014 shadow task); H-029's
+    frozen window (ends 2026-07-02) is unaffected.
+    COMPLETED 2026-07-29: H-029/E-068 Stage 2 passed data and distinctness
+    but failed cost and power (net Sharpe -0.471876 vs 0.880629 floor);
+    zero trials/K and no Stage 3. ADR-0016 slice 1 passed synthetic validation;
+    no real complete round ran.
+
+17. DONE 2026-07-29 (Claude): (a) H-014 shadow clock ROOT-CAUSED and REPAIRED —
+    the two-week stall was Task Scheduler power conditions (refused on battery,
+    no catch-up), not user downtime; settings flipped with user approval, the
+    wrapper's exit-code masking fixed, and a second blocker cleared
+    (`canonical_candles` ran 14 days behind raw because the daily ops script
+    never promoted). Scheduled 16:10 run now completes unattended (Last Result
+    0) and the journal carries 2026-07-29 — the ≥8-week clock restarts there.
+    (b) Literature slate built for ADR-0016: H-030…H-037 registered as eight
+    verified-paper-backed new mechanisms, each with its decisive distinctness
+    gate and honest power/data limits ex ante; H-038 registered as the ONLY
+    eligible existing-strategy iteration after auditing every K-remaining
+    family. **The 8/2/10 contract still cannot be met honestly** (9 of 10–15;
+    a second iteration would be gate-chasing) — specs
+    `docs/superpowers/specs/2026-07-29-literature-slate-h03{0,2}-*.md`.
+    Next: Stage-2 probe modules per candidate (ADR-0016 phase 3).
+
+18. COMPLETE AT STAGE 2, 2026-07-29 (user-authorized): H-030..H-037 now have
+    deterministic registered runners and E-069..E-076 SHA-bound artifacts.
+    Whole-slate I49 ran before DB access. H-030, H-032, and H-034 reached
+    measurable returns but failed cost/power; H-032/H-034 also failed decisive
+    distinctness. The other five are honestly data-blocked. No Stage 3,
+    parameter grid, trial/K consumption, ingestion, proxy substitution,
+    promotion, or deployment ran. The 8/2/10 complete-round contract remains
+    blocked because H-038 is still unauthorized and only one eligible
+    iteration exists.
+
+19. AUTHORIZED 2026-07-30 (user, "接受" on ADR-0018): paper-trade testnet
+    connectivity handed to Codex —
+    `tasks/2026-07-30-paper-trade-testnet-connectivity-codex-tasks.md`. T1
+    activates H-014's disabled live-execution adapter to run its real
+    signal-driven order loop on Deribit **testnet only**
+    (`docs/ADR/0018-h014-testnet-signal-driven-execution-exception.md`,
+    accepted; `docs/DOMAIN_RULES.md` R8.9 now cross-references the
+    exception). Testnet fills are explicitly non-evidentiary — they do not
+    advance the ADR-0011 8-week shadow clock or R7.2/live gates, which
+    remain unmoved for real capital. T1 has an internal Phase 1 (build/
+    verify, `enabled` stays false) → Phase 2 (activate) checkpoint requiring
+    Claude's go-ahead. T2 (new Binance spot+futures testnet clients) and T3
+    (verify existing OKX demo connectivity, still blocked on the user
+    creating a Demo API key) are connectivity-only, no gate, no strategy
+    wiring. Next: Codex executes; Claude reviews Phase 1 before Phase 2.
+
+20. PHASE 1 IMPLEMENTED / AUTHENTICATED RUNS BLOCKED 2026-07-30: Deribit
+    private execution now rejects every non-test host and the mocked
+    auth/place/check/cancel lifecycle passes; `h014_live.enabled` remains
+    false and `config/risk.yaml` is unchanged. New Binance Spot and USD-M
+    clients are fixed to their test/demo hosts, use separate blank credential
+    names, and have a manual no-strategy smoke; the futures API can express
+    only `reduceOnly=true` one-way reductions. A bounded OKX demo smoke reuses
+    `OKX_API_KEY` / `OKX_SECRET` / `OKX_PASSPHRASE` through
+    `OKXBroker(demo=True)`. No valid Deribit, Binance, or OKX paper key is
+    available, so no authenticated venue request or real test order was made.
+    Next: the user supplies scoped paper keys; Codex captures the real Phase 1
+    outputs; Claude then gives an explicit Phase 2 go or no-go. Until then, no
+    H-014 signal drives even a testnet order and `KNOWN_ISSUES` 60005 stays
+    open.
+
+21. BINANCE/OKX DEMO AUTHENTICATED 2026-08-02 (user-authorized): Binance Spot
+    now uses the official unified Demo endpoint `demo-api.binance.com`, syncs
+    venue time before signing, and completed a real Demo place/cancel round
+    trip with no open orders. The same Demo key authenticated against USD-M
+    `demo-fapi.binance.com`; the flat account correctly blocked the reduce-only
+    smoke instead of creating exposure. OKX Demo REST completed balance,
+    place, and cancel, and private WS authenticated plus subscribed to
+    `orders:ANY` and `positions:SWAP`. Shared OKX execution now sanitizes the
+    venue tag, checks nested `sCode`, aligns directional prices to tick size,
+    uses `cash` for Spot, and observes Spot fills. The current BTC funding rate
+    annualized to about 0.229%, below the configured 12% gate, so the real-time
+    funding strategy correctly emitted no order; targeted synthetic/replay
+    tests verify the dual-leg path. This is paper connectivity and strategy
+    plumbing evidence only. Cross-leg execution is not atomic, no promotion
+    gate moved, and Deribit H-014 Phase 2 remains separately gated.
+
+22. OKX PUBLIC DATA ACCUMULATION ACTIVE 2026-08-02 (user-authorized): the
+    `quant_okx_market_data` Windows task starts at boot as
+    `woody`/S4U/Limited and continuously writes chunked BTC/ETH Spot and
+    SWAP books, public trades, and funding-rate Parquet files. The path loads no
+    credentials, broker, strategy, or order method. A real four-symbol smoke
+    persisted all three data kinds; the task stores no password, is battery-safe, start-when-
+    available, unlimited-duration, and configured for one-minute failure
+    restart. A 10 GiB free-space guard stops safely; retention is manual.
+
+23. IMPLEMENTED, NOT PUBLISHED 2026-08-04 (Claude-planned, Codex-implemented):
+    public research-progress
+    page for GitHub Pages —
+    `tasks/2026-08-04-public-status-page-codex-tasks.md`. User chose "research
+    progress + shadow observability", daily refresh. Publish boundary is an
+    orphan `public-status` branch containing only `index.html`, `status.json`,
+    and `.nojekyll`; no Actions workflow, no DB access, no `frontend/**` change.
+    The generator reads only `config/workstreams.yaml`, the shadow
+    bias/journal files, and the funnel projection, and a required leak-canary
+    test asserts no signal key or value (`dvol`/`ivp`/`vrp`/`rv`/`z`/`px`/
+    `signal`/`legs`/`intent`) reaches the output. The page must state plainly
+    that there is no live and no paper-trading performance and that no gate has
+    been passed. The local-only generator, self-contained page, daily wrapper,
+    leak-canary tests, feature map, and runbook are complete. No branch was
+    created, no push occurred, Pages remains disabled, and no scheduler was
+    registered. Not a business-rule change, so no Change Manifest. Next: the
+    user reviews/merges, then creates the orphan branch, enables Pages, verifies
+    the first page, and registers the daily task. `docs/CURRENT_STATE.md`
+    next-actions were reordered on the same date at the user's request.
+
+24. DECISION BATCH 2026-08-04 (user): (a) merge — PR #19 is open/MERGEABLE and
+    `origin/main` already holds PRs #9/#14/#16/#18, so nothing is pushed to
+    `main` directly; (b) H-033/H-036 — no action, closed by H-045/H-046;
+    (c) H-038 AUTHORIZED, `tasks/2026-08-04-h038-residual-meanrev-stage2-codex-tasks.md`,
+    terminal for F-S5 at K 2/2, breadth must be derived not declared;
+    (d) WS-C partially authorized for C3/C5/C10 only,
+    `tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md`, one commit and one Change
+    Manifest each — C1/C2/C4/C6/C7/C8/C9/C11 and F2 stay ungated;
+    (e) ADR-0016 deferred. The deferral reason is now invariant I68: R6.8/I53
+    used "execution-ready" without defining it, so candidates counted with
+    unverified data, a declared breadth, and no gross-edge estimate. Evidence
+    is the `docs/ai/LESSONS.md` 2026-08-04 sweep of 38 Stage-2 artifacts.
+    I68 enforcement is REVIEW until the ADR-0016 manifest validator ships.
+
+25. CODEX DELIVERY 2026-08-04: (a) H-038/E-094 failed the strict Stage-2 data
+    gate at 17,271/17,272 PIT member-days because `SOL-USDT-SWAP` had 1,439 of
+    1,440 Binance 1m rows on 2026-01-01. No admissible backtest positions were
+    produced; breadth failed closed to 1 with n_obs=0 and family-cumulative
+    n_trials=72. F-S5 is terminal at K 2/2, with no rerun, retune, Stage 3, or
+    promotion. The SHA-bound artifact is
+    `results/h038_stage2_20260804/stage2_feasibility.json` at
+    `fec068c6c37445dd44df3759a8a87873174141c7c7581caeafda5d2d422113c8`;
+    its separate immutable breadth provenance records the absent position input.
+    (b) Authorized WS-C C5/C3/C10 are implemented with separate manifests:
+    complete venue instrument specs fail closed before broker construction,
+    reduce-only plus the caller's `posSide` reaches OKX, and runtime/replay mark
+    consumers use the maintained `OkxBook`. No mode, gate, or live state changed.
+
 ## Open decisions
 
 - Human review/merge decision for the separate PR #9 follow-up remains pending.
@@ -409,3 +651,7 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
   reserved-only; H-012 shelved; P1.4 operations decided.
 - H-014 pre-2024 hourly-DVOL backfill and E-043 are complete. Any chain-history
   purchase or Stage-3 engine/accounting work still needs explicit human approval.
+- Claude should decide whether H-032's 0.561490 correlation with E-067 and
+  H-034's 0.494810 correlation with E-062 require durable family reassignment;
+  this task records the decisive failures but does not rewrite the
+  pre-registered family identities.

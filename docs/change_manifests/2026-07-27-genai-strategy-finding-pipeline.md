@@ -112,3 +112,16 @@ A9 research execution controls and A10 core governance contracts.
 
 - Human approval required: yes — obtained explicitly in the user's 2026-07-27
   instructions. No deployment or gate-change approval was requested or used.
+
+## 2026-07-29 implementation update — ADR-0016 slice 1
+
+- Added `backtesting/pipeline_round.py` and its unit test as the deterministic
+  boundary for joined candidate inputs, 10–15/8/2 executable validation,
+  `pending_llm`/duplicate refusal, SHA-256-bound resume, and manifest-bound
+  terminal reconciliation.
+- This implements orchestration validation only. It does not add candidate
+  runners, change Stage-2/Stage-3 logic, run a real round, or change R6.8/R6.9.
+- Synthetic tests cover a valid 8/2/10 seal, every required refusal class,
+  identical/mutated resume, joined-input filtering, and a missing terminal
+  artifact. A complete real round remains blocked on enough registered
+  deterministic runners.

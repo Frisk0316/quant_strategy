@@ -153,9 +153,9 @@ def main() -> None:
 
     cfg = load_config()
     client = OKXRestClient(
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         base_url=cfg.okx.base_url,
         demo=False,  # Use real endpoint for historical data
     )

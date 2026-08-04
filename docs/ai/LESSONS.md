@@ -38,3 +38,86 @@ uncommitted working-tree text.
 Right: commit the registration (spec + registry row) before the run, and
 commit each delivery separately.
 Rule: ex-ante means committed-before-run; one delivery = one commit.
+
+## 2026-07-29 A stalled scheduled job blamed on the human was a settings bug
+
+Trigger: the H-014 shadow 8-week clock sat stalled for two weeks. The recorded
+diagnosis was "machine off at the 16:10 window", and the advice given to the
+user was "keep the laptop on" — which could never have worked.
+Wrong: inferring a cause from the failure's shape (missing days, one `^C`) and
+writing it into KNOWN_ISSUES without reading the job's own configuration.
+Right: `Get-ScheduledTask ... | Select Settings` showed
+`DisallowStartIfOnBatteries=True`, `StopIfGoingOnBatteries=True`,
+`StartWhenAvailable=False` on a laptop running on battery — the scheduler
+refused every trigger (0x800710E0) and never caught up.
+Rule: before attributing an automation failure to the operator, read the
+automation's configuration and its own result codes. Then check the next layer
+too: fixing the scheduler exposed a second blocker (raw candles ran 14 days
+ahead of `canonical_candles` because the daily script never promoted), so
+"it runs now" is not "it works now" until the end-to-end artifact appears.
+
+## 2026-07-29 Specs frozen against data that was never checked
+
+Trigger: eight literature-backed hypotheses were registered with frozen
+signals; five of them (H-031, H-033, H-035, H-036, H-037) turned out to be
+unbuildable because the data they name does not exist in this repo — no
+per-trade Deribit option tape (optflow stores hourly aggregates with a
+20-trade sample), zero FRED rows, and no official CME series.
+Wrong: writing a data inventory from memory into the research prompt, then
+freezing specs against it. The same session had correctly scouted data before
+registering H-028/H-029 and caught a gap that way — the check was skipped for
+the bigger slate precisely when it mattered more.
+Right: before freezing any spec, run the one query that proves each named
+dataset exists at the required granularity and history. It costs minutes; the
+omission cost a full build-and-run cycle across five candidates.
+Rule: a spec may only name data whose existence, granularity, and date range
+have been verified in this session. "The adapter exists" is not "the data is
+ingested"; "we have option flow" is not "we have per-trade option flow".
+
+## 2026-08-03 — Verify DB landings, not source fetches; delegate to the format that survives
+
+Trigger: Codex's 2026-07-31 delivery reported "live source evidence" row counts
+for 17 datasets, all fetched in-memory from the source APIs while the DB was
+down; the numbers looked like ingestion evidence but zero rows had landed.
+Wrong: reading a row-count table in a task file as proof of persistence. Source
+fetch counts drift within days (COT gained a week, Cboe a day) and say nothing
+about upsert semantics, as-of columns, or unit normalization in storage.
+Right: acceptance criteria for ingestion must be checked with SQL against the
+landed rows (counts, ranges, published_at invariants, derived-field sanity),
+which a fresh session did in minutes once the DB was up.
+Rule: "fetched=N" is source evidence; only a DB query is landing evidence. An
+acceptance box for ingestion may only be ticked from a query against storage.
+
+## 2026-08-04 — The candidate funnel is failing at the input, not at the gate
+
+Trigger: 38 Stage-2 artifacts were tabulated after the user asked why every
+candidate keeps failing. The failure profile is not "the gate is too strict".
+
+Measured, across all 38 `stage2_feasibility.json` files:
+- First failing check: `data_availability` 16, `cost_after_edge` 8,
+  `distinctness` 2, `statistical_power` 2. **Nearly half never produce a return
+  series at all** — a spec, a runner, and an immutable artifact are built before
+  anyone confirms the data supports the mechanism.
+- Of the ~20 that reach the power check, **11 have negative or zero plausible
+  Sharpe** (H-030 -97.31, H-034 -0.97, xs_salience -0.61, H-029 -0.47, ...).
+  A negative Sharpe fails any floor; loosening the gate changes nothing.
+- Only one candidate ever passed all four cleanly on honest inputs
+  (`f-funding-xs-dispersion-retry1`, 0.9687 vs 0.8113) and it reached Stage 3
+  at DSR 0.8305 / PSR 0.9166. Three others "passed" on an assumed `breadth=2`
+  and were retracted by E-092/E-093 when breadth was not derived from realized
+  positions.
+
+Wrong: treating low pass rates as evidence that the gates or the cost model
+need revisiting, and building round-infrastructure to push more candidates
+through the same funnel faster.
+Right: the binding constraints are upstream — (a) data existence is confirmed
+after registration instead of before, (b) `breadth` is declared rather than
+derived, (c) no ex-ante gross-edge estimate is required, so mechanisms whose
+gross capture is an order of magnitude below cost (H-010 1.3636 bps vs 8.0 bps;
+H-030 8 bps/event) still get built.
+Rule: before a candidate gets an H-number it must carry three verified numbers:
+the DB-confirmed row count/range for every named dataset, the expected gross
+capture per event in bps against the cost per event in bps, and the breadth its
+realized position series can support. Fail closed to breadth=1. A candidate
+that cannot supply all three is not execution-ready and does not count toward
+an ADR-0016 sealed manifest.

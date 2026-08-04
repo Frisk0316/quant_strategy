@@ -1,0 +1,459 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "免費資料、論文與策略回測研究報告（2026-08-02）",
+    "description": "以免費公開資料、論文機制與預註冊回測證據評估本專案下一步策略方向。",
+    "generatedAt": "2026-08-02T16:30:00Z",
+    "cards": [
+      {
+        "id": "complete_passes",
+        "description": "七個預註冊候選中，通過全部 Stage 2 與 Stage 3 閘門的數量。",
+        "dataset": "headline",
+        "sourceId": "probe_aggregate",
+        "metrics": [
+          { "label": "完整通過候選", "field": "complete_passes", "format": "number" },
+          { "label": "候選總數", "field": "candidate_count", "format": "number" }
+        ]
+      },
+      {
+        "id": "closest_diagnostic_dsr",
+        "description": "H-041 的機械性 Stage-3 DSR；因 Stage-2 breadth 稽核失敗，只可作不可採納的診斷。",
+        "dataset": "headline",
+        "sourceId": "probe_aggregate",
+        "metrics": [
+          { "label": "診斷 DSR", "field": "nearest_dsr", "format": "number" },
+          { "label": "參考閘門", "field": "dsr_gate", "format": "number" },
+          { "label": "診斷差距", "field": "nearest_gap", "format": "number", "signed": true }
+        ]
+      },
+      {
+        "id": "attributable_rows",
+        "description": "本任務研究與回測準備可直接歸因的唯一資料列淨新增小計；不含同日其他 workstream。",
+        "dataset": "headline",
+        "sourceId": "data_inventory",
+        "metrics": [
+          { "label": "可歸因新增列", "field": "attributable_new_rows", "format": "compact" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "stage3_gate",
+        "title": "不可採納的 Stage-3 診斷 DSR",
+        "subtitle": "三個候選在 breadth=1 稽核下應先停於 Stage 2；0.95 只作診斷參考",
+        "type": "bar",
+        "dataset": "stage3_gate",
+        "sourceId": "probe_aggregate",
+        "valueFormat": "number",
+        "encodings": {
+          "x": { "field": "candidate", "type": "nominal", "label": "候選" },
+          "y": { "field": "score", "type": "quantitative", "label": "診斷 DSR / 參考閘門" },
+          "color": { "field": "series", "type": "nominal", "label": "系列" },
+          "tooltip": [
+            { "field": "score", "type": "quantitative", "label": "數值", "format": "number" },
+            { "field": "gap", "type": "quantitative", "label": "距閘門", "format": "number" }
+          ]
+        },
+        "yAxisTitle": "診斷 DSR / 參考閘門",
+        "layout": "full"
+      },
+      {
+        "id": "data_additions",
+        "title": "可直接歸因的資料庫新增列",
+        "subtitle": "本任務研究與回測準備 slice；以唯一 durable key 計數",
+        "type": "bar",
+        "dataset": "data_additions",
+        "sourceId": "data_inventory",
+        "valueFormat": "compact",
+        "encodings": {
+          "x": { "field": "dimension", "type": "nominal", "label": "資料維度" },
+          "y": { "field": "new_rows", "type": "quantitative", "label": "淨新增唯一列" },
+          "tooltip": [
+            { "field": "new_rows", "type": "quantitative", "label": "新增列", "format": "number" },
+            { "field": "scope_note", "type": "text", "label": "範圍" }
+          ]
+        },
+        "yAxisTitle": "淨新增唯一列",
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "candidate_results",
+        "title": "七個候選的終端回測結果",
+        "subtitle": "正式窗、funding 與 4 bps one-way cost 後；reported PASS 已按 ADR-0013 breadth 稽核更正",
+        "dataset": "candidate_results",
+        "sourceId": "probe_aggregate",
+        "defaultSort": { "field": "hypothesis", "direction": "asc" },
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          { "field": "hypothesis", "label": "假設", "type": "text" },
+          { "field": "stage2", "label": "Stage 2", "type": "text" },
+          { "field": "net_sharpe", "label": "Net Sharpe", "format": "number" },
+          { "field": "dsr", "label": "DSR", "format": "number" },
+          { "field": "verdict", "label": "判定", "type": "text" }
+        ]
+      },
+      {
+        "id": "power_audit",
+        "title": "Stage-2 power breadth 治理稽核",
+        "subtitle": "runner 產物以兩個 active legs 當 breadth=2；合規保守值為 1",
+        "dataset": "power_audit",
+        "sourceId": "governance_audit",
+        "defaultSort": { "field": "hypothesis", "direction": "asc" },
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          { "field": "hypothesis", "label": "假設", "type": "text" },
+          { "field": "plausible_sharpe", "label": "Plausible", "format": "number" },
+          { "field": "compliant_mds", "label": "合規 MDS", "format": "number" },
+          { "field": "audited_status", "label": "稽核結論", "type": "text" }
+        ]
+      },
+      {
+        "id": "data_quality",
+        "title": "新增資料品質與目前覆蓋",
+        "subtitle": "目前 DB unique count；null、負發布延遲與 suspect 為欄位/時序檢查",
+        "dataset": "data_quality",
+        "sourceId": "data_inventory",
+        "defaultSort": { "field": "dataset", "direction": "asc" },
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          { "field": "dataset", "label": "資料集", "type": "text" },
+          { "field": "current_rows", "label": "目前唯一列", "format": "number" },
+          { "field": "first", "label": "起始", "type": "date" },
+          { "field": "last", "label": "最新", "type": "date" },
+          { "field": "limitation", "label": "限制", "type": "text" }
+        ]
+      },
+      {
+        "id": "paper_directions",
+        "title": "論文機制與本輪可證偽轉譯",
+        "subtitle": "五個新機制；論文關係不等同於交易獲利",
+        "dataset": "paper_directions",
+        "sourceId": "literature_review",
+        "defaultSort": { "field": "hypothesis", "direction": "asc" },
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          { "field": "hypothesis", "label": "假設", "type": "text" },
+          { "field": "paper", "label": "論文", "type": "text" },
+          { "field": "result", "label": "結果邊界", "type": "text" }
+        ]
+      },
+      {
+        "id": "strategy_classification",
+        "title": "可用性、功效缺口與後續方向",
+        "subtitle": "可用僅指研究或影子用途；沒有 live-ready 策略",
+        "dataset": "strategy_classification",
+        "sourceId": "strategy_ledger",
+        "defaultSort": { "field": "priority", "direction": "asc" },
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          { "field": "priority", "label": "順序", "format": "number" },
+          { "field": "hypothesis", "label": "策略", "type": "text" },
+          { "field": "classification", "label": "分類", "type": "text" },
+          { "field": "next_action", "label": "下一步", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "synthesis_report",
+        "label": "Detailed research synthesis",
+        "path": "reports/2026-08-02-paper-data-strategy-research.md"
+      },
+      {
+        "id": "probe_aggregate",
+        "label": "Hash-bound limited-probe aggregate and candidate artifacts",
+        "path": "results/paper_data_limited_probe_20260802/limited_probe_report.json",
+        "query": {
+          "engine": "deterministic Python backtest",
+          "language": "python",
+          "sql": "WITH candidate_results(hypothesis, audited_stage2, net_sharpe, diagnostic_wf, diagnostic_cpcv, diagnostic_dsr) AS (VALUES ('H-040','FAIL',-0.193843,NULL,NULL,NULL),('H-041','AUDIT FAIL',0.567430,0.447934,0.567430,0.927941),('H-042','FAIL',0.000000,NULL,NULL,NULL),('H-043','FAIL',-0.606531,NULL,NULL,NULL),('H-044','FAIL',-0.086022,NULL,NULL,NULL),('H-045','AUDIT FAIL',0.504203,0.341638,0.504203,0.912808),('H-046','AUDIT FAIL',0.475155,0.169556,0.475155,0.888156)) SELECT *, 0 AS complete_passes, 7 AS candidate_count FROM candidate_results ORDER BY hypothesis",
+          "description": "Frozen runner output for seven preregistered candidates. Three Stage-3 runs were mechanically generated, then ruled inadmissible by the ADR-0013 breadth audit.",
+          "executed_at": "2026-08-02T14:47:00Z",
+          "metric_definitions": [
+            "Stage 2 passes only when data availability, distinctness, cost-after-edge, and statistical power all pass.",
+            "Power breadth must be explicitly supplied before database access and count only independently justified bets; the post-run audit conservatively uses breadth=1.",
+            "Stage 3 statistical pass requires DSR and PSR at least 0.95, DSR no greater than PSR, nonzero activity, and reconciled trial count.",
+            "Turnover cost is 4 bps one-way; funding uses Binance daily settlement sums."
+          ]
+        }
+      },
+      {
+        "id": "governance_audit",
+        "label": "Post-run ADR-0013 power-breadth audit",
+        "path": "tasks/2026-08-02-paper-data-limited-probe-governance-audit.md",
+        "query": {
+          "engine": "PostgreSQL reviewed-snapshot assembly",
+          "sql": "SELECT * FROM (VALUES ('H-041',2,0.451837,0.567076,1,0.638354,'Stage-2 power FAIL'),('H-045',2,0.441050,0.542492,1,0.618692,'Stage-2 power FAIL'),('H-046',2,0.453966,0.483769,1,0.642546,'Stage-2 power FAIL')) AS power_audit(hypothesis, artifact_breadth, artifact_mds, plausible_sharpe, compliant_breadth, compliant_mds, audited_status) ORDER BY hypothesis",
+          "description": "Reconciles the frozen runner artifacts against ADR-0013. Active trading legs are not independently justified bets; breadth=1 makes H-041, H-045, and H-046 fail Stage-2 power.",
+          "executed_at": "2026-08-02T16:10:00Z"
+        }
+      },
+      {
+        "id": "data_inventory",
+        "label": "TimescaleDB external-data, candle, funding, and ingestion audit",
+        "path": "config/external_data.yaml",
+        "query": {
+          "engine": "PostgreSQL / TimescaleDB",
+          "language": "sql",
+          "sql": "SELECT dataset_id, count(*) AS rows, count(DISTINCT observed_at) AS distinct_rows, min(observed_at) AS first_observed, max(observed_at) AS last_observed, count(*) FILTER (WHERE value_num IS NULL) AS null_values, count(*) FILTER (WHERE published_at < observed_at) AS negative_lag, count(*) FILTER (WHERE quality_status = 'suspect') AS suspect_rows FROM external_observations WHERE dataset_id = ANY(:dataset_ids) GROUP BY dataset_id ORDER BY dataset_id;",
+          "description": "Audits current unique coverage and publication/data-quality fields for the selected research datasets. Net-new figures reconcile task-time ingestion jobs to durable unique keys; OI and Binance funding exclude repeated boundary/start keys.",
+          "executed_at": "2026-08-02T15:12:00Z",
+          "tables_used": ["public.external_observations", "public.external_fetch_jobs", "public.funding_rates", "public.canonical_candles", "public.venue_canonical_candles"],
+          "metric_definitions": [
+            "Attributable new rows are the selected task slice only, not all rows written by parallel workstreams on 2026-08-02.",
+            "OI counts use 500 durable unique hourly keys per leg rather than legacy job telemetry of 501.",
+            "Binance funding net-new counts use 78 timestamps per leg because the first fetched timestamp already existed."
+          ]
+        }
+      },
+      {
+        "id": "literature_review",
+        "label": "Primary papers and official source documentation",
+        "path": "reports/2026-08-02-paper-data-strategy-research.md",
+        "query": {
+          "engine": "PostgreSQL reviewed-snapshot assembly",
+          "sql": "SELECT * FROM (VALUES ('H-040','Kristoufek (2013), Scientific Reports','Attention x trend','D+1 views; t+1 BTC','Negative net edge'),('H-041','Bhambhwani et al. (2023), JIFMIM','Network adoption and security','Weekly active-address growth','Positive edge; breadth=1 power fail'),('H-042','Foley et al. (2026), Accounting and Finance','Stablecoin depeg response','Next-day BTC/ETH reversal','Zero events in daily free source'),('H-043','Cai and Zhao (2024), JBF','Cross-sectional salience','Weekly low-minus-high portfolio','Net Sharpe -0.6065'),('H-044','Hung et al. (2021), JEF','Futures participant activity','Publication-safe CFTC direction','Return-sign transfer failed')) AS literature(hypothesis, paper, mechanism, tested_transfer, result) ORDER BY hypothesis",
+          "description": "Primary journal/publisher pages and official data-provider documentation are linked in the detailed report; no secondary trading claim is treated as canonical.",
+          "executed_at": "2026-08-02T15:05:00Z"
+        }
+      },
+      {
+        "id": "strategy_ledger",
+        "label": "Project hypothesis ledger and experiment registry",
+        "path": "docs/HYPOTHESIS_LEDGER.md",
+        "query": {
+          "engine": "PostgreSQL reviewed-snapshot assembly",
+          "sql": "SELECT * FROM (VALUES (1,'H-014','Research/shadow only','Prior Stage-3 pass; deployment gates open'),(2,'H-023','Prior Stage-2 near-power','Plausible 0.5961 vs MDS 0.7134'),(3,'H-041','Promising; not valid near-pass','Plausible 0.5671 vs compliant MDS 0.6384'),(4,'H-045','Promising; not valid near-pass','Plausible 0.5425 vs compliant MDS 0.6187'),(5,'H-046','Promising data path; not near','Plausible 0.4838 vs compliant MDS 0.6425'),(6,'H-042','Data-inconclusive','Zero severe events'),(7,'H-040/H-043/H-044','Stop exact specs','Negative cost-after-edge'),(8,'H-028/H-039','Forward accumulation','Minimum windows not reached'),(9,'H-038','Explicit authorization required','Would consume terminal K 2/2')) AS classification(priority, hypothesis, classification, evidence) ORDER BY priority",
+          "description": "Durable strategy status, family cumulative trials, K-budget, artifacts, and promotion boundary; cross-checked against docs/EXPERIMENT_REGISTRY.md.",
+          "executed_at": "2026-08-02T15:30:00Z"
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# 免費資料、論文與策略回測研究報告（2026-08-02）"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "synthesis_report",
+        "body": "## Executive Summary\n\n- **沒有新候選通過完整閘門，也沒有 live-ready 策略。** 凍結 runner 全部終端 FAIL；它機械性地執行三組 Stage 3，但 ADR-0013 稽核顯示七組治理有效結論都應停於 Stage 2。\n- **本輪沒有治理有效的 near-threshold 新策略。** H-041/H-045 的診斷 DSR 0.9279/0.9128 不可採納；breadth=1 後其 MDS 0.6384/0.6187 都高於 plausible Sharpe。既有 H-023 才是目前治理有效且最接近 Stage-2 power 的方向。\n- **本任務可直接歸因的補全小計為 13.3k 個唯一資料列。** 新增注意力、活躍地址、USDT 參考價與 DGS10，並補近期 OI、情緒、Deribit 與 Binance funding；不含同日其他 workstream。\n- **既有 H-014 仍是唯一曾正式通過 Stage 3 的策略。** 它只能繼續 shadow/研究，尚未通過便攜驗證、至少八週 shadow 與部署閘門。"
+      },
+      { "id": "headline_metrics", "type": "metric-strip", "cardIds": ["complete_passes", "closest_diagnostic_dsr", "attributable_rows"] },
+      {
+        "id": "backtest_takeaway",
+        "type": "markdown",
+        "sourceId": "probe_aggregate",
+        "body": "## 執行後治理稽核：正邊際也不能繞過 Stage-2 power\n\nrunner 把 BTC/ETH 兩個 active legs 當成 breadth=2，卻沒有依 ADR-0013 先證明它們是獨立 bets。用合規 breadth=1 重算後，H-041、H-045、H-046 的 MDS 都高於 plausible Sharpe；它們應停於 Stage 2。圖中的 DSR 是已生成但不可採納的診斷，不是 near-pass 證據。"
+      },
+      { "id": "stage3_gate_chart", "type": "chart", "chartId": "stage3_gate", "layout": "full" },
+      { "id": "power_audit_table", "type": "table", "tableId": "power_audit", "layout": "full" },
+      {
+        "id": "candidate_interpretation",
+        "type": "markdown",
+        "sourceId": "probe_aggregate",
+        "body": "**所以呢：** 本輪沒有治理有效的 near-threshold。H-041/H-045/H-046 可保留資料或機制方向，但須先以 breadth=1 取得 power eligibility。H-040、H-043、H-044 在資料可用時仍是負邊際，原規格應停止。H-042 的免費日頻 USDT 參考價零事件，因此是 data-inconclusive，而不是機制失效。"
+      },
+      { "id": "candidate_table", "type": "table", "tableId": "candidate_results", "layout": "full" },
+      {
+        "id": "data_takeaway",
+        "type": "markdown",
+        "sourceId": "data_inventory",
+        "body": "## 資料新增了注意力、鏈上採用、穩定幣與官方殖利率曲線\n\n最大增量不是更多價格，而是四個過去較少覆蓋的研究維度。下圖以 durable unique key 計數；13.3k 只涵蓋本任務可直接歸因的補全 slice。OI job 曾因 page boundary 重複而錯報，各腿以資料庫實際 500 筆計；Binance funding 起點已存在，因此各腿淨新增 78 而不是 fetched 79。"
+      },
+      { "id": "data_additions_chart", "type": "chart", "chartId": "data_additions", "layout": "full" },
+      {
+        "id": "data_implication",
+        "type": "markdown",
+        "sourceId": "data_inventory",
+        "body": "**所以呢：** 四個新研究資料集都有 2,401 unique days、零空值、零負發布延遲與零 suspect；但欄位完整不等於經濟完整。Coin Metrics USDT 日頻參考價沒有捕捉嚴重 depeg，Binance OI 只有約 20.8 日，FRED 是 latest vintage，`data_quality_events=0` 也不能被當成全庫品質證明。"
+      },
+      { "id": "data_quality_table", "type": "table", "tableId": "data_quality", "layout": "full" },
+      {
+        "id": "papers_takeaway",
+        "type": "markdown",
+        "sourceId": "literature_review",
+        "body": "## 五篇論文提供不同機制；鏈上採用有正邊際但功效不足\n\nWikipedia 論文真正支持的是注意力與 7 日趨勢的交互作用，不是無條件 views 預測；CFTC 論文支持參與者與 price discovery，不保證報酬方向。active-address adoption 是最佳新研究方向，但 breadth=1 Stage-2 power 仍失敗，不能稱為接近晉級。"
+      },
+      { "id": "paper_table", "type": "table", "tableId": "paper_directions", "layout": "full" },
+      {
+        "id": "portfolio_takeaway",
+        "type": "markdown",
+        "sourceId": "strategy_ledger",
+        "body": "## 可用性分層：H-014 只可 shadow，本輪沒有治理有效 near-pass\n\n專案中唯一曾正式通過 Stage 3 的 H-014 仍缺便攜驗證、至少八週 shadow 與人工批准。既有 H-023 是目前最接近 Stage-2 power 的合規方向；H-041/H-045 應以新增獨立資料來解除功效缺口；H-042 先補事件資料；負邊際規格停止。"
+      },
+      { "id": "classification_table", "type": "table", "tableId": "strategy_classification", "layout": "full" },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "sourceId": "synthesis_report",
+        "body": "## 建議下一步\n\n1. **不上線任何本輪候選。** 不修改 live、demo、shadow 或 promotion gate。\n2. **優先完成 H-014 至少八週 shadow 與 parity。** 監控訊號新鮮度、可執行 spread、fill probability、費用與 missed-entry。\n3. **H-041 只做資料增量。** 先以 breadth=1 設計所需樣本，再延長 OOS、確認 Coin Metrics 商業授權並尋找不重複的 security/hashrate 資料；retry 重新預註冊並累計 trial/K。\n4. **H-045 增加 revision-aware 事件史。** 先以 breadth=1 設計所需事件數，再用 ALFRED/官方 release vintage 增加資料並保持 published-at + t+1。\n5. **H-042 先做分鐘級多場 stablecoin data feasibility。** 先證明資料能捕捉已知 depeg，再決定是否回測。\n6. **維持 H-028/H-039 向前收集。** 在樣本門檻前不縮短窗口換取提早結論。"
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "sourceId": "synthesis_report",
+        "body": "## Further Questions\n\n- Coin Metrics Community 的 non-commercial 條款是否符合預計使用方式？\n- H-041 在 breadth=1 下需要多少新增獨立樣本，且正邊際是否由 2020–2021 adoption regime 主導？\n- H-045 的正邊際來自 pre-FOMC calendar leg 還是 lagged yield leg？\n- H-014 能否在真實 chain、quote staleness、fill probability 與費用下重現研究上限？"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "sourceId": "synthesis_report",
+        "body": "## Caveats and Assumptions\n\n- 這是七候選 `limited_probe`，不是 ADR-0016 完整 round。\n- runner 原本把 active legs 當 power breadth；治理稽核已將三個 reported Stage-2 passes 更正為 FAIL，且 frozen experiment 不重跑。\n- 已生成的 Stage-3 結果只可追溯診斷；family trial 仍各計 1，不能倒扣。\n- 回測是固定日頻訊號研究，不代表 intraday fill、queue、latency 與 live risk 已驗證。\n- Wikimedia 為 CC0；Coin Metrics Community 免費資料限非商業研究，commercial/live 使用前要重新審授權。\n- FRED 使用 latest vintage；宏觀資料修訂風險尚未用 ALFRED 重建。\n- H-042 的零事件是資料解析度限制；H-040/H-043/H-044 才是可用資料下的負證據。\n- `data_quality_events=0` 代表沒有記錄，不代表沒有品質問題。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-02T16:30:00Z",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "complete_passes": 0,
+          "candidate_count": 7,
+          "nearest_dsr": 0.927941,
+          "dsr_gate": 0.95,
+          "nearest_gap": -0.022059,
+          "attributable_new_rows": 13347
+        }
+      ],
+      "stage3_gate": [
+        { "candidate": "H-041", "series": "Diagnostic DSR", "score": 0.927941, "gap": -0.022059 },
+        { "candidate": "H-041", "series": "Reference gate", "score": 0.95, "gap": 0.0 },
+        { "candidate": "H-045", "series": "Diagnostic DSR", "score": 0.912808, "gap": -0.037192 },
+        { "candidate": "H-045", "series": "Reference gate", "score": 0.95, "gap": 0.0 },
+        { "candidate": "H-046", "series": "Diagnostic DSR", "score": 0.888156, "gap": -0.061844 },
+        { "candidate": "H-046", "series": "Reference gate", "score": 0.95, "gap": 0.0 }
+      ],
+      "power_audit": [
+        { "hypothesis": "H-041", "artifact_breadth": 2, "artifact_mds": 0.451837, "plausible_sharpe": 0.567076, "compliant_breadth": 1, "compliant_mds": 0.638354, "audited_status": "Stage-2 power FAIL" },
+        { "hypothesis": "H-045", "artifact_breadth": 2, "artifact_mds": 0.44105, "plausible_sharpe": 0.542492, "compliant_breadth": 1, "compliant_mds": 0.618692, "audited_status": "Stage-2 power FAIL" },
+        { "hypothesis": "H-046", "artifact_breadth": 2, "artifact_mds": 0.453966, "plausible_sharpe": 0.483769, "compliant_breadth": 1, "compliant_mds": 0.642546, "audited_status": "Stage-2 power FAIL" }
+      ],
+      "data_additions": [
+        { "dimension": "Wikipedia attention", "new_rows": 2401, "scope_note": "new research dataset" },
+        { "dimension": "BTC active addresses", "new_rows": 2401, "scope_note": "new research dataset" },
+        { "dimension": "ETH active addresses", "new_rows": 2401, "scope_note": "new research dataset" },
+        { "dimension": "USDT reference price", "new_rows": 2401, "scope_note": "new research dataset" },
+        { "dimension": "DGS10 yield", "new_rows": 1645, "scope_note": "new official macro series" },
+        { "dimension": "Binance OI", "new_rows": 1000, "scope_note": "500 unique hours per leg" },
+        { "dimension": "Deribit refresh", "new_rows": 908, "scope_note": "DVOL, HV, funding" },
+        { "dimension": "Binance funding", "new_rows": 156, "scope_note": "78 new settlements per leg" },
+        { "dimension": "Fear & Greed", "new_rows": 34, "scope_note": "34 inserts plus one overlap update" }
+      ],
+      "candidate_results": [
+        { "hypothesis": "H-040", "mechanism": "Wikipedia attention × trend", "stage2": "FAIL", "net_sharpe": -0.193843, "wf": null, "cpcv": null, "dsr": null, "verdict": "Refuted exact spec" },
+        { "hypothesis": "H-041", "mechanism": "Active-address adoption", "stage2": "REPORTED PASS / AUDIT FAIL", "net_sharpe": 0.56743, "wf": 0.447934, "cpcv": 0.56743, "dsr": 0.927941, "verdict": "Promising direction; Stage 3 inadmissible" },
+        { "hypothesis": "H-042", "mechanism": "Severe USDT depeg reversal", "stage2": "FAIL", "net_sharpe": 0.0, "wf": null, "cpcv": null, "dsr": null, "verdict": "Data-inconclusive; zero events" },
+        { "hypothesis": "H-043", "mechanism": "Cross-sectional salience", "stage2": "FAIL", "net_sharpe": -0.606531, "wf": null, "cpcv": null, "dsr": null, "verdict": "Refuted exact spec" },
+        { "hypothesis": "H-044", "mechanism": "CFTC participant regime", "stage2": "FAIL", "net_sharpe": -0.086022, "wf": null, "cpcv": null, "dsr": null, "verdict": "Refuted transfer sign" },
+        { "hypothesis": "H-045", "mechanism": "Publication-safe FOMC/yield", "stage2": "REPORTED PASS / AUDIT FAIL", "net_sharpe": 0.504203, "wf": 0.341638, "cpcv": 0.504203, "dsr": 0.912808, "verdict": "Promising direction; Stage 3 inadmissible" },
+        { "hypothesis": "H-046", "mechanism": "Publication-safe macro state", "stage2": "REPORTED PASS / AUDIT FAIL", "net_sharpe": 0.475155, "wf": 0.169556, "cpcv": 0.475155, "dsr": 0.888156, "verdict": "Promising data path; Stage 3 inadmissible" }
+      ],
+      "data_quality": [
+        { "dataset": "wiki_pageviews_bitcoin_en", "current_rows": 2401, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "CC0; attention is not causal alpha" },
+        { "dataset": "cm_btc_active_addresses", "current_rows": 2401, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Community non-commercial license" },
+        { "dataset": "cm_eth_active_addresses", "current_rows": 2401, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Community non-commercial license" },
+        { "dataset": "cm_usdt_price_usd", "current_rows": 2401, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Daily reference price missed severe events" },
+        { "dataset": "dgs10", "current_rows": 1645, "first": "2020-01-02", "last": "2026-07-30", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Latest vintage, not ALFRED PIT" },
+        { "dataset": "oi_binance_btc", "current_rows": 500, "first": "2026-07-12", "last": "2026-08-02", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Short free history; boundary job telemetry overstated" },
+        { "dataset": "oi_binance_eth", "current_rows": 500, "first": "2026-07-12", "last": "2026-08-02", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Short free history; boundary job telemetry overstated" },
+        { "dataset": "funding_rates:binance:BTC", "current_rows": 7203, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Venue-specific settlement history" },
+        { "dataset": "funding_rates:binance:ETH", "current_rows": 7203, "first": "2020-01-01", "last": "2026-07-28", "null_values": 0, "negative_lag": 0, "suspect": 0, "limitation": "Venue-specific settlement history" }
+      ],
+      "paper_directions": [
+        { "hypothesis": "H-040", "paper": "Kristoufek (2013), Scientific Reports", "mechanism": "Attention effect changes sign above/below 7-day trend", "tested_transfer": "D+1 views, t+1 long/short BTC", "result": "Negative net edge; refuted exact spec" },
+        { "hypothesis": "H-041", "paper": "Bhambhwani et al. (2023), JIFMIM", "mechanism": "Network adoption and security explain crypto returns", "tested_transfer": "Weekly sign of 7-day active-address growth", "result": "Positive edge but breadth=1 power fail; security leg unavailable" },
+        { "hypothesis": "H-042", "paper": "Foley et al. (2026), Accounting & Finance", "mechanism": "Crypto returns react around severe stablecoin depegs", "tested_transfer": "Next-day BTC/ETH reversal after severe USDT event", "result": "Free daily source had zero events" },
+        { "hypothesis": "H-043", "paper": "Cai & Zhao (2024), JBF", "mechanism": "Overweighting salient payouts predicts cross-sectional reversal", "tested_transfer": "Weekly low-minus-high salience PIT portfolio", "result": "Net Sharpe -0.6065; refuted exact spec" },
+        { "hypothesis": "H-044", "paper": "Hung et al. (2021), JEF", "mechanism": "Participant activity affects futures price discovery", "tested_transfer": "Four-release leveraged-money net/OI direction", "result": "Return sign transfer failed" }
+      ],
+      "strategy_classification": [
+        { "priority": 1, "hypothesis": "H-014", "classification": "Research/shadow usable only", "evidence": "E-051 statistical pass; E-052 extended WF 0.8818, CPCV 1.0098, DSR 0.9746", "next_action": "At least 8-week shadow, portable validation, fill/cost parity" },
+        { "priority": 2, "hypothesis": "H-023", "classification": "Prior Stage-2 near-power", "evidence": "Plausible 0.5961 vs MDS 0.7134, about 16% short", "next_action": "Only reopen with longer OOS or stronger mechanism data" },
+        { "priority": 3, "hypothesis": "H-041", "classification": "Promising; not governance-valid near-pass", "evidence": "Plausible 0.5671 below compliant MDS 0.6384; diagnostic DSR 0.9279 inadmissible", "next_action": "Breadth=1 data extension; licensing and security-factor review" },
+        { "priority": 4, "hypothesis": "H-045", "classification": "Promising; not governance-valid near-pass", "evidence": "Plausible 0.5425 below compliant MDS 0.6187; 51 usable events", "next_action": "Longer revision-aware event history with breadth=1 design" },
+        { "priority": 5, "hypothesis": "H-046", "classification": "Promising data path, not near", "evidence": "Plausible 0.4838 below compliant MDS 0.6425; diagnostic WF 0.1696", "next_action": "Assess incremental value versus buy-and-hold before retry" },
+        { "priority": 6, "hypothesis": "H-042", "classification": "Data-inconclusive", "evidence": "2,400 usable source days; zero severe events", "next_action": "Minute-level multi-venue stablecoin event data" },
+        { "priority": 7, "hypothesis": "H-040/H-043/H-044", "classification": "Stop exact specs", "evidence": "Negative engine-net and plausible Sharpe", "next_action": "No parameter chasing or ex-post sign flip" },
+        { "priority": 8, "hypothesis": "H-028/H-039", "classification": "Forward accumulation", "evidence": "Minimum honest windows not reached", "next_action": "Maintain collectors until about Jul/May 2027" },
+        { "priority": 9, "hypothesis": "H-038", "classification": "Requires explicit authorization", "evidence": "Would consume terminal F-S5 K 2/2", "next_action": "Do not run under broad research authorization" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "synthesis_report",
+      "label": "Detailed research synthesis",
+      "path": "reports/2026-08-02-paper-data-strategy-research.md"
+    },
+    {
+      "id": "probe_aggregate",
+      "label": "Hash-bound limited-probe aggregate and candidate artifacts",
+      "path": "results/paper_data_limited_probe_20260802/limited_probe_report.json",
+      "query": {
+        "engine": "deterministic Python backtest",
+        "language": "python",
+        "sql": "WITH candidate_results(hypothesis, audited_stage2, net_sharpe, diagnostic_wf, diagnostic_cpcv, diagnostic_dsr) AS (VALUES ('H-040','FAIL',-0.193843,NULL,NULL,NULL),('H-041','AUDIT FAIL',0.567430,0.447934,0.567430,0.927941),('H-042','FAIL',0.000000,NULL,NULL,NULL),('H-043','FAIL',-0.606531,NULL,NULL,NULL),('H-044','FAIL',-0.086022,NULL,NULL,NULL),('H-045','AUDIT FAIL',0.504203,0.341638,0.504203,0.912808),('H-046','AUDIT FAIL',0.475155,0.169556,0.475155,0.888156)) SELECT *, 0 AS complete_passes, 7 AS candidate_count FROM candidate_results ORDER BY hypothesis",
+        "description": "Frozen runner output; the ADR-0013 audit supersedes its three reported Stage-2 power passes for governance decisions.",
+        "executed_at": "2026-08-02T14:47:00Z"
+      }
+    },
+    {
+      "id": "governance_audit",
+      "label": "Post-run ADR-0013 power-breadth audit",
+      "path": "tasks/2026-08-02-paper-data-limited-probe-governance-audit.md",
+      "query": {
+        "engine": "PostgreSQL reviewed-snapshot assembly",
+        "sql": "SELECT * FROM (VALUES ('H-041',2,0.451837,0.567076,1,0.638354,'Stage-2 power FAIL'),('H-045',2,0.441050,0.542492,1,0.618692,'Stage-2 power FAIL'),('H-046',2,0.453966,0.483769,1,0.642546,'Stage-2 power FAIL')) AS power_audit(hypothesis, artifact_breadth, artifact_mds, plausible_sharpe, compliant_breadth, compliant_mds, audited_status) ORDER BY hypothesis",
+        "description": "Reconciles the frozen runner artifacts against ADR-0013; breadth=1 makes H-041, H-045, and H-046 fail Stage-2 power.",
+        "executed_at": "2026-08-02T16:10:00Z"
+      }
+    },
+    {
+      "id": "data_inventory",
+      "label": "TimescaleDB external-data, candle, funding, and ingestion audit",
+      "path": "config/external_data.yaml",
+      "query": {
+        "engine": "PostgreSQL / TimescaleDB",
+        "language": "sql",
+        "sql": "SELECT dataset_id, count(*) AS rows, count(DISTINCT observed_at) AS distinct_rows, min(observed_at) AS first_observed, max(observed_at) AS last_observed, count(*) FILTER (WHERE value_num IS NULL) AS null_values, count(*) FILTER (WHERE published_at < observed_at) AS negative_lag, count(*) FILTER (WHERE quality_status = 'suspect') AS suspect_rows FROM external_observations WHERE dataset_id = ANY(:dataset_ids) GROUP BY dataset_id ORDER BY dataset_id;",
+        "description": "Audits current unique coverage and publication/data-quality fields for selected research datasets.",
+        "executed_at": "2026-08-02T15:12:00Z",
+        "tables_used": ["public.external_observations", "public.external_fetch_jobs", "public.funding_rates", "public.canonical_candles", "public.venue_canonical_candles"]
+      }
+    },
+    {
+      "id": "literature_review",
+      "label": "Primary papers and official source documentation",
+      "path": "reports/2026-08-02-paper-data-strategy-research.md",
+      "query": {
+        "engine": "PostgreSQL reviewed-snapshot assembly",
+        "sql": "SELECT * FROM (VALUES ('H-040','Kristoufek (2013), Scientific Reports','Attention x trend','D+1 views; t+1 BTC','Negative net edge'),('H-041','Bhambhwani et al. (2023), JIFMIM','Network adoption and security','Weekly active-address growth','Positive edge; breadth=1 power fail'),('H-042','Foley et al. (2026), Accounting and Finance','Stablecoin depeg response','Next-day BTC/ETH reversal','Zero events in daily free source'),('H-043','Cai and Zhao (2024), JBF','Cross-sectional salience','Weekly low-minus-high portfolio','Net Sharpe -0.6065'),('H-044','Hung et al. (2021), JEF','Futures participant activity','Publication-safe CFTC direction','Return-sign transfer failed')) AS literature(hypothesis, paper, mechanism, tested_transfer, result) ORDER BY hypothesis",
+        "description": "Encodes the reviewed paper-to-signal mappings linked in the detailed report; publisher pages remain the primary evidence."
+      }
+    },
+    {
+      "id": "strategy_ledger",
+      "label": "Project hypothesis ledger and experiment registry",
+      "path": "docs/HYPOTHESIS_LEDGER.md",
+      "query": {
+        "engine": "PostgreSQL reviewed-snapshot assembly",
+        "sql": "SELECT * FROM (VALUES (1,'H-014','Research/shadow only','Prior Stage-3 pass; deployment gates open'),(2,'H-023','Prior Stage-2 near-power','Plausible 0.5961 vs MDS 0.7134'),(3,'H-041','Promising; not valid near-pass','Plausible 0.5671 vs compliant MDS 0.6384'),(4,'H-045','Promising; not valid near-pass','Plausible 0.5425 vs compliant MDS 0.6187'),(5,'H-046','Promising data path; not near','Plausible 0.4838 vs compliant MDS 0.6425'),(6,'H-042','Data-inconclusive','Zero severe events'),(7,'H-040/H-043/H-044','Stop exact specs','Negative cost-after-edge'),(8,'H-028/H-039','Forward accumulation','Minimum windows not reached'),(9,'H-038','Explicit authorization required','Would consume terminal K 2/2')) AS classification(priority, hypothesis, classification, evidence) ORDER BY priority",
+        "description": "Encodes the reviewed durable strategy classifications; the ledger and registry remain authoritative for trials, K-budget, and artifacts."
+      }
+    }
+  ]
+}

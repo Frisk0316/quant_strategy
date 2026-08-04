@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import concurrent.futures
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import isclose
@@ -32,7 +33,7 @@ from backtesting.xvenue_funding_spread_probe import (
 
 START = "2024-01-02T00:00:00Z"
 END = "2026-07-03T00:00:00Z"
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 RUN_DATE = "20260715"
 OUTPUT_DIR = Path(f"results/h021_stage3_{RUN_DATE}")
 FAMILY_ID = "F-XVENUE-FUNDING-SPREAD"

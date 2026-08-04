@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -56,6 +56,13 @@ current/target/known-gap distinction — do not silently "fix" either side.
   fill metadata value may reuse the position's already-validated multiplier;
   a caller override or DB/config row that claims to supply an instrument spec
   must contain a valid multiplier and otherwise fail closed.
+- **R1.6** Runtime execution must load complete venue instrument metadata for
+  every configured symbol before constructing a broker. A missing endpoint,
+  symbol, field, or SWAP `ct_val` fails startup; execution must never invent a
+  BTC/ETH SWAP multiplier. Spot uses its structural base-unit identity of 1.0.
+- **R1.7** Runtime mark-to-market, stale-order checks, and persisted top-of-book
+  snapshots must use the sequence-maintained `OkxBook`. A WebSocket `books`
+  update is a delta, not a complete or best-price-ordered snapshot.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 
@@ -88,7 +95,8 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 - **R4.2** Reduce-only and risk-limit semantics must not be weakened without an
   ADR and explicit human approval. Reduce-only close orders may bypass the
   single-order fat-finger cap only up to the current position notional; they
-  must not increase absolute exposure.
+  must not increase absolute exposure. Any order admitted under that bypass
+  must carry `reduceOnly=true` and its position side to the venue.
 - **R4.3** No exposure-increasing order may exceed configured per-instrument or
   per-portfolio caps.
 - **R4.4** Strategy vol-target sizing must target the quantity named by the
@@ -232,7 +240,11 @@ real execution requires a new ADR and R7.2 approval.
   stop, drawdown threshold) set a persistent reduce-only state that survives
   restarts and blocks new entries. Activation order is fixed: ADR-0011 shadow
   exit → bias-report review → every R7.2 gate → explicit user capital
-  approval with a stated cap.
+  approval with a stated cap. **Exception (ADR-0018, accepted 2026-07-30):**
+  while `h014_live.env == "test"` only, `enabled: true` may run the
+  signal-driven adapter loop ahead of this sequence; resulting testnet
+  fills are non-evidentiary and `env: live` still requires the full sequence
+  above unchanged.
 
 ## R9. Coin-margined perpetuals (research) — ADR-0012
 

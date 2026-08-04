@@ -87,10 +87,24 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
 
     assert set(registry.STAGE2_PROBES) == {
         "F-FUNDING-XS-DISPERSION",
+        "F-FUNDING-SETTLEMENT-DRIFT",
         "F-OI-POSITIONING",
         "F-XVENUE-LEADLAG",
         "F-XVENUE-FUNDING-SPREAD",
         "F-TAKER-FLOW",
+        "F-OPT-HEDGE-DEMAND",
+        "F-OPT-MONEYNESS-STRUCTURE",
+        "F-XVOL-RATIO",
+        "F-VRP-TIMING",
+        "F-INTRABAR-PERIODICITY",
+        "F-OPT-EXPIRY-GAMMA",
+        "F-VOL-OF-VOL",
+        "F-MACRO-EVENT-DRIFT",
+        "F-VARIANCE-DECOMP",
+        "F-OPT-LARGE-TRADE-INFO",
+        "F-XASSET-MACRO-LEAD",
+        "F-CME-LEADERSHIP",
+        "F-S5-RESIDUAL-MEANREV",
     }
 
     funding = await registry.STAGE2_PROBES["F-FUNDING-XS-DISPERSION"]("conn", ctx)
@@ -104,6 +118,40 @@ async def test_stage2_registry_uses_family_ids_and_uniform_probe_signature(monke
         ("funding", "conn", Path("universe.parquet"), ctx["start"], ctx["end"], "FundingThresholds"),
         ("oi", "conn", Path("universe.parquet"), ctx["start"], ctx["end"], "OIThresholds"),
         ("xvenue", "conn", ctx["start"], ctx["end"], "VenueThresholds"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slate_i49_refusal_happens_before_connect_or_artifact(tmp_path, monkeypatch):
+    async def forbidden_connect(_dsn):
+        raise AssertionError("DB connection opened before whole-slate I49")
+
+    monkeypatch.setattr(registry, "_connect", forbidden_connect)
+    monkeypatch.setattr(
+        registry,
+        "preflight_slate_references",
+        lambda: (_ for _ in ()).throw(ValueError("I49 contract stop")),
+    )
+
+    with pytest.raises(ValueError, match="I49 contract stop"):
+        await registry.run_slate_stage2(
+            dsn="postgresql://example",
+            output_root=tmp_path,
+        )
+
+    assert not any(tmp_path.rglob("*"))
+
+
+def test_slate_registry_has_all_eight_candidate_specs():
+    assert [registry.CANDIDATES[key].hypothesis_id for key in registry.SLATE_CANDIDATES] == [
+        "H-030",
+        "H-031",
+        "H-035",
+        "H-033",
+        "H-036",
+        "H-032",
+        "H-034",
+        "H-037",
     ]
 
 

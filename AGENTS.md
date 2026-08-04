@@ -78,6 +78,8 @@ If a document and implementation disagree, record it as a current/target/known-g
 | API smoke | `make api-smoke`; set `API_BASE_URL` to test a running server |
 | Full local verification | `make verify` for light no-DB checks; `make verify-full` when TimescaleDB/data are available |
 
+On Windows without `make`, run the same target with `pwsh scripts/verify.ps1 -Target <target>`; see `docs/RUNBOOK.md` for the expanded commands.
+
 Do not treat placeholder smoke output as full coverage. If a check skips because the environment lacks DB, server, data, Node, or optional validation dependencies, report that explicitly.
 
 ## Docs update matrix

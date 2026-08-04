@@ -146,7 +146,7 @@ class MarketDataHandler:
 
     async def _subscribe_private(self, ws) -> None:
         args = [
-            {"channel": "orders", "instType": "SWAP"},
+            {"channel": "orders", "instType": "ANY"},
             {"channel": "positions", "instType": "SWAP"},
         ]
         await ws.send(json.dumps({"op": "subscribe", "args": args}))

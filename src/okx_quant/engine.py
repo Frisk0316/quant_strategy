@@ -39,6 +39,7 @@ from okx_quant.monitoring.calibration_log import CalibrationLogger
 from okx_quant.monitoring.telegram_alert import TelegramMonitor
 from okx_quant.portfolio.portfolio_manager import PortfolioManager
 from okx_quant.portfolio.positions import PositionLedger
+from okx_quant.portfolio.sizing import validate_ct_val
 from okx_quant.risk.circuit_breaker import CircuitBreaker
 from okx_quant.risk.drawdown_tracker import DrawdownTracker
 from okx_quant.risk.risk_guard import RiskGuard
@@ -61,9 +62,9 @@ def _build_broker(
         return ShadowBroker(
             primary=SimBroker(slippage_bps=2.0, instrument_specs=instrument_specs or {}),
             mirror=OKXBroker(
-                api_key=cfg.secrets.okx_api_key,
-                secret=cfg.secrets.okx_secret,
-                passphrase=cfg.secrets.okx_passphrase,
+                api_key=cfg.secrets.okx_api_key.get_secret_value(),
+                secret=cfg.secrets.okx_secret.get_secret_value(),
+                passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
                 demo=True,
             ),
             calibration_log=calibration_log,
@@ -73,9 +74,9 @@ def _build_broker(
         return SimBroker(slippage_bps=2.0)
 
     return OKXBroker(
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         demo=cfg.is_demo(),
     )
 
@@ -89,9 +90,9 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # REST client + clock sync
     # ------------------------------------------------------------------
     rest = OKXRestClient(
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         base_url=cfg.okx.base_url,
         demo=use_demo_environment,
     )
@@ -105,25 +106,34 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     market_symbols = list(dict.fromkeys(cfg.system.symbols + cfg.system.spot_symbols))
     try:
         for inst_type, symbols in (("SWAP", cfg.system.symbols), ("SPOT", cfg.system.spot_symbols)):
+            if not symbols:
+                continue
             instr_resp = rest.get_instruments(inst_type)
+            if instr_resp.get("code") != "0":
+                raise RuntimeError(
+                    f"OKX get_instruments {inst_type} failed: "
+                    f"code={instr_resp.get('code')}, msg={instr_resp.get('msg', '')}"
+                )
             symbol_set = set(symbols)
             for instr in instr_resp.get("data", []):
                 inst_id = instr.get("instId", "")
                 if inst_id in symbol_set:
                     instrument_specs[inst_id] = {
-                        "ctVal": float(instr.get("ctVal", 0.01 if inst_type == "SWAP" else 1.0)),
-                        "minSz": float(instr.get("minSz", 1 if inst_type == "SWAP" else 0.0001)),
-                        "lotSz": float(instr.get("lotSz", 1 if inst_type == "SWAP" else 0.0001)),
-                        "tickSz": float(instr.get("tickSz", 0.1)),
-                        "tdMode": "cross",
+                        "ctVal": validate_ct_val(
+                            1.0 if inst_type == "SPOT" else instr["ctVal"], inst_id
+                        ),
+                        "minSz": float(instr["minSz"]),
+                        "lotSz": float(instr["lotSz"]),
+                        "tickSz": float(instr["tickSz"]),
+                        "tdMode": "cash" if inst_type == "SPOT" else "cross",
                     }
+        missing_specs = [symbol for symbol in market_symbols if symbol not in instrument_specs]
+        if missing_specs:
+            raise RuntimeError(f"Missing instrument specs for: {', '.join(missing_specs)}")
         logger.info("Instrument specs loaded", count=len(instrument_specs))
     except Exception as e:
-        logger.warning("Could not fetch instrument specs, using defaults", exc=str(e))
-        for s in cfg.system.symbols:
-            instrument_specs[s] = {"ctVal": 0.01, "minSz": 1, "lotSz": 1, "tickSz": 0.1, "tdMode": "cross"}
-        for s in cfg.system.spot_symbols:
-            instrument_specs[s] = {"ctVal": 1.0, "minSz": 0.0001, "lotSz": 0.0001, "tickSz": 0.1, "tdMode": "cross"}
+        logger.error("Could not fetch complete instrument specs; refusing to start", exc=str(e))
+        raise RuntimeError("Could not fetch complete instrument specs; refusing to start") from e
 
     # ------------------------------------------------------------------
     # Initial equity from account balance
@@ -155,10 +165,16 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     # Monitoring & Telegram
     # ------------------------------------------------------------------
     telegram: Optional[TelegramMonitor] = None
-    if cfg.secrets.telegram_token and cfg.secrets.telegram_chat_id:
+    telegram_token = (
+        cfg.secrets.telegram_token.get_secret_value() if cfg.secrets.telegram_token else ""
+    )
+    telegram_chat_id = (
+        cfg.secrets.telegram_chat_id.get_secret_value() if cfg.secrets.telegram_chat_id else ""
+    )
+    if telegram_token and telegram_chat_id:
         telegram = TelegramMonitor(
-            token=cfg.secrets.telegram_token,
-            chat_id=cfg.secrets.telegram_chat_id,
+            token=telegram_token,
+            chat_id=telegram_chat_id,
         )
 
     # ------------------------------------------------------------------
@@ -267,9 +283,9 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
     mdh = MarketDataHandler(
         bus=bus,
         symbols=market_symbols,
-        api_key=cfg.secrets.okx_api_key,
-        secret=cfg.secrets.okx_secret,
-        passphrase=cfg.secrets.okx_passphrase,
+        api_key=cfg.secrets.okx_api_key.get_secret_value(),
+        secret=cfg.secrets.okx_secret.get_secret_value(),
+        passphrase=cfg.secrets.okx_passphrase.get_secret_value(),
         ws_public_url=cfg.okx.ws_public,
         ws_private_url=cfg.okx.ws_private,
         demo=use_demo_environment,
@@ -290,14 +306,17 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
         payload = event.payload
         inst_id = getattr(payload, "inst_id", "")
         channel = getattr(payload, "channel", "books")
+        book = mdh.books.get(inst_id)
 
         # Update exec handler mid prices
-        await exec_handler.on_market(event)
-        portfolio_mgr.on_market(payload)
+        if book is not None:
+            await exec_handler.on_market(event, book)
+            portfolio_mgr.on_market(payload, book)
 
         # Persist tick data
-        if channel == "books" and payload.bids and payload.asks:
-            await feed_store.write_book_snapshot(inst_id, payload.ts, payload.bids, payload.asks)
+        if channel == "books" and book is not None and book.is_valid():
+            bids, asks = book.levels()
+            await feed_store.write_book_snapshot(inst_id, payload.ts, bids, asks)
         elif channel == "trades" and payload.trade_id:
             await feed_store.write_trade(
                 inst_id, payload.ts, payload.trade_id,
@@ -305,7 +324,6 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
             )
 
         # Fan out to all strategies
-        book = mdh.books.get(inst_id)
         for strat in strategies:
             if strat.is_active:
                 signal = await strat.on_market(event, book)

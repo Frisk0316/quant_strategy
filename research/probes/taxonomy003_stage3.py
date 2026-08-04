@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import json
 import math
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +35,7 @@ from backtesting.data_loader import load_external_observations  # noqa: E402
 from backtesting.pipeline_family_minting import decide_family_minting  # noqa: E402
 from backtesting.pipeline_refit import combo_key, refit_validation  # noqa: E402
 
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 BATCH_DIR = Path("results/idea_batch_20260713_taxonomy_003")
 DATA_DIR = BATCH_DIR / "data"
 START, END = "2024-01-01", "2026-07-11"

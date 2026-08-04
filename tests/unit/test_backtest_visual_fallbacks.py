@@ -81,7 +81,7 @@ def test_data_coverage_uses_short_inflight_cache():
     repo_root = Path(__file__).resolve().parents[2]
     text = (repo_root / "frontend" / "data.js").read_text(encoding="utf-8")
 
-    assert 'fetchDataCoverage:        ()        => _memoGet("data-coverage", "/api/data/coverage")' in text
+    assert 'fetchDataCoverage:        ()        => _memoGetLarge("data-coverage", "/api/data/coverage")' in text
 
 
 def test_market_data_coverage_fetch_errors_have_visible_state():

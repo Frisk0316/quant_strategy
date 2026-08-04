@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-08-03
 expires: none
 superseded_by: null
 ---
@@ -33,23 +33,50 @@ over time.
 
 ## Research and operations state
 
+- **Open — funding-carry cross-leg atomicity:** OKX Demo connectivity, private
+  fill subscriptions, venue formatting, and the synthetic/replay dual-leg path
+  pass. Perp and Spot orders are still independent venue submissions; one leg
+  can accept/fill while the other rejects. Do not promote or use real capital
+  until a reviewed compensating/hedge-reconciliation policy and integration
+  test close this gap.
+
 - **Closed — H-014 live layer pre-activation blockers (fixed + re-reviewed
   2026-07-28):** the three order-lifecycle edge cases are fixed (F59 guards:
   `get_order_state` reconciliation, journaled cancel sweep, full resting time)
   and the fix wave re-review is clean. Residual activation-wave polish items
-  (ambiguous HTTPStatusError sweep, `from_env` `.env` anchoring, notify async
-  tightening, official shadow-helper export) are listed in
+  (ambiguous HTTPStatusError sweep, notify async tightening, official
+  shadow-helper export) are listed in
   `tasks/2026-07-28-h014-live-execution-claude-review.md` "Fix-wave outcome";
   they gate activation review, not the merge.
-- **Open — H-014 shadow 8-week clock stalled (found 2026-07-28):** the journal's
-  last valid cycle entries are 2026-07-15; `quant_h014_shadow_daily` last ran
-  2026-07-27 20:25 with result 0xC000013A (console interrupt) and
-  `logs/h014_shadow_daily.log` ends with `run_h014_shadow.py` killed at `^C` —
-  consistent with the machine being off at the 16:10 window and catch-up runs
-  dying at shutdown. Missed shadow days cannot be backfilled, so the ADR-0011
-  ≥8-valid-weeks exit clock is effectively still at ~2 days. Needs: machine on
-  through the task window (or a user-approved schedule change) and a check that
-  a full cycle completes; every stalled day is permanently lost evidence.
+- **Closed — testnet `from_env` repo-root anchoring (2026-08-03):** Binance
+  futures and Deribit private clients now resolve their default `.env` from the
+  repository root, independent of the caller's current working directory;
+  explicit `env_file` overrides and fail-closed empty-credential behavior remain.
+- **Root-caused and repaired 2026-07-29 — H-014 shadow 8-week clock stalled:**
+  the journal's last valid cycle entries are 2026-07-15. The cause was NOT
+  machine downtime: `quant_h014_shadow_daily` carried the default power
+  conditions `DisallowStartIfOnBatteries=True`, `StopIfGoingOnBatteries=True`,
+  `StartWhenAvailable=False`, and this host runs on battery, so Task Scheduler
+  refused every trigger (0x800710E0 on 2026-07-29 12:34) and killed the one
+  run that did start when power was lost (0xC000013A on 2026-07-27). With
+  catch-up disabled, every refused day was silently skipped. User-approved fix
+  applied 2026-07-29: all three settings flipped (allow on battery, do not
+  stop on battery, start when available) plus a 2h execution limit. Also fixed
+  `scripts/run_h014_shadow_task.cmd`, whose trailing toast command masked a
+  failed cycle as `Last Result: 0`; it now propagates the cycle's exit code.
+  Verified: a manual trigger now RUNS (it correctly fail-closed with
+  "must run at or after 08:00 UTC" because 16:10 local = 08:10 UTC is the
+  first valid slot). Missed days remain permanently unrecoverable, so the
+  ADR-0011 ≥8-valid-weeks clock restarts from 2026-07-29 (journal now carries
+  a 2026-07-29 cycle — verified). A SECOND blocker surfaced once the task could
+  finally run: `canonical_candles` had fallen 14 days behind `market_klines`
+  because `research/probes/h014_daily_shadow_ops.py` ingested raw rows but
+  never promoted them, so the cycle fail-closed with "stale DB signal … latest
+  common day 2026-07-15". Fixed by a manual `canonicalize.py` catch-up plus a
+  permanent canonicalize step in the daily ops script. Residual data-quality
+  note: only 9,994 of ~20,160 expected minutes existed in raw for the stalled
+  window, so 2026-07-15..29 intraday candle coverage is partial (daily closes
+  the cycle needs are present).
 - **Open complete-round automation gap — ADR-0016/F56/F57/I53/I54
   (2026-07-27):** idea generation has a maximum of 15 but no 8/2/10
   executable minimum, literature and existing-strategy iteration inputs are not
@@ -131,6 +158,15 @@ over time.
   `LogonType=S4U`, `RunLevel=Limited`, and a successful manual task result.
 
 ## Runtime and API reliability
+
+- **Closed — F1 + WS-A + B1 security batch (2026-08-03):** Telegram commands
+  now require the configured chat and `/reset confirm`; pair deletion rejects
+  unsafe path components before DB/filesystem access; engine/standalone remote
+  binds fail closed without `API_KEY`; standalone destructive routers share
+  auth; job status omits DSNs while the OHLCV rotation child reads
+  `DATABASE_URL`; Compose is loopback-bound with required secrets; and the OKX
+  smoke reads only `OKX_DEMO_*`. F52's separate browser credential
+  UX contract remains open.
 
 - **Closed coverage bottleneck (F28, 2026-07-21):** external coverage now scans
   and groups `external_observations` once, then joins the 46 registered datasets.
@@ -256,5 +292,24 @@ over time.
 
 ## Operations
 
+- H-039's six-dataset cross-venue option-IV collector is implemented with the
+  task-exact 30d total-variance interpolation, nearest fallback, full-chain
+  retention, and source-failure isolation; all six official public source
+  smokes pass. Forward accumulation has not started because the configured
+  TimescaleDB endpoint refuses connections and the Docker service could not be
+  started from this session; no Windows scheduled task is registered. Start
+  the DB, run one successful manual six-dataset snapshot, then let the user
+  register and verify the hourly task before treating the 270-day clock as
+  started.
+- CFTC COT and Cboe source histories pass parsing, range, and conservative
+  as-of checks, but their full backfills are not persisted while TimescaleDB is
+  unavailable. COT `published_at` is the standard scheduled Friday 15:30 ET,
+  not a historical holiday-release calendar; keep research use fail-closed on
+  holiday-delay weeks until that calendar is supplied or this conservative gap
+  is accepted explicitly.
+- Cboe's official `totalpc.csv` is a discontinued archive ending 2019-10-04.
+  Do not schedule it as a current feed or substitute an unaudited scraped
+  source; a new official current endpoint requires a separately reviewed
+  config/source update.
 - Monitoring modules exist, but this map does not prove production alert coverage.
   Treat Telegram/metrics deployment readiness as a separate operational check.

@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 import asyncpg
 
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 OUT = Path("results/idea_batch_20260713_taxonomy_003")
 UA = {"User-Agent": "quant-strategy-idea-probe/1"}
 

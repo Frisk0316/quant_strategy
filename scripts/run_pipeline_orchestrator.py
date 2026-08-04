@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -20,7 +21,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--hypothesis-ids", type=Path)
     parser.add_argument("--max-runtime-seconds", required=True, type=int)
     parser.add_argument("--output-root", default=Path("results"), type=Path)
-    parser.add_argument("--dsn", default="postgresql://quant:changeme@localhost:5432/quant")
+    parser.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--universe-path", default=Path("data/universe/universe_membership.parquet"), type=Path)
     parser.add_argument("--start", default="2024-01-01")
     parser.add_argument("--end-exclusive", default="2026-06-17")

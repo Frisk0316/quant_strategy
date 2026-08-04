@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-07-27
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -39,7 +39,8 @@ Three harnesses govern how work is done; see `docs/CONTEXT_INDEX.md` for the ful
 | `docs/CHANGE_MANIFEST_TEMPLATE.md` | Template for the manifest required on every business-rule change. |
 | `docs/ADR/README.md` | ADR index and authoring rules. |
 
-Enforced by `scripts/docs/check_doc_impact.py` via `make docs-impact`.
+Enforced by `scripts/docs/check_doc_impact.py` via `make docs-impact`
+(on Windows without `make`: `pwsh scripts/verify.ps1 -Target docs-impact`).
 
 ### Intelligence Harness
 

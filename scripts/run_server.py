@@ -16,7 +16,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -26,6 +26,7 @@ from okx_quant.api.routes_data import make_data_router
 from okx_quant.api.routes_manual import make_manual_router
 from okx_quant.api.routes_progress import make_progress_router
 from okx_quant.api.routes_research import make_research_router
+from okx_quant.api.server import is_loopback_host, require_remote_api_key, verify_api_key
 from okx_quant.core.config import load_config
 
 
@@ -48,11 +49,28 @@ def create_app(
     frontend_dir: Path,
     *,
     serve_progress_files: bool = False,
+    docs_enabled: bool = True,
 ) -> FastAPI:
-    app = FastAPI(title="OKX Quant Backtest Viewer", docs_url="/api/docs")
-    app.include_router(make_backtest_router(results_dir), prefix="/api/backtest", tags=["backtest"])
-    app.include_router(make_config_router(), prefix="/api", tags=["config"])
-    app.include_router(make_data_router(_db_dsn()), prefix="/api/data", tags=["data"])
+    app = FastAPI(
+        title="OKX Quant Backtest Viewer",
+        docs_url="/api/docs" if docs_enabled else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
+    api_dependencies = [Depends(verify_api_key)]
+    app.include_router(
+        make_backtest_router(results_dir),
+        prefix="/api/backtest",
+        tags=["backtest"],
+        dependencies=api_dependencies,
+    )
+    app.include_router(make_config_router(dependencies=api_dependencies), prefix="/api", tags=["config"])
+    app.include_router(
+        make_data_router(_db_dsn()),
+        prefix="/api/data",
+        tags=["data"],
+        dependencies=api_dependencies,
+    )
     app.include_router(
         make_manual_router(PROJECT_ROOT / "docs" / "manual"),
         prefix="/api/manual",
@@ -88,11 +106,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--allow-remote", action="store_true")
     parser.add_argument("--results", default=str(PROJECT_ROOT / "results"))
     args = parser.parse_args()
 
     results_dir = Path(args.results)
     frontend_dir = PROJECT_ROOT / "frontend"
+    loopback = is_loopback_host(args.host)
+    if not loopback and not args.allow_remote:
+        parser.error("non-loopback --host requires --allow-remote")
+    require_remote_api_key(args.host)
 
     if not results_dir.exists():
         results_dir.mkdir(parents=True)
@@ -101,10 +124,15 @@ def main() -> None:
     app = create_app(
         results_dir,
         frontend_dir,
-        serve_progress_files=args.host in {"127.0.0.1", "localhost", "::1"},
+        serve_progress_files=loopback,
+        docs_enabled=loopback,
     )
     print(f"\n  Frontend: http://{args.host}:{args.port}")
-    print(f"  API docs: http://{args.host}:{args.port}/api/docs")
+    print(
+        f"  API docs: http://{args.host}:{args.port}/api/docs"
+        if loopback
+        else "  API docs: disabled for non-loopback binds"
+    )
     print(f"  Results:  {results_dir.resolve()}\n")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 

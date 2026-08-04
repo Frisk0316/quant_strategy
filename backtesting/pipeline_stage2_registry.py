@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import math
+import os
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -13,7 +15,31 @@ from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
 from backtesting.pipeline_checkpoint1 import family_registry_from_text
 from backtesting.pipeline_feasibility import FeasibilityCheck, FeasibilityResult, result_to_dict
+from backtesting.moneyness_vol_probe import (
+    probe_opt_hedge_demand,
+    probe_opt_moneyness_structure,
+    probe_vrp_timing_retry1,
+    probe_xvol_ratio,
+    validate_power_declaration as validate_moneyness_vol_power_declaration,
+)
 from backtesting.pipeline_power_screen import min_detectable_sharpe
+from backtesting.funding_settlement_probe import probe_funding_settlement
+from backtesting.intrabar_periodicity_probe import (
+    BATCH_ID as SLATE_BATCH_ID,
+    preflight_slate_references,
+    probe_intrabar_periodicity,
+)
+from backtesting.options_flow_probe import (
+    probe_opt_expiry_gamma,
+    probe_opt_large_trade_info,
+)
+from backtesting.macro_state_probe import (
+    probe_macro_event_drift,
+    probe_xasset_macro_lead,
+)
+from backtesting.vol_structure_probe import probe_variance_decomp, probe_vol_of_vol
+from backtesting.cme_session_probe import probe_cme_leadership
+from backtesting.s5_residual_meanrev_probe import probe_s5_residual_meanrev
 from backtesting.taker_flow_probe import (
     ARTIFACT_DIR as TAKER_ARTIFACT_DIR,
     FORMAL_WINDOW as TAKER_FORMAL_WINDOW,
@@ -31,7 +57,7 @@ from backtesting.xvenue_funding_spread_probe import probe_xvenue_funding_spread
 BATCH_ID = "idea_batch_20260701_taxonomy_002"
 START = "2024-01-01"
 END_EXCLUSIVE = "2026-06-17"
-DSN = "postgresql://quant:changeme@localhost:5432/quant"
+DSN = os.environ.get("DATABASE_URL", "")
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
 EXPERIMENT_REGISTRY_PATH = Path("docs/EXPERIMENT_REGISTRY.md")
 STATISTICAL_POWER_INPUT_FIELDS = (
@@ -135,7 +161,84 @@ CANDIDATES: dict[str, CandidateSpec] = {
         hypothesis_id="H-022",
         family_id="F-TAKER-FLOW",
     ),
+    "opt_hedge": CandidateSpec(
+        key="opt_hedge",
+        candidate_id="B-f-opt-hedge-demand",
+        candidate_dir="f_opt_hedge_demand",
+        hypothesis_id="H-024",
+        family_id="F-OPT-HEDGE-DEMAND",
+    ),
+    "opt_moneyness": CandidateSpec(
+        key="opt_moneyness",
+        candidate_id="B-f-opt-moneyness-structure",
+        candidate_dir="f_opt_moneyness_structure",
+        hypothesis_id="H-025",
+        family_id="F-OPT-MONEYNESS-STRUCTURE",
+    ),
+    "xvol_ratio": CandidateSpec(
+        key="xvol_ratio",
+        candidate_id="B-f-xvol-ratio",
+        candidate_dir="f_xvol_ratio",
+        hypothesis_id="H-027",
+        family_id="F-XVOL-RATIO",
+    ),
+    "vrp_regime": CandidateSpec(
+        key="vrp_regime",
+        candidate_id="B-f-vrp-timing-retry1",
+        candidate_dir="f_vrp_timing_retry1",
+        hypothesis_id="H-026",
+        family_id="F-VRP-TIMING",
+    ),
+    "funding_settlement": CandidateSpec(
+        key="funding_settlement",
+        candidate_id="H-029",
+        candidate_dir="f_funding_settlement_drift",
+        hypothesis_id="H-029",
+        family_id="F-FUNDING-SETTLEMENT-DRIFT",
+    ),
+    "intrabar_periodicity": CandidateSpec(
+        "intrabar_periodicity", "H-030", "f_intrabar_periodicity", "H-030",
+        "F-INTRABAR-PERIODICITY",
+    ),
+    "opt_expiry_gamma": CandidateSpec(
+        "opt_expiry_gamma", "H-031", "f_opt_expiry_gamma", "H-031",
+        "F-OPT-EXPIRY-GAMMA",
+    ),
+    "vol_of_vol": CandidateSpec(
+        "vol_of_vol", "H-032", "f_vol_of_vol", "H-032", "F-VOL-OF-VOL",
+    ),
+    "macro_event_drift": CandidateSpec(
+        "macro_event_drift", "H-033", "f_macro_event_drift", "H-033",
+        "F-MACRO-EVENT-DRIFT",
+    ),
+    "variance_decomp": CandidateSpec(
+        "variance_decomp", "H-034", "f_variance_decomp", "H-034",
+        "F-VARIANCE-DECOMP",
+    ),
+    "opt_large_trade_info": CandidateSpec(
+        "opt_large_trade_info", "H-035", "f_opt_large_trade_info", "H-035",
+        "F-OPT-LARGE-TRADE-INFO",
+    ),
+    "xasset_macro_lead": CandidateSpec(
+        "xasset_macro_lead", "H-036", "f_xasset_macro_lead", "H-036",
+        "F-XASSET-MACRO-LEAD",
+    ),
+    "cme_leadership": CandidateSpec(
+        "cme_leadership", "H-037", "f_cme_leadership", "H-037",
+        "F-CME-LEADERSHIP",
+    ),
 }
+
+SLATE_CANDIDATES = (
+    "intrabar_periodicity",
+    "opt_expiry_gamma",
+    "opt_large_trade_info",
+    "macro_event_drift",
+    "xasset_macro_lead",
+    "vol_of_vol",
+    "variance_decomp",
+    "cme_leadership",
+)
 
 
 def _utc(value: str) -> datetime:
@@ -1234,12 +1337,99 @@ async def _run_taker_flow_probe(conn: Any, ctx: Stage2Context) -> FeasibilityRes
     return _with_context_power_screen(result, power_ctx)
 
 
+async def _run_moneyness_vol_probe(
+    conn: Any,
+    ctx: Stage2Context,
+    *,
+    family_id: str,
+    probe: Stage2Probe,
+) -> FeasibilityResult:
+    power = validate_moneyness_vol_power_declaration(
+        family_id,
+        ctx.get("statistical_power"),
+    )
+    probe_ctx = dict(ctx)
+    probe_ctx["statistical_power"] = power
+    result = await probe(conn, probe_ctx)
+    cost = next((check for check in result.checks if check.name == "cost_after_edge"), None)
+    if cost is None:
+        return _failed_statistical_power_result(
+            result,
+            "moneyness/vol statistical power inputs unavailable: cost_after_edge check is missing",
+        )
+    n_obs = cost.details.get("n_obs")
+    plausible = cost.details.get("plausible_net_sharpe")
+    if type(n_obs) is not int or n_obs <= 0 or plausible is None or not math.isfinite(float(plausible)):
+        return _failed_statistical_power_result(
+            result,
+            "moneyness/vol statistical power inputs unavailable or invalid",
+        )
+    power_ctx = dict(ctx)
+    power_ctx["statistical_power"] = {
+        "breadth": power["breadth"],
+        "n_obs": n_obs,
+        "n_trials": power["n_trials"],
+        "plausible_net_sharpe": float(plausible),
+    }
+    return _with_context_power_screen(result, power_ctx)
+
+
+async def _run_opt_hedge_demand_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-OPT-HEDGE-DEMAND",
+        probe=probe_opt_hedge_demand,
+    )
+
+
+async def _run_opt_moneyness_structure_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-OPT-MONEYNESS-STRUCTURE",
+        probe=probe_opt_moneyness_structure,
+    )
+
+
+async def _run_xvol_ratio_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-XVOL-RATIO",
+        probe=probe_xvol_ratio,
+    )
+
+
+async def _run_vrp_timing_retry1_probe(conn: Any, ctx: Stage2Context) -> FeasibilityResult:
+    return await _run_moneyness_vol_probe(
+        conn,
+        ctx,
+        family_id="F-VRP-TIMING",
+        probe=probe_vrp_timing_retry1,
+    )
+
+
 STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-FUNDING-XS-DISPERSION": _run_funding_probe,
     "F-OI-POSITIONING": _run_oi_probe,
     "F-XVENUE-LEADLAG": _run_xvenue_probe,
     "F-XVENUE-FUNDING-SPREAD": _run_xvenue_funding_spread_probe,
     "F-TAKER-FLOW": _run_taker_flow_probe,
+    "F-OPT-HEDGE-DEMAND": _run_opt_hedge_demand_probe,
+    "F-OPT-MONEYNESS-STRUCTURE": _run_opt_moneyness_structure_probe,
+    "F-XVOL-RATIO": _run_xvol_ratio_probe,
+    "F-VRP-TIMING": _run_vrp_timing_retry1_probe,
+    "F-FUNDING-SETTLEMENT-DRIFT": probe_funding_settlement,
+    "F-INTRABAR-PERIODICITY": probe_intrabar_periodicity,
+    "F-OPT-EXPIRY-GAMMA": probe_opt_expiry_gamma,
+    "F-VOL-OF-VOL": probe_vol_of_vol,
+    "F-MACRO-EVENT-DRIFT": probe_macro_event_drift,
+    "F-VARIANCE-DECOMP": probe_variance_decomp,
+    "F-OPT-LARGE-TRADE-INFO": probe_opt_large_trade_info,
+    "F-XASSET-MACRO-LEAD": probe_xasset_macro_lead,
+    "F-CME-LEADERSHIP": probe_cme_leadership,
+    "F-S5-RESIDUAL-MEANREV": probe_s5_residual_meanrev,
 }
 
 
@@ -1262,6 +1452,65 @@ def _write_result(output_root: Path, result: FeasibilityResult) -> Path:
     payload = _jsonable(result_to_dict(result))
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _slate_exception_result(spec: CandidateSpec, exc: BaseException) -> FeasibilityResult:
+    checks = (
+        FeasibilityCheck(
+            "data_availability",
+            "FAIL",
+            "stage2_probe_unavailable",
+            {"error_type": type(exc).__name__, "error": str(exc), "policy": "fail_closed_no_proxy_no_fabrication"},
+        ),
+        FeasibilityCheck("distinctness", "FAIL", "not evaluated after probe error", {"max_abs_correlation": None}),
+        FeasibilityCheck("cost_after_edge", "FAIL", "not evaluated after probe error", {"roundtrip_cost_bps": 8.0, "annualized_net_sharpe": None, "grid_trials_evaluated": 0}),
+        FeasibilityCheck("statistical_power", "FAIL", "not evaluated after probe error", {"breadth": None, "n_obs": 0, "n_trials": 4, "periods_per_year": None, "plausible_net_sharpe": None, "min_detectable_sharpe": None, "grid_trials_evaluated": 0}),
+    )
+    return FeasibilityResult(
+        SLATE_BATCH_ID,
+        spec.candidate_id,
+        spec.candidate_dir,
+        spec.hypothesis_id,
+        spec.family_id,
+        checks,
+    )
+
+
+async def run_slate_stage2(
+    *,
+    dsn: str,
+    output_root: Path = Path("results"),
+) -> list[tuple[FeasibilityResult, Path]]:
+    """Run H-030..H-037 after the one whole-slate I49 contract check."""
+
+    preflight = preflight_slate_references()
+    conn = await _connect(dsn)
+    outputs: list[tuple[FeasibilityResult, Path]] = []
+    try:
+        for candidate_key in SLATE_CANDIDATES:
+            spec = CANDIDATES[candidate_key]
+            try:
+                async with conn.transaction(readonly=True):
+                    await conn.execute("SET LOCAL statement_timeout = '20min'")
+                    result = await STAGE2_PROBES[spec.family_id](
+                        conn,
+                        {"i49_preflight": preflight},
+                    )
+            except Exception as exc:
+                result = _slate_exception_result(spec, exc)
+            expected = output_root / SLATE_BATCH_ID / spec.candidate_dir / "stage2_feasibility.json"
+            if expected.exists():
+                raise FileExistsError(f"refusing to overwrite immutable slate artifact: {expected}")
+            path = _write_result(output_root, result)
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            (path.parent / "sha256.json").write_text(
+                json.dumps({path.name: digest}, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            outputs.append((result, path))
+    finally:
+        await conn.close()
+    return outputs
 
 
 async def run_data_probe(
@@ -1433,7 +1682,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dsn", default=DSN)
     parser.add_argument("--output-root", type=Path, default=Path("results"))
     parser.add_argument("--universe-path", type=Path, default=UNIVERSE_PATH)
-    parser.add_argument("--candidate", choices=CANDIDATES, required=True)
+    parser.add_argument("--candidate", choices=(*CANDIDATES, "slate"), required=True)
     parser.add_argument("--start", default=START)
     parser.add_argument("--end-exclusive", default=END_EXCLUSIVE)
     parser.add_argument("--power-input", type=Path)
@@ -1445,6 +1694,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--power-override-rationale")
     parser.add_argument("--experiment-registry", type=Path, default=EXPERIMENT_REGISTRY_PATH)
     args = parser.parse_args(argv)
+
+    if args.candidate == "slate":
+        if any(
+            value is not None
+            for value in (
+                args.power_input,
+                args.reference_ranges,
+                args.breadth,
+                args.n_obs,
+                args.n_trials,
+                args.plausible_net_sharpe,
+                args.power_override_rationale,
+            )
+        ):
+            parser.error("--candidate slate derives frozen inputs and accepts no power/reference overrides")
+        outputs = asyncio.run(run_slate_stage2(dsn=args.dsn, output_root=args.output_root))
+        for result, path in outputs:
+            _print_summary(result, path)
+        return 0
 
     calibration_evidence = None
     reference_ranges = None

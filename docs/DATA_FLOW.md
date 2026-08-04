@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-27
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -36,6 +36,11 @@ An empty venue series still errors, and an internal hole below
 substitution is ever allowed.
 Funding-carry spot synthetic books may use an explicit same-venue perp fallback
 when spot candles are absent; the fallback remains venue-scoped.
+
+Live and replay market-event flows update a sequence-maintained `OkxBook`
+before dispatch. Portfolio marks, execution stale checks, and top-of-book
+persistence consume that same maintained book; raw `books` messages are deltas
+and are never interpreted as complete snapshots by those consumers.
 
 ADR-0014 keeps `canonical_candles` and its 5m/15m/1H aggregates as the
 priority-resolved default. Explicitly source-filtered `CandleStore` reads and
@@ -110,6 +115,7 @@ Deribit hourly BTC/ETH funding + Binance 8h BTC/ETH funding + venue-scoped Derib
 
 Current: funding rates are part of the data layer. Known gap: funding coverage and
 DB parity must be verified per strategy before deployment evidence is accepted.
+
 The coverage API labels funding provider/exchange from `funding_rates.source`
 instead of a hard-coded venue label. `backfill_universe_funding.py` is a
 research-pipeline utility for Binance universe-wide funding coverage and writes
@@ -145,6 +151,20 @@ Missing 8h events or venue marks fail closed without time compression. The
 runner assumes adequate coin collateral for the unlevered gross-1 pair and has
 no margin/liquidation, index-price, engine, demo, shadow, or live path.
 
+## Forward OKX Public Tick Flow
+
+```text
+OKX public WebSocket books/trades/funding-rate -> scripts/stream_orderbook.py -> chunked data/ticks/<instrument>/{ob_ticks,trades,funding}_*.parquet -> offline research inputs
+```
+
+Current: Windows S4U task `quant_okx_market_data` starts at boot and captures
+BTC/ETH Spot and SWAP without credentials or any broker/order path. The writer
+uses bounded chunk files instead of repeatedly rewriting a growing daily file,
+flushes remaining rows on a normal stop, reconnects after WebSocket failures,
+and stops before free space falls below 10 GiB. Retention and downstream import
+remain manual; these forward files are data evidence, not strategy or deployment
+evidence.
+
 ## External Observations Ingestion Flow
 
 ```text
@@ -156,7 +176,12 @@ Alternative.me Fear & Greed, Binance futures open interest, Deribit DVOL,
 Deribit historical volatility, Deribit funding, Deribit option-surface
 snapshots, and Deribit option flow,
 plus API-key or research-only adapters for FRED, Nasdaq Data Link, and
-yfinance. Built-in `ingest_external.py` datasets now add keyless OKX
+yfinance. FRED business-daily `DGS10`, `DGS2`, `VIXCLS`, and `DTWEXBGS`
+observations carry a conservative one-day `published_at` lag. The
+`gold_yfinance` daily `GC=F` continuous-futures series is an unofficial,
+research-only proxy for the discontinued FRED gold input; it is not equivalent
+to the paper's gold series and is not promotion evidence. Built-in
+`ingest_external.py` datasets now add keyless OKX
 liquidation forward accumulation (`liq_okx_btc`, `liq_okx_eth`) without changing
 the checked-in `config/external_data.yaml`. `BinanceOIClient` writes
 `oi_binance_btc` / `oi_binance_eth` as hourly USDT-notional open-interest
@@ -202,14 +227,57 @@ are treated as accrual-period end and are safe to use as both `observed_at` and
 `value_num` is total option open interest, fields carry put/call OI, put/call
 ratio, max pain pooled across all listed expiries in the one-row-per-currency
 snapshot, OI-weighted mark IV, and spot index, and raw payloads retain the
-complete current listed chain sorted by expiry, strike, and option type,
-with normalized `expiry`, `strike`, and `option_type` fields on every
-instrument. `DeribitOptionFlowClient`
+  complete current listed chain sorted by expiry, strike, and option type,
+  with normalized `expiry`, `strike`, and `option_type` fields on every
+  instrument.
+`CrossVenueOptionsIVClient` writes forward-only
+`xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` rows from the venues' public
+option summary/ticker endpoints. Per valid expiry it selects ATM call/put by
+strike distance to the venue underlying/forward and 25-delta call/put by delta
+distance. It linearly interpolates each leg's total variance to 30 calendar
+days, falling back to one nearest expiry with `fields.interp = "nearest"` when
+the target is unbracketed. `value_num = fields.atm_iv_30d`; fields also carry
+call-minus-put `rr_25d`, ATM bid/ask IV spread, full-chain OI and units, expiry
+metadata, and selected legs. `observed_at` is the UTC hour bucket and
+`published_at` is the bucket end. `raw_payload` retains every normalized active
+instrument and its source summary so the metrics can be re-derived.
+`snapshot_xvenue_options.py` attempts all six rows even when one venue fails,
+then returns non-zero for source failures or a prior-bucket gap over 1.5 hours.
+It creates no synthetic history and has no strategy or deployment path.
+
+`CFTCCOTClient` writes six weekly futures-only datasets from official Socrata
+reports. `cot_cme_btc`, `cot_cme_eth`, `cot_es`, `cot_ust10y`, and
+`cot_usd_index` use TFF dataset `gpe5-46if`, with leveraged-money net contracts
+as `value_num`; `cot_gold` uses disaggregated dataset `72hh-3qpy`, with
+managed-money net contracts. Stable CFTC contract-market codes select markets.
+`observed_at` preserves the official report reference date (normally Tuesday,
+but holiday weeks can differ); `published_at` is the following Friday at 15:30
+America/New_York converted to UTC and never less than two days later. Raw
+Socrata fields and category positions remain available for audit.
+
+`CBOEClient` writes official daily CSV rows for `cboe_vix9d`, `cboe_vix`,
+`cboe_vix3m`, and `cboe_vix6m`; `value_num` is close in index points and
+fields retain OHLC. `cboe_pcr_total` stores the official total put/call ratio
+archive after locating its header below the Cboe legal/preamble lines.
+All Cboe rows publish one day after the observation date. The official
+put/call CSV ends 2019-10-04; it is an archive only, and no scraped current-page
+substitute is allowed.
+`DeribitOptionFlowClient`
 and `backfill_deribit_option_flow.py` write `optflow_deribit_btc` /
 `optflow_deribit_eth` as hourly inverse-option trade-flow aggregates from the
 Deribit options tape: `value_num` is put-vs-call taker-buy premium imbalance,
 fields carry buy/sell premium amounts, IV, trade/liquidation counts, and the
-USDC-linear exclusion count, and raw payloads keep only a bounded trade sample.
+USDC-linear exclusion count. New hourly `raw_payload` rows retain the full
+inverse trade tape with `sample_rule = all_inverse_trades_in_hour`; every stored
+trade keeps its Deribit `trade_id`. Duplicate-millisecond fills are valid, so
+timestamps are not a trade identity or deduplication key. The 2024-01 onward
+BTC+ETH enrichment is expected to add about 1.5-2.0 GB without changing the
+hourly primary key or aggregate fields. Current known gap: the historical
+re-backfill is stopped and partial because Deribit's current archive changed
+the previously stored BTC aggregate trade total by -5 despite a six-hour
+pre-flight passing. Most historical rows therefore still retain the old
+first-20 sample; Claude/user must resolve source-revision vs aggregate
+immutability policy before the bulk enrichment resumes.
 Hours containing only excluded USDC-linear option trades still emit a row with
 `value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
 v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
@@ -332,6 +400,7 @@ server restart; immutable request/result/error sidecars remain.
 canonical_candles daily dollar volume (DB) -> scripts/build_universe_membership.py --source db -> data/universe/universe_membership.parquet -> Stage-2 funding/xvenue probes and xs_momentum consumers
 venue-scoped canonical OHLCV/funding -> backtesting.xs_momentum_backtest.load_xs_momentum_inputs -> backtesting.xs_momentum_backtest.run_xs_momentum_backtest -> local research artifact
 immutable PIT top-N selection -> backtesting.universe_aliases consumer-time map/dedupe -> E-059 taker-flow probe
+source-aware Binance 1m candles + source-scoped funding + PIT top-20 then alias collapse -> backtesting.s5_residual_meanrev_probe -> strict ordered Stage-2 checks -> immutable E-094 artifact and SHA-bound breadth provenance
 ```
 
 Current: `config/universe.yaml` defines the Binance USDT-perp research universe
@@ -351,7 +420,10 @@ ADR-0015 does not rewrite that artifact: an opted-in exchange consumer maps
 same-economic-asset aliases after top-N selection, keeps the first canonical
 tradable contract, and recomputes its own denominator without rank-N+1 refill.
 T1 passed; E-059 now consumes the T2 helper. Other universe consumers remain
-unchanged.
+unchanged. H-038/E-094 uses the same post-selection, no-refill alias contract;
+its 100% member-day gate stopped on one missing SOL minute before any admissible
+position series, so breadth provenance records an empty input and fails closed
+to 1 without substituting universe size.
 `backtesting/xs_momentum_backtest.py` can consume venue-scoped canonical
 OHLCV/funding inputs for research smoke runs, applies the R3.1 funding sign
 convention, shifts daily target weights one full day before intraday expansion to
@@ -474,8 +546,9 @@ frontend Run Backtest form -> POST /api/backtest/run -> routes_backtest.py backg
 
 Current: the UI can run replay, daily-winner, and OHLCV-rotation paths. XS
 momentum has a separate research-only vectorized runner and is not wired into
-the UI/API run flow or promotion gates. Known gap: lightweight Makefile smoke
-does not yet run a tiny frozen replay fixture.
+the UI/API run flow or promotion gates. The `backtest-smoke` target runs
+`scripts/smoke/backtest_smoke.py`, a tiny frozen no-DB replay fixture. This is
+smoke coverage only, not promotion evidence.
 Run and sweep requests use `config/settings.yaml` primary exchange only when the
 field is omitted/blank; any explicit unknown exchange returns HTTP 400 before a
 background job is queued.

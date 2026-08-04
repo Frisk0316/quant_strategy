@@ -51,6 +51,38 @@ def test_binance_oi_client_normalizes_notional_and_filters_window(monkeypatch):
     assert rows[0]["fields"]["open_interest_contracts"] == 100.5
 
 
+def test_binance_oi_client_deduplicates_page_boundary(monkeypatch):
+    client = BinanceOIClient()
+    hour_ms = 3_600_000
+    start_ms = 1_704_067_200_000
+    calls = []
+
+    def item(timestamp, notional):
+        return {
+            "sumOpenInterest": "1",
+            "sumOpenInterestValue": str(notional),
+            "timestamp": timestamp,
+        }
+
+    def fake_get(params):
+        calls.append(params)
+        if len(calls) == 1:
+            return [item(start_ms, 10), item(start_ms + hour_ms, 20)]
+        return [item(start_ms + hour_ms, 21), item(start_ms + 2 * hour_ms, 30)]
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    rows = client.fetch(
+        symbol="BTCUSDT",
+        start=datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc),
+        end=datetime.fromtimestamp((start_ms + 2 * hour_ms + 1) / 1000, tz=timezone.utc),
+        limit=2,
+    )
+
+    assert calls[1]["startTime"] == start_ms + hour_ms + 1
+    assert len(rows) == 3
+    assert [row["value_num"] for row in rows] == [10.0, 21.0, 30.0]
+
+
 def test_deribit_dvol_client_normalizes_ohlc_and_filters_history_window(monkeypatch):
     client = DeribitDVOLClient()
     seen = {}

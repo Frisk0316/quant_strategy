@@ -55,6 +55,10 @@ class LiveConfig:
     reprice_interval_seconds: float = 30.0
     max_reprices: int = 3
 
+    def __post_init__(self) -> None:
+        if self.enabled and self.env != "test":
+            raise ValueError("ADR-0018 permits enabled H-014 execution on testnet only")
+
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "LiveConfig":
         values = raw.get("h014_live", raw)

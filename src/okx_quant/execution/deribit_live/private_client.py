@@ -29,14 +29,13 @@ class DeribitPrivateClient:
             raise RuntimeError(
                 "H-014 live execution requires DERIBIT_API_KEY and DERIBIT_API_SECRET"
             )
-        if env not in {"test", "live"}:
-            raise ValueError("h014_live.env must be 'test' or 'live'")
-        host = "test.deribit.com" if env == "test" else "www.deribit.com"
+        if env != "test":
+            raise ValueError("ADR-0018 permits H-014 private execution on testnet only")
         self._client_id = client_id
         self._client_secret = client_secret
         self._token: str | None = None
         self._client = httpx.Client(
-            base_url=f"https://{host}/api/v2/",
+            base_url="https://test.deribit.com/api/v2/",
             timeout=timeout,
             transport=transport,
             headers={"User-Agent": "quant-strategy-h014-live/1"},
@@ -47,10 +46,15 @@ class DeribitPrivateClient:
         cls,
         *,
         env: str = "test",
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = None,
         **kwargs: Any,
     ) -> "DeribitPrivateClient":
-        values = dotenv_values(env_file) if env_file and Path(env_file).exists() else {}
+        env_path = (
+            Path(env_file)
+            if env_file is not None
+            else Path(__file__).resolve().parents[4] / ".env"
+        )
+        values = dotenv_values(env_path) if env_path.exists() else {}
         client_id = os.environ.get("DERIBIT_API_KEY") or values.get("DERIBIT_API_KEY")
         client_secret = os.environ.get("DERIBIT_API_SECRET") or values.get(
             "DERIBIT_API_SECRET"

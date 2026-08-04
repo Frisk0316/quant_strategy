@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -17,6 +18,18 @@ class FakeTelegramClient:
     async def post(self, url: str, json: dict) -> SimpleNamespace:
         self.posts.append({"url": url, "json": json})
         return SimpleNamespace(status_code=200)
+
+
+class FakeTelegramPollingClient:
+    def __init__(self, updates: list[dict]) -> None:
+        self.updates = updates
+        self.called = False
+
+    async def get(self, *_args, **_kwargs) -> SimpleNamespace:
+        if self.called:
+            raise asyncio.CancelledError
+        self.called = True
+        return SimpleNamespace(json=lambda: {"result": self.updates})
 
 
 @pytest.mark.asyncio
@@ -79,7 +92,7 @@ async def test_telegram_monitor_commands_use_risk_guard_and_positions():
 
     await monitor._handle_command("/kill", risk_guard, positions)
     await monitor._handle_command("/status", risk_guard, positions)
-    await monitor._handle_command("/reset", risk_guard, positions)
+    await monitor._handle_command("/reset confirm", risk_guard, positions)
     await monitor._handle_command("/help", risk_guard, positions)
 
     assert risk_guard.hard_stop_reason == "Telegram /kill command"
@@ -91,6 +104,30 @@ async def test_telegram_monitor_commands_use_risk_guard_and_positions():
     assert "Daily PnL: $-42.50" in status
     assert "Kill: True" in status
     assert "/kill" in alerts[3][1]
+
+
+@pytest.mark.asyncio
+async def test_telegram_commands_require_configured_chat_and_reset_confirmation():
+    monitor = TelegramMonitor(token="unit-token", chat_id="42")
+    await monitor._client.aclose()
+    monitor._client = FakeTelegramPollingClient([  # type: ignore[assignment]
+        {"update_id": 1, "message": {"chat": {"id": 7}, "text": "/kill"}},
+        {"update_id": 2, "message": {"chat": {"id": 42}, "text": "/reset"}},
+        {"update_id": 3, "message": {"chat": {"id": 42}, "text": "/reset confirm"}},
+    ])
+    risk_guard = FakeRiskGuard()
+    positions = FakePositions()
+    alerts: list[str] = []
+
+    async def record_alert(message: str, level: str = "info") -> None:
+        alerts.append(message)
+
+    monitor.send_alert = record_alert  # type: ignore[method-assign]
+    await monitor.command_loop(risk_guard, positions)
+
+    assert risk_guard.hard_stop_reason is None
+    assert risk_guard.reset_called is True
+    assert alerts == ["Confirmation required: /reset confirm", "RiskGuard reset by operator."]
 
 
 def test_metrics_handles_are_callable_without_starting_server():

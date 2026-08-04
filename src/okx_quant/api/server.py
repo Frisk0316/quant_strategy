@@ -11,7 +11,9 @@ import logging
 import mimetypes
 import os
 import secrets
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -43,21 +45,43 @@ def _api_key() -> str:
     return os.environ.get("API_KEY", "")
 
 
+def is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def require_remote_api_key(host: str) -> None:
+    if not is_loopback_host(host) and not _api_key():
+        raise RuntimeError("API_KEY is required for a non-loopback API bind")
+
+
 async def verify_api_key(x_api_key: str = Header(default="")) -> None:
     api_key = _api_key()
     if not api_key:
         logger.warning("API_KEY is not set; API authentication is disabled")
         return
-    if not secrets.compare_digest(x_api_key, api_key):
+    if not secrets.compare_digest(
+        x_api_key.encode("utf-8", "surrogateescape"),
+        api_key.encode("utf-8"),
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def _is_valid_ws_api_key(value: str) -> bool:
+def _is_valid_ws_api_key(value: str, host: str) -> bool:
     api_key = _api_key()
     if not api_key:
+        if not is_loopback_host(host):
+            return False
         logger.warning("API_KEY is not set; WebSocket authentication is disabled")
         return True
-    return secrets.compare_digest(value, api_key)
+    return secrets.compare_digest(
+        value.encode("utf-8", "surrogateescape"),
+        api_key.encode("utf-8"),
+    )
 
 
 def _allowed_origins() -> list[str]:
@@ -81,6 +105,7 @@ def create_app(
     state: EngineState,
     results_dir: Path,
     frontend_dir: Path,
+    host: str = "127.0.0.1",
 ) -> FastAPI:
     """
     Build the FastAPI application.
@@ -92,12 +117,19 @@ def create_app(
 
     allowed_origins = _allowed_origins()
     if allowed_origins:
+        if any(
+            "*" in origin
+            or urlsplit(origin).scheme not in {"http", "https"}
+            or not urlsplit(origin).netloc
+            for origin in allowed_origins
+        ):
+            raise RuntimeError("credentialed CORS origins must be explicit HTTP(S) origins")
         app.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type", "X-API-Key", "X-Research-Action"],
         )
 
     api_dependencies = [Depends(verify_api_key)]
@@ -128,11 +160,13 @@ def create_app(
         make_manual_router(frontend_dir.parent / "docs" / "manual"),
         prefix="/api/manual",
         tags=["manual"],
+        dependencies=api_dependencies,
     )
     app.include_router(
         make_progress_router(frontend_dir.parent),
         prefix="/api/progress",
         tags=["progress"],
+        dependencies=api_dependencies,
     )
     app.include_router(
         make_research_router(frontend_dir.parent, actions_enabled=False),
@@ -143,7 +177,7 @@ def create_app(
 
     @app.websocket("/api/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:
-        if not _is_valid_ws_api_key(websocket.query_params.get("api_key", "")):
+        if not _is_valid_ws_api_key(websocket.headers.get("sec-websocket-protocol", ""), host):
             await websocket.accept()
             await websocket.close(code=4001)
             return
@@ -170,14 +204,16 @@ async def run_api_server(
     state: EngineState,
     results_dir: Path,
     frontend_dir: Path,
-    host: str = "0.0.0.0",
+    host: str | None = None,
     port: int = 8080,
 ) -> None:
     """
     Coroutine — await this inside engine.main() as an asyncio.create_task().
     Never call uvicorn.run() here; that would create a new event loop.
     """
-    app = create_app(state, results_dir, frontend_dir)
+    host = host or os.environ.get("API_HOST") or "127.0.0.1"
+    require_remote_api_key(host)
+    app = create_app(state, results_dir, frontend_dir, host=host)
     config = uvicorn.Config(
         app=app,
         host=host,

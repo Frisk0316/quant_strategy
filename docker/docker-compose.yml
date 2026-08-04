@@ -8,15 +8,16 @@ services:
     restart: always
     env_file: ../.env
     environment:
-      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:-changeme}@timescaledb:5432/quant
-      API_KEY: ${API_KEY}
+      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:?TIMESCALE_PASSWORD is required}@timescaledb:5432/quant
+      API_HOST: 0.0.0.0
+      API_KEY: ${API_KEY:?API_KEY is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
       - ../config:/app/config
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       redis:
         condition: service_started
@@ -40,7 +41,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: quant
-      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:?TIMESCALE_PASSWORD is required}
       POSTGRES_DB: quant
     volumes:
       - timescale-data:/var/lib/postgresql/data
@@ -62,7 +63,7 @@ services:
       - tools
     env_file: ../.env
     environment:
-      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:-changeme}@timescaledb:5432/quant
+      DATABASE_URL: postgresql://quant:${TIMESCALE_PASSWORD:?TIMESCALE_PASSWORD is required}@timescaledb:5432/quant
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
@@ -89,7 +90,7 @@ services:
     image: grafana/grafana:latest
     restart: always
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
     volumes:
       - grafana-data:/var/lib/grafana
     ports:

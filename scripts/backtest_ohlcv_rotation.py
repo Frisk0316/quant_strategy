@@ -11,9 +11,8 @@ Usage (parquet):
         --benchmark BTC-USDT-SWAP
 
 Usage (postgres):
-    python scripts/backtest_ohlcv_rotation.py \\
+    DATABASE_URL="$TIMESCALE_DSN" python scripts/backtest_ohlcv_rotation.py \\
         --backend postgres \\
-        --dsn "$TIMESCALE_DSN" \\
         --bar 1m \\
         --start 2024-01-01 --end 2026-05-11 \\
         --universe BTC-USDT-SWAP ETH-USDT-SWAP SOL-USDT-SWAP XRP-USDT-SWAP DOGE-USDT-SWAP BNB-USDT-SWAP \\
@@ -26,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -46,7 +46,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OHLCV Rotation Strategy backtest")
 
     parser.add_argument("--backend", choices=["parquet", "postgres", "market"], default="parquet")
-    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (required for postgres/market backend)")
+    parser.add_argument(
+        "--dsn",
+        default=None,
+        help="PostgreSQL DSN (defaults to DATABASE_URL for postgres/market backend)",
+    )
     parser.add_argument("--exchange", default=None,
                         choices=["binance", "okx", "bybit", "coinbase", "kraken"],
                         help="When set, load from market_klines filtered by this exchange (forces backend=market)")
@@ -172,8 +176,10 @@ def main() -> None:
     # that retains per-exchange rows). canonical_candles is the merged view.
     if args.exchange:
         args.backend = "market"
-    if args.backend in {"postgres", "market"} and not args.dsn:
-        sys.exit(f"Error: --dsn is required when --backend={args.backend}")
+    if args.backend in {"postgres", "market"}:
+        args.dsn = args.dsn or os.environ.get("DATABASE_URL")
+        if not args.dsn:
+            sys.exit(f"Error: --dsn or DATABASE_URL is required when --backend={args.backend}")
 
     # Ensure benchmark is in universe
     universe = list(dict.fromkeys(args.universe))  # preserve order, deduplicate

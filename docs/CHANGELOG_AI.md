@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-02
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,161 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-08-03 - External-data verification, schedules, worklog automation (Claude)
+
+- Fresh-context verification of the xvenue/COT/Cboe delivery passed (scope,
+  units, as-of, 11/11 new tests); Claude restarted TimescaleDB and landed all
+  17 datasets with SQL-checked invariants, closing the DB-blocked acceptance
+  items. Cross-venue IV normalization confirmed in storage (BTC 30d ATM within
+  0.2 vol pts across OKX/Bybit/Deribit).
+- Registered scheduled tasks: `quant_xvenue_options_iv` (hourly H-039
+  collector; accumulation clock starts 2026-08-02, earliest Stage-2 ~2027-05)
+  and `quant_weekly_worklog` (SUN 21:07 headless Claude writes plain-language
+  weekly logs to `docs/worklogs/`, next-week directions included).
+- Archived NAAIM weekly exposure history 2006-2026 hours before its
+  2026-08-01 paywall; free-source screening ranked CFTC COT / Cboe / FRED /
+  Treasury / DefiLlama as top zero-cost adds.
+- Committed the week in six reviewed batches and pushed; first weekly worklog
+  `docs/worklogs/2026-07-27_2026-08-02.md` written. H-033/H-036 are now
+  data-unblocked awaiting user rerun authorization; Tardis paid backfill
+  declined, keeping H-039 forward-only.
+
+## 2026-08-02 - Free-data, paper, and limited-probe research (Codex)
+
+- Added credential-free Wikimedia and Coin Metrics Community adapters and
+  stored four new daily research datasets (attention, BTC/ETH active addresses,
+  and USDT reference price), plus DGS10 and bounded refreshes. The selected
+  task-attributable slice is 13,347 durable unique rows, not the whole-day total.
+- Pre-registered and executed H-040 through H-046 once. Frozen artifacts report
+  seven terminal FAILs. A post-run ADR-0013 audit found that the runner inferred
+  power breadth from active legs; conservative breadth=1 makes H-041/H-045/H-046
+  Stage-2 power FAILs, so all generated Stage-3 metrics are diagnostic-only.
+- Repaired the shared root cause by requiring explicit pre-DB `power_breadth`;
+  also fixed Binance OI/page-boundary duplicate accounting at adapter and store
+  boundaries. Observed family trials remain counted; no rerun or gate change.
+- Delivered a detailed Markdown synthesis and a verified portable HTML report.
+  No new strategy is usable or governance-valid near-pass; H-014 remains
+  research/shadow only, while prior H-023 is the closest valid Stage-2 power gap.
+
+## 2026-08-02 - Credential-free OKX public-data scheduler (Codex)
+
+- Extended the existing chunked public WebSocket collector to persist BTC/ETH
+  Spot and SWAP books, trades, and funding-rate updates without API keys or an
+  order path; added a 10 GiB free-space stop.
+- Registered `quant_okx_market_data` as a Limited/S4U Windows startup task with
+  battery/start-when-available/unlimited-duration settings and one-minute
+  failure restart. A real four-symbol smoke persisted all three data kinds.
+- This accumulates forward market data only. It does not activate Demo strategy
+  execution, Binance strategy wiring, or any live/promotion gate.
+
+## 2026-08-02 - Binance/OKX Demo execution and funding plumbing (Codex)
+
+- Binance Spot moved from legacy Testnet to the official unified Demo endpoint,
+  signed clients now synchronize venue time, and the unified Demo key can back
+  USD-M unless separately overridden. Spot completed a real Demo place/cancel
+  with no open orders; USD-M authenticated and correctly refused to create a
+  position on the flat account.
+- OKX Demo completed REST balance/place/cancel and private-WS authentication.
+  Shared execution now sanitizes tags, checks nested venue codes, tick-aligns
+  directional orders, uses Spot `cash`, and subscribes to Spot order fills.
+- The current BTC funding rate annualized to about 0.229%, below the frozen 12%
+  gate, so no entry was correct. Dual-leg execution/replay tests pass, while
+  non-atomic cross-leg submission remains an explicit non-promotion gap.
+
+## 2026-07-31 - H-039 + CFTC COT + Cboe external-data delivery (Codex)
+
+- Added stdlib-based clients for OKX/Bybit/Deribit option IV, CFTC Socrata COT,
+  and official Cboe CSV histories, reusing the existing external-observation
+  store without a schema migration or new dependency.
+- H-039 now registers six `xvenue_opt_iv_*` hourly datasets and implements the
+  frozen full-chain contract: two-expiry 30d total-variance interpolation with
+  nearest fallback, call-minus-put 25-delta RR, venue-native full-chain OI,
+  bucket-end publication, source-failure isolation, and gap alerting. All six
+  public source smokes passed and retained 702/644/584/474/854/708 instruments.
+- Registered six weekly COT datasets and five Cboe daily datasets. Official
+  source validation returned 433/277 crypto COT rows; 1,050 rows each for ES,
+  UST10Y, USD Index, and Gold; 3,915/9,240/4,241/4,673 rows for the four Cboe
+  volatility series; and 3,253 total put/call rows. The official put/call file
+  ends 2019-10-04 and is treated as a discontinued archive, with no scrape.
+- Unit/config/source checks pass, but the configured TimescaleDB endpoint
+  refuses connections. No task dataset has persisted rows, no scheduler was
+  registered, and the H-039 accumulation window has not started. H-039 remains
+  proposed/data-blocked with family trials 0 and K 0/2; no experiment, Stage
+  2/3, strategy, result, gate, or deployment change occurred.
+
+## 2026-07-30 - FRED ingest complete; Deribit full-tape backfill hard-stopped (Codex)
+
+- Added config-only DGS2, VIXCLS, DTWEXBGS, and research-only Yahoo `GC=F`
+  datasets. The 2020-01-01 onward ingest wrote 1,643 / 1,682 / 1,640 / 1,653
+  rows respectively; every FRED row has `published_at > observed_at`, no series
+  has a gap over seven days, and non-target dataset count/max-ingest fingerprints
+  stayed unchanged.
+- Removed the option-flow first-20 guard. New rows retain every inverse trade
+  and `trade_id`; the >20 duplicate-millisecond unit fixture locks the existing
+  aggregate values and full payload.
+- A six-hour real pre-flight passed exact `value_num`/fields equality and
+  retained 2,182/2,182 trade IDs. The wider historical run nevertheless exposed
+  upstream archive revisions: BTC aggregate trades ended at 12,724,092 versus
+  the pre-task 12,724,097 baseline. All workers were stopped per the task's
+  immutability rule. Only 2,304 BTC and 744 ETH hours are enriched; total hourly
+  row counts remain 22,403/22,402. Partial hypertable growth is 76,021,760 bytes
+  (optflow raw-payload growth 72,936,371 bytes), not a completed full-run size.
+- H-031/H-035 remain data-blocked. H-033/H-036 inputs landing in DB does not
+  authorize probe reruns; H-036's unofficial gold proxy still requires
+  Claude/user acceptance.
+
+## 2026-07-29 - H-030..H-037 Stage-2 slate (Codex)
+
+- Added five source-shaped probe modules and eight registered candidate runners.
+  One whole-slate I49 overlap check runs before DB access; the ordered caller
+  writes four-check SHA-bound artifacts and never enters Stage 3.
+- E-069 H-030 passed data/distinctness but failed cost/power. E-074 H-032 and
+  E-075 H-034 passed data but failed decisive distinctness, cost, and power.
+  E-070/E-071/E-072/E-073/E-076 are data-blocked without proxy fabrication.
+- Family trials and K remain unchanged at zero for all eight. No ingestion,
+  retune, grid, Stage 3, promotion, deployment, or H-038 work occurred.
+
+## 2026-07-29 - H-029 Stage 2 + ADR-0016 infrastructure slice 1 (Codex)
+
+- H-029/E-068 passed I49 before DB access, data coverage (1,512/1,512 active
+  symbol-events), and distinctness, then failed cost and power at net Sharpe
+  -0.471876 versus a 0.880629 floor. The stop rule prevented Stage 3; trials
+  and K remain zero. E-026's missing dated series is recorded as a best-effort
+  reference gap.
+- Added the ADR-0016 result-blind manifest boundary: joined input filtering,
+  10–15/8/2 executable validation, hash-bound resume, and strict terminal
+  reconciliation. Synthetic dry validation passed; no real round ran.
+
+## 2026-07-29 - E-025 dated regeneration and H-024..H-027 outcomes (Codex)
+
+- Re-ran the existing C1 pairs-OU implementation at E-025's frozen selected
+  parameters and persisted 898 dated returns. Input coverage and the recorded
+  full-sample Sharpe reproduced exactly; `summary.json`, H-006, F-PAIRS-OU
+  trials, K, and experiment rows remained unchanged.
+- Whole-batch I49 then passed, including 898 H-027/E-025 common days. Executed
+  the limited probe in frozen order and recorded E-064..E-067 with immutable
+  SHA-bound artifacts: H-024 failed data/power; H-025 failed the mint-apart
+  check at corr 0.749580, merged into F-OPT-HEDGE-DEMAND, and also failed
+  data/cost/power; H-027 failed cost/power; H-026 failed cost/power.
+- No candidate reached Stage 3. All new-family trials remain zero; F-VRP-TIMING
+  actual trials remain 4 and K remains 0/2 despite its prospective `n_trials=8`
+  power screen. No retune, promotion, deployment, or trading-mode change.
+
+## 2026-07-29 - H-024..H-027 registration and I49 contract stop (Codex)
+
+- Registered F-OPT-HEDGE-DEMAND, F-OPT-MONEYNESS-STRUCTURE, F-XVOL-RATIO, and
+  F-VRP-TIMING in the Stage-2 registry with one shared probe module for the
+  frozen feature definitions, cost/data/distinctness checks, power ceilings,
+  and H-026 family-cumulative `n_trials=8`.
+- Added a whole-batch I49 pre-flight that validates every distinctness
+  reference before DB access. It refused the only E-025/F-PAIRS-OU artifact
+  because its CPCV `path_returns` have no dates; therefore none of the four
+  probes ran and no result artifact, experiment row, trial/K update, or Stage 3
+  was created.
+- Registration commit `4c84a18`; targeted registry/probe tests passed
+  (`20 passed`) and targeted Ruff passed. Claude must provide or authorize a
+  dated E-025 reference, or change the contract, before execution resumes.
 
 ## 2026-07-28 - H-014 live review fixes + differential declaration (Codex)
 

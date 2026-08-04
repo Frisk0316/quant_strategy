@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -100,7 +100,9 @@ implementation exists.
 - User-facing behavior: list runs, start runs/sweeps, read saved result artifacts,
   delete runs, and expose chart-specific endpoints. Run-list/result-summary DB
   outages without an exact file fallback return 503; a healthy missing run stays
-  404 and an existing file artifact remains usable.
+  404 and an existing file artifact remains usable. Engine and standalone binds
+  default to loopback; non-loopback startup requires an API key, and standalone
+  backtest/data/config routes share the API-key dependency.
 - Frontend files: `frontend/data.js`, `frontend/view-backtest.js`,
   `frontend/view-results.js`, `frontend/view-config.js`.
 - Backend/API files: `src/okx_quant/api/routes_backtest.py`,
@@ -113,7 +115,7 @@ implementation exists.
 - Config files: `config/settings.yaml`, `docker/docker-compose.yml`.
 - Tests: `tests/unit/test_routes_data_export.py`, `tests/unit/test_backtesting.py`,
   `tests/unit/test_artifact_rows.py`, `tests/unit/test_backtest_visual_fallbacks.py`,
-  `tests/integration/test_api_endpoints.py`.
+  `tests/unit/test_api_security.py`, `tests/integration/test_api_endpoints.py`.
 - Docs to update: `docs/ADR/0002-backtest-result-schema.md`, `docs/DATA_FLOW.md`,
   `docs/RUNBOOK.md`.
 - Do-not-touch notes: API schema changes require matching frontend and test updates;
@@ -187,6 +189,29 @@ implementation exists.
 - Do-not-touch notes: strictly read-only; do not add a write API, mutation control,
   strategy/config gate, automatic generation, or broader repository file serving.
 
+## Public Research Status Page
+
+- User-facing behavior: publish a daily, read-only research-progress and H-014
+  shadow-observation summary through GitHub Pages. The page states that there is
+  no live trading or paper-trading performance and that no promotion/deployment
+  gate has passed.
+- Page and generator files: `public_status/index.html`,
+  `scripts/publish_public_status.py`, `scripts/run_public_status_task.cmd`.
+- Published files: the separate orphan `public-status` branch contains only
+  index.html, status.json, and .nojekyll; the user creates the branch,
+  enables Pages, and registers the local daily task.
+- Data files: read-only allow-list of `config/workstreams.yaml` plus the
+  generated results/shadow_h014/bias_report.json,
+  results/shadow_h014/journal.jsonl, and frontend/research_funnel.json
+  (none checked in). Missing inputs are reported as unavailable;
+  no DB or network access is used.
+- Tests: `tests/unit/test_publish_public_status.py`.
+- Docs to update: `docs/RUNBOOK.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, `config/workstreams.yaml`.
+- Do-not-touch notes: never publish equity curves, strategy parameters, signal
+  keys/values, credentials, result artifacts, or deployment-readiness claims.
+  Do not add a GitHub Actions workflow for this local-file publisher.
+
 ## Indicator Series / Indicator Chart
 
 - User-facing behavior: technical-indicator runs display per-symbol price plus
@@ -219,7 +244,15 @@ implementation exists.
   visible with null timestamps and zero rows rather than timing out the card.
   Deribit external ingestion includes rolling BTC/ETH historical volatility,
   derived 30-day hourly realized volatility from venue perpetual closes,
-  historical/hourly DVOL and funding/option flow. Selecting Deribit in the
+  historical/hourly DVOL and funding/option flow. New hourly option-flow rows
+  retain the full inverse per-trade tape in `raw_payload` (including
+  `trade_id`). Historical enrichment is partial and stopped after the archive
+  changed the stored BTC aggregate trade total by -5; most prior rows remain
+  capped until Claude/user resolves the immutability conflict. FRED ingestion
+  includes DGS2, DGS10,
+  VIXCLS, and DTWEXBGS with a one-day publication lag; `gold_yfinance` is an
+  explicitly research-only `GC=F` futures proxy, not a FRED/spot-gold
+  equivalent. Selecting Deribit in the
   existing frontend fetch form searches BTC/ETH and queues the on-demand
   volatility plus current option-surface refresh. New option-surface snapshots
   preserve the complete current chain sorted by expiry, strike, and option type;
@@ -229,6 +262,24 @@ implementation exists.
   OKX liquidation forward accumulation is wrapped by
   `scripts/market_data/run_liq_ingest_task.cmd`; `docs/RUNBOOK.md` owns its
   two-hour least-privilege S4U task registration, run, rollback, and removal.
+  H-039's forward collector writes six hourly
+  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` observations. `value_num` and
+  `fields.atm_iv_30d` use total-variance interpolation between the two valid
+  expiries bracketing 30 days, with explicit nearest-expiry fallback. Fields
+  retain call-minus-put `rr_25d`, ATM bid/ask IV spread, OI and expiry metadata;
+  `raw_payload` retains the full normalized current chain. The snapshot command
+  attempts every venue/currency before returning failure and alerts when the
+  prior successful hour is more than 1.5 hours away; the user owns scheduler
+  registration.
+  The credential-free `quant_okx_market_data` S4U startup task continuously captures
+  OKX BTC/ETH Spot and SWAP books, public trades, and funding-rate updates into
+  chunked local Parquet files. It has no broker, API key, or order path and
+  stops before free disk falls below 10 GiB.
+  CFTC COT ingestion adds six weekly futures-only series keyed by stable CFTC
+  contract-market codes; TFF datasets store leveraged-money net positions and
+  Gold stores managed-money net positions. Cboe ingestion adds official VIX9D,
+  VIX, VIX3M, and VIX6M daily CSV histories plus the discontinued official
+  total put/call archive. The latter ends 2019-10-04 and is not a current feed.
   The checkpointed CLI also backfills and forward-tops-up Deribit public
   BTC/ETH-PERPETUAL 1m candles under native canonical ids with venue-scoped
   `source_primary='deribit'`; index prices are never a fallback.
@@ -244,13 +295,21 @@ implementation exists.
   `src/okx_quant/data/external_clients/deribit_funding.py`,
   `src/okx_quant/data/external_clients/deribit_option_surface.py`,
   `src/okx_quant/data/external_clients/deribit_option_flow.py`,
+  `src/okx_quant/data/external_clients/xvenue_options_iv.py`,
+  `src/okx_quant/data/external_clients/cftc_cot.py`,
+  `src/okx_quant/data/external_clients/cboe.py`,
   `sql/migrations/0011_venue_instrument_specs.sql`,
   `sql/seed_venue_instrument_specs.sql`,
   `scripts/market_data/ingest.py`, `scripts/market_data/update_all.py`,
   `scripts/market_data/repair_gaps.py`, `scripts/market_data/export_ohlcv_csv.py`,
   `scripts/market_data/ingest_external.py`,
   `scripts/market_data/run_liq_ingest_task.cmd`,
+  `scripts/stream_orderbook.py`,
+  `scripts/market_data/run_okx_market_data_collector.cmd`,
+  `scripts/market_data/register_okx_market_data_task.ps1`,
   `scripts/market_data/snapshot_deribit_options.py`,
+  `scripts/market_data/snapshot_xvenue_options.py`,
+  `scripts/market_data/run_xvenue_options_snapshot_task.cmd`,
   `scripts/market_data/backfill_deribit_option_flow.py`,
   `scripts/market_data/download_binance_vision_metrics.py`,
   local parquet mirrors under `data/ticks/<inst_id>/`.
@@ -264,7 +323,10 @@ implementation exists.
   `tests/unit/test_deribit_funding_client.py`,
   `tests/unit/test_deribit_option_surface.py`,
   `tests/unit/test_deribit_option_flow.py`,
+  `tests/unit/test_xvenue_options_iv.py`,
+  `tests/unit/test_cftc_cot.py`, `tests/unit/test_cboe.py`,
   `tests/unit/test_ingest_external_liquidation.py`,
+  `tests/unit/test_stream_orderbook.py`,
   `tests/unit/test_snapshot_deribit_options.py`,
   `tests/unit/test_routes_data_external_series.py`.
 - Docs to update: `docs/DATA_FLOW.md`, `docs/UI_MAP.md`, `docs/RUNBOOK.md`,
@@ -575,18 +637,31 @@ implementation exists.
   365-common-day distinctness result remains immutable; future contracts must
   declare a satisfiable formal-window/reference overlap before registration.
   H-022/E-058 Stage-2 ownership is `backtesting/taker_flow_probe.py`: it parses existing Binance 1m `raw_payload.raw[9]/[10]` without download or schema changes and never enters Stage 3.
+  H-024..H-027 Stage-2 ownership is `backtesting/moneyness_vol_probe.py`
+  (E-064..E-067, all Stage-2 stops). H-029/E-068 Stage-2 ownership is
+  `backtesting/funding_settlement_probe.py`: an event-window design over
+  Binance funding settlements + 1m candles (no new ingestion), refuted on
+  negative net edge at Stage 2. H-030..H-037 Stage-2 ownership is split by
+  source shape across `backtesting/intrabar_periodicity_probe.py`,
+  `backtesting/options_flow_probe.py`, `backtesting/macro_state_probe.py`,
+  `backtesting/vol_structure_probe.py`, and
+  `backtesting/cme_session_probe.py`. The registry exposes one ordered
+  `--candidate slate` caller; it runs the whole-slate I49 overlap pre-flight
+  before opening the DB, writes four-check SHA-bound artifacts, and never
+  enters Stage 3. ADR-0016 round-manifest sealing / hash-bound
+  resume / terminal reconciliation library is `backtesting/pipeline_round.py`
+  (build-only; no real round has run).
 - Target behavior (ADR-0016): one user prompt may drive several bounded GenAI
   calls, then seal a result-blind round manifest containing 10–15 unique
   executable strategies (at least eight verified-paper-backed new mechanisms
   and two eligible existing-strategy iterations). Deterministic code evaluates
   every sealed strategy at Stage 2, runs Stage 3 only for passes, and reconciles
   the full paper/idea/rejection/execution funnel.
-- Known gap: current generation has only a maximum of 15, no minimum or track
-  quota, and no unified literature-plus-iteration command. Literature candidates
-  normally remain `pending_llm`; unknown/new families stop at
-  `awaiting_stage2_implementation`; resume has no manifest hash; and current
-  aggregate reporting cannot prove that one frozen round completed. Therefore
-  current commands cannot claim a complete ADR-0016 round.
+- Known gap: the eight new slate mechanisms now have deterministic Stage-2
+  runners, but only one eligible existing-strategy iteration exists and H-038
+  remains explicitly unauthorized. The required 10–15 total / 8 new / 2
+  iterations contract therefore still cannot be sealed honestly, and the
+  slate-only caller is not a complete ADR-0016 round command.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
@@ -598,7 +673,11 @@ implementation exists.
   `backtesting/pipeline_stage3_registry.py`,
   `backtesting/xvenue_leadlag_probe.py`,
   `backtesting/xvenue_funding_spread_probe.py`,
-  `backtesting/xvenue_funding_spread_backtest.py`.
+  `backtesting/xvenue_funding_spread_backtest.py`,
+  `backtesting/intrabar_periodicity_probe.py`,
+  `backtesting/options_flow_probe.py`, `backtesting/macro_state_probe.py`,
+  `backtesting/vol_structure_probe.py`, and
+  `backtesting/cme_session_probe.py`.
 - Script files: `scripts/run_pipeline_stage2_check.py`,
   `scripts/run_pipeline_checkpoint1_check.py`,
   `scripts/run_pipeline_family_minting_check.py`,
@@ -625,6 +704,11 @@ implementation exists.
   `tests/unit/test_pipeline_power_screen.py`,
   `tests/unit/test_pipeline_stage2_data_probe.py`,
   `tests/unit/test_pipeline_stage2_registry.py`,
+  `tests/unit/test_intrabar_periodicity_probe.py`,
+  `tests/unit/test_options_flow_probe.py`,
+  `tests/unit/test_macro_state_probe.py`,
+  `tests/unit/test_vol_structure_probe.py`,
+  `tests/unit/test_cme_session_probe.py`,
   `tests/unit/test_pipeline_family_minting.py`,
   `tests/unit/test_pipeline_idea_generator.py`,
   `tests/unit/test_pipeline_literature_ideas.py`,
@@ -760,7 +844,8 @@ implementation exists.
 ## H-014 Deribit Options Live Execution (disabled)
 
 - User-facing behavior: no active entrypoint. The ADR-0017 layer is
-  fail-closed behind `h014_live.enabled: false`, defaults to Deribit testnet,
+  fail-closed behind `h014_live.enabled: false`; ADR-0018 activation and the
+  private client reject any environment other than Deribit testnet. The layer
   consumes byte-identical ADR-0011 intent legs, places only limit orders
   (post-only except explicit reduce-only risk exits), reprices a bounded number
   of times, and appends order/fill/reject/missed/risk events.
@@ -778,12 +863,45 @@ implementation exists.
   `DERIBIT_API_SECRET`; no credential is stored in config.
 - Tests: `tests/unit/test_deribit_private_client.py`,
   `tests/unit/test_h014_live_adapter.py`.
-- Docs: ADR-0017, the 2026-07-28 Change Manifest, this map, and
-  `docs/RUNBOOK.md`.
+- Docs: ADR-0017, ADR-0018, the 2026-07-28 and 2026-07-30 Change Manifests,
+  this map, and `docs/RUNBOOK.md`.
 - Do-not-touch notes: implementation is not activation. Do not enable the
   config, register a scheduler, switch `config/settings.yaml`, relax R7.2,
   modify shadow intent logic, or claim demo/shadow/live readiness without the
   ADR-0017 gate order and a separate explicit user approval.
+
+## Binance testnet connectivity (no strategy)
+
+- User-facing behavior: a manual bounded smoke authenticates independently to
+  Binance Spot Test Network and USD-M demo, prints an account/position
+  snapshot, places a far limit order, and attempts cancellation in `finally`.
+  Futures placement is blocked unless it can reduce an existing non-zero
+  one-way position; the smoke never seeds exposure or changes position mode.
+- Execution files: `src/okx_quant/execution/binance_testnet/`.
+- Operations: `scripts/run_binance_testnet_smoke.py`; no scheduler or strategy
+  calls these clients.
+- Hosts and credentials: Spot is fixed to `demo-api.binance.com` and USD-M to
+  `demo-fapi.binance.com`; neither client exposes a mainnet host. Both sign with
+  the unified `BINANCE_API_KEY` / `BINANCE_SECRET`, and USD-M additionally
+  accepts optional `BINANCE_FUTURES_API_KEY` / `BINANCE_FUTURES_SECRET`
+  overrides (`futures_client.from_env` falls back to the unified pair).
+  Both clients call `sync_clock()` and sign with the server-time offset.
+- Tests: `tests/unit/test_binance_testnet_client.py`.
+- Do-not-touch notes: connectivity output is not strategy evidence or
+  deployment readiness. Do not add a mainnet host, strategy/signal wiring,
+  scheduler, or automatic futures position creation.
+
+## OKX Demo connectivity (no strategy)
+
+- User-facing behavior: a manual bounded smoke checks Demo balance, submits one
+  resting Spot order, and cancels it in `finally`; `demo=True` is fixed.
+- Operations: `scripts/run_okx_demo_smoke.py`; no scheduler or strategy calls it.
+- Credentials: only `OKX_DEMO_API_KEY`, `OKX_DEMO_SECRET`, and
+  `OKX_DEMO_PASSPHRASE` from process environment or repo-root `.env`. The
+  live-labeled `OKX_API_KEY` names are unreachable from this script.
+- Tests: `tests/unit/test_okx_demo_smoke.py`.
+- Do-not-touch notes: connectivity output is not strategy evidence or
+  deployment readiness; do not substitute a live-labeled credential.
 
 ## Shadow / Demo / Live Deployment Gate
 
@@ -808,7 +926,8 @@ implementation exists.
 ## Telegram / Monitoring
 
 - User-facing behavior: expose operational metrics and Telegram-style alert hooks
-  where configured.
+  where configured. Remote commands are accepted only from the configured chat;
+  RiskGuard reset additionally requires `/reset confirm`.
 - Frontend files: `frontend/app.js`, `frontend/view-results.js`.
 - Backend/API files: `src/okx_quant/api/routes_live.py`,
   `src/okx_quant/api/server.py`.

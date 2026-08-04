@@ -9,8 +9,12 @@ cd /d C:\quant_strategy
 if not exist logs mkdir logs
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\h014_shadow_notify.ps1 -Phase start
 "C:\Users\woody\AppData\Local\Programs\Python\Python312\python.exe" research\probes\h014_daily_shadow_ops.py --no-wait >> logs\h014_shadow_daily.log 2>&1
-if errorlevel 1 (
+set "H014_RC=%ERRORLEVEL%"
+if not "%H014_RC%"=="0" (
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\h014_shadow_notify.ps1 -Phase fail
 ) else (
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\h014_shadow_notify.ps1 -Phase ok
 )
+rem Propagate the cycle's real exit code so Task Scheduler's Last Result is
+rem honest; without this the trailing toast masks a failed cycle as success.
+exit /b %H014_RC%

@@ -79,11 +79,13 @@ class DeribitOptionFlowClient:
             "sorting": "desc",
         }
         trades: dict[str, dict[str, Any]] = {}
-        seen_ends: set[int] = set()
+        start_ms = _to_ms(start)
         pages = 0
         while True:
+            before = len(trades)
             result = self._get(params).get("result") or {}
             pages += 1
+            self.last_page_count = pages
             page = result.get("trades") or []
             if not page:
                 break
@@ -98,15 +100,18 @@ class DeribitOptionFlowClient:
                     continue
                 key = str(trade.get("trade_id") or f"{ts}:{trade.get('instrument_name')}:{trade.get('direction')}")
                 trades[key] = trade
-            if not result.get("has_more") or min_ts is None or min_ts <= _to_ms(start):
+            if min_ts is None or min_ts < start_ms:
                 break
-            if min_ts in seen_ends:
+            if len(trades) == before:
+                if len(page) >= count:
+                    raise RuntimeError(
+                        f"Deribit pagination stalled on a full page at {min_ts}; "
+                        f"a timestamp tie may exceed count={count}"
+                    )
                 break
-            seen_ends.add(min_ts)
-            params["end_timestamp"] = min_ts - 1
+            params["end_timestamp"] = min_ts
             if self.page_delay > 0:
                 self.sleep(self.page_delay)
-        self.last_page_count = pages
         return sorted(trades.values(), key=lambda trade: int(trade.get("timestamp") or 0))
 
     def fetch(
@@ -170,8 +175,7 @@ def aggregate_hourly_option_flow(currency: str, trades: list[dict[str, Any]]) ->
         if iv is not None:
             bucket["iv_sum"] += iv
             bucket["iv_count"] += 1
-        if len(bucket["sample"]) < 20:
-            bucket["sample"].append(trade)
+        bucket["sample"].append(trade)
 
         moneyness = moneyness_bucket(option_type, strike, _to_float(trade.get("index_price")))
         if moneyness is None:
@@ -221,7 +225,7 @@ def aggregate_hourly_option_flow(currency: str, trades: list[dict[str, Any]]) ->
             "fields": fields,
             "quality_status": "raw",
             "raw_payload": {
-                "sample_rule": "first_20_inverse_trades_in_hour",
+                "sample_rule": "all_inverse_trades_in_hour",
                 "sample": bucket["sample"],
             },
         })

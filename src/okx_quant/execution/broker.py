@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -82,6 +83,7 @@ class OKXBroker(Broker):
         """
         import asyncio
         try:
+            tag = re.sub(r"[^A-Za-z0-9]", "", order.get("strategy", ""))[:16]
             result = await asyncio.to_thread(
                 self._trade.place_order,
                 instId=order["inst_id"],
@@ -91,9 +93,17 @@ class OKXBroker(Broker):
                 sz=str(order["sz"]),
                 px=str(order["px"]),
                 clOrdId=order.get("cl_ord_id", "")[:32],
-                tag=order.get("strategy", "")[:16],
+                tag=tag,
+                **(
+                    {"reduceOnly": "true", "posSide": order.get("pos_side", "net")}
+                    if order.get("reduce_only")
+                    else {}
+                ),
             )
-            if result.get("code") == "51026":
+            data = (result.get("data") or [{}])[0]
+            code = result.get("code")
+            subcode = data.get("sCode", "0")
+            if code == "51026" or subcode == "51026":
                 # post_only rejection — price crossed the book
                 logger.debug(
                     "post_only rejected (market moved)",
@@ -102,11 +112,17 @@ class OKXBroker(Broker):
                     px=order["px"],
                 )
                 return None
-            if result.get("code") != "0":
-                logger.warning("Order rejected", code=result.get("code"), msg=result.get("msg"), order=order)
+            if code != "0" or subcode != "0":
+                logger.warning(
+                    "Order rejected",
+                    code=code,
+                    msg=result.get("msg"),
+                    s_code=subcode,
+                    s_msg=data.get("sMsg"),
+                    order=order,
+                )
                 return None
 
-            data = result.get("data", [{}])[0]
             return FillPayload(
                 cl_ord_id=order.get("cl_ord_id", ""),
                 ord_id=data.get("ordId", ""),
@@ -133,7 +149,8 @@ class OKXBroker(Broker):
                 instId=inst_id,
                 clOrdId=cl_ord_id,
             )
-            return result.get("code") == "0"
+            data = (result.get("data") or [{}])[0]
+            return result.get("code") == "0" and data.get("sCode", "0") == "0"
         except Exception as e:
             logger.error("OKXBroker cancel error", exc=str(e))
             return False

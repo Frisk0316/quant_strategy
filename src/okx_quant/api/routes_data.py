@@ -22,6 +22,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backtesting.artifact_rows import resolve_artifact_child, validate_artifact_id
+
 _jobs: dict[str, dict] = {}
 
 # ponytail: global single fetch lock -- one fetch runs at a time across all
@@ -430,13 +432,15 @@ def make_data_router(db_dsn: str | None = None) -> APIRouter:
             reverse=True,
         )
 
-    @router.delete("/pairs/{inst_id}")
+    @router.delete("/pairs/{inst_id:path}")
     async def delete_pair(inst_id: str):
         if not db_dsn:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
         inst_id = str(inst_id or "").strip().upper()
-        if not inst_id:
-            raise HTTPException(status_code=400, detail="inst_id is required")
+        try:
+            inst_id = validate_artifact_id(inst_id, "inst_id")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if _active_job_for_symbol(inst_id):
             raise HTTPException(status_code=409, detail="Pair has an active fetch job; cancel it first")
         import asyncpg
@@ -1340,7 +1344,10 @@ def _active_job_for_symbol(inst_id: str) -> bool:
 
 
 def _remove_pair_parquet(inst_id: str, ticks_dir: str | Path) -> tuple[bool, str | None]:
-    inst_dir = Path(ticks_dir) / str(inst_id).replace("-", "_")
+    try:
+        inst_dir = resolve_artifact_child(ticks_dir, str(inst_id).replace("-", "_"), "inst_id")
+    except ValueError as exc:
+        return False, str(exc)
     if not inst_dir.exists():
         return False, None
     try:

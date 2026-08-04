@@ -108,11 +108,92 @@ def test_usdc_only_hour_emits_exclusion_row():
     assert rows[0]["raw_payload"]["sample"] == []
 
 
+def test_hourly_raw_payload_retains_all_trades_without_changing_aggregates():
+    hour = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    trades = [
+        _trade(
+            hour,
+            f"BTC-26JAN24-{58_000 + index}-C",
+            "buy",
+            1.0,
+            0.1,
+            trade_id=f"call-buy-{index}",
+        )
+        for index in range(10)
+    ]
+    trades += [
+        _trade(
+            hour,
+            f"BTC-26JAN24-{58_000 + index}-P",
+            "buy",
+            2.0,
+            0.1,
+            trade_id=f"put-buy-{index}",
+        )
+        for index in range(5)
+    ]
+    trades += [
+        _trade(
+            hour,
+            f"BTC-26JAN24-{58_000 + index}-C",
+            "sell",
+            1.0,
+            0.2,
+            trade_id=f"call-sell-{index}",
+        )
+        for index in range(5)
+    ]
+    trades += [
+        _trade(
+            hour,
+            f"BTC-26JAN24-{58_000 + index}-P",
+            "sell",
+            1.0,
+            0.3,
+            trade_id=f"put-sell-{index}",
+        )
+        for index in range(5)
+    ]
+
+    row = aggregate_hourly_option_flow("BTC", trades)[0]
+
+    assert row["value_num"] == pytest.approx(0.0)
+    assert row["fields"] == {
+        "call_buy_amt": pytest.approx(1.0),
+        "call_sell_amt": pytest.approx(1.0),
+        "put_buy_amt": pytest.approx(1.0),
+        "put_sell_amt": pytest.approx(1.5),
+        "premium_volume": pytest.approx(4.5),
+        "premium_unit": "BTC",
+        "avg_trade_iv": pytest.approx(50.0),
+        "trade_count": 25,
+        "liq_trade_count": 0,
+        "unit": "imbalance_ratio",
+        "excluded_linear_usdc_count": 0,
+        "moneyness_atm_band": 0.025,
+        "atm_premium": 0.0,
+        "itm_premium": 0.0,
+        "otm_premium": 0.0,
+        "atm_trades": 0,
+        "itm_trades": 0,
+        "otm_trades": 0,
+        "otm_put_buy_amt": 0.0,
+        "otm_call_buy_amt": 0.0,
+        "unbucketed_trade_count": 25,
+    }
+    assert row["raw_payload"]["sample_rule"] == "all_inverse_trades_in_hour"
+    assert len(row["raw_payload"]["sample"]) == 25
+    assert [trade["trade_id"] for trade in row["raw_payload"]["sample"]] == [
+        trade["trade_id"] for trade in trades
+    ]
+
+
 def test_option_flow_client_paginates_has_more(monkeypatch):
-    client = DeribitOptionFlowClient()
+    client = DeribitOptionFlowClient(page_delay=0)
     calls = []
     pages = [
         {"result": {"trades": [{"trade_id": "2", "timestamp": 2000}], "has_more": True}},
+        {"result": {"trades": [{"trade_id": "1", "timestamp": 1000}], "has_more": False}},
         {"result": {"trades": [{"trade_id": "1", "timestamp": 1000}], "has_more": False}},
     ]
 
@@ -131,7 +212,67 @@ def test_option_flow_client_paginates_has_more(monkeypatch):
     assert [trade["trade_id"] for trade in trades] == ["1", "2"]
     assert calls[0]["count"] == 1000
     assert calls[0]["sorting"] == "desc"
-    assert calls[1]["end_timestamp"] == 1999
+    assert calls[1]["end_timestamp"] == 2000
+    assert calls[2]["end_timestamp"] == 1000
+
+
+def test_option_flow_pagination_is_count_invariant_across_timestamp_tie(monkeypatch):
+    all_trades = [
+        {"trade_id": "newer", "timestamp": 3000},
+        {"trade_id": "tie-3", "timestamp": 2000},
+        {"trade_id": "tie-2", "timestamp": 2000},
+        {"trade_id": "tie-1", "timestamp": 2000},
+        {"trade_id": "older", "timestamp": 1000},
+    ]
+
+    def fetch(count):
+        client = DeribitOptionFlowClient(page_delay=0)
+        if count == 2:
+            pages = [
+                all_trades[0:2],
+                all_trades[1:3],
+                all_trades[2:4],
+                all_trades[3:5],
+                all_trades[4:5],
+            ]
+        else:
+            pages = [all_trades, all_trades[4:5]]
+        monkeypatch.setattr(
+            client,
+            "_get",
+            lambda params: {"result": {"trades": pages.pop(0), "has_more": True}},
+        )
+        return client.fetch_trades(
+            currency="BTC",
+            start=datetime.fromtimestamp(0, tz=timezone.utc),
+            end=datetime.fromtimestamp(4, tz=timezone.utc),
+            count=count,
+        )
+
+    assert {trade["trade_id"] for trade in fetch(2)} == {
+        trade["trade_id"] for trade in fetch(10)
+    }
+
+
+def test_option_flow_pagination_reports_unpageable_timestamp_tie(monkeypatch):
+    client = DeribitOptionFlowClient(page_delay=0)
+    page = [
+        {"trade_id": "tie-1", "timestamp": 2000},
+        {"trade_id": "tie-2", "timestamp": 2000},
+    ]
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda params: {"result": {"trades": page, "has_more": True}},
+    )
+
+    with pytest.raises(RuntimeError, match="timestamp tie may exceed count=2"):
+        client.fetch_trades(
+            currency="BTC",
+            start=datetime.fromtimestamp(0, tz=timezone.utc),
+            end=datetime.fromtimestamp(3, tz=timezone.utc),
+            count=2,
+        )
 
 
 def test_resume_start_uses_next_hour_after_checkpoint():
@@ -184,6 +325,26 @@ def test_main_rejects_non_positive_chunk_days(monkeypatch):
     monkeypatch.setattr(backfill.asyncio, "run", lambda _coro: pytest.fail("backfill should not start"))
 
     with pytest.raises(SystemExit, match="chunk-days must be positive"):
+        backfill.main()
+
+
+def test_main_rejects_non_positive_count(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill_deribit_option_flow.py",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-02T00:00:00Z",
+            "--count",
+            "0",
+        ],
+    )
+    monkeypatch.setattr(backfill.asyncio, "run", lambda _coro: pytest.fail("backfill should not start"))
+
+    with pytest.raises(SystemExit, match="count must be positive"):
         backfill.main()
 
 

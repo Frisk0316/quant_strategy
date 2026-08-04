@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "artifact": "reports/2026-08-02-paper-data-strategy-research/artifact.json",
+  "html": "reports/2026-08-02-paper-data-strategy-research/report.html",
+  "delivery": {
+    "build": "passed",
+    "compatibility_override": "The generated runtime top bar used 100vw and overflowed by 8px with classic Windows scrollbars; report.html overrides it to width:100% without changing content.",
+    "verification": "passed"
+  },
+  "verification": {
+    "blocks": 21,
+    "charts": 2,
+    "tables": 5,
+    "metrics": 3,
+    "viewports": [1440, 390],
+    "source_dialog": "passed",
+    "source_interaction": "keyboard_menu_semantic_click",
+    "external_requests": 0
+  },
+  "verified_at": "2026-08-02T16:45:00Z"
+}

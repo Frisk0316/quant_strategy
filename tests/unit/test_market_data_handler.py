@@ -98,6 +98,16 @@ async def test_book_desync_resubscribes_without_disconnect():
     assert not mdh.books[INST].is_valid()
 
 
+async def test_private_orders_subscription_includes_spot_fills():
+    ws = _FakeWS()
+
+    await _handler()._subscribe_private(ws)
+
+    args = ws.sent[0]["args"]
+    assert {"channel": "orders", "instType": "ANY"} in args
+    assert {"channel": "positions", "instType": "SWAP"} in args
+
+
 async def test_updates_after_resubscribe_do_not_storm():
     """After a resubscribe the book is empty; incoming updates that arrive
     before the fresh snapshot must be skipped, not trigger another resubscribe

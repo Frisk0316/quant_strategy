@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -36,6 +36,15 @@ This standalone entrypoint includes the backtest/data APIs, Progress panel, and
 in-dashboard user manual; it does not start the trading engine. Progress document
 links are clickable only on the default loopback bind. A non-loopback bind shows
 paths without exposing repository files.
+
+A non-loopback bind also requires both an explicit `--allow-remote` flag and a
+non-empty `API_KEY`; backtest, data, and config routes then require
+`X-API-Key`, and `/api/docs` is disabled remotely:
+
+```powershell
+$env:API_KEY = '<strong-random-value>'
+python scripts/run_server.py --host 0.0.0.0 --allow-remote
+```
 
 ## No-DB Mode
 
@@ -905,6 +914,24 @@ USER-APPROVED SCHEDULE (2026-07-15, after the review conditions cleared):
 `research\probes\h014_daily_shadow_ops.py --no-wait`, runs one cycle, and
 refreshes the bias report (log: `logs\h014_shadow_daily.log`). Manage with:
 
+REQUIRED power settings (user-approved 2026-07-29 after the clock stalled for
+two weeks): this host runs on battery, and Task Scheduler's defaults refuse a
+trigger on battery (`0x800710E0`), kill a running task when power is lost
+(`0xC000013A`), and never catch up a missed slot. Any re-registration MUST
+re-apply:
+
+```powershell
+$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries -StartWhenAvailable `
+  -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Set-ScheduledTask -TaskName quant_h014_shadow_daily -Settings $s
+```
+
+16:10 local = 08:10 UTC is the first slot after the frozen 08:00 UTC research-day
+boundary; a manual run before 08:00 UTC fail-closes with "H-014 daily cycle must
+run at or after 08:00 UTC" — that is correct behavior, not a fault. `Last Result`
+is meaningful again since the wrapper now propagates the cycle's exit code.
+
 ```powershell
 schtasks /Query /TN quant_h014_shadow_daily /FO LIST
 schtasks /Run /TN quant_h014_shadow_daily
@@ -950,6 +977,91 @@ python scripts/run_server.py --port 8082
   is changed by using this page. H-009's in-memory job list resets on restart;
   written artifacts remain.
 
+## Public Research Status Page (GitHub Pages)
+
+This separate static page publishes research progress and H-014 observation
+counts only. It contains no equity curve, strategy parameters, signal values,
+credentials, live/paper performance, DB connection, or deployment-gate claim.
+The `public-status` orphan branch is the publication boundary and must contain
+only `index.html`, `status.json`, and `.nojekyll`.
+
+### One-time setup (user-run after merge)
+
+Start from the repository worktree on a clean branch. Create the orphan branch
+directly in its own worktree so the main worktree is not cleared or switched:
+
+```powershell
+git status --short
+git worktree add --orphan -b public-status ..\quant_public_status
+New-Item ..\quant_public_status\.nojekyll -ItemType File
+python scripts\publish_public_status.py --out ..\quant_public_status\status.json
+Copy-Item public_status\index.html ..\quant_public_status\index.html
+git -C ..\quant_public_status add .nojekyll index.html status.json
+git -C ..\quant_public_status diff --cached --name-only
+git -C ..\quant_public_status commit -m "chore: initialize public status"
+git -C ..\quant_public_status push -u origin public-status
+git -C ..\quant_public_status ls-tree --name-only HEAD
+```
+
+The final command must list exactly the three approved files. In GitHub, open
+**Settings → Pages**, choose **Deploy from a branch**, then select
+`public-status` and `/ (root)`. Do not enable a workflow.
+
+The wrapper defaults `PUBLIC_STATUS_WORKTREE` to `..\quant_public_status` from
+the repository root. For another location, set it before registering the task:
+
+```powershell
+setx PUBLIC_STATUS_WORKTREE "C:\quant_public_status"
+```
+
+Register the daily local refresh after the 16:10 H-014 cycle, then preserve the
+same battery/catch-up behavior:
+
+```powershell
+schtasks /Create /TN quant_public_status_daily /TR "C:\quant_strategy\scripts\run_public_status_task.cmd" /SC DAILY /ST 16:30 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries -StartWhenAvailable
+Set-ScheduledTask -TaskName quant_public_status_daily -Settings $settings
+schtasks /Run /TN quant_public_status_daily
+schtasks /Query /TN quant_public_status_daily /V /FO LIST
+```
+
+### Daily/manual refresh
+
+The scheduled command runs the local-only generator, copies the page, stages the
+orphan worktree, exits without a commit when nothing changed, and otherwise
+commits and pushes `public-status`:
+
+```powershell
+scripts\run_public_status_task.cmd
+```
+
+If an input file is absent, its page section says it is unavailable; the
+generator never invents zero values. A malformed input stops the task before
+commit/push. A powered-off host misses that day's update, and the page continues
+to show its last `generated_at` timestamp.
+
+### Rollback
+
+1. Disable or remove the local task:
+
+   ```powershell
+   Disable-ScheduledTask -TaskName quant_public_status_daily
+   schtasks /Delete /TN quant_public_status_daily /F
+   ```
+
+2. In GitHub **Settings → Pages**, set the source to **None**.
+3. Remove the published branch and its local worktree:
+
+   ```powershell
+   git push origin --delete public-status
+   git worktree remove ..\quant_public_status
+   git branch -D public-status
+   ```
+
+This removes the served page. It does not modify source inputs under `results/`,
+`frontend/`, or `config/`.
+
 ## H-014 Deribit Options Live Layer (implemented, disabled)
 
 ADR-0017's private client and adapter exist for review and testnet plumbing,
@@ -979,6 +1091,43 @@ position calls without placing an order or changing `enabled`:
 ```powershell
 python -c "from okx_quant.execution.deribit_live.private_client import DeribitPrivateClient as C; c=C.from_env(env='test'); print(c.get_account_summary('BTC')); print(c.get_positions('BTC')); c.close()"
 ```
+
+### Binance and OKX Demo connectivity
+
+These are manual, unscheduled connectivity smokes, not strategy promotion
+evidence. Binance uses the unified Demo Trading key in
+`BINANCE_API_KEY`/`BINANCE_SECRET`; optional `BINANCE_FUTURES_*` values override
+it for USD-M. OKX uses only `OKX_DEMO_API_KEY`/`OKX_DEMO_SECRET`/
+`OKX_DEMO_PASSPHRASE` and requires `config/settings.yaml` `system.mode: demo`.
+The live-labeled `OKX_API_KEY`/`OKX_SECRET`/`OKX_PASSPHRASE` names are never
+read by this smoke.
+
+```powershell
+python scripts/run_binance_testnet_smoke.py --venue spot     # demo-api.binance.com
+python scripts/run_binance_testnet_smoke.py --venue futures  # demo-fapi.binance.com
+python scripts/run_okx_demo_smoke.py                         # demo balance + place/cancel
+```
+
+The Binance futures leg only reduces an existing non-zero one-way position —
+it reports `blocked` rather than opening new exposure on a flat/hedge account.
+
+The Binance clients synchronize venue time before signed requests. Spot places
+and cancels one resting Demo order. The futures leg never opens exposure on a
+flat account. OKX uses simulated-trading routing, a venue-valid resting price,
+and confirms nested order/cancel result codes.
+
+Funding-carry validation must preserve the configured APR gate. Run the
+targeted dual-leg replay and execution checks; a current rate below the 12% APR
+threshold correctly produces no signal and must not be forced by lowering the
+threshold:
+
+```powershell
+python -m pytest tests/unit/test_execution_flow.py tests/unit/test_backtesting.py tests/integration/test_signal_strategy_integration.py -k funding_carry -q
+python scripts/smoke/backtest_smoke.py
+```
+
+The demo funding pair is not atomic across legs. Do not interpret connectivity,
+synthetic dual-leg tests, or Demo fills as live/deployment readiness.
 
 Runtime order events are append-only in
 `results/live_h014/orders.jsonl`; the persistent sidecar lock is
@@ -1050,6 +1199,26 @@ The ingest is an idempotent upsert with `fail_on_empty_fetch`; gaps appear if
 the machine or DB is off for longer than the retention window — check the log
 and `external_observations` first/last timestamps when auditing coverage.
 
+## FRED Macro And Research-Only Gold Ingest
+
+Add `FRED_API_KEY=<key>` to `.env`; never commit the real key. The ingest
+client reads `FRED_API_KEY` from the process environment, so use
+`python-dotenv` to load the repository `.env` for the command:
+
+```powershell
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset dgs2 --start 2026-01-01 --dry-run
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset dgs2 --start 2026-01-01 --end 2026-01-10
+python -m dotenv -f .env run -- python scripts\market_data\ingest_external.py --dataset vixcls --dataset dtwexbgs --dataset dgs2 --dataset gold_yfinance --start 2020-01-01T00:00:00Z --end <UTC_TODAY>T00:00:00Z
+```
+
+`vixcls`, `dtwexbgs`, and `dgs2` are FRED business-daily series with
+`publish_lag_days: 1`; verify every stored FRED row has
+`published_at > observed_at`. `gold_yfinance` is Yahoo/yfinance `GC=F`, an
+unofficial continuous COMEX futures proxy used because FRED no longer provides
+the intended gold series. It is research-only, may contain roll/adjustment
+artefacts, and must not be presented as the paper's gold input or as promotion
+evidence.
+
 ## Scheduled External Ingest (Deribit option surface)
 
 Deribit option-surface OI/IV snapshots are live-only and cannot be backfilled.
@@ -1073,6 +1242,73 @@ new snapshots retain the complete current listed chain in `raw_payload`, sorted
 by expiry, strike, and option type. Audit first/last timestamps and gaps before
 using the series in research; past full chains cannot be reconstructed from this
 live endpoint.
+
+## H-039 Cross-venue Options IV Forward Snapshot
+
+The H-039 collector writes the current OKX, Bybit, and Deribit BTC/ETH
+constant-maturity option-IV rows. It interpolates total variance between the
+two valid expiries bracketing 30 days, explicitly labels nearest-expiry
+fallback, and stores the full normalized active chain. It cannot reconstruct
+hours before scheduler activation.
+TimescaleDB must be running before the first manual snapshot:
+
+```powershell
+python scripts\market_data\snapshot_xvenue_options.py
+```
+
+The command stores the current snapshot first, then returns a non-zero
+`snapshot gap alert` if the prior successful bucket is more than 1.5 hours
+away. Inspect `logs\xvenue_options_snapshot.log` and DB coverage after any
+alert; do not fill the missing hour with a proxy.
+
+Codex provides the wrapper, but the user registers and owns the least-privilege
+Windows task:
+
+```powershell
+schtasks /Create /TN quant_xvenue_options_iv /TR "C:\quant_strategy\scripts\market_data\run_xvenue_options_snapshot_task.cmd" /SC HOURLY /MO 1 /ST 00:15 /RL LIMITED /F
+schtasks /Run /TN quant_xvenue_options_iv
+schtasks /Query /TN quant_xvenue_options_iv /V /FO LIST
+```
+
+Verify `Last Run Result: 0`, the six `xvenue_opt_iv_*` datasets advancing by one UTC
+hour, and no gap alert in the log. Remove the task without deleting stored
+observations:
+
+```powershell
+schtasks /Delete /TN quant_xvenue_options_iv /F
+```
+
+Scheduler registration starts forward accumulation; Stage 2 remains blocked
+until at least 270 honest daily observations exist.
+
+## CFTC COT and Cboe Historical Backfill
+
+Run the six CFTC futures-only histories and the four current Cboe volatility
+histories after TimescaleDB is healthy:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset cot_cme_btc --dataset cot_cme_eth --dataset cot_es --dataset cot_ust10y --dataset cot_usd_index --dataset cot_gold --start 2006-01-01
+python scripts\market_data\ingest_external.py --dataset cboe_vix9d --dataset cboe_vix --dataset cboe_vix3m --dataset cboe_vix6m --start 1990-01-01
+```
+
+Every COT row must have `published_at >= observed_at + 2 days`; the reference
+date is usually Tuesday but can be another weekday in holiday weeks. Cboe rows
+must have `published_at = observed_at + 1 day`.
+
+The only official CSV tried for total put/call history is:
+
+```text
+https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/totalpc.csv
+```
+
+Cboe documents this archive as 2006-11-01 through 2019-10-04. It can be loaded
+once with the command below, but it is discontinued and must not be registered
+as a current daily scheduler or replaced by scraping the Daily Market
+Statistics page:
+
+```powershell
+python scripts\market_data\ingest_external.py --dataset cboe_pcr_total --start 2006-11-01 --end 2019-10-04
+```
 
 ## Scheduled External Ingest (Deribit funding, volatility, option flow)
 
@@ -1149,7 +1385,9 @@ the manual 2026-07-26 top-up.
 Deribit option-flow aggregates use the public history host for backfill and the
 `optflow_deribit_btc` / `optflow_deribit_eth` datasets. The script aggregates
 hourly inverse-option trades only; USDC-linear instruments are counted as
-excluded in `fields.excluded_linear_usdc_count`.
+excluded in `fields.excluded_linear_usdc_count`. Each hourly
+`raw_payload.sample` retains the full inverse tape with `trade_id`; row keys
+and aggregate fields stay unchanged.
 
 Pilot one month first:
 
@@ -1158,14 +1396,17 @@ python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00
 ```
 
 Proceed to the full run only if the pilot reports per-currency rows in
-`[670, 744]`. The full run is checkpointed and resumable:
+`[670, 744]`. Run the full enrichment one calendar month at a time and retry a
+failed month once:
 
 ```powershell
-python scripts\market_data\backfill_deribit_option_flow.py --start 2024-01-01T00:00:00+00:00 --end 2026-07-11T00:00:00+00:00 --resume
+python scripts\market_data\backfill_deribit_option_flow.py --start <MONTH_START> --end <NEXT_MONTH_OR_LAST_COMPLETE_UTC_HOUR> --chunk-days 1
 ```
 
-At completion, review the script's JSON coverage summary and list any gaps over
-6 hours before using `optflow_deribit_*` in research.
+At completion, require retained-trade count to equal `fields.trade_count` on
+sampled hours, review the script's JSON coverage summary, list gaps over 6
+hours, and measure the `external_observations` hypertable size delta before
+using `optflow_deribit_*` in research.
 
 ## Strategy Signal Validation
 
@@ -1304,6 +1545,44 @@ $env:DIFF_VALIDATION_ENABLE_DB_PARITY = "1"
 $env:DIFF_VALIDATION_DB_DSN = "postgresql://user:pass@localhost:5432/quant"
 python scripts/run_source_provenance_validation.py --run-id <run_id> --engines vectorbt --validation-id <validation_id>
 ```
+
+## Windows without make
+
+From the repository root, run any supported Makefile-equivalent target through
+[`scripts/verify.ps1`](../scripts/verify.ps1). The script prints every command
+before running it and exits nonzero as soon as a command fails:
+
+```powershell
+pwsh scripts/verify.ps1 -Target <target>
+```
+
+If PowerShell 7 is not installed, the same script also runs under the built-in
+Windows PowerShell:
+
+```powershell
+powershell.exe -NoProfile -File scripts/verify.ps1 -Target <target>
+```
+
+`PYTHON`, `PYTEST`, `RUFF`, and `NODE` environment variables override the same
+tool defaults as the Makefile. The target mappings are:
+
+| Target | Equivalent command or ordered target sequence |
+| --- | --- |
+| `test-unit` | `pytest tests/unit/ -v --tb=short` |
+| `test-lab` | `pytest research/crypto-alpha-lab/tests -q -p no:cacheprovider` |
+| `test-integration` | `pytest tests/integration/ -v --tb=short` |
+| `check-config` | `python scripts/validate_pipeline.py --check-config-only` |
+| `lint` | `ruff check src/ tests/ backtesting/ scripts/` |
+| `docs-check` | `python scripts/docs/check_doc_metadata.py`<br>`python scripts/docs/check_feature_map_links.py`<br>`python scripts/docs/check_ledger_consistency.py` |
+| `docs-impact` | `python scripts/docs/check_doc_impact.py` |
+| `frontend-check` | Run `node --check` separately for `frontend/data.js`, `tweaks-panel.js`, `charts.js`, `view-config.js`, `view-backtest.js`, `view-results.js`, `view-validation.js`, `view-trades.js`, `view-glossary.js`, `view-manual.js`, `view-progress.js`, `view-ledger.js`, `view-research.js`, and `app.js`. |
+| `api-smoke` | `python scripts/smoke/api_smoke.py` |
+| `backtest-smoke` | `python scripts/smoke/backtest_smoke.py` |
+| `verify` | `lint` → `docs-check` → `frontend-check` → `check-config` → `test-unit` → `test-lab` → `api-smoke` → `backtest-smoke` |
+| `verify-full` | The complete `verify` sequence above → `test-integration` → `python scripts/validate_pipeline.py --data-dir data/ticks --inst BTC-USDT-SWAP` |
+
+The parent unit suite and the lab suite intentionally remain separate pytest
+invocations so the lab package imports do not enter the parent suite.
 
 ## Full Verification
 
@@ -1486,39 +1765,76 @@ If `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`:
 ```text
 /status   — current mode, equity, drawdown
 /kill     — trigger hard stop and halt engine
-/reset    — reset daily loss counter
+/reset confirm — reset RiskGuard after explicit confirmation
 /help     — list commands
 ```
 
-### Stream live L2 order book to Parquet
+Commands are accepted only from the configured `TELEGRAM_CHAT_ID`; updates
+from every other chat are ignored.
 
-For tick-level microstructure data collection:
+### Continuously collect public OKX market data
 
-```bash
-python scripts/stream_orderbook.py --symbol BTC-USDT-SWAP
+`quant_okx_market_data` starts at Windows boot and runs the credential-free public
+collector continuously. It reads OKX books, public trades, and funding-rate
+updates for BTC/ETH Spot and SWAP; it does not load `.env`, construct a broker,
+or expose an order path. Chunked Parquet files land under
+`data/ticks/<instrument>/` as `ob_ticks_*`, `trades_*`, and `funding_*`.
+
+The task runs as `woody` / `S4U` / `Limited` without storing a password, may
+start and continue on battery, catches up after a missed boot trigger, has no
+execution-time limit, and retries unexpected failures after one minute. The
+collector stops cleanly before free space falls below 10 GiB; storage retention
+remains manual. Run the registration script once through a UAC-approved
+Administrator PowerShell:
+
+```powershell
+Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File C:\quant_strategy\scripts\market_data\register_okx_market_data_task.ps1'
+```
+
+```powershell
+Get-ScheduledTask -TaskName quant_okx_market_data | Format-List TaskName,State
+Get-ScheduledTaskInfo -TaskName quant_okx_market_data | Format-List LastRunTime,LastTaskResult
+Get-Content logs\okx_market_data_collector.log -Tail 30
+
+# Manual bounded smoke, in minutes:
+python scripts\stream_orderbook.py --duration 0.15 --symbols BTC-USDT-SWAP BTC-USDT ETH-USDT-SWAP ETH-USDT
+
+# Reversible stop / restart:
+Stop-ScheduledTask -TaskName quant_okx_market_data
+Start-ScheduledTask -TaskName quant_okx_market_data
+Disable-ScheduledTask -TaskName quant_okx_market_data
+
+# Permanent removal only when intended:
+Unregister-ScheduledTask -TaskName quant_okx_market_data -Confirm
+```
+
+`LastTaskResult = 267009` (`0x41301`) means the continuous task is currently
+running. Check remaining disk space periodically:
+
+```powershell
+python -c "import shutil; print(round(shutil.disk_usage('C:/quant_strategy').free / 2**30, 1), 'GiB free')"
 ```
 
 ## Engine Dashboard and REST API
 
-The web UI is a React SPA served by the FastAPI engine at **`http://localhost:8080`**.
+The web UI is a Preact/htm SPA served by the FastAPI engine at **`http://localhost:8080`**.
 It starts automatically when the engine runs. No separate server command is needed.
 (For the standalone no-engine dashboard, see "Local Dev" above and `docs/UI_MAP.md`.)
+The engine API defaults to loopback. A non-loopback `API_HOST` fails startup
+unless `API_KEY` is set. Compose additionally binds the host port to
+`127.0.0.1` and requires `API_KEY`, `TIMESCALE_PASSWORD`, and
+`GRAFANA_PASSWORD` during interpolation.
 
 ### Views
 
-| View | URL path | Description |
-| ---- | -------- | ----------- |
-| Overview | `/` | Live equity curve, open positions, recent fills |
-| Backtest Results | `/results` | All saved runs in `results/`; click to inspect equity curve, trade log, performance stats |
-| Walk-Forward | `/walk-forward` | Per-window IS/OOS Sharpe table from the latest replay validation run |
-| CPCV | `/cpcv` | CPCV path Sharpes, DSR, PSR for the last validation run |
-| Trades | `/trades` | Live trade log with fill_px, fill_sz, fee, strategy |
-| Risk | `/risk` | Live: daily loss %, drawdown %, positions per instrument, circuit breaker status |
-| Config | `/config` | Read-only view of current `config/` YAML values |
+The left navigation changes the Preact component's internal `view` state and
+renders the selected panel in the same document. These views do not have URL
+routes; the browser location is used only to derive the WebSocket host.
 
 ### WebSocket live feed
 
-The dashboard connects to `ws://localhost:8080/api/ws` automatically. Events pushed in real-time:
+The dashboard connects to the current host at `/api/ws` automatically (for
+example, `ws://localhost:8080/api/ws`). Events pushed in real-time:
 
 - `FILL` — every fill with inst_id, side, fill_px, fill_sz, fee, strategy
 - `RISK_SNAPSHOT` — equity, drawdown, daily_loss_pct, positions every 2 seconds
@@ -1560,6 +1876,11 @@ cp .env.example .env
 #   OKX_API_KEY=...
 #   OKX_SECRET=...
 #   OKX_PASSPHRASE=...
+#   OKX_DEMO_API_KEY=...        (OKX Demo smoke only)
+#   OKX_DEMO_SECRET=...
+#   OKX_DEMO_PASSPHRASE=...
+#   API_KEY=...                 (dashboard API / Compose)
+#   GRAFANA_PASSWORD=...        (Compose)
 #   TELEGRAM_TOKEN=...      (optional — for alerts and kill switch)
 #   TELEGRAM_CHAT_ID=...    (optional)
 ```

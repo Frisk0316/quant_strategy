@@ -3,6 +3,24 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Public status page (2026-08-04)
+    status: active
+    milestones: [scope, implement, publish, schedule]
+    current: publish
+    state: "Generator, self-contained page, daily wrapper, and leak-canary tests are implemented. Inputs are local-file-only and public output excludes equity curves, strategy parameters, and signal keys/values. The orphan branch and GitHub Pages are not activated."
+    next: "User follows docs/RUNBOOK.md to create the three-file public-status orphan worktree, enable Pages, verify the first push, and register quant_public_status_daily."
+    links: [tasks/2026-08-04-public-status-page-codex-tasks.md]
+    updated: 2026-08-04
+
+  - name: Whole-repo optimization audit (2026-08-03)
+    status: active
+    milestones: [audit, ungated_security, remaining_ungated, protected_fixes]
+    current: protected_fixes
+    state: "WS-C C5, C3, and C10 are implemented locally with one Change Manifest each: instrument specs fail closed, reduce-only plus posSide reach OKX, and runtime consumers use maintained OkxBook mids. Full unit baseline is green; no live/demo/shadow mode or gate changed."
+    next: "Claude reviews C5/C3/C10. C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated and must not be touched without explicit per-item authorization."
+    links: [tasks/2026-08-03-project-optimization-codex-plan.md, tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md]
+    updated: 2026-08-04
+
   - name: Project audit and hardening
     status: active
     milestones: [diagnose, immediate_repairs, baseline_green, protected_fixes, integration, followup_repair]
@@ -14,12 +32,12 @@ workstreams:
 
   - name: Local runtime reliability
     status: blocked
-    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth]
-    current: private_ws_auth
-    state: "External coverage now uses one grouped scan: the current real endpoint returned 137 rows in 1.704 seconds after the old query exceeded a 12-second cold timeout. Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. Standalone Manual/Progress and terminal private-WS auth-loop fixes remain implemented. Demo private WS still returns OKX 60005 Invalid apiKey; engine-dashboard API-key flow remains unresolved."
+    milestones: [coverage_query, coverage_query_scale_fix, db_startup_order, dsn_precedence, db_error_contract, single_server, private_ws_auth, engine_dashboard_auth]
+    current: engine_dashboard_auth
+    state: "External coverage uses one grouped scan; Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. OKX Demo REST place/cancel and private WS orders:ANY/positions:SWAP now authenticate successfully, closing the old 60005 blocker. Binance Spot Demo place/cancel passes and USD-M Demo auth passes with flat-account exposure blocked. The credential-free quant_okx_market_data task now accumulates chunked BTC/ETH public books, trades, and funding from a Limited/S4U startup task with a 10 GiB disk reserve. The engine-dashboard API-key flow remains unresolved."
     next: "Choose the engine-dashboard auth contract, extend explicit DB outage handling to remaining per-artifact endpoints, and measure concurrent UI connection overhead before adding a bounded pool. Run the P1.4 Administrator task activation separately; do not switch to live mode as a workaround."
     links: [tasks/2026-07-12-market-data-coverage-timeout-context-handoff.md, tasks/2026-07-21-db-coverage-performance-context-handoff.md, docs/DEBUGGING_RUNBOOK.md]
-    updated: 2026-07-21
+    updated: 2026-08-02
 
   - name: XS momentum
     status: shelved
@@ -41,21 +59,39 @@ workstreams:
 
   - name: Strategy research pipeline — full-auto roadmap
     status: active
-    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review, full_round_contract]
+    milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review, slate_stage2_runners, full_round_contract]
     current: full_round_contract
-    state: "ADR-0016 is accepted as target authority: a completed prompt-triggered round seals and deterministically evaluates 10-15 execution-ready strategies before results, including at least eight verified-paper-backed new mechanisms and two eligible existing-strategy iterations. The 2026-07-26 H-023/H-009 batch remains a limited two-candidate probe. Current generators/orchestrator do not yet satisfy the contract because there is no minimum/mix manifest validator, unified literature-plus-iteration entry point, generic candidate runner, or manifest-bound reconciled report."
-    next: "Implement the smallest safe path: round_manifest.json plus fail-fast 8/2/10 executable validation and hash-bound resume; join/dedupe paper and iteration candidate inputs; reuse the drafted signal_ref registry contract for deterministic Stage-2 evaluation of every counted strategy; then reconcile one per-round report. Keep execution sequential until profiling justifies concurrency. No H-009/H-023 retune or H-010 reprobe, gate change, scheduling, promotion, demo, shadow, or live work is authorized."
+    state: "ADR-0016 slice 1 and H-030..H-037 remain closed at Stage 2 with no complete round. H-038/E-094 is terminal for F-S5 at K 2/2: the strict data gate failed at 17,271/17,272 PIT member-days because SOL-USDT-SWAP had 1,439/1,440 Binance 1m rows on 2026-01-01. No admissible positions existed; breadth failed closed to 1 with n_obs=0 and n_trials=72. No downstream check or Stage 3 ran."
+    next: "Claude reviews E-094. Do not repair and rerun the terminal family or infer breadth. ADR-0016 remains deferred under I68; fix future candidate inputs before building more pipeline and do not chase gates."
     links: [docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md, docs/change_manifests/2026-07-27-genai-strategy-finding-pipeline.md, docs/superpowers/specs/2026-06-30-drafted-candidate-stage3-contract.md, docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-26-strategy-finding-round.md, results/strategy_finding_20260726/checkpoint_review.json, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
-    updated: 2026-07-27
+    updated: 2026-08-04
+
+  - name: H-039 cross-venue options IV
+    status: active
+    milestones: [design, collector_impl, live_schema_smoke, first_db_snapshot, scheduler, data_window, stage2]
+    current: data_window
+    state: "Collector verified end-to-end 2026-08-02: fresh-context review passed, all six datasets land DB rows with consistent cross-venue iv_decimal normalization (BTC 30d ATM within 0.2 vol pts across OKX/Bybit/Deribit), and hourly scheduled task quant_xvenue_options_iv is registered and smoke-run. Accumulation clock started 2026-08-02; trials 0, K 0/2."
+    next: "Keep Docker Desktop + TimescaleDB up (missed hours are permanent losses); check xvenue_options_snapshot.log gap alerts same-day. No proxy history; Stage 2 blocked until >=270 persisted daily observations (~2027-05)."
+    links: [docs/superpowers/specs/2026-07-31-xvenue-options-iv-hypothesis.md, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/RUNBOOK.md]
+    updated: 2026-08-03
+
+  - name: CFTC COT and Cboe histories
+    status: active
+    milestones: [adapter, source_validation, db_backfill, recurring_ingest]
+    current: recurring_ingest
+    state: "Full backfills verified in DB 2026-08-02: six COT markets (ES/10Y/DXY/gold 1,051 rows each from 2006; CME BTC 434, ETH 278) all satisfying published_at >= observed_at + 2 days, and five Cboe series (VIX 9,241 rows from 1990; 9D/3M/6M term structure; total-PCR 3,253 rows ending 2019-10-04 as documented). FRED unblock for H-033/H-036 is data-complete."
+    next: "Decide the recurring weekly/daily incremental ingest schedule; keep total-PCR archive-only. H-033/H-036 Stage-2 reruns await user authorization."
+    links: [tasks/2026-07-31-xvenue-iv-collector-cot-cboe-codex-tasks.md, docs/DATA_FLOW.md, docs/RUNBOOK.md]
+    updated: 2026-08-03
 
   - name: Deribit derivatives data
     status: active
     milestones: [research, task_plan, user_signoff, ingestion_impl, frontend, stage1_spec, stage1_review, stage2_probe, rv30_backfill, frontend_refresh, live_layer_impl, live_layer_review]
     current: live_layer_review
-    state: "D1-D5 and R1-R5 are accepted with DB evidence. Native hv_deribit_* remains limited to Deribit's rolling response. 2026-07-27: hourly DVOL backfilled to inception 2021-03-24 (46,831 rows each); rv30_deribit_btc_1h extended to 2018-09-14 (68,959 rows) and eth to 2019-04-14 (63,871 rows) with user-accepted HV calibration (corr 0.745/0.766, n=395); option surface/flow adapters emit ATM/ITM/OTM moneyness buckets (band 0.025) and optflow history is re-ingested with buckets from 2024-01-01 on feature/deribit-vol-backfill-moneyness (final review clean, merge pending). H-014/F-VOL-REGIME-OPT remains supported on E-051/E-052. ADR-0017's inactive live layer now includes the review-fix wave: cancel-race fill reconciliation, journaled label-first orphan sweeps, resting time on every cancel, URL-secret removal, dedicated reduce-only signaling, and repo-root defaults. h014_vol_regime_options is explicitly declared with three adapter_required reference engines, so portable_validation_gate remains false. No activation, credential, authenticated call, scheduler, settings mode flip, or result artifact was produced."
-    next: "Claude re-reviews the ADR-0017 fix wave and honest-blocked differential-validation declaration. Continue ADR-0011 shadow evidence until at least eight valid weeks plus the complete bias report, then bias review, every R7.2 gate, and separate explicit user capital approval. Do not enable h014_live, register a scheduler, or claim deployment readiness; the shadow clock remains stalled since 07-15 (machine availability; toasts added 07-28), see KNOWN_ISSUES."
-    links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md, docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md, tasks/2026-07-13-vol-regime-opt-handoff.md, tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md, tasks/2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md, docs/ADR/0017-h014-live-execution-layer.md, tasks/2026-07-28-h014-live-execution-codex-tasks.md, tasks/2026-07-28-h014-live-execution-claude-review.md, tasks/2026-07-28-h014-live-fixes-diffval-codex-tasks.md, docs/change_manifests/2026-07-28-h014-live-execution.md]
-    updated: 2026-07-28
+    state: "D1-D5 and R1-R5 are accepted with DB evidence. Native hv_deribit_* remains limited to Deribit's rolling response. New option-flow ingests retain the complete inverse tape, but the 2024-01+ historical enrichment is STOPPED/PARTIAL: 2,304 BTC hours and 744 ETH hours are enriched, hourly row counts remain 22,403/22,402, and the current archive changed BTC aggregate trades from 12,724,097 to 12,724,092. H-014/F-VOL-REGIME-OPT remains supported on E-051/E-052; ADR-0017's inactive live layer remains unactivated and portable-validation blocked. ADR-0018 Phase 1 now hard-locks private execution to testnet and its mocked lifecycle passes, but no credential or authenticated call occurred. No Stage 3, retune, activation, scheduler, or settings mode flip occurred."
+    next: "Claude/user chooses DB-backup restoration, explicit source-revision acceptance, or a separately approved payload-only enrichment contract before any option-flow backfill resume. H-031/H-035 remain blocked. Separately, the user supplies trade-scoped Deribit testnet credentials and Claude reviews the real Phase 1 output before any h014_live enable change; continue ADR-0011 shadow evidence and do not register a scheduler or claim deployment readiness."
+    links: [research/deribit_data_strategy_research.md, tasks/2026-07-11-deribit-data-ingestion-tasks.md, tasks/2026-07-11-deribit-ingestion-review.md, docs/superpowers/specs/2026-07-13-f-vol-regime-opt-hypothesis.md, tasks/2026-07-13-vol-regime-opt-handoff.md, tasks/2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md, tasks/2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md, docs/ADR/0017-h014-live-execution-layer.md, docs/ADR/0018-h014-testnet-signal-driven-execution-exception.md, tasks/2026-07-28-h014-live-execution-codex-tasks.md, tasks/2026-07-28-h014-live-execution-claude-review.md, tasks/2026-07-28-h014-live-fixes-diffval-codex-tasks.md, docs/change_manifests/2026-07-28-h014-live-execution.md, docs/change_manifests/2026-07-30-h014-testnet-activation.md, tasks/2026-07-30-paper-trade-testnet-connectivity-codex-tasks.md, docs/superpowers/specs/2026-07-28-deribit-moneyness-vol-probe-hypotheses.md, tasks/2026-07-28-moneyness-vol-probe-codex-tasks.md, tasks/2026-07-29-e025-reference-regen-probe-unblock-codex-tasks.md, results/moneyness_vol_probe_20260728/]
+    updated: 2026-07-30
 
   - name: Strategy research pipeline — taxonomy_004 C4
     status: done

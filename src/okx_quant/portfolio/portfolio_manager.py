@@ -5,12 +5,13 @@ Signal → position sizing → RiskGuard check → OrderEvent.
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_CEILING, ROUND_DOWN
 
 from loguru import logger
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.events import Event, EvtType, FillPayload, MarketPayload, OrderPayload, SignalPayload
+from okx_quant.data.okx_book import OkxBook
 from okx_quant.portfolio.positions import PositionLedger
 from okx_quant.portfolio.sizing import fixed_fractional, validate_ct_val, vol_target_size
 from okx_quant.risk.risk_guard import RiskGuard
@@ -47,14 +48,9 @@ class PortfolioManager:
         if len(self._returns[inst_id]) > 500:
             self._returns[inst_id].pop(0)
 
-    def on_market(self, payload: MarketPayload) -> None:
-        if payload.bids and payload.asks:
-            try:
-                bid = float(payload.bids[0][0])
-                ask = float(payload.asks[0][0])
-            except (IndexError, TypeError, ValueError):
-                return
-            mid = 0.5 * (bid + ask)
+    def on_market(self, payload: MarketPayload, book: OkxBook) -> None:
+        if book.is_valid():
+            mid = book.mid()
             self._last_mids[payload.inst_id] = mid
             self._positions.update_price(payload.inst_id, mid)
 
@@ -113,6 +109,14 @@ class PortfolioManager:
         size = Decimal(str(raw_size)).quantize(quant, rounding=ROUND_DOWN)
         return format(size, "f")
 
+    def _format_price(self, inst_id: str, price: float, side: str) -> str:
+        tick = Decimal(str(self._specs.get(inst_id, {}).get("tickSz", 0.1)))
+        if tick <= 0:
+            raise ValueError(f"Invalid tickSz for {inst_id}: {tick}")
+        rounding = ROUND_DOWN if side == "buy" else ROUND_CEILING
+        aligned = (Decimal(str(price)) / tick).to_integral_value(rounding=rounding) * tick
+        return format(aligned, "f")
+
     def _compute_order_quantity(
         self,
         inst_id: str,
@@ -146,7 +150,6 @@ class PortfolioManager:
     ) -> None:
         """Place bid and ask orders for a paired quote signal."""
         pos = self._positions.get_position(sig.inst_id)
-        tick_sz = float(self._specs.get(sig.inst_id, {}).get("tickSz", 0.1))
 
         for side, target_px in [("buy", sig.target_bid), ("sell", sig.target_ask)]:
             if target_px is None or target_px <= 0 or target_px == float("inf"):
@@ -158,10 +161,11 @@ class PortfolioManager:
             if side == "sell" and pos.size <= -50:
                 continue
 
-            sz_str, notional_usd = self._compute_order_quantity(sig.inst_id, target_px, size_usd)
+            px_str = self._format_price(sig.inst_id, target_px, side)
+            aligned_px = float(px_str)
+            sz_str, notional_usd = self._compute_order_quantity(sig.inst_id, aligned_px, size_usd)
             if not sz_str:
                 continue
-            px_str = f"{round(target_px / tick_sz) * tick_sz:.{_decimals(tick_sz)}f}"
             cl_ord_id = uuid.uuid4().hex[:32]
             order = OrderPayload(
                 cl_ord_id=cl_ord_id,
@@ -198,6 +202,8 @@ class PortfolioManager:
         price = price if price is not None else self._resolve_price(inst_id, sig.fair_value)
         if price <= 0:
             return
+        px_str = self._format_price(inst_id, price, side)
+        price = float(px_str)
         pos = self._positions.get_position(inst_id)
         is_long_flat = order_metadata.get("mode") == "long_flat"
         action = order_metadata.get("action")
@@ -238,7 +244,7 @@ class PortfolioManager:
             side=side,
             ord_type="post_only",
             sz=sz_str,
-            px=str(price),
+            px=px_str,
             td_mode=td_mode,
             strategy=sig.strategy,
             reduce_only=use_long_flat_close_sizing,
@@ -332,23 +338,12 @@ class PortfolioManager:
             self._last_fill_px[fill.inst_id] = fill.fill_px
 
 
-def _decimals(tick_sz: float) -> int:
-    """Count decimal places of a tick size float."""
-    s = str(tick_sz)
-    if "." in s:
-        return len(s.rstrip("0").split(".")[-1])
-    return 0
-
-
 def _fallback_ct_val(inst_id: str) -> float:
     if "SWAP" not in inst_id:
         logger.warning("Instrument ctVal missing; falling back to spot ctVal=1.0", inst_id=inst_id)
-        return 1.0
-    if inst_id.startswith(("BTC-", "ETH-")):
-        logger.warning("Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01", inst_id=inst_id)
-        return 0.01
-    logger.error("Instrument ctVal missing for non-BTC/ETH swap; refusing silent fallback", inst_id=inst_id)
-    raise ValueError(f"Missing ctVal for non-BTC/ETH swap: {inst_id}")
+        return validate_ct_val(1.0, inst_id)
+    logger.error("Instrument ctVal missing for swap; refusing silent fallback", inst_id=inst_id)
+    raise ValueError(f"Missing ctVal for swap: {inst_id}")
 
 
 def _signal_size_multiplier(sig: SignalPayload) -> float:
