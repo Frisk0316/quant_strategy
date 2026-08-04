@@ -16,10 +16,10 @@ durable backlog.
 
 ## Current goal
 
-Review the completed H-038/E-094 and WS-C C3/C5/C10 task batch. E-094 stopped
-at its strict data gate and permanently closed F-S5 at K 2/2; the three WS-C
-order-correctness fixes are implemented locally with manifests and tests. PR
-#19/public-status publication and the H-014 shadow/parity path remain human work.
+H-038/E-095 is complete and F-S5 is terminal at K 2/2. E-095 passed the
+authorized 0.95 data gate, measured breadth from actual positions, and failed
+closed at distinctness because E-014 has no dated returns. Public-status
+publication and the H-014 shadow/parity path remain separate work.
 
 ## Branch and working tree
 
@@ -634,8 +634,8 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     gate at 17,271/17,272 PIT member-days because `SOL-USDT-SWAP` had 1,439 of
     1,440 Binance 1m rows on 2026-01-01. No admissible backtest positions were
     produced; breadth failed closed to 1 with n_obs=0 and family-cumulative
-    n_trials=72. F-S5 is terminal at K 2/2, with no rerun, retune, Stage 3, or
-    promotion. The SHA-bound artifact is
+    n_trials=72. The user later ruled the unprovenanced 100% threshold a
+    contract error, so E-094 did not consume K. The SHA-bound artifact is
     `results/h038_stage2_20260804/stage2_feasibility.json` at
     `fec068c6c37445dd44df3759a8a87873174141c7c7581caeafda5d2d422113c8`;
     its separate immutable breadth provenance records the absent position input.
@@ -643,6 +643,16 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     complete venue instrument specs fail closed before broker construction,
     reduce-only plus the caller's `posSide` reaches OKX, and runtime/replay mark
     consumers use the maintained `OkxBook`. No mode, gate, or live state changed.
+
+26. CODEX DELIVERY 2026-08-04: H-038/E-095 changed only the authorized
+    experiment-specific data threshold to named `MIN_MEMBER_DAY_COVERAGE=0.95`,
+    recorded taker-flow/I11/user-ruling provenance, and wrote a new immutable
+    artifact. Data passed at 17,271/17,272 member-days; actual positions yielded
+    breadth 5.743875 over 898 daily observations. Distinctness failed closed
+    because E-014 has no dated return series; cost and power were not evaluated.
+    Artifact SHA-256 is `40c815834fdbe1f5caadcb1e3a06282eea4b678925dc78cb0bf21e8e4fe9c78f`.
+    F-S5 is terminal at K 2/2 with n_trials=72 and no E-096, retune, Stage 3,
+    promotion, or deployment claim. E-094 remains byte-identical.
 
 ## Open decisions
 

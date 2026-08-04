@@ -460,7 +460,8 @@ implementation exists.
   `results/pipeline_batch1_20260625_refit/`. Binance S6/S7 data is loaded for
   BTC/ETH perps and BTC/ETH spot (1m OHLCV) plus BTC/ETH perp funding. S6 failed
   the fold-refit statistical gate, S7 is shelved after the non-degenerate
-  half-life rerun, and S5 is a data-universe artifact.
+  half-life rerun, and S5's final E-095 retry passed its repaired-universe data
+  gate before failing closed at distinctness; the family is terminal at K 2/2.
 - Config files: `config/strategies.yaml`, `config/universe.yaml`.
 - Strategy / portfolio files: `src/okx_quant/strategies/s5_residual_meanrev.py`,
   `src/okx_quant/strategies/s6_ts_momentum.py`,
@@ -658,10 +659,10 @@ implementation exists.
   every sealed strategy at Stage 2, runs Stage 3 only for passes, and reconciles
   the full paper/idea/rejection/execution funnel.
 - Known gap: the eight new slate mechanisms now have deterministic Stage-2
-  runners, but only one eligible existing-strategy iteration exists and H-038
-  remains explicitly unauthorized. The required 10–15 total / 8 new / 2
-  iterations contract therefore still cannot be sealed honestly, and the
-  slate-only caller is not a complete ADR-0016 round command.
+  runners. H-038 was the only eligible existing-strategy iteration and its
+  final E-095 probe is now terminal; a second eligible iteration never existed,
+  so the required 10–15 total / 8 new / 2 iterations contract was never sealed
+  or executed. The slate-only caller is not a complete ADR-0016 round command.
 - Frontend files: `frontend/app.js`, `frontend/data.js`, and
   `frontend/view-ledger.js` provide only the read-only generated funnel projection;
   no pipeline runner or promotion control is exposed.
@@ -671,6 +672,7 @@ implementation exists.
   `backtesting/pipeline_idea_generator.py`, `backtesting/pipeline_refit.py`,
   `backtesting/pipeline_power_screen.py`, `backtesting/pipeline_stage2_registry.py`,
   `backtesting/pipeline_stage3_registry.py`,
+  `backtesting/s5_residual_meanrev_probe.py`,
   `backtesting/xvenue_leadlag_probe.py`,
   `backtesting/xvenue_funding_spread_probe.py`,
   `backtesting/xvenue_funding_spread_backtest.py`,
@@ -704,6 +706,7 @@ implementation exists.
   `tests/unit/test_pipeline_power_screen.py`,
   `tests/unit/test_pipeline_stage2_data_probe.py`,
   `tests/unit/test_pipeline_stage2_registry.py`,
+  `tests/unit/test_s5_residual_meanrev_probe.py`,
   `tests/unit/test_intrabar_periodicity_probe.py`,
   `tests/unit/test_options_flow_probe.py`,
   `tests/unit/test_macro_state_probe.py`,

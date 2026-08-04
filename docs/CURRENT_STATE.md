@@ -58,11 +58,13 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Hypothesis pipeline
 
-- H-038/E-094 was RULED a contract error (user, 2026-08-04): its unprovenanced
-  `coverage == 1.0` gate (precedent 0.95, I11 ≥0.80) blocked all measurement at
-  17,271/17,272 member-days. F-S5 is restored to K 1/2; exactly one rerun is
-  authorized as E-095 at 0.95 (`tasks/2026-08-04-h038-e095-rerun-codex-tasks.md`,
-  pending Codex). K returns to 2/2 terminal after E-095 regardless of outcome.
+- H-038/E-095 is complete and F-S5 is terminal at K 2/2. The named,
+  artifact-provenanced 0.95 gate admitted 17,271/17,272 member-days and the
+  actual position sequence measured breadth 5.743875 over 898 daily returns.
+  Distinctness then failed closed because immutable E-014 has no dated return
+  series; cost and power were not evaluated. Family n_trials remains 72; no
+  E-096, retune, Stage 3, promotion, or deployment is authorized. E-094 stays
+  immutable as the earlier contract-error record.
 - 2026-08-02 paper-data probe H-040..H-046 (E-077..E-093) is CLOSED: H-043/H-044
   refuted, H-040/H-042 data-blocked, H-041/H-045/H-046 stopped at Stage-2 power
   FAIL once E-091..E-093 rejected their inferred breadth=2. H-045/H-046 are the
@@ -77,16 +79,13 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 Background, always on: keep Docker/TimescaleDB up (missed collector hours are
 unrecoverable) and let the H-014 shadow cycle keep counting. No live enablement.
 
-1. Codex: run E-095 per `tasks/2026-08-04-h038-e095-rerun-codex-tasks.md` —
-   the only delta from E-094 is the 0.95 named-constant gate + provenance
-   field; frozen params unchanged; K closes at 2/2 terminal afterward.
-2. User: follow the RUNBOOK to create the three-file orphan `public-status`
+1. User: follow the RUNBOOK to create the three-file orphan `public-status`
    worktree, enable GitHub Pages, verify the first public page, and register the
    daily refresh task. The implementation is complete but not published.
-3. User: close redundant PR #17 (fully contained in `main`).
-4. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
+2. User: close redundant PR #17 (fully contained in `main`).
+3. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
    without explicit per-item user authorization and required manifests.
-5. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
+4. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
    the `docs/ai/LESSONS.md` funnel diagnosis: across 38 Stage-2 artifacts the
    first failing check is `data_availability` 16 times and 11 of ~20 candidates
    reaching the power check have negative or zero Sharpe. The binding

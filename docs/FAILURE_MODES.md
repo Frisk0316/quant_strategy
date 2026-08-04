@@ -97,6 +97,7 @@ failure modes say how it silently breaks.
 | F73 | Reduce-only intent is consumed locally but omitted from the venue order | RiskGuard allows a close through kill/fat-finger/position gates, while the exchange may open or flip exposure | I70 end-to-end RiskGuard → OrderManager → OKX request regression | R4.2 |
 | F74 | A `books` delta is treated as a complete top-of-book snapshot | A deep or removed level becomes the mark, causing equity spikes/zeros and false risk-stop inputs | I71 maintained-book delta regression; engine consumers share `MarketDataHandler.books` | R1.7 |
 | F75 | Derivative-only order parameters are attached to a spot `tdMode=cash` request | OKX rejects the cash order carrying `reduceOnly`/`posSide`, so an intended spot exit never executes and exposure persists | I70 spot exemption; `test_okx_broker_omits_reduce_only_kwargs_for_spot_cash` | R4.2 |
+| F76 | An unprovenanced research data threshold is stricter than repository precedent | A nearly complete dataset is labeled terminal before any mechanism measurement, with every downstream metric null | E-095 names the threshold, records the taker-flow/I11/user-ruling provenance in the artifact, and `test_e095_coverage_threshold_passes_into_distinctness` proves 17,271/17,272 proceeds to the next check | R6.2 |
 
 ## How to add a failure mode
 

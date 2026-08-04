@@ -121,3 +121,21 @@ capture per event in bps against the cost per event in bps, and the breadth its
 realized position series can support. Fail closed to breadth=1. A candidate
 that cannot supply all three is not execution-ready and does not count toward
 an ADR-0016 sealed manifest.
+
+## 2026-08-04 Pre-registered checks against artifacts nobody opened
+
+Trigger: F-S5 burned both K retries on contract errors — E-094's coverage
+gate had no provenance, and E-095's distinctness check required a dated
+return series that immutable E-014 visibly does not contain. The mechanism
+ran once (898 daily returns, breadth 5.74) and was never statistically
+evaluated; the impasse was knowable by opening one JSON before sealing the
+task contract.
+Wrong: writing a Stage-2 contract that names a reference artifact without
+verifying the artifact holds the exact series/fields the check consumes.
+Right: before pre-registering any check, open every referenced artifact and
+confirm the required inputs exist (E-025's dated regeneration was the known
+remedy and was never invoked); a structurally unmeetable check is a contract
+error to refuse before the run, per the I49 pattern.
+Rule: a task contract may only reference artifact inputs the author has
+verified exist, and thresholds it can give provenance for; anything else
+blocks registration, not the family's K budget.
