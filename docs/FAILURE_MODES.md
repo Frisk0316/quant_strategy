@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -93,6 +93,7 @@ failure modes say how it silently breaks.
 | F69 | Telegram command polling trusts any bot sender or resets risk state without confirmation | An unknown user can halt trading or clear a legitimate hard/soft stop and restore full size multipliers | I66 configured-chat and reset-confirmation regression | R7.2 |
 | F70 | A demo smoke shares live-labeled exchange credentials | A mode/config mistake gives a connectivity-only script access to a real-trade-permission key | I67 demo-only environment names and fail-closed live-only fixture | R7.2 |
 | F71 | A credential-bearing HTTP exception is persisted or logged verbatim | A query-string API key survives in fetch-job/checkpoint storage, traceback output, or alert logs after a provider error | FRED/Nasdaq clients discard credential-bearing URLs before rethrow, ingestion redacts `api_key` before persistence, and `tests/unit/test_credential_handling.py` covers 4xx storage plus Telegram logging | — |
+| F72 | Runtime instrument-spec failure fabricates a SWAP multiplier | A failed metadata request silently assigns ETH the BTC multiplier, making contract quantity and risk notional wrong by 10x | I69 startup and ETH missing-spec regressions; all retrieved SWAP multipliers pass shared `validate_ct_val()` | R1.2, R1.5, R1.6 |
 
 ## How to add a failure mode
 
