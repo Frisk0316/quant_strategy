@@ -94,6 +94,7 @@ failure modes say how it silently breaks.
 | F70 | A demo smoke shares live-labeled exchange credentials | A mode/config mistake gives a connectivity-only script access to a real-trade-permission key | I67 demo-only environment names and fail-closed live-only fixture | R7.2 |
 | F71 | A credential-bearing HTTP exception is persisted or logged verbatim | A query-string API key survives in fetch-job/checkpoint storage, traceback output, or alert logs after a provider error | FRED/Nasdaq clients discard credential-bearing URLs before rethrow, ingestion redacts `api_key` before persistence, and `tests/unit/test_credential_handling.py` covers 4xx storage plus Telegram logging | — |
 | F72 | Runtime instrument-spec failure fabricates a SWAP multiplier | A failed metadata request silently assigns ETH the BTC multiplier, making contract quantity and risk notional wrong by 10x | I69 startup and ETH missing-spec regressions; all retrieved SWAP multipliers pass shared `validate_ct_val()` | R1.2, R1.5, R1.6 |
+| F73 | Reduce-only intent is consumed locally but omitted from the venue order | RiskGuard allows a close through kill/fat-finger/position gates, while the exchange may open or flip exposure | I70 end-to-end RiskGuard → OrderManager → OKX request regression | R4.2 |
 
 ## How to add a failure mode
 
