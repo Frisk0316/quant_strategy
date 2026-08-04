@@ -94,6 +94,11 @@ class OKXBroker(Broker):
                 px=str(order["px"]),
                 clOrdId=order.get("cl_ord_id", "")[:32],
                 tag=tag,
+                **(
+                    {"reduceOnly": "true", "posSide": order.get("pos_side", "net")}
+                    if order.get("reduce_only")
+                    else {}
+                ),
             )
             data = (result.get("data") or [{}])[0]
             code = result.get("code")

@@ -5,9 +5,15 @@ import pytest
 
 from okx_quant.core.bus import EventBus
 from okx_quant.core.config import AppConfig, OKXSecrets, SystemConfig
+from okx_quant.core.events import OrderPayload
 from okx_quant.engine import main
+from okx_quant.execution.broker import OKXBroker
+from okx_quant.execution.order_manager import OrderManager
+from okx_quant.execution.rate_limiter import RateLimiter
 from okx_quant.portfolio.portfolio_manager import PortfolioManager
 from okx_quant.portfolio.positions import PositionLedger
+from okx_quant.risk.drawdown_tracker import DrawdownTracker
+from okx_quant.risk.risk_guard import RiskGuard
 
 
 class _Risk:
@@ -113,3 +119,79 @@ def test_portfolio_manager_never_falls_back_to_eth_ct_val():
         manager._compute_order_quantity("ETH-USDT-SWAP", price=3_000.0, size_usd=1_000.0)
 
     assert bus._queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_okx_broker_sends_reduce_only_kwargs():
+    trade = Mock()
+    trade.place_order.return_value = {
+        "code": "0",
+        "data": [{"sCode": "0", "ordId": "reduce-direct"}],
+    }
+    broker = OKXBroker.__new__(OKXBroker)
+    broker._trade = trade
+    broker._strategy = ""
+    broker._demo = True
+
+    await broker.submit(
+        {
+            "cl_ord_id": "reduce-direct",
+            "inst_id": "BTC-USDT-SWAP",
+            "side": "buy",
+            "ord_type": "post_only",
+            "sz": "1",
+            "px": "100",
+            "td_mode": "cross",
+            "strategy": "test",
+            "reduce_only": True,
+            "pos_side": "short",
+        }
+    )
+
+    assert trade.place_order.call_args.kwargs["reduceOnly"] == "true"
+    assert trade.place_order.call_args.kwargs["posSide"] == "short"
+
+
+@pytest.mark.asyncio
+async def test_reduce_only_risk_bypass_reaches_okx_payload():
+    class Trade:
+        def __init__(self) -> None:
+            self.kwargs = {}
+
+        def place_order(self, **kwargs):
+            self.kwargs = kwargs
+            return {"code": "0", "data": [{"sCode": "0", "ordId": "reduce-1"}]}
+
+    tracker = DrawdownTracker()
+    tracker.set_initial_equity(10_000.0)
+    risk = RiskGuard(
+        equity_fn=lambda: 10_000.0,
+        drawdown_tracker=tracker,
+        max_order_notional_usd=50.0,
+    )
+    risk.trigger_hard_stop("kill_switch")
+    order = OrderPayload(
+        cl_ord_id="reduce-only-1",
+        inst_id="BTC-USDT-SWAP",
+        side="sell",
+        ord_type="post_only",
+        sz="1",
+        px="100",
+        td_mode="cross",
+        strategy="ma_crossover",
+        reduce_only=True,
+        pos_side="net",
+        notional_usd=100.0,
+    )
+    assert risk.check(order, current_pos_notional=100.0, current_mid=100.0) is True
+
+    trade = Trade()
+    broker = OKXBroker.__new__(OKXBroker)
+    broker._trade = trade
+    broker._strategy = ""
+    broker._demo = True
+    fill = await OrderManager(broker, RateLimiter()).submit(order)
+
+    assert fill is not None
+    assert trade.kwargs["reduceOnly"] == "true"
+    assert trade.kwargs["posSide"] == "net"

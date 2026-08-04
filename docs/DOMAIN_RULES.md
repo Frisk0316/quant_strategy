@@ -92,7 +92,8 @@ Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 - **R4.2** Reduce-only and risk-limit semantics must not be weakened without an
   ADR and explicit human approval. Reduce-only close orders may bypass the
   single-order fat-finger cap only up to the current position notional; they
-  must not increase absolute exposure.
+  must not increase absolute exposure. Any order admitted under that bypass
+  must carry `reduceOnly=true` and its position side to the venue.
 - **R4.3** No exposure-increasing order may exceed configured per-instrument or
   per-portfolio caps.
 - **R4.4** Strategy vol-target sizing must target the quantity named by the
