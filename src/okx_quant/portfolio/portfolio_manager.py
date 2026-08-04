@@ -345,12 +345,9 @@ class PortfolioManager:
 def _fallback_ct_val(inst_id: str) -> float:
     if "SWAP" not in inst_id:
         logger.warning("Instrument ctVal missing; falling back to spot ctVal=1.0", inst_id=inst_id)
-        return 1.0
-    if inst_id.startswith(("BTC-", "ETH-")):
-        logger.warning("Instrument ctVal missing; falling back to known BTC/ETH swap ctVal=0.01", inst_id=inst_id)
-        return 0.01
-    logger.error("Instrument ctVal missing for non-BTC/ETH swap; refusing silent fallback", inst_id=inst_id)
-    raise ValueError(f"Missing ctVal for non-BTC/ETH swap: {inst_id}")
+        return validate_ct_val(1.0, inst_id)
+    logger.error("Instrument ctVal missing for swap; refusing silent fallback", inst_id=inst_id)
+    raise ValueError(f"Missing ctVal for swap: {inst_id}")
 
 
 def _signal_size_multiplier(sig: SignalPayload) -> float:

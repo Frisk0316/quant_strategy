@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -56,6 +56,10 @@ current/target/known-gap distinction — do not silently "fix" either side.
   fill metadata value may reuse the position's already-validated multiplier;
   a caller override or DB/config row that claims to supply an instrument spec
   must contain a valid multiplier and otherwise fail closed.
+- **R1.6** Runtime execution must load complete venue instrument metadata for
+  every configured symbol before constructing a broker. A missing endpoint,
+  symbol, field, or SWAP `ct_val` fails startup; execution must never invent a
+  BTC/ETH SWAP multiplier. Spot uses its structural base-unit identity of 1.0.
 
 Owning code: `src/okx_quant/portfolio/`, `src/okx_quant/execution/`.
 

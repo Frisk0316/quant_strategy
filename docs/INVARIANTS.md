@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -89,6 +89,7 @@ the enforcing test or check (or `REVIEW` if only human-checkable today).
 | I66 | Telegram commands are ignored unless the update chat matches the configured operator chat, and RiskGuard reset requires the explicit `/reset confirm` command | R7.2 | `tests/unit/test_monitoring.py::test_telegram_commands_require_configured_chat_and_reset_confirmation` |
 | I67 | The OKX Demo smoke reads only `OKX_DEMO_*` credentials and always constructs clients with simulated-trading mode; live-labeled `OKX_*` credentials cannot satisfy the smoke | R7.2 | `tests/unit/test_okx_demo_smoke.py::test_demo_credentials_ignore_live_names`, `tests/unit/test_okx_demo_smoke.py::test_demo_smoke_with_only_live_credentials_fails_closed` |
 | I68 | "Execution-ready" in R6.8/I53 requires three verified numbers recorded before a candidate is assigned an H-number: (a) a DB-confirmed row count and date range for every dataset the mechanism names, (b) an ex-ante expected gross capture per event in bps against the modelled cost per event in bps, and (c) the breadth its realized position series can support. Breadth is derived from realized positions, never declared, and fails closed to 1. A candidate missing any of the three is not execution-ready and does not count toward a sealed manifest | R6.8, R9.5 | REVIEW until the ADR-0016 round-manifest validator ships; then targeted manifest/registration tests. Evidence for the rule: `docs/ai/LESSONS.md` 2026-08-04 — across 38 Stage-2 artifacts the first failing check was `data_availability` 16 times, and 11 of ~20 candidates reaching the power check had negative or zero plausible Sharpe |
+| I69 | Runtime broker construction requires complete instrument specs for every configured symbol, and a missing SWAP multiplier never falls back to a BTC/ETH constant | R1.5, R1.6 | `tests/unit/test_wsc_trade_safety.py::test_engine_instrument_fetch_failure_stops_before_broker`, `tests/unit/test_wsc_trade_safety.py::test_portfolio_manager_never_falls_back_to_eth_ct_val` |
 
 ## Usage
 
