@@ -301,14 +301,17 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
         payload = event.payload
         inst_id = getattr(payload, "inst_id", "")
         channel = getattr(payload, "channel", "books")
+        book = mdh.books.get(inst_id)
 
         # Update exec handler mid prices
-        await exec_handler.on_market(event)
-        portfolio_mgr.on_market(payload)
+        if book is not None:
+            await exec_handler.on_market(event, book)
+            portfolio_mgr.on_market(payload, book)
 
         # Persist tick data
-        if channel == "books" and payload.bids and payload.asks:
-            await feed_store.write_book_snapshot(inst_id, payload.ts, payload.bids, payload.asks)
+        if channel == "books" and book is not None and book.is_valid():
+            bids, asks = book.levels()
+            await feed_store.write_book_snapshot(inst_id, payload.ts, bids, asks)
         elif channel == "trades" and payload.trade_id:
             await feed_store.write_trade(
                 inst_id, payload.ts, payload.trade_id,
@@ -316,7 +319,6 @@ async def main(cfg: AppConfig, sim_broker: bool = False, api_port: int = 8080) -
             )
 
         # Fan out to all strategies
-        book = mdh.books.get(inst_id)
         for strat in strategies:
             if strat.is_active:
                 signal = await strat.on_market(event, book)

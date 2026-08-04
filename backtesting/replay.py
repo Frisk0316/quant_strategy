@@ -1362,8 +1362,8 @@ class ReplayBacktestEngine:
                 book = books.get(payload.inst_id)
                 if book is not None:
                     self._apply_book_snapshot(book, payload)
-                await exec_handler.on_market(event)
-                portfolio_mgr.on_market(payload)
+                    await exec_handler.on_market(event, book)
+                    portfolio_mgr.on_market(payload, book)
                 dd_tracker.update(positions.get_equity())
                 recorder.record_equity(payload.ts, positions.get_equity())
                 recorder.record_price(payload)
