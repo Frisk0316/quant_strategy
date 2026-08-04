@@ -16,16 +16,16 @@ durable backlog.
 
 ## Current goal
 
-Decide the WS-C authorization sequence for the whole-repo optimization audit —
-every ungated item is now delivered and Claude-APPROVED. External-data
-persistence and the Deribit pagination conflict are resolved; the remaining
-research choices are H-033/H-036, H-038, and the H-014 shadow/parity path.
+Review the completed H-038/E-094 and WS-C C3/C5/C10 task batch. E-094 stopped
+at its strict data gate and permanently closed F-S5 at K 2/2; the three WS-C
+order-correctness fixes are implemented locally with manifests and tests. PR
+#19/public-status publication and the H-014 shadow/parity path remain human work.
 
 ## Branch and working tree
 
-- Local and origin are both based at `c9fa77b`; the working tree contains the
-  uncommitted public-status implementation plus its pre-existing authorized
-  planning/state edits. The audit's
+- The pushed task baseline is `3e7d26f`; H-038/E-094 and WS-C C3/C5/C10 are
+  local and unpushed, alongside the preserved public-status handoff/state
+  edits. The audit's
   ungated work is fully landed: F1 + WS-A A1-A5 + B1 (`181f82b`), A6
   (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the two research/
   probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
@@ -615,6 +615,34 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     user reviews/merges, then creates the orphan branch, enables Pages, verifies
     the first page, and registers the daily task. `docs/CURRENT_STATE.md`
     next-actions were reordered on the same date at the user's request.
+
+24. DECISION BATCH 2026-08-04 (user): (a) merge — PR #19 is open/MERGEABLE and
+    `origin/main` already holds PRs #9/#14/#16/#18, so nothing is pushed to
+    `main` directly; (b) H-033/H-036 — no action, closed by H-045/H-046;
+    (c) H-038 AUTHORIZED, `tasks/2026-08-04-h038-residual-meanrev-stage2-codex-tasks.md`,
+    terminal for F-S5 at K 2/2, breadth must be derived not declared;
+    (d) WS-C partially authorized for C3/C5/C10 only,
+    `tasks/2026-08-04-wsc-c3-c5-c10-codex-tasks.md`, one commit and one Change
+    Manifest each — C1/C2/C4/C6/C7/C8/C9/C11 and F2 stay ungated;
+    (e) ADR-0016 deferred. The deferral reason is now invariant I68: R6.8/I53
+    used "execution-ready" without defining it, so candidates counted with
+    unverified data, a declared breadth, and no gross-edge estimate. Evidence
+    is the `docs/ai/LESSONS.md` 2026-08-04 sweep of 38 Stage-2 artifacts.
+    I68 enforcement is REVIEW until the ADR-0016 manifest validator ships.
+
+25. CODEX DELIVERY 2026-08-04: (a) H-038/E-094 failed the strict Stage-2 data
+    gate at 17,271/17,272 PIT member-days because `SOL-USDT-SWAP` had 1,439 of
+    1,440 Binance 1m rows on 2026-01-01. No admissible backtest positions were
+    produced; breadth failed closed to 1 with n_obs=0 and family-cumulative
+    n_trials=72. F-S5 is terminal at K 2/2, with no rerun, retune, Stage 3, or
+    promotion. The SHA-bound artifact is
+    `results/h038_stage2_20260804/stage2_feasibility.json` at
+    `fec068c6c37445dd44df3759a8a87873174141c7c7581caeafda5d2d422113c8`;
+    its separate immutable breadth provenance records the absent position input.
+    (b) Authorized WS-C C5/C3/C10 are implemented with separate manifests:
+    complete venue instrument specs fail closed before broker construction,
+    reduce-only plus the caller's `posSide` reaches OKX, and runtime/replay mark
+    consumers use the maintained `OkxBook`. No mode, gate, or live state changed.
 
 ## Open decisions
 
