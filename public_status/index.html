@@ -38,8 +38,8 @@
     </header>
 
     <div class="notice">
-      <p>研究專案狀態頁。<strong>無實盤交易、無 paper 交易績效</strong>。H-014 shadow 為觀測用途，目前 <strong id="week-progress">N/8 週</strong>且零成交。所有假說狀態如實顯示，包含 refuted 與 shelved。本頁不構成任何投資建議，也不代表任何策略已通過推廣或上線閘門。</p>
-      <p lang="en">Research status only: no live trading or paper-trading performance. H-014 shadow is observational, with zero fills. Nothing shown here has passed promotion or deployment gates, and this is not investment advice.</p>
+      <p>研究專案狀態頁。<strong>無實盤交易、無 paper 交易績效</strong>。H-014 shadow 為觀測用途，目前 <strong id="week-progress">N/8 週</strong>且<strong id="fill-progress">零成交</strong>。所有假說狀態如實顯示，包含 refuted 與 shelved。本頁不構成任何投資建議，也不代表任何策略已通過推廣或上線閘門。</p>
+      <p lang="en">Research status only: no live trading or paper-trading performance. H-014 shadow is observational, with <span id="fill-progress-en">zero fills</span>. Nothing shown here has passed promotion or deployment gates, and this is not investment advice.</p>
     </div>
 
     <p id="error" class="error" role="alert" aria-live="polite"></p>
@@ -89,6 +89,9 @@
       const target = document.querySelector("#shadow");
       if (!data?.available) return unavailable(target, data);
       document.querySelector("#week-progress").textContent = `${text(data.distinct_journal_weeks)}/${text(data.minimum_weeks)} 週`;
+      const fills = Number(data.event_counts?.by_status?.filled || 0);
+      document.querySelector("#fill-progress").textContent = fills ? `${fills} 筆 shadow 模擬成交` : "零成交";
+      document.querySelector("#fill-progress-en").textContent = fills ? `${fills} shadow simulated fills` : "zero fills";
       const summary = node("div", undefined, "grid");
       [["Journal 週數", data.journal_weeks], ["不同週數", data.distinct_journal_weeks], ["最低週數", data.minimum_weeks], ["8 週觀測條件", data.eight_week_journal_met ? "已達" : "未達"], ["事件總數", data.event_counts?.total], ["最後事件日期", data.event_counts?.last_event_date]].forEach(([label, value]) => {
         const card = node("div", undefined, "card");
