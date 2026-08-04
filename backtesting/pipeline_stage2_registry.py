@@ -39,6 +39,7 @@ from backtesting.macro_state_probe import (
 )
 from backtesting.vol_structure_probe import probe_variance_decomp, probe_vol_of_vol
 from backtesting.cme_session_probe import probe_cme_leadership
+from backtesting.s5_residual_meanrev_probe import probe_s5_residual_meanrev
 from backtesting.taker_flow_probe import (
     ARTIFACT_DIR as TAKER_ARTIFACT_DIR,
     FORMAL_WINDOW as TAKER_FORMAL_WINDOW,
@@ -1428,6 +1429,7 @@ STAGE2_PROBES: dict[str, Stage2Probe] = {
     "F-OPT-LARGE-TRADE-INFO": probe_opt_large_trade_info,
     "F-XASSET-MACRO-LEAD": probe_xasset_macro_lead,
     "F-CME-LEADERSHIP": probe_cme_leadership,
+    "F-S5-RESIDUAL-MEANREV": probe_s5_residual_meanrev,
 }
 
 
