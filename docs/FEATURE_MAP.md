@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -188,6 +188,29 @@ implementation exists.
 - Docs to update: `docs/UI_MAP.md`, `docs/FEATURE_MAP.md`.
 - Do-not-touch notes: strictly read-only; do not add a write API, mutation control,
   strategy/config gate, automatic generation, or broader repository file serving.
+
+## Public Research Status Page
+
+- User-facing behavior: publish a daily, read-only research-progress and H-014
+  shadow-observation summary through GitHub Pages. The page states that there is
+  no live trading or paper-trading performance and that no promotion/deployment
+  gate has passed.
+- Page and generator files: `public_status/index.html`,
+  `scripts/publish_public_status.py`, `scripts/run_public_status_task.cmd`.
+- Published files: the separate orphan `public-status` branch contains only
+  index.html, status.json, and .nojekyll; the user creates the branch,
+  enables Pages, and registers the local daily task.
+- Data files: read-only allow-list of `config/workstreams.yaml`,
+  `results/shadow_h014/bias_report.json`,
+  `results/shadow_h014/journal.jsonl`, and
+  `frontend/research_funnel.json`. Missing inputs are reported as unavailable;
+  no DB or network access is used.
+- Tests: `tests/unit/test_publish_public_status.py`.
+- Docs to update: `docs/RUNBOOK.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, `config/workstreams.yaml`.
+- Do-not-touch notes: never publish equity curves, strategy parameters, signal
+  keys/values, credentials, result artifacts, or deployment-readiness claims.
+  Do not add a GitHub Actions workflow for this local-file publisher.
 
 ## Indicator Series / Indicator Chart
 

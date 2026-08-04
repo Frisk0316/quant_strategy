@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -23,7 +23,9 @@ research choices are H-033/H-036, H-038, and the H-014 shadow/parity path.
 
 ## Branch and working tree
 
-- Local and origin are both at `c9fa77b` with a clean working tree. The audit's
+- Local and origin are both based at `c9fa77b`; the working tree contains the
+  uncommitted public-status implementation plus its pre-existing authorized
+  planning/state edits. The audit's
   ungated work is fully landed: F1 + WS-A A1-A5 + B1 (`181f82b`), A6
   (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the two research/
   probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
@@ -593,6 +595,26 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     persisted all three data kinds; the task stores no password, is battery-safe, start-when-
     available, unlimited-duration, and configured for one-minute failure
     restart. A 10 GiB free-space guard stops safely; retention is manual.
+
+23. IMPLEMENTED, NOT PUBLISHED 2026-08-04 (Claude-planned, Codex-implemented):
+    public research-progress
+    page for GitHub Pages —
+    `tasks/2026-08-04-public-status-page-codex-tasks.md`. User chose "research
+    progress + shadow observability", daily refresh. Publish boundary is an
+    orphan `public-status` branch containing only `index.html`, `status.json`,
+    and `.nojekyll`; no Actions workflow, no DB access, no `frontend/**` change.
+    The generator reads only `config/workstreams.yaml`, the shadow
+    bias/journal files, and the funnel projection, and a required leak-canary
+    test asserts no signal key or value (`dvol`/`ivp`/`vrp`/`rv`/`z`/`px`/
+    `signal`/`legs`/`intent`) reaches the output. The page must state plainly
+    that there is no live and no paper-trading performance and that no gate has
+    been passed. The local-only generator, self-contained page, daily wrapper,
+    leak-canary tests, feature map, and runbook are complete. No branch was
+    created, no push occurred, Pages remains disabled, and no scheduler was
+    registered. Not a business-rule change, so no Change Manifest. Next: the
+    user reviews/merges, then creates the orphan branch, enables Pages, verifies
+    the first page, and registers the daily task. `docs/CURRENT_STATE.md`
+    next-actions were reordered on the same date at the user's request.
 
 ## Open decisions
 

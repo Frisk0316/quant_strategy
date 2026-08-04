@@ -3,6 +3,15 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Public status page (2026-08-04)
+    status: active
+    milestones: [scope, implement, publish, schedule]
+    current: publish
+    state: "Generator, self-contained page, daily wrapper, and leak-canary tests are implemented. Inputs are local-file-only and public output excludes equity curves, strategy parameters, and signal keys/values. The orphan branch and GitHub Pages are not activated."
+    next: "User follows docs/RUNBOOK.md to create the three-file public-status orphan worktree, enable Pages, verify the first push, and register quant_public_status_daily."
+    links: [tasks/2026-08-04-public-status-page-codex-tasks.md]
+    updated: 2026-08-04
+
   - name: Whole-repo optimization audit (2026-08-03)
     status: active
     milestones: [audit, ungated_security, remaining_ungated, protected_fixes]

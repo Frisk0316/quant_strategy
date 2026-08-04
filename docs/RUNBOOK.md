@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 expires: none
 superseded_by: null
 ---
@@ -976,6 +976,91 @@ python scripts/run_server.py --port 8082
   standalone server disables the UI action surface. No deployment configuration
   is changed by using this page. H-009's in-memory job list resets on restart;
   written artifacts remain.
+
+## Public Research Status Page (GitHub Pages)
+
+This separate static page publishes research progress and H-014 observation
+counts only. It contains no equity curve, strategy parameters, signal values,
+credentials, live/paper performance, DB connection, or deployment-gate claim.
+The `public-status` orphan branch is the publication boundary and must contain
+only `index.html`, `status.json`, and `.nojekyll`.
+
+### One-time setup (user-run after merge)
+
+Start from the repository worktree on a clean branch. Create the orphan branch
+directly in its own worktree so the main worktree is not cleared or switched:
+
+```powershell
+git status --short
+git worktree add --orphan -b public-status ..\quant_public_status
+New-Item ..\quant_public_status\.nojekyll -ItemType File
+python scripts\publish_public_status.py --out ..\quant_public_status\status.json
+Copy-Item public_status\index.html ..\quant_public_status\index.html
+git -C ..\quant_public_status add .nojekyll index.html status.json
+git -C ..\quant_public_status diff --cached --name-only
+git -C ..\quant_public_status commit -m "chore: initialize public status"
+git -C ..\quant_public_status push -u origin public-status
+git -C ..\quant_public_status ls-tree --name-only HEAD
+```
+
+The final command must list exactly the three approved files. In GitHub, open
+**Settings → Pages**, choose **Deploy from a branch**, then select
+`public-status` and `/ (root)`. Do not enable a workflow.
+
+The wrapper defaults `PUBLIC_STATUS_WORKTREE` to `..\quant_public_status` from
+the repository root. For another location, set it before registering the task:
+
+```powershell
+setx PUBLIC_STATUS_WORKTREE "C:\quant_public_status"
+```
+
+Register the daily local refresh after the 16:10 H-014 cycle, then preserve the
+same battery/catch-up behavior:
+
+```powershell
+schtasks /Create /TN quant_public_status_daily /TR "C:\quant_strategy\scripts\run_public_status_task.cmd" /SC DAILY /ST 16:30 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries -StartWhenAvailable
+Set-ScheduledTask -TaskName quant_public_status_daily -Settings $settings
+schtasks /Run /TN quant_public_status_daily
+schtasks /Query /TN quant_public_status_daily /V /FO LIST
+```
+
+### Daily/manual refresh
+
+The scheduled command runs the local-only generator, copies the page, stages the
+orphan worktree, exits without a commit when nothing changed, and otherwise
+commits and pushes `public-status`:
+
+```powershell
+scripts\run_public_status_task.cmd
+```
+
+If an input file is absent, its page section says it is unavailable; the
+generator never invents zero values. A malformed input stops the task before
+commit/push. A powered-off host misses that day's update, and the page continues
+to show its last `generated_at` timestamp.
+
+### Rollback
+
+1. Disable or remove the local task:
+
+   ```powershell
+   Disable-ScheduledTask -TaskName quant_public_status_daily
+   schtasks /Delete /TN quant_public_status_daily /F
+   ```
+
+2. In GitHub **Settings → Pages**, set the source to **None**.
+3. Remove the published branch and its local worktree:
+
+   ```powershell
+   git push origin --delete public-status
+   git worktree remove ..\quant_public_status
+   git branch -D public-status
+   ```
+
+This removes the served page. It does not modify source inputs under `results/`,
+`frontend/`, or `config/`.
 
 ## H-014 Deribit Options Live Layer (implemented, disabled)
 
