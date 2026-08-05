@@ -1007,6 +1007,15 @@ The final command must list exactly the three approved files. In GitHub, open
 **Settings → Pages**, choose **Deploy from a branch**, then select
 `public-status` and `/ (root)`. Do not enable a workflow.
 
+**Never open a pull request from `public-status`.** It is an orphan branch with
+no shared history, so GitHub reports "entirely different commit histories" and
+offers no merge button — that is the design working, not a fault. Merging it
+would dump `index.html`, `status.json`, and `.nojekyll` into the repository root
+and destroy the publication boundary. CI jobs skip the branch by name
+(`.github/workflows/ci.yml`); a PR opened from it before that guard landed
+reported a misleading failing "Documentation checks", because the branch carries
+no `docs/` or `scripts/` for those checks to read. Close such a PR unmerged.
+
 The wrapper defaults `PUBLIC_STATUS_WORKTREE` to `..\quant_public_status` from
 the repository root. For another location, set it before registering the task:
 

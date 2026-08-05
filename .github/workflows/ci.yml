@@ -6,9 +6,15 @@ on:
     branches:
       - main
 
+# `public-status` is an orphan publication branch holding only .nojekyll,
+# index.html, and status.json (docs/RUNBOOK.md). It shares no history with
+# `main`, must never be merged, and carries none of the source these jobs
+# check, so every job skips it instead of reporting a misleading red X.
+
 jobs:
   unit:
     name: Ruff and unit tests
+    if: github.head_ref != 'public-status' && github.ref_name != 'public-status'
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +47,7 @@ jobs:
 
   docs:
     name: Documentation checks
+    if: github.head_ref != 'public-status' && github.ref_name != 'public-status'
     runs-on: ubuntu-latest
 
     steps:
@@ -72,6 +79,7 @@ jobs:
 
   strategy-signal-validation:
     name: Strategy signal validation
+    if: github.head_ref != 'public-status' && github.ref_name != 'public-status'
     runs-on: ubuntu-latest
 
     steps:
