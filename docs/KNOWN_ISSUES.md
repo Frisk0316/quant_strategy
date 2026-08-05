@@ -313,3 +313,16 @@ over time.
   config/source update.
 - Monitoring modules exist, but this map does not prove production alert coverage.
   Treat Telegram/metrics deployment readiness as a separate operational check.
+- Artifact identity is single-sourced for most Stage-2 evidence. Of the 35
+  artifacts whose path `docs/EXPERIMENT_REGISTRY.md` names, only 4 carry an
+  `experiment_id` field; the remaining 31 can be identified only by the
+  registry line that points at them, so a renamed directory or an edited row
+  has nothing to contradict it. One active contradiction exists and is ruled:
+  `results/stage2_probe_20260714_f_vol_regime_opt_r2/stage2_feasibility.json`
+  self-declares `experiment_id: E-041` / `supersedes_experiment_id: E-040`
+  where the registry attributes it to E-043 superseding E-041 — it is the
+  artifact behind H-014's Stage-2 PASS. The registry row is authoritative and
+  annotated; the artifact stays byte-identical. I72 now fails closed on any
+  NEW disagreement, but it cannot detect a wrong identity in an artifact that
+  declares none. Closing this properly needs ADR-0016's manifest to bind every
+  artifact by hash; do not backfill `experiment_id` into existing results.

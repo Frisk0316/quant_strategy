@@ -1,6 +1,7 @@
 """Guard tests for scripts/docs/check_ledger_consistency.py (A11)."""
 
 import importlib.util
+import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -147,3 +148,52 @@ def test_orphan_k_budget_family_fails(monkeypatch, tmp_path, capsys):
     registry = REGISTRY_OK + "| F-ORPHAN | 0 | 2 | unused |\n"
     assert _run(monkeypatch, tmp_path, LEDGER_OK, registry) == 1
     assert "no hypothesis or experiment" in capsys.readouterr().out
+
+# --- artifact identity (F77) ------------------------------------------------
+
+ARTIFACT_REL = "results/probe/stage2_feasibility.json"
+REGISTRY_WITH_ARTIFACT = REGISTRY_OK.replace(
+    "| setup | 4 | artifact |", f"| setup | 4 | `{ARTIFACT_REL}` |"
+)
+
+
+def _run_with_artifact(monkeypatch, tmp_path, payload, waivers=None):
+    if payload is not None:
+        target = tmp_path / ARTIFACT_REL
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(mod, "RESULTS_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "RULED_ARTIFACT_MISLABELS", waivers or {})
+    return _run(monkeypatch, tmp_path, LEDGER_OK, REGISTRY_WITH_ARTIFACT)
+
+
+def test_artifact_declaring_its_own_experiment_id_passes(monkeypatch, tmp_path, capsys):
+    assert _run_with_artifact(monkeypatch, tmp_path, {"experiment_id": "E-001"}) == 0
+    assert "1 artifact identities" in capsys.readouterr().out
+
+
+def test_artifact_declaring_another_experiment_id_fails(monkeypatch, tmp_path, capsys):
+    assert _run_with_artifact(monkeypatch, tmp_path, {"experiment_id": "E-042"}) == 1
+    assert "self-declares experiment_id 'E-042'" in capsys.readouterr().out
+
+
+def test_ruled_mislabel_is_waived(monkeypatch, tmp_path):
+    waivers = {ARTIFACT_REL: "E-042"}
+    assert _run_with_artifact(monkeypatch, tmp_path, {"experiment_id": "E-042"}, waivers) == 0
+
+
+def test_waiver_does_not_excuse_a_different_wrong_id(monkeypatch, tmp_path, capsys):
+    waivers = {ARTIFACT_REL: "E-042"}
+    assert _run_with_artifact(monkeypatch, tmp_path, {"experiment_id": "E-099"}, waivers) == 1
+    assert "E-099" in capsys.readouterr().out
+
+
+def test_artifact_without_experiment_id_is_skipped(monkeypatch, tmp_path, capsys):
+    # Most existing artifacts predate the field; they must not fail the build.
+    assert _run_with_artifact(monkeypatch, tmp_path, {"stage2_status": "FAIL"}) == 0
+    assert "0 artifact identities" in capsys.readouterr().out
+
+
+def test_absent_artifact_is_skipped(monkeypatch, tmp_path, capsys):
+    assert _run_with_artifact(monkeypatch, tmp_path, None) == 0
+    assert "0 artifact identities" in capsys.readouterr().out

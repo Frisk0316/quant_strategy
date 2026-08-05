@@ -1,13 +1,21 @@
 """A11: cross-check HYPOTHESIS_LEDGER and EXPERIMENT_REGISTRY consistency.
 
 Validates H<->E ID links, family relations, and K-budget bounds from the
-markdown tables. It deliberately does NOT claim to verify experiment artifacts
-on disk (they may be gitignored or external) — that remains a human review
-step per docs/DOC_IMPACT_MATRIX.md A11.
+markdown tables. It deliberately does NOT claim to verify that experiment
+artifacts EXIST on disk (they may be gitignored or external) — that remains a
+human review step per docs/DOC_IMPACT_MATRIX.md A11.
+
+It does check artifact *identity*: when a registry row names a JSON artifact
+that is present locally and that file declares its own `experiment_id`, the two
+must agree. Discovered 2026-08-05 (F77): one artifact self-declared E-041 while
+the registry attributed it to E-043. Artifacts that omit `experiment_id` are
+skipped — most predate the field, and backfilling them would mean editing
+immutable results, which AGENTS.md forbids.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -15,6 +23,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEDGER = REPO_ROOT / "docs" / "HYPOTHESIS_LEDGER.md"
 REGISTRY = REPO_ROOT / "docs" / "EXPERIMENT_REGISTRY.md"
+RESULTS_ROOT = REPO_ROOT
+
+ARTIFACT_PATH_RE = re.compile(r"`(results/[^`]+\.json)`")
+
+# Ruled, documented mislabels: path -> the experiment_id the file declares.
+# The registry row is authoritative; the artifact stays byte-identical. Every
+# entry must be annotated on its owning docs/EXPERIMENT_REGISTRY.md row.
+RULED_ARTIFACT_MISLABELS = {
+    "results/stage2_probe_20260714_f_vol_regime_opt_r2/stage2_feasibility.json": "E-041",
+}
 
 TEMPLATE_IDS = {"H-000", "E-000", "F-000"}
 H_ID_RE = re.compile(r"H-\d{3}")
@@ -88,7 +106,11 @@ def main() -> int:
                 errors.append(f"registry {e_id}: invalid family ID {family!r}")
             if e_id in experiments:
                 errors.append(f"registry {e_id}: duplicate experiment ID")
-            experiments[e_id] = {"hypothesis": h_ref, "family": family}
+            experiments[e_id] = {
+                "hypothesis": h_ref,
+                "family": family,
+                "artifacts": ARTIFACT_PATH_RE.findall(row[6]),
+            }
             continue
 
         if not FAMILY_ID_RE.fullmatch(row_id):
@@ -179,6 +201,32 @@ def main() -> int:
         if used > limit:
             errors.append(f"k-budget {family}: K_used {used} exceeds K_limit {limit}")
 
+    # Artifact identity. Skips anything absent, unreadable as JSON, or without a
+    # self-declared experiment_id, so a partial checkout never fails the build.
+    identity_checked = 0
+    for e_id, e in sorted(experiments.items()):
+        if e_id in TEMPLATE_IDS:
+            continue
+        for relative in e.get("artifacts", []):
+            path = RESULTS_ROOT / relative
+            if not path.is_file():
+                continue
+            try:
+                declared = json.loads(path.read_text(encoding="utf-8")).get("experiment_id")
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                continue
+            if not declared:
+                continue
+            identity_checked += 1
+            if declared == e_id:
+                continue
+            if RULED_ARTIFACT_MISLABELS.get(relative) == declared:
+                continue
+            errors.append(
+                f"registry {e_id}: artifact {relative} self-declares "
+                f"experiment_id {declared!r}"
+            )
+
     for error in errors:
         print(f"ERROR {error}")
     if errors:
@@ -186,8 +234,10 @@ def main() -> int:
         return 1
     print(
         f"ledger consistency check passed: {len(hypotheses)} hypotheses, "
-        f"{len(experiments)} experiments, {len(k_budget)} K-budget families "
-        "(artifact existence is NOT checked; see DOC_IMPACT_MATRIX A11)"
+        f"{len(experiments)} experiments, {len(k_budget)} K-budget families, "
+        f"{identity_checked} artifact identities "
+        f"({len(RULED_ARTIFACT_MISLABELS)} ruled mislabel(s) waived; artifact "
+        "existence is NOT checked, see DOC_IMPACT_MATRIX A11)"
     )
     return 0
 
