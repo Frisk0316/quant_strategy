@@ -21,15 +21,16 @@ from backtesting.s5_residual_meanrev_backtest import run_s5_residual_meanrev_bac
 from backtesting.universe_aliases import collapse_same_asset_aliases
 from okx_quant.strategies.s5_residual_meanrev import S5ResidualMeanReversionParams
 
-BATCH_ID = "h038_stage2_20260804"
+BATCH_ID = "h038_stage2_e095"
 START = datetime(2024, 1, 1, tzinfo=timezone.utc)
 END = datetime(2026, 6, 17, tzinfo=timezone.utc)
 EXCHANGE = "binance"
 TOP_N = 20
 EXPECTED_MINUTES_PER_DAY = 1_440
+MIN_MEMBER_DAY_COVERAGE = 0.95
 N_TRIALS = 72
 FACTOR_SYMBOLS = ("BTC-USDT-SWAP", "ETH-USDT-SWAP")
-OUTPUT_DIR = Path("results/h038_stage2_20260804")
+OUTPUT_DIR = Path("results/h038_stage2_e095")
 UNIVERSE_PATH = Path("data/universe/universe_membership.parquet")
 E014_PATH = Path("results/pipeline_batch1_20260625_refit/s5/summary.json")
 REGISTRY_PATH = Path("docs/EXPERIMENT_REGISTRY.md")
@@ -236,7 +237,7 @@ def build_data_check(
     expected_days = (END.date() - START.date()).days
     passed = (
         expected > 0
-        and coverage == 1.0
+        and coverage >= MIN_MEMBER_DAY_COVERAGE
         and int(membership_audit["universe_days"]) == expected_days
         and all(value == 0 for value in factor_missing.values())
     )
@@ -253,7 +254,12 @@ def build_data_check(
             "expected_member_days": expected,
             "complete_member_days": complete,
             "member_day_coverage": coverage,
-            "required_member_day_coverage": 1.0,
+            "required_member_day_coverage": MIN_MEMBER_DAY_COVERAGE,
+            "required_member_day_coverage_provenance": {
+                "precedent": "backtesting/taker_flow_probe.py::MIN_MEMBER_DAY_COVERAGE = 0.95",
+                "invariant": "docs/INVARIANTS.md::I11 requires coverage >= 0.80",
+                "authorization": "2026-08-04 user ruling authorizing E-095",
+            },
             "missing_member_days": missing_rows,
             "expected_member_keys_sha256": _series_sha256(sorted(expected_keys)),
             "complete_member_keys_sha256": _series_sha256(sorted(complete_keys)),

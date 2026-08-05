@@ -15,9 +15,9 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- Working branch `feature/deribit-moneyness-hypotheses`; its pushed baseline is
-  `3e7d26f`, with the H-038 and WS-C C3/C5/C10 task work local and unpushed.
-  `origin/main` already holds PRs #9/#14/#16/#18. PR #19 remains a human merge.
+- PRs #19 and #20 are MERGED (2026-08-04); `origin/main` holds the H-038/E-094
+  batch, WS-C C3/C5/C10, the C3 spot reduce-only review fix, and the E-094
+  contract-error ruling. PR #17 is redundant (zero unique commits) — close it.
 - No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT stays the
   only `supported` hypothesis (E-051 + E-052 double pass); promotion blocked
   per R7.2 pending >=8 valid shadow journal weeks plus reviews.
@@ -49,18 +49,22 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 - Security hardening is complete through `c9fa77b` (fail-closed Telegram, authed
   remote binds, contained pair deletion, DSN-free job status, required Compose
   secrets, `SecretStr` credentials, isolated demo keys). Details in AI_HANDOFF.
-- WS-C C3/C5/C10 are implemented locally: runtime instrument metadata now
-  fails closed, reduce-only intent and `posSide` reach OKX, and runtime mids use
-  the maintained `OkxBook`. No live/demo/shadow mode or gate was changed.
+- WS-C C3/C5/C10 are merged to `main`: runtime instrument metadata fails
+  closed, reduce-only intent and `posSide` reach OKX on derivatives — spot
+  `tdMode=cash` orders send neither key (review fix, I70/F75) — and runtime
+  mids use the maintained `OkxBook`. No live/demo/shadow mode or gate changed.
 - Scheduled tasks: `quant_liq_okx_ingest`, `quant_okx_market_data`,
   `quant_h014_shadow_daily`, `quant_xvenue_options_iv`, `quant_weekly_worklog`.
 
 ## Hypothesis pipeline
 
-- H-038/E-094 is terminal at F-S5 K 2/2. Its strict data gate failed at
-  17,271/17,272 PIT member-days: `SOL-USDT-SWAP` had 1,439/1,440 Binance 1m
-  rows on 2026-01-01. No backtest positions existed; breadth failed closed to
-  1 with n_obs=0 and n_trials=72. No downstream check, rerun, or Stage 3.
+- H-038/E-095 is complete and F-S5 is terminal at K 2/2. The named,
+  artifact-provenanced 0.95 gate admitted 17,271/17,272 member-days and the
+  actual position sequence measured breadth 5.743875 over 898 daily returns.
+  Distinctness then failed closed because immutable E-014 has no dated return
+  series; cost and power were not evaluated. Family n_trials remains 72; no
+  E-096, retune, Stage 3, promotion, or deployment is authorized. E-094 stays
+  immutable as the earlier contract-error record.
 - 2026-08-02 paper-data probe H-040..H-046 (E-077..E-093) is CLOSED: H-043/H-044
   refuted, H-040/H-042 data-blocked, H-041/H-045/H-046 stopped at Stage-2 power
   FAIL once E-091..E-093 rejected their inferred breadth=2. H-045/H-046 are the
@@ -75,14 +79,17 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 Background, always on: keep Docker/TimescaleDB up (missed collector hours are
 unrecoverable) and let the H-014 shadow cycle keep counting. No live enablement.
 
-1. User: merge PR #19 (`feature/deribit-moneyness-hypotheses`, MERGEABLE).
-   `origin/main` already holds PRs #14/#16/#18; do not push `main` directly.
-2. User: follow the RUNBOOK to create the three-file orphan `public-status`
+1. User: follow the RUNBOOK to create the three-file orphan `public-status`
    worktree, enable GitHub Pages, verify the first public page, and register the
    daily refresh task. The implementation is complete but not published.
-3. Claude: review H-038/E-094 and WS-C C3/C5/C10. H-038 is terminal and must
-   not be repaired or rerun; the isolated SOL minute gap is data evidence, not
-   permission to chase the gate.
+2. Worklog page is LIVE at frisk0316.github.io/quant_worklog (public repo,
+   Pages on, daily 16:45 interactive task registered): work-time Gantt/week/
+   month with union dedup, code-scrubbed daily activity digest, strategy cards
+   for the vol-premium and funding-L/S candidates, and the 129-row weekly
+   rebalance table (holdings.json mapped into the page 2026-08-05). Remaining:
+   commit/merge the quant_strategy working tree; optionally re-register the
+   scheduler as S4U from an Administrator shell per RUNBOOK.
+3. User: close redundant PR #17 (fully contained in `main`).
 4. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
    without explicit per-item user authorization and required manifests.
 5. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus

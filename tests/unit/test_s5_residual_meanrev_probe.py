@@ -1,9 +1,12 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 
+import backtesting.s5_residual_meanrev_probe as probe
 from backtesting.s5_residual_meanrev_probe import (
+    MIN_MEMBER_DAY_COVERAGE,
     build_data_check,
     build_breadth_provenance,
     derive_breadth,
@@ -90,6 +93,57 @@ def test_data_gate_fails_closed_when_eth_factor_is_absent() -> None:
 
     assert check.status == "FAIL"
     assert check.details["factor_missing_days"]["ETH-USDT-SWAP"] == 898
+
+
+def test_e095_coverage_threshold_passes_into_distinctness(monkeypatch, tmp_path: Path) -> None:
+    day = pd.Timestamp("2024-01-01")
+    monkeypatch.setattr(probe, "START", day.tz_localize("UTC").to_pydatetime())
+    monkeypatch.setattr(
+        probe,
+        "END",
+        (day + pd.Timedelta(days=1)).tz_localize("UTC").to_pydatetime(),
+    )
+    monkeypatch.setattr(probe, "EXPECTED_MINUTES_PER_DAY", 1)
+    symbols = [f"S{index}-USDT-SWAP" for index in range(17_272)]
+    membership = pd.DataFrame(
+        {"date": day, "symbol": symbols, "eligible": True, "adv_usd": 1.0}
+    )
+    closes = {symbol: 1.0 for symbol in (*probe.FACTOR_SYMBOLS, *symbols)}
+    closes[symbols[-1]] = None
+    close = pd.DataFrame([closes], index=[day])
+    source = tmp_path / "summary.json"
+    source.write_text(
+        '{"family_id":"F-S5-RESIDUAL-MEANREV","full_sample_best_params":'
+        '{"factors":"BTC+ETH","fee_bps":2.0,"lookback_days":14,"slippage_bps":2.0,'
+        '"top_n":10,"z_enter":1.5,"z_exit":0.0}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        probe,
+        "run_s5_residual_meanrev_backtest",
+        lambda *_args: SimpleNamespace(
+            positions=pd.DataFrame([[0.5, -0.5]], index=[day], columns=["A", "B"]),
+            daily_returns=pd.Series([0.01], index=[day]),
+        ),
+    )
+
+    result = evaluate_probe(
+        close,
+        pd.DataFrame(),
+        membership,
+        {"universe_days": 1},
+        e014_path=source,
+    )
+    data = result.checks[0]
+
+    assert MIN_MEMBER_DAY_COVERAGE == 0.95
+    assert data.status == "PASS"
+    assert data.details["member_day_coverage"] == 17_271 / 17_272
+    assert "taker_flow_probe.py" in data.details["required_member_day_coverage_provenance"]["precedent"]
+    assert data.details["required_member_day_coverage_provenance"]["invariant"].startswith(
+        "docs/INVARIANTS.md::I11"
+    )
+    assert result.checks[1].reason.startswith("UNCONFIRMED")
 
 
 def test_data_failure_records_data_as_downstream_stop_point(tmp_path: Path) -> None:

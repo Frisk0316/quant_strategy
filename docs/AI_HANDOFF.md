@@ -16,10 +16,10 @@ durable backlog.
 
 ## Current goal
 
-Review the completed H-038/E-094 and WS-C C3/C5/C10 task batch. E-094 stopped
-at its strict data gate and permanently closed F-S5 at K 2/2; the three WS-C
-order-correctness fixes are implemented locally with manifests and tests. PR
-#19/public-status publication and the H-014 shadow/parity path remain human work.
+H-038/E-095 is complete and F-S5 is terminal at K 2/2. E-095 passed the
+authorized 0.95 data gate, measured breadth from actual positions, and failed
+closed at distinctness because E-014 has no dated returns. Public/private
+status publication and the H-014 shadow/parity path remain separate work.
 
 ## Branch and working tree
 
@@ -335,6 +335,22 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 
 ## Next steps
 
+New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
+but not published; Claude review APPROVED. It collects timestamp-only local
+Claude Code/Codex sessions with cwd filtering and a privacy canary, indexes
+commit/task headings, creates daily portfolio replay snapshots (user ruling
+2026-08-05: `--end` rolls to the previous day), and renders a self-contained
+page for a NEW separate PUBLIC repo `quant_worklog` (user ruling 2026-08-05:
+public repo, PnL/work-time exposure accepted, no GitHub Pro needed).
+The additive E-063 holdings replay now emits 129 scheduled weekly rows from the
+frozen parameters with a USD 10,000 display notional; strategy snapshot
+ingestion passes. Browser rendering is not yet claimed because the existing
+page calls `.map()` on the schema object rather than its `rebalances` list, and
+that page/snapshot fix was outside the holdings task's permitted files.
+User prerequisites: merge, create the repo, follow RUNBOOK.
+No repo, push, Pages setting, or scheduled task was created; `public_status/**`
+remains untouched.
+
 Immediate (2026-08-03): the Deribit immutability conflict is RESOLVED — the
 count-invariant pagination + payload-only contract landed in `5920380` and the
 root cause was pagination, not an archive revision. All 17 new external
@@ -634,8 +650,8 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     gate at 17,271/17,272 PIT member-days because `SOL-USDT-SWAP` had 1,439 of
     1,440 Binance 1m rows on 2026-01-01. No admissible backtest positions were
     produced; breadth failed closed to 1 with n_obs=0 and family-cumulative
-    n_trials=72. F-S5 is terminal at K 2/2, with no rerun, retune, Stage 3, or
-    promotion. The SHA-bound artifact is
+    n_trials=72. The user later ruled the unprovenanced 100% threshold a
+    contract error, so E-094 did not consume K. The SHA-bound artifact is
     `results/h038_stage2_20260804/stage2_feasibility.json` at
     `fec068c6c37445dd44df3759a8a87873174141c7c7581caeafda5d2d422113c8`;
     its separate immutable breadth provenance records the absent position input.
@@ -643,6 +659,41 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     complete venue instrument specs fail closed before broker construction,
     reduce-only plus the caller's `posSide` reaches OKX, and runtime/replay mark
     consumers use the maintained `OkxBook`. No mode, gate, or live state changed.
+
+26. CODEX DELIVERY 2026-08-04: H-038/E-095 changed only the authorized
+    experiment-specific data threshold to named `MIN_MEMBER_DAY_COVERAGE=0.95`,
+    recorded taker-flow/I11/user-ruling provenance, and wrote a new immutable
+    artifact. Data passed at 17,271/17,272 member-days; actual positions yielded
+    breadth 5.743875 over 898 daily observations. Distinctness failed closed
+    because E-014 has no dated return series; cost and power were not evaluated.
+    Artifact SHA-256 is `40c815834fdbe1f5caadcb1e3a06282eea4b678925dc78cb0bf21e8e4fe9c78f`.
+    F-S5 is terminal at K 2/2 with n_trials=72 and no E-096, retune, Stage 3,
+    promotion, or deployment claim. E-094 remains byte-identical.
+
+27. CODEX DELIVERY 2026-08-04: the private worklog page task is implemented
+    and locally testable, but not published. Three standard-library Python
+    scripts collect timestamp-only AI sessions, snapshot existing replay
+    artifacts, and assemble git/task indexes; one self-contained page renders
+    work-time, commits, AI outputs, metrics, equity/drawdown, and snapshot
+    history. The daily wrapper uses the supported fixed `run_replay_backtest.py`
+    command because deprecated `run_backtest.py` emits no artifacts, and it
+    still publishes work-time/commits after a replay failure. Privacy/cwd/
+    downsampling/site tests pass. No business rule, existing artifact,
+    public-status file, remote repo, Pages setting, push, or scheduler changed.
+
+28. CODEX DELIVERY 2026-08-05: E-063's frozen funding-XS replay now has an
+    opt-in holdings log and an additive `holdings.json` with 129 scheduled
+    weekly rows, USD 10,000 display notionals, and period returns. Default-off
+    output is byte-identical in the regression test; existing funding tests and
+    targeted Ruff pass; the strategy snapshot consumes the file without a
+    forbidden-key error. This is reporting replay only: no experiment, retry/K
+    use, parameter/grid change, existing result-artifact modification, formal
+    business-rule change, or Change Manifest. The plan's every-leg `0.5`
+    acceptance statement conflicts with E-063 final weights: volatility
+    targeting, the 0.1 cap, PIT breadth, and flat regimes produce equal legs in
+    `[0, 0.465897]`, so the artifact preserves actual weights rather than
+    fabricating 0.5. The pre-existing page/schema `.map()` mismatch remains an
+    out-of-scope browser-rendering blocker.
 
 ## Open decisions
 

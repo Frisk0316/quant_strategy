@@ -1062,6 +1062,123 @@ to show its last `generated_at` timestamp.
 This removes the served page. It does not modify source inputs under `results/`,
 `frontend/`, or `config/`.
 
+## Worklog Page (GitHub Pages + separate public repository)
+
+This independent page publishes AI work-time estimates, commit/task indexes, and
+daily portfolio replay snapshots to `Frisk0316/quant_worklog`. It never writes to
+the public `public-status` branch or uses its worktree.
+
+### Disclosure decision and privacy boundary
+
+- User decision 2026-08-05: `quant_worklog` is a separate PUBLIC repository, so
+  Pages is free (no GitHub Pro needed). The page, the raw JSON, and the full git
+  history are publicly browsable and discoverable; the user explicitly accepted
+  that work-time and PnL/backtest-metric exposure. To withdraw it later, follow
+  Rollback below.
+- Never host this content from the `quant_strategy` repository: its single
+  Pages slot belongs to the public-status page, whose authorized disclosure
+  scope excludes performance data.
+- Transcript collection extracts only timestamps and Codex `cwd`; it never emits
+  message content, prompts, environment values, or credentials.
+- The page must keep its research-replay disclaimer: snapshots are not live or
+  paper-trading performance and imply no promotion/deployment gate.
+
+### One-time setup (user-run after merge)
+
+Create the public repository in GitHub first, then clone its empty `main` branch
+beside this repository:
+
+```powershell
+git clone git@github.com:Frisk0316/quant_worklog.git ..\quant_worklog
+python scripts\worklog\collect_ai_sessions.py
+python scripts\worklog\publish_worklog_page.py --out-dir ..\quant_worklog
+git -C ..\quant_worklog add -A
+git -C ..\quant_worklog commit -m "chore: initialize private worklog"
+git -C ..\quant_worklog push -u origin main
+```
+
+In GitHub **Settings → Pages**, choose **Deploy from a branch**, then `main` and
+`/ (root)`. Reconfirm the public-URL risk before saving. Do not create a workflow.
+
+The wrapper defaults `WORKLOG_REPO` to `..\quant_worklog`. To use another clone:
+
+```powershell
+setx WORKLOG_REPO "C:\quant_worklog"
+```
+
+Register the local daily task after other daily data jobs have completed:
+
+```powershell
+schtasks /Create /TN quant_private_worklog_daily /TR "C:\quant_strategy\scripts\worklog\run_worklog_page_task.cmd" /SC DAILY /ST 16:45 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries -StartWhenAvailable
+Set-ScheduledTask -TaskName quant_private_worklog_daily -Settings $settings
+schtasks /Run /TN quant_private_worklog_daily
+schtasks /Query /TN quant_private_worklog_daily /V /FO LIST
+```
+
+The `/RU ... /NP` (S4U) form requires an elevated shell. From a normal shell,
+register an Interactive-only task instead (runs only while logged on), and
+re-register with the S4U form from Administrator PowerShell later if needed:
+
+```powershell
+schtasks /Create /TN quant_private_worklog_daily /TR "C:\quant_strategy\scripts\worklog\run_worklog_page_task.cmd" /SC DAILY /ST 16:45 /F
+```
+
+### Daily refresh (artifact reads only — no DB, no replay)
+
+User redirection 2026-08-05: the page tracks the two report strategies (the
+options volatility-premium candidate and the funding-rate long/short watch-list
+candidate), not the deprecated `strategies.yaml` portfolio. The daily
+entrypoint no longer runs any backtest. `snapshot_strategies.py` reads only
+frozen research artifacts plus shadow-journal COUNTS (never signal values or
+internal tracking codes — a forbidden-key check runs on every build), the
+collector gathers timestamp-only sessions, and the publisher assembles the
+site and pushes `main`. Work summaries are commit subjects with internal codes
+scrubbed; full commit bodies are not published. Previously published
+daily/session history is merged in so aged-out transcripts never shrink the
+page. A snapshot failure is reported but does not block work-time publication;
+a clean staged diff exits without an empty commit.
+
+The funding strategy's per-rebalance long/short notional table renders once
+`holdings.json` exists — produced by
+`tasks/2026-08-05-funding-ls-holdings-log-codex-tasks.md` (weekly rebalance by
+design). These are reporting snapshots, not validation or promotion evidence.
+
+```powershell
+scripts\worklog\run_worklog_page_task.cmd
+```
+
+For the Pages-disabled local option, serve the clone on loopback so browser
+`fetch` can read the JSON files, then open the printed local address:
+
+```powershell
+python -m http.server 8000 --bind 127.0.0.1 --directory ..\quant_worklog
+```
+
+Known limits: a powered-off host misses that day's refresh; transcript event
+gaps approximate active time rather than a clock; Codex sessions from other
+machines are absent; uncommitted/unwritten AI conversation content is excluded
+by design.
+
+### Rollback
+
+1. Stop and remove the scheduled task:
+
+   ```powershell
+   Disable-ScheduledTask -TaskName quant_private_worklog_daily
+   schtasks /Delete /TN quant_private_worklog_daily /F
+   ```
+
+2. In GitHub **Settings → Pages**, set the source to **None**.
+3. Delete `Frisk0316/quant_worklog` (or make it private) if the generated
+   history should be withdrawn; note that already-crawled public copies cannot
+   be recalled. Retain it with Pages disabled for local-only use if preferred.
+4. Remove the local clone only if its generated history is no longer needed.
+
+These steps do not remove source transcripts or backtest artifacts from this
+repository.
+
 ## H-014 Deribit Options Live Layer (implemented, disabled)
 
 ADR-0017's private client and adapter exist for review and testnet plumbing,
