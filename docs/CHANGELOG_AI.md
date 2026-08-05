@@ -13,6 +13,28 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-08-05 - State reconciliation, input-quality review, E-043 ruling (Claude)
+
+- Closed three handoff items that were re-advertising completed work: the
+  ADR-0017 H-014 fix-wave re-review (clean 2026-07-28), the H-032/H-034 I27
+  ASSIGN ruling (2026-07-29), and WS-A A6 / WS-B B2-B5 / the PR #9 follow-up
+  (all verified ancestors of `origin/main`). Reviewed the previously unreviewed
+  ADR-0018 delta `659a930` — PASS, all three changes narrow to testnet — and
+  recorded that H-014 Phase 2 has not occurred: `h014_live.enabled` false, only
+  importer is the panic script, no execution task registered.
+- Delivered the deferred-ADR-0016 input-quality review
+  (`tasks/2026-08-05-candidate-input-quality-review.md`): a Candidate Admission
+  Form filled before an H-number is assigned. Codex ran a validation pass; its
+  four corrections were independently re-verified and accepted, including one
+  arithmetic error in the B3 sensitivity table. User ruled B3 = gross/cost >= 2.0.
+- Ruled `..._r2/stage2_feasibility.json` a mislabel: it self-declares
+  `experiment_id: E-041` where the registry attributes it to E-043, and it is
+  the artifact behind H-014's only Stage-2 PASS. The artifact is unmodified;
+  the registry row carries the ruling. Added artifact-identity reconciliation
+  to `check_ledger_consistency.py` (I72, F77) with 6 new tests.
+- Commits `79c87fb`, `1faac25`, `294cb98`. No experiment, trial, K, `results/**`
+  change, or gate movement.
+
 ## 2026-08-03 - External-data verification, schedules, worklog automation (Claude)
 
 - Fresh-context verification of the xvenue/COT/Cboe delivery passed (scope,

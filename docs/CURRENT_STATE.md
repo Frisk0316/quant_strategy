@@ -3,102 +3,88 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-05
 expires: none
 superseded_by: null
 ---
 
 # Current State
 
-Short present-tense snapshot. History belongs in `docs/CHANGELOG_AI.md`; durable
-gaps belong in `docs/KNOWN_ISSUES.md`.
+Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- PRs #19/#20 (2026-08-04) and #21 (2026-08-05, `c887a9f`) are MERGED and PR #17
-  is CLOSED. `origin/main` holds the H-038/E-094/E-095 batch, WS-C C3/C5/C10,
-  the C3 spot reduce-only review fix, the E-094 contract-error ruling, the
-  worklog generators, and the unpublished public-status implementation. No
-  branch work is outstanding.
-- No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT stays the
-  only `supported` hypothesis (E-051 + E-052 double pass); promotion blocked
-  per R7.2 pending >=8 valid shadow journal weeks plus reviews.
+- PRs #19/#20/#21 MERGED, #17 CLOSED; `origin/main` holds H-038/E-094/E-095,
+  WS-C C3/C5/C10, worklog generators, public-status. No branch work open.
+- No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT is the only
+  `supported` hypothesis (E-051 + E-052); promotion blocked per R7.2 pending
+  >=8 valid shadow journal weeks plus reviews.
 - Authority order: config, accepted ADRs, `research/strategy_synthesis.md`,
-  `docs/ai_collaboration.md`. No strategy/signal/risk/execution behavior,
-  results, schema, or gate changes without an approved task.
+  `docs/ai_collaboration.md`. No behavior, results, schema, or gate change
+  without an approved task.
 
 ## Data (canonical + external)
 
 - Canonical 30-symbol 1m 2024–2026 candles + funding unchanged. Deribit DVOL
-  hourly to 2021-03-24, RV30 to 2018/2019, surface/flow with moneyness buckets
-  from 2024-01-01; flow retains the FULL inverse tape since `5920380` (the
-  pre-fix first-20 limit is closed for re-ingested ranges only).
-- `external_observations` holds FRED DGS2/VIXCLS/DTWEXBGS 2020+ (research-only
-  Yahoo GC=F gold proxy alongside), CFTC COT weekly TFF with release-time
-  `published_at`, and Cboe VIX + VIX9D/3M/6M (put/call ends 2019-10-04, no
-  substitute). DB-verified 2026-08-02. NAAIM weekly is archived at
-  `data/external_raw/naaim/` (source paywalled 2026-08-01).
+  hourly to 2021-03-24, RV30 to 2018/2019, surface/flow bucketed from
+  2024-01-01; flow keeps the FULL inverse tape since `5920380`, but only for
+  re-ingested ranges, so no H-031/H-035 rerun is possible pre-2024.
+- `external_observations`: FRED DGS2/VIXCLS/DTWEXBGS 2020+ (plus a research-only
+  Yahoo GC=F proxy), CFTC COT weekly TFF, Cboe VIX + VIX9D/3M/6M (put/call ends
+  2019-10-04, no substitute). DB-verified 2026-08-02. NAAIM archived, paywalled.
 - H-039/F-XVENUE-OPT-IV collector ACTIVE: six hourly
-  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` datasets since 2026-08-02 via
-  task `quant_xvenue_options_iv`. DEPENDENCY: Docker+TimescaleDB must stay up,
-  missed hours are lost. Stage 2 blocked until >=270 daily obs (~2027-05).
+  `xvenue_opt_iv_{okx,bybit,deribit}_{btc,eth}` datasets since 2026-08-02.
+  Docker+TimescaleDB must stay up — missed hours are lost. Stage 2 blocked to
+  >=270 obs (~2027-05); 0 trials, K 0/2, Tardis declined.
 
 ## Execution / testnet
 
-- ADR-0018 exception PERMITS signal-driven Deribit execution on testnet only,
-  but it is NOT running: `h014_live.enabled` is false, `deribit_live`'s only
-  importer is `scripts/h014_live_panic.py`, and no H-014 execution task is
-  registered. Binance Spot/USD-M Demo and OKX Demo smokes green on trade-scoped
-  no-withdrawal keys. Gates unchanged; H-014 live block disabled.
-- Security hardening is complete through `c9fa77b` (fail-closed Telegram, authed
-  remote binds, contained pair deletion, DSN-free job status, required Compose
-  secrets, `SecretStr` credentials, isolated demo keys). Details in AI_HANDOFF.
-- WS-C C3/C5/C10 are merged to `main`: runtime instrument metadata fails
-  closed, reduce-only intent and `posSide` reach OKX on derivatives — spot
-  `tdMode=cash` orders send neither key (review fix, I70/F75) — and runtime
-  mids use the maintained `OkxBook`. No live/demo/shadow mode or gate changed.
-- Scheduled tasks: `quant_liq_okx_ingest`, `quant_okx_market_data`,
-  `quant_h014_shadow_daily`, `quant_xvenue_options_iv`, `quant_weekly_worklog`.
+- ADR-0018 PERMITS signal-driven Deribit execution on testnet only, but it is
+  NOT running: `h014_live.enabled` false, `deribit_live`'s only importer is
+  `scripts/h014_live_panic.py`, no H-014 execution task registered. Phase 2
+  needs a Deribit testnet key, then a runner, then Claude's go/no-go. Binance
+  Spot/USD-M Demo and OKX Demo smokes green on no-withdrawal keys.
+- Security hardening complete through `c9fa77b`; WS-C C3/C5/C10 merged (specs
+  fail closed; reduce-only + `posSide` reach OKX except spot `tdMode=cash`,
+  I70/F75; mids use `OkxBook`). No live/demo/shadow mode or gate changed.
+- Scheduled: `quant_{liq_okx_ingest,okx_market_data,h014_shadow_daily,
+  xvenue_options_iv,weekly_worklog,private_worklog_daily}`.
 
 ## Hypothesis pipeline
 
-- H-038/E-095 is complete and F-S5 is terminal at K 2/2. The named,
-  artifact-provenanced 0.95 gate admitted 17,271/17,272 member-days and the
-  actual position sequence measured breadth 5.743875 over 898 daily returns.
-  Distinctness then failed closed because immutable E-014 has no dated return
-  series; cost and power were not evaluated. Family n_trials remains 72; no
-  E-096, retune, Stage 3, promotion, or deployment is authorized. E-094 stays
-  immutable as the earlier contract-error record.
-- 2026-08-02 paper-data probe H-040..H-046 (E-077..E-093) is CLOSED: H-043/H-044
-  refuted, H-040/H-042 data-blocked, H-041/H-045/H-046 stopped at Stage-2 power
-  FAIL once E-091..E-093 rejected their inferred breadth=2. H-045/H-046 are the
-  publication-safe supersessions of H-033/H-036 (family trial 1, K 0/2), so no
-  H-033/H-036 rerun and no GC=F gold-proxy ruling is pending.
-- H-039 registered `proposed / data-blocked (accumulating)`; Tardis paid backfill
-  declined 2026-08-02. Zero trials, K 0/2. ADR-0016 full-round infra
-  (8 new mechanisms + 2 iterations, >=10 frozen) is target authority, unbuilt.
+- 2026-08-05 input-quality review delivered
+  (`tasks/2026-08-05-candidate-input-quality-review.md`): a Candidate Admission
+  Form filled before an H-number is assigned, shaped to drop into ADR-0016's
+  round manifest unchanged. User ruling: B3 bar is gross/cost >= 2.0. Manual
+  review step, not a gate; no Stage-2 schema or verdict changed.
+- E-043's artifact self-declares `experiment_id: E-041` — ruled a mislabel
+  2026-08-05 (F77); registry row authoritative and annotated, artifact
+  byte-identical, I72 fails closed on any new identity disagreement.
+- H-038/E-095 complete, F-S5 terminal at K 2/2: the 0.95 gate admitted
+  17,271/17,272 member-days and positions measured breadth 5.743875 over 898
+  daily returns, then distinctness failed closed (immutable E-014 has no dated
+  returns). n_trials 72; no E-096, retune, Stage 3, promotion, deployment.
+- 2026-08-02 probe H-040..H-046 (E-077..E-093) CLOSED: H-043/H-044 refuted,
+  H-040/H-042 data-blocked, H-041/H-045/H-046 stopped at power FAIL once
+  E-091..E-093 rejected their inferred breadth=2. H-045/H-046 supersede
+  H-033/H-036 (no rerun, no GC=F ruling). ADR-0016 infra unbuilt.
 
 ## Next actions, in order
 
-Background, always on: keep Docker/TimescaleDB up (missed collector hours are
-unrecoverable) and let the H-014 shadow cycle keep counting. No live enablement.
+Always on: keep Docker/TimescaleDB up (missed collector hours are
+unrecoverable); let the H-014 shadow cycle count. No live enablement.
 
-1. User: follow `docs/RUNBOOK.md` §Public Research Status Page to create the
-   three-file orphan `public-status` worktree, enable GitHub Pages, verify the
-   first public page, and register the daily refresh task. Implementation is
-   complete but unpublished; `quant_strategy` is PUBLIC, so Pages is free.
-2. Worklog page is LIVE at frisk0316.github.io/quant_worklog (public repo,
-   Pages on, daily 16:45 interactive task registered): work-time Gantt/week/
-   month with union dedup, code-scrubbed daily activity digest, strategy cards
-   for the vol-premium and funding-L/S candidates, and the 129-row weekly
-   rebalance table (holdings.json mapped into the page 2026-08-05). Optional:
-   re-register the scheduler as S4U from an Administrator shell per RUNBOOK.
-3. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
-   without explicit per-item user authorization and required manifests.
-4. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
-   the `docs/ai/LESSONS.md` funnel diagnosis: across 38 Stage-2 artifacts the
-   first failing check is `data_availability` 16 times and 11 of ~20 candidates
-   reaching the power check have negative or zero Sharpe. The binding
-   constraint is candidate input quality, not gate strictness.
+1. `origin/public-status` (`329a5d7`) is PUSHED with exactly the three approved
+   files, but Pages is NOT serving — `frisk0316.github.io/quant_strategy/` gave
+   HTTP 404 on 2026-08-05 while the `quant_worklog` control gave 200. User: set
+   Settings > Pages to `public-status` + `/ (root)`, no workflow; re-check the
+   URL; then register `quant_public_status_daily`.
+2. Worklog page is LIVE (HTTP 200) with its daily 16:45 task; nothing open.
+3. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 stay ungated — no implementation
+   without per-item authorization and manifests. Claude's advice: authorize
+   Phase 1+2 (C6, C11 Layer 1, close_all) only when an order-placing engine is
+   about to run; the rest need one to bite.
+4. ADR-0016 stays deferred (user, 2026-08-04). The binding constraint is
+   candidate input quality, not gate strictness — see I68 and the review.
 
-Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-04-public-status-and-decision-batch-handoff.md`.
+Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-05-governance-reconcile-and-input-quality-handoff.md`.

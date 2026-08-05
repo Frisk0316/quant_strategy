@@ -707,6 +707,20 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
     fabricating 0.5. The pre-existing page/schema `.map()` mismatch remains an
     out-of-scope browser-rendering blocker.
 
+29. CLAUDE SESSION 2026-08-05: (a) reconciled three stale handoff items that
+    were re-advertising completed work (H-014 fix-wave re-review, H-032/H-034
+    family ruling, WS-A A6 / WS-B B2-B5 / PR #9 follow-up), each verified
+    against the artifact that closed it. (b) Delivered the requested
+    input-quality review, `tasks/2026-08-05-candidate-input-quality-review.md`,
+    with a Candidate Admission Form; Codex ran a validation pass whose four
+    corrections were independently re-verified and accepted. User ruled the B3
+    bar at gross/cost >= 2.0. (c) Ruled the E-043 artifact mislabel and added
+    artifact-identity reconciliation (I72/F77) to
+    `check_ledger_consistency.py`; the artifact is unmodified. Commits
+    `79c87fb`, `1faac25`, `294cb98` on
+    `claude/state-reconcile-input-quality-review`. No experiment ran, no trial
+    or K consumed, no `results/**` file changed, no gate moved.
+
 ## Open decisions
 
 - CLOSED 2026-08-05: the PR #9 follow-up is merged — `6129f94`, `037b15f`, and
