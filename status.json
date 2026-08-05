@@ -1,0 +1,555 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-05T05:47:42.619921+00:00",
+  "workstreams": [
+    {
+      "name": "Worklog page (2026-08-04)",
+      "status": "active",
+      "milestones": [
+        "scope",
+        "implement",
+        "publish",
+        "schedule"
+      ],
+      "current": "publish",
+      "state": "LIVE at frisk0316.github.io/quant_worklog (public repo, Pages on, daily 16:45 interactive task registered). Day-Gantt/week/month work-time views with interval-union dedup; per-day activity digest with internal codes scrubbed; strategy cards read frozen vol-premium and funding-L/S artifacts plus shadow counts (forbidden-key check); published history merges so transcript aging never erases days; May-June Claude history unrecoverable (30-day retention, now raised to 3650).",
+      "next": "Codex adds the funding-L/S per-rebalance holdings log per tasks/2026-08-05-funding-ls-holdings-log-codex-tasks.md so the long/short notional table renders. User merges the quant_strategy working-tree changes into main.",
+      "links": [
+        "2026-08-04-private-worklog-page-codex-tasks.md",
+        "2026-08-04-private-worklog-page-claude-review.md"
+      ]
+    },
+    {
+      "name": "Public status page (2026-08-04)",
+      "status": "active",
+      "milestones": [
+        "scope",
+        "implement",
+        "publish",
+        "schedule"
+      ],
+      "current": "publish",
+      "state": "Generator, self-contained page, daily wrapper, and leak-canary tests are implemented. Inputs are local-file-only and public output excludes equity curves, strategy parameters, and signal keys/values. The orphan branch and GitHub Pages are not activated.",
+      "next": "User follows docs/RUNBOOK.md to create the three-file public-status orphan worktree, enable Pages, verify the first push, and register quant_public_status_daily.",
+      "links": [
+        "2026-08-04-public-status-page-codex-tasks.md"
+      ]
+    },
+    {
+      "name": "Whole-repo optimization audit (2026-08-03)",
+      "status": "active",
+      "milestones": [
+        "audit",
+        "ungated_security",
+        "remaining_ungated",
+        "protected_fixes"
+      ],
+      "current": "protected_fixes",
+      "state": "WS-C C5, C3, and C10 are implemented locally with one Change Manifest each: instrument specs fail closed, reduce-only plus posSide reach OKX, and runtime consumers use maintained OkxBook mids. Full unit baseline is green; no live/demo/shadow mode or gate changed.",
+      "next": "Claude reviews C5/C3/C10. C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated and must not be touched without explicit per-item authorization.",
+      "links": [
+        "2026-08-03-project-optimization-codex-plan.md",
+        "2026-08-04-wsc-c3-c5-c10-codex-tasks.md"
+      ]
+    },
+    {
+      "name": "Project audit and hardening",
+      "status": "active",
+      "milestones": [
+        "diagnose",
+        "immediate_repairs",
+        "baseline_green",
+        "protected_fixes",
+        "integration",
+        "followup_repair"
+      ],
+      "current": "followup_repair",
+      "state": "PR #9 merged to main at b378e16 from PR head 00c7a51. Five review-fix commits (6129f94 through 037b15f) plus verified repair df53f73 and handoff d046978 were created after that head and are not on main. The follow-up branch was pushed through d046978 on 2026-07-14. No strategy or deployment readiness follows.",
+      "next": "Open and review the separate codex/pipeline-batch1-stage3 follow-up PR; human performs the merge. P1.4 repo support is implemented; run the RUNBOOK command from Administrator PowerShell to activate and verify woody/S4U/Limited unattended liquidation ingest.",
+      "links": [
+        "2026-07-12-project-diagnosis-followup-tasks.md",
+        "2026-07-12-claude-p0-review.md",
+        "2026-07-12-artifact-id-containment.md",
+        "2026-07-12-ct-val-validation-contract.md",
+        "2026-07-12-venue-fail-closed.md",
+        "2026-07-12-project-diagnosis-overview.md"
+      ]
+    },
+    {
+      "name": "Local runtime reliability",
+      "status": "blocked",
+      "milestones": [
+        "coverage_query",
+        "coverage_query_scale_fix",
+        "db_startup_order",
+        "dsn_precedence",
+        "db_error_contract",
+        "single_server",
+        "private_ws_auth",
+        "engine_dashboard_auth"
+      ],
+      "current": "engine_dashboard_auth",
+      "state": "External coverage uses one grouped scan; Compose waits for TimescaleDB health, runtime DATABASE_URL overrides the YAML candle DSN, and run-list/result-summary outages without file fallback return 503. OKX Demo REST place/cancel and private WS orders:ANY/positions:SWAP now authenticate successfully, closing the old 60005 blocker. Binance Spot Demo place/cancel passes and USD-M Demo auth passes with flat-account exposure blocked. The credential-free quant_okx_market_data task now accumulates chunked BTC/ETH public books, trades, and funding from a Limited/S4U startup task with a 10 GiB disk reserve. The engine-dashboard API-key flow remains unresolved.",
+      "next": "Choose the engine-dashboard auth contract, extend explicit DB outage handling to remaining per-artifact endpoints, and measure concurrent UI connection overhead before adding a bounded pool. Run the P1.4 Administrator task activation separately; do not switch to live mode as a workaround.",
+      "links": [
+        "2026-07-12-market-data-coverage-timeout-context-handoff.md",
+        "2026-07-21-db-coverage-performance-context-handoff.md",
+        "DEBUGGING_RUNBOOK.md"
+      ]
+    },
+    {
+      "name": "XS momentum",
+      "status": "shelved",
+      "milestones": [
+        "spec",
+        "impl",
+        "backtest",
+        "wf_cpcv",
+        "demo",
+        "live"
+      ],
+      "current": "wf_cpcv",
+      "state": "Portfolio-vol E-005 completed and H-002 was refuted/shelved: DSR 0.7823, PSR 0.8234; xs_momentum stays disabled and is not promotion evidence.",
+      "next": "Do not tune to chase the gate. Revisit only with materially more OOS history or a genuinely new Claude/user-approved signal thesis with honest n_trials.",
+      "links": [
+        "2026-06-23-xs-momentum-universe.md"
+      ]
+    },
+    {
+      "name": "Strategy research pipeline (batch 2 C1/C2/C3)",
+      "status": "shelved",
+      "milestones": [
+        "spec",
+        "impl",
+        "backtest",
+        "wf_cpcv",
+        "review"
+      ],
+      "current": "review",
+      "state": "batch 2: C1 refuted; C2 realism re-cost refuted H-007 (DSR 0.004, PSR 0.446); C3 Stage-3 refuted H-008 (DSR 0.453, PSR 0.581) after 2026-06-30 F&G published_at as-of hardening",
+      "next": "No adapter/publish/demo/shadow/live for C1/C2/C3 without a new Claude/user-approved research path",
+      "links": [
+        "2026-06-25-strategy-research-pipeline-stage1.md",
+        "2026-06-29-strategy-research-pipeline-stage2.md",
+        "2026-06-29-c2-funding-carry-realism-task.md"
+      ]
+    },
+    {
+      "name": "Strategy research pipeline — full-auto roadmap",
+      "status": "active",
+      "milestones": [
+        "diagnose",
+        "draft_specs",
+        "user_review",
+        "checkpoint1_impl",
+        "ingestion_impl",
+        "orchestrator_spec_hardened",
+        "orchestrator_impl",
+        "first_batch_review",
+        "improvement_p1_p8",
+        "real_data_runs",
+        "p9_membership_rebuild",
+        "first_stage1_spec",
+        "first_stage3_checkpoint",
+        "checkpoint_review",
+        "slate_stage2_runners",
+        "full_round_contract"
+      ],
+      "current": "full_round_contract",
+      "state": "ADR-0016 slice 1 and H-030..H-037 remain closed at Stage 2 with no complete round. H-038/E-095 is terminal for F-S5 at K 2/2: the authorized 0.95 data gate passed 17,271/17,272 PIT member-days, actual positions measured breadth 5.743875 over 898 days, and distinctness failed closed because E-014 has no dated return series. Cost/power were not evaluated; n_trials remains 72.",
+      "next": "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68; fix future candidate inputs before building more pipeline and do not chase gates.",
+      "links": [
+        "0016-genai-discovery-deterministic-strategy-evaluation.md",
+        "2026-07-27-genai-strategy-finding-pipeline.md",
+        "2026-06-30-drafted-candidate-stage3-contract.md",
+        "2026-07-04-f-funding-xs-dispersion-hypothesis.md",
+        "2026-07-04-f-oi-positioning-hypothesis.md",
+        "2026-07-04-f-oi-positioning-stage3-codex-plan.md",
+        "2026-07-03-funding-xs-dispersion-stage3.md",
+        "2026-07-03-universe-membership-timestamp-precision.md",
+        "2026-07-03-pipeline-improvement-tasks.md",
+        "2026-07-03-statistical-power-gates.md",
+        "2026-06-30-stage3-idea-ingestion-design.md",
+        "2026-06-30-mechanism-taxonomy.md",
+        "2026-07-26-strategy-finding-round.md",
+        "checkpoint_review.json",
+        "HYPOTHESIS_LEDGER.md",
+        "EXPERIMENT_REGISTRY.md",
+        "STRATEGY_HISTORY.md"
+      ]
+    },
+    {
+      "name": "H-039 cross-venue options IV",
+      "status": "active",
+      "milestones": [
+        "design",
+        "collector_impl",
+        "live_schema_smoke",
+        "first_db_snapshot",
+        "scheduler",
+        "data_window",
+        "stage2"
+      ],
+      "current": "data_window",
+      "state": "Collector verified end-to-end 2026-08-02: fresh-context review passed, all six datasets land DB rows with consistent cross-venue iv_decimal normalization (BTC 30d ATM within 0.2 vol pts across OKX/Bybit/Deribit), and hourly scheduled task quant_xvenue_options_iv is registered and smoke-run. Accumulation clock started 2026-08-02; trials 0, K 0/2.",
+      "next": "Keep Docker Desktop + TimescaleDB up (missed hours are permanent losses); check xvenue_options_snapshot.log gap alerts same-day. No proxy history; Stage 2 blocked until >=270 persisted daily observations (~2027-05).",
+      "links": [
+        "2026-07-31-xvenue-options-iv-hypothesis.md",
+        "HYPOTHESIS_LEDGER.md",
+        "EXPERIMENT_REGISTRY.md",
+        "RUNBOOK.md"
+      ]
+    },
+    {
+      "name": "CFTC COT and Cboe histories",
+      "status": "active",
+      "milestones": [
+        "adapter",
+        "source_validation",
+        "db_backfill",
+        "recurring_ingest"
+      ],
+      "current": "recurring_ingest",
+      "state": "Full backfills verified in DB 2026-08-02: six COT markets (ES/10Y/DXY/gold 1,051 rows each from 2006; CME BTC 434, ETH 278) all satisfying published_at >= observed_at + 2 days, and five Cboe series (VIX 9,241 rows from 1990; 9D/3M/6M term structure; total-PCR 3,253 rows ending 2019-10-04 as documented). FRED unblock for H-033/H-036 is data-complete.",
+      "next": "Decide the recurring weekly/daily incremental ingest schedule; keep total-PCR archive-only. H-033/H-036 Stage-2 reruns await user authorization.",
+      "links": [
+        "2026-07-31-xvenue-iv-collector-cot-cboe-codex-tasks.md",
+        "DATA_FLOW.md",
+        "RUNBOOK.md"
+      ]
+    },
+    {
+      "name": "Deribit derivatives data",
+      "status": "active",
+      "milestones": [
+        "research",
+        "task_plan",
+        "user_signoff",
+        "ingestion_impl",
+        "frontend",
+        "stage1_spec",
+        "stage1_review",
+        "stage2_probe",
+        "rv30_backfill",
+        "frontend_refresh",
+        "live_layer_impl",
+        "live_layer_review"
+      ],
+      "current": "live_layer_review",
+      "state": "D1-D5 and R1-R5 are accepted with DB evidence. Native hv_deribit_* remains limited to Deribit's rolling response. New option-flow ingests retain the complete inverse tape, but the 2024-01+ historical enrichment is STOPPED/PARTIAL: 2,304 BTC hours and 744 ETH hours are enriched, hourly row counts remain 22,403/22,402, and the current archive changed BTC aggregate trades from 12,724,097 to 12,724,092. H-014/F-VOL-REGIME-OPT remains supported on E-051/E-052; ADR-0017's inactive live layer remains unactivated and portable-validation blocked. ADR-0018 Phase 1 now hard-locks private execution to testnet and its mocked lifecycle passes, but no credential or authenticated call occurred. No Stage 3, retune, activation, scheduler, or settings mode flip occurred.",
+      "next": "Claude/user chooses DB-backup restoration, explicit source-revision acceptance, or a separately approved payload-only enrichment contract before any option-flow backfill resume. H-031/H-035 remain blocked. Separately, the user supplies trade-scoped Deribit testnet credentials and Claude reviews the real Phase 1 output before any h014_live enable change; continue ADR-0011 shadow evidence and do not register a scheduler or claim deployment readiness.",
+      "links": [
+        "deribit_data_strategy_research.md",
+        "2026-07-11-deribit-data-ingestion-tasks.md",
+        "2026-07-11-deribit-ingestion-review.md",
+        "2026-07-13-f-vol-regime-opt-hypothesis.md",
+        "2026-07-13-vol-regime-opt-handoff.md",
+        "2026-07-13-f-vol-regime-opt-stage2-codex-tasks.md",
+        "2026-07-13-f-vol-regime-opt-stage2-e041-codex-session-handoff.md",
+        "0017-h014-live-execution-layer.md",
+        "0018-h014-testnet-signal-driven-execution-exception.md",
+        "2026-07-28-h014-live-execution-codex-tasks.md",
+        "2026-07-28-h014-live-execution-claude-review.md",
+        "2026-07-28-h014-live-fixes-diffval-codex-tasks.md",
+        "2026-07-28-h014-live-execution.md",
+        "2026-07-30-h014-testnet-activation.md",
+        "2026-07-30-paper-trade-testnet-connectivity-codex-tasks.md",
+        "2026-07-28-deribit-moneyness-vol-probe-hypotheses.md",
+        "2026-07-28-moneyness-vol-probe-codex-tasks.md",
+        "2026-07-29-e025-reference-regen-probe-unblock-codex-tasks.md",
+        "moneyness_vol_probe_20260728"
+      ]
+    },
+    {
+      "name": "Strategy research pipeline — taxonomy_004 C4",
+      "status": "done",
+      "milestones": [
+        "taxonomy",
+        "stage1_spec",
+        "stage2_probe",
+        "stage3_backtest"
+      ],
+      "current": "stage3_backtest",
+      "state": "F-XVENUE-FUNDING-SPREAD H-021 is refuted after E-056, its separately authorized first Stage-3 full-PnL validation under ADR-0012. WF -0.2158, CPCV -0.0375, DSR 0.2357, PSR 0.4818; family-cumulative n_trials=12 and K=0/2. Statistical and robustness gates failed.",
+      "next": "STOP. No retry, retune, promotion, demo, shadow, or live work. E-056 is immutable non-promotion evidence.",
+      "links": [
+        "2026-07-15-mechanism-taxonomy-004.md",
+        "2026-07-15-f-xvenue-funding-spread-hypothesis.md",
+        "2026-07-15-xvenue-funding-spread-stage2.md",
+        "0012-inverse-perpetual-research-accounting.md",
+        "2026-07-15-h021-stage3-context-handoff.md",
+        "2026-07-15-h021-stage3-session-handoff.md"
+      ]
+    },
+    {
+      "name": "Strategy research pipeline — F-TAKER-FLOW",
+      "status": "shelved",
+      "milestones": [
+        "stage1_spec",
+        "stage2_probe",
+        "claude_review",
+        "data_repair",
+        "alias_rule",
+        "e059_reprobe"
+      ],
+      "current": "e059_reprobe",
+      "state": "H-022/E-059 is complete and shelved. T1 verified ETH at 898/898 days and 1,293,120/1,293,120 raw/taker rows; the ADR-0015 alias-adjusted denominator is 24,745/24,745. Data, distinctness, and cost pass, but statistical power fails at plausible net Sharpe 0.448466 below the 0.754896 floor. Family trials remain 0 and K remains 0/2.",
+      "next": "Claude reviews the ordered E-059 registration, execution, and outcome-sync commits. Stop with no retune or reprobe; no Stage 3, promotion, or deployment.",
+      "links": [
+        "2026-07-23-f-taker-flow-hypothesis.md",
+        "2026-07-24-e058-repair-e059-codex-tasks.md",
+        "0015-consumer-time-economic-asset-aliases.md",
+        "2026-07-24-consumer-time-universe-aliases.md",
+        "stage2_feasibility.json",
+        "stage2_feasibility.json",
+        "2026-07-26-e059-taker-flow-context-handoff.md",
+        "2026-07-26-e059-taker-flow-session-handoff.md"
+      ]
+    },
+    {
+      "name": "Multi-venue instrument specs (ADR-0007 P1)",
+      "status": "done",
+      "milestones": [
+        "spec",
+        "impl",
+        "validation",
+        "consolidated_pr",
+        "merge"
+      ],
+      "current": "merge",
+      "state": "ADR-0007 P1 implementation is merged and closed; no strategy or deployment readiness claim follows from branch existence.",
+      "next": "none - ADR-0007 P1 complete; no cleanup action taken",
+      "links": [
+        "2026-06-17-multi-venue-instrument-specs-p1.md"
+      ]
+    },
+    {
+      "name": "Repo maintenance (M1-M5, non-pipeline)",
+      "status": "done",
+      "milestones": [
+        "audit",
+        "m1_ci_consistency",
+        "m2_doc_slimming",
+        "m3_smoke_fixture",
+        "m4_monitoring_tests",
+        "m5_stocks_decision",
+        "claude_review",
+        "m2_r1_history_migration"
+      ],
+      "current": "m2_r1_history_migration",
+      "state": "M1-M5 + M2-R1 all ACCEPTED and committed (df96682/79c1ddc/0191c1d/2dea608/5eb71f8/21cc3c9). Stream closed.",
+      "next": "none - run make verify/full only in an environment with make, TimescaleDB, and required data.",
+      "links": [
+        "2026-07-03-project-maintenance-tasks.md"
+      ]
+    },
+    {
+      "name": "User manual",
+      "status": "done",
+      "milestones": [
+        "draft",
+        "write",
+        "verify"
+      ],
+      "current": "verify",
+      "state": "All ten chapters are written. The 2026-07-12 audit wired /api/manual into the RUNBOOK standalone server and strips lifecycle frontmatter before rendering; targeted route and browser checks pass.",
+      "next": "Content refresh for stale strategy/pipeline narrative is tracked in the project follow-up plan; rerun scripts/generate_research_pipeline_doc.py when chapter 90 changes.",
+      "links": [
+        "2026-06-25-user-manual.md"
+      ]
+    },
+    {
+      "name": "Turtle strategy platform integration",
+      "status": "done",
+      "milestones": [
+        "spec",
+        "t1_core_port_parity",
+        "t2_run_api",
+        "t3_sweep_api",
+        "t4_frontend",
+        "t5_docs",
+        "claude_review",
+        "manual_pass"
+      ],
+      "current": "manual_pass",
+      "state": "ACCEPTED research-only runner with real-data golden parity, DB-backed API smoke, marker display, resumable large sweeps, and UI polish. The audit removed the reintroduced fixed-input unit heuristic; fraction-unit regression is green.",
+      "next": "none - no strategy, replay-core, gate, live, demo, or shadow claim.",
+      "links": [
+        "2026-07-03-turtle-platform-design.md",
+        "2026-07-03-turtle-strategy-platform-tasks.md",
+        "README.md"
+      ]
+    }
+  ],
+  "shadow_h014": {
+    "available": true,
+    "journal_weeks": 3.0,
+    "distinct_journal_weeks": 3,
+    "minimum_weeks": 8,
+    "eight_week_journal_met": false,
+    "generated_at": "2026-08-03T08:10:56.825610Z",
+    "event_counts": {
+      "total": 10,
+      "by_status": {
+        "not_rich": 10
+      },
+      "last_event_date": "2026-08-03"
+    }
+  },
+  "research_funnel": [
+    {
+      "family": "F-000",
+      "status": "proposed",
+      "hypothesis_id": "H-000",
+      "experiment_count": 1,
+      "outcome": "template"
+    },
+    {
+      "family": "F-001",
+      "status": "supported",
+      "hypothesis_id": "H-001",
+      "experiment_count": 1,
+      "outcome": "supported"
+    },
+    {
+      "family": "F-CALENDAR-SEASONALITY",
+      "status": "refuted",
+      "hypothesis_id": "H-020",
+      "experiment_count": 1,
+      "outcome": "refuted / statistical-fail"
+    },
+    {
+      "family": "F-COINBASE-PREMIUM",
+      "status": "refuted",
+      "hypothesis_id": "H-018",
+      "experiment_count": 1,
+      "outcome": "refuted / statistical-fail"
+    },
+    {
+      "family": "F-FUNDING-CARRY",
+      "status": "refuted / shelved",
+      "hypothesis_id": "H-007",
+      "experiment_count": 4,
+      "outcome": "refuted / realism-recost-fail"
+    },
+    {
+      "family": "F-FUNDING-XS-DISPERSION",
+      "status": "testing",
+      "hypothesis_id": "H-009",
+      "experiment_count": 3,
+      "outcome": "stage2_partial / data_availability_pass"
+    },
+    {
+      "family": "F-OI-POSITIONING",
+      "status": "shelved",
+      "hypothesis_id": "H-012",
+      "experiment_count": 3,
+      "outcome": "checkpoint / statistical-fail / promotion-blocked"
+    },
+    {
+      "family": "F-ONCHAIN-FLOW",
+      "status": "shelved",
+      "hypothesis_id": "H-019",
+      "experiment_count": 1,
+      "outcome": "shelved / statistical-fail"
+    },
+    {
+      "family": "F-OPTFLOW-POSITIONING",
+      "status": "refuted",
+      "hypothesis_id": "H-015",
+      "experiment_count": 2,
+      "outcome": "refuted / statistical-fail"
+    },
+    {
+      "family": "F-PAIRS-OU",
+      "status": "refuted",
+      "hypothesis_id": "H-006",
+      "experiment_count": 3,
+      "outcome": "refuted / statistical-fail"
+    },
+    {
+      "family": "F-S5-RESIDUAL-MEANREV",
+      "status": "inconclusive",
+      "hypothesis_id": "H-004",
+      "experiment_count": 3,
+      "outcome": "shelved / data-universe artifact"
+    },
+    {
+      "family": "F-S6-TS-MOMENTUM",
+      "status": "inconclusive",
+      "hypothesis_id": "H-005",
+      "experiment_count": 4,
+      "outcome": "checkpoint / statistical-fail"
+    },
+    {
+      "family": "F-S7-BASIS-MEANREV",
+      "status": "shelved",
+      "hypothesis_id": "H-003",
+      "experiment_count": 4,
+      "outcome": "shelved / statistical-fail"
+    },
+    {
+      "family": "F-SENTIMENT",
+      "status": "refuted",
+      "hypothesis_id": "H-008",
+      "experiment_count": 4,
+      "outcome": "refuted / statistical-fail"
+    },
+    {
+      "family": "F-STABLECOIN-LIQUIDITY",
+      "status": "inconclusive",
+      "hypothesis_id": "H-017",
+      "experiment_count": 1,
+      "outcome": "inconclusive / statistical-fail"
+    },
+    {
+      "family": "F-TURTLE-REFERENCE-PARITY",
+      "status": "supported",
+      "hypothesis_id": "H-011",
+      "experiment_count": 2,
+      "outcome": "supported / user-csv-reproduced"
+    },
+    {
+      "family": "F-VOL-REGIME-OPT",
+      "status": "supported",
+      "hypothesis_id": "H-014",
+      "experiment_count": 6,
+      "outcome": "checkpoint / statistical-pass / promotion-blocked"
+    },
+    {
+      "family": "F-VRP-TIMING",
+      "status": "shelved",
+      "hypothesis_id": "H-013",
+      "experiment_count": 2,
+      "outcome": "shelved / statistical-fail"
+    },
+    {
+      "family": "F-XS-ILLIQUIDITY",
+      "status": "shelved",
+      "hypothesis_id": "H-016",
+      "experiment_count": 1,
+      "outcome": "shelved / statistical-fail"
+    },
+    {
+      "family": "F-XS-MOMENTUM",
+      "status": "refuted / shelved",
+      "hypothesis_id": "H-002",
+      "experiment_count": 4,
+      "outcome": "refuted"
+    },
+    {
+      "family": "F-XVENUE-FUNDING-SPREAD",
+      "status": "refuted",
+      "hypothesis_id": "H-021",
+      "experiment_count": 4,
+      "outcome": "refuted / statistical-fail + stress-robustness-fail / promotion-blocked"
+    },
+    {
+      "family": "F-XVENUE-LEADLAG",
+      "status": "proposed",
+      "hypothesis_id": "H-010",
+      "experiment_count": 2,
+      "outcome": "stage2_failed / data_availability_fail"
+    }
+  ]
+}
