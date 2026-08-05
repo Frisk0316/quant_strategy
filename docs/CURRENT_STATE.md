@@ -82,10 +82,17 @@ unrecoverable) and let the H-014 shadow cycle keep counting. No live enablement.
 1. User: follow the RUNBOOK to create the three-file orphan `public-status`
    worktree, enable GitHub Pages, verify the first public page, and register the
    daily refresh task. The implementation is complete but not published.
-2. User: close redundant PR #17 (fully contained in `main`).
-3. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
+2. Worklog page is LIVE at frisk0316.github.io/quant_worklog (public repo,
+   Pages on, daily 16:45 interactive task registered): work-time Gantt/week/
+   month with union dedup, code-scrubbed daily activity digest, strategy cards
+   for the vol-premium and funding-L/S candidates, and the 129-row weekly
+   rebalance table (holdings.json mapped into the page 2026-08-05). Remaining:
+   commit/merge the quant_strategy working tree; optionally re-register the
+   scheduler as S4U from an Administrator shell per RUNBOOK.
+3. User: close redundant PR #17 (fully contained in `main`).
+4. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
    without explicit per-item user authorization and required manifests.
-4. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
+5. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
    the `docs/ai/LESSONS.md` funnel diagnosis: across 38 Stage-2 artifacts the
    first failing check is `data_availability` 16 times and 11 of ~20 candidates
    reaching the power check have negative or zero Sharpe. The binding

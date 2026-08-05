@@ -3,6 +3,15 @@
 # status: active | blocked | done | shelved
 # Milestones before `current` are done; `current` is in progress; the rest pending.
 workstreams:
+  - name: Worklog page (2026-08-04)
+    status: active
+    milestones: [scope, implement, publish, schedule]
+    current: publish
+    state: "LIVE at frisk0316.github.io/quant_worklog (public repo, Pages on, daily 16:45 interactive task registered). Day-Gantt/week/month work-time views with interval-union dedup; per-day activity digest with internal codes scrubbed; strategy cards read frozen vol-premium and funding-L/S artifacts plus shadow counts (forbidden-key check); published history merges so transcript aging never erases days; May-June Claude history unrecoverable (30-day retention, now raised to 3650)."
+    next: "Codex adds the funding-L/S per-rebalance holdings log per tasks/2026-08-05-funding-ls-holdings-log-codex-tasks.md so the long/short notional table renders. User merges the quant_strategy working-tree changes into main."
+    links: [tasks/2026-08-04-private-worklog-page-codex-tasks.md, tasks/2026-08-04-private-worklog-page-claude-review.md]
+    updated: 2026-08-04
+
   - name: Public status page (2026-08-04)
     status: active
     milestones: [scope, implement, publish, schedule]

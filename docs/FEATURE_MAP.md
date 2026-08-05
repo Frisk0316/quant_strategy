@@ -212,6 +212,50 @@ implementation exists.
   keys/values, credentials, result artifacts, or deployment-readiness claims.
   Do not add a GitHub Actions workflow for this local-file publisher.
 
+## Worklog Page
+
+- User-facing behavior: publish a daily worklog to a separate PUBLIC repo
+  (user decision 2026-08-05) with day/week/month work-time views (day Gantt;
+  cross-tool interval-union totals so overlapping Claude/Codex time is never
+  double-counted), a per-day activity digest built from commit subjects with
+  internal tracking codes scrubbed, an AI-output title index, and strategy
+  cards for the two report candidates (options vol-premium: frozen validated
+  backtest + shadow-journal count progress; funding long/short: frozen
+  watch-list backtest + the generated E-063 per-rebalance holdings log).
+- Page and generator files: `worklog_page/index.html`,
+  `scripts/worklog/collect_ai_sessions.py`,
+  `scripts/worklog/build_funding_holdings.py`,
+  `scripts/worklog/snapshot_strategies.py`,
+  `scripts/worklog/publish_worklog_page.py`, and
+  `scripts/worklog/run_worklog_page_task.cmd`
+  (`scripts/worklog/snapshot_portfolio.py` is retained but no longer wired
+  into the daily task).
+- Published files: the separate public `Frisk0316/quant_worklog` repository
+  contains only the generated index.html, worklog.json, .nojekyll, and dated
+  snapshot JSON files. It never shares the `public-status` branch or publisher.
+- Data files: local Claude Code/Codex JSONL transcripts (timestamp and Codex
+  cwd only), repository git metadata, `tasks/*.md` / `docs/worklogs/*.md`
+  headings, frozen research artifacts (options vol-premium and funding
+  long/short summaries/return curves), the additive E-063
+  `results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/holdings.json`, and
+  shadow-journal counts. The holdings amounts use a clearly labeled USD 10,000
+  display notional applied to the frozen final target weights; they are not
+  fills. No transcript
+  content, signal values, internal tracking codes, DB connection, network
+  client, or Markdown body is published; a forbidden-key check guards every
+  strategies-snapshot build.
+- Tests: `tests/unit/test_worklog_page.py` includes transcript privacy canaries,
+  Codex cwd filtering, session splitting, exact 400-point downsampling, missing
+  metric handling, and site assembly; `tests/unit/test_funding_holdings_log.py`
+  covers opt-in compatibility, final weights, caps, and the holdings schema.
+- Docs to update: `docs/RUNBOOK.md`, `docs/AI_HANDOFF.md`,
+  `docs/CURRENT_STATE.md`, `config/workstreams.yaml`.
+- Do-not-touch notes: the repo, page, raw JSON, and git history are fully
+  public (user accepted the work-time/PnL exposure 2026-08-05). Keep the
+  research-replay disclaimer on the page; never host this from the
+  quant_strategy repo (its Pages slot belongs to public-status); do not treat
+  snapshot metrics as promotion or deployment evidence.
+
 ## Indicator Series / Indicator Chart
 
 - User-facing behavior: technical-indicator runs display per-symbol price plus
@@ -529,23 +573,31 @@ implementation exists.
   `scripts/run_server.py`, `src/okx_quant/api/server.py`.
 - Backtesting files: `backtesting/funding_xs_dispersion_backtest.py`,
   `backtesting/pipeline_stage3_registry.py`,
-  `scripts/run_funding_xs_dispersion_checkpoint.py`.
+  `scripts/run_funding_xs_dispersion_checkpoint.py`, and the reporting-only
+  `scripts/worklog/build_funding_holdings.py`.
 - Data / DB / artifact files: consumes `data/universe/universe_membership.parquet`,
   Binance venue-scoped `canonical_candles`, `funding_rates`, and
   `venue_instrument_specs`; generated sidecars live under
   `results/idea_batch_20260701_taxonomy_002/f_funding_xs_dispersion/`. New UI
   requests/summaries/errors use separate directories under
-  `results/h009_parameter_sweeps/` and do not modify existing artifacts.
+  `results/h009_parameter_sweeps/` and do not modify existing artifacts. The
+  additive E-063
+  `results/strategy_finding_20260726/f_funding_xs_dispersion_retry1/holdings.json`
+  records every scheduled weekly target and its
+  period return from frozen full-sample parameters. Its long and short legs
+  remain equal but can each be below 0.5 because the frozen final targets apply
+  volatility scaling, the 0.1 name cap, and point-in-time membership.
 - Config files: none changed.
 - Strategy / portfolio files: none changed; target-weight construction reuses
   `okx_quant.strategies.xs_momentum.target_weights` from the research path.
 - Tests: `tests/unit/test_funding_xs_dispersion_backtest.py`,
+  `tests/unit/test_funding_holdings_log.py`,
   `tests/unit/test_pipeline_stage3_registry.py`,
   `tests/unit/test_pipeline_checkpoint1_check.py`,
   `tests/unit/test_routes_research.py`.
-- Docs to update: `docs/EXPERIMENT_REGISTRY.md`,
-  `docs/HYPOTHESIS_LEDGER.md`, relevant Change Manifest and session/context
-  handoffs.
+- Docs to update: experiment runs update `docs/EXPERIMENT_REGISTRY.md`,
+  `docs/HYPOTHESIS_LEDGER.md`, the relevant Change Manifest, and handoffs;
+  reporting-only replay does not create an experiment or consume retry budget.
 - Do-not-touch notes: do not enable a strategy, change live funding-carry
   behavior, touch `config/strategies.yaml`, `config/risk.yaml`, risk,
   portfolio, execution, demo/shadow/live gates, or mutate existing result
