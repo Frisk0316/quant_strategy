@@ -62,6 +62,31 @@ def _scores(funding: pd.DataFrame, params: FundingXSDispersionParams) -> pd.Data
     return -trailing_funding_apr(funding, params.lookback_days)
 
 
+def _build_holdings_log(
+    target_daily: pd.DataFrame,
+    daily_returns: pd.Series,
+    rebalance: str,
+) -> list[dict[str, Any]]:
+    dates = target_daily.index
+    scheduled = dates[dates.weekday == 0] if rebalance.lower() == "weekly" else dates
+    rows = []
+    for index, date in enumerate(scheduled):
+        weights = target_daily.loc[date]
+        next_date = scheduled[index + 1] if index + 1 < len(scheduled) else None
+        period = daily_returns[daily_returns.index >= date]
+        if next_date is not None:
+            period = period[period.index < next_date]
+        rows.append(
+            {
+                "date": pd.Timestamp(date).date().isoformat(),
+                "long": {str(symbol): float(weight) for symbol, weight in weights.items() if weight > 0},
+                "short": {str(symbol): float(-weight) for symbol, weight in weights.items() if weight < 0},
+                "period_return": float((1.0 + period).prod() - 1.0),
+            }
+        )
+    return rows
+
+
 def run_funding_xs_dispersion_backtest(
     close: pd.DataFrame,
     high: pd.DataFrame,
@@ -71,6 +96,8 @@ def run_funding_xs_dispersion_backtest(
     membership: pd.DataFrame,
     params: FundingXSDispersionParams,
     market_close: pd.Series | None = None,
+    *,
+    holdings_log: bool = False,
 ) -> BacktestResult:
     del high, low, vol
     close = close.sort_index()
@@ -101,6 +128,8 @@ def run_funding_xs_dispersion_backtest(
             "long_low_funding_short_high_funding": True,
         }
     )
+    if holdings_log:
+        metrics["holdings_log"] = _build_holdings_log(target_daily, daily_returns, params.rebalance)
     return BacktestResult(equity, daily_returns, positions, target_daily, trades, metrics)
 
 
