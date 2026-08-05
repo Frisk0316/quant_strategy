@@ -15,9 +15,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Repository
 
-- PRs #19 and #20 are MERGED (2026-08-04); `origin/main` holds the H-038/E-094
-  batch, WS-C C3/C5/C10, the C3 spot reduce-only review fix, and the E-094
-  contract-error ruling. PR #17 is redundant (zero unique commits) — close it.
+- PRs #19/#20 (2026-08-04) and #21 (2026-08-05, `c887a9f`) are MERGED and PR #17
+  is CLOSED. `origin/main` holds the H-038/E-094/E-095 batch, WS-C C3/C5/C10,
+  the C3 spot reduce-only review fix, the E-094 contract-error ruling, the
+  worklog generators, and the unpublished public-status implementation. No
+  branch work is outstanding.
 - No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT stays the
   only `supported` hypothesis (E-051 + E-052 double pass); promotion blocked
   per R7.2 pending >=8 valid shadow journal weeks plus reviews.
@@ -43,9 +45,11 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 
 ## Execution / testnet
 
-- ADR-0018 exception: Deribit testnet adapter is signal-driven (testnet only,
-  no live gate claimed). Binance Spot/USD-M Demo and OKX Demo smokes green on
-  trade-scoped no-withdrawal keys. Gates unchanged; H-014 live block disabled.
+- ADR-0018 exception PERMITS signal-driven Deribit execution on testnet only,
+  but it is NOT running: `h014_live.enabled` is false, `deribit_live`'s only
+  importer is `scripts/h014_live_panic.py`, and no H-014 execution task is
+  registered. Binance Spot/USD-M Demo and OKX Demo smokes green on trade-scoped
+  no-withdrawal keys. Gates unchanged; H-014 live block disabled.
 - Security hardening is complete through `c9fa77b` (fail-closed Telegram, authed
   remote binds, contained pair deletion, DSN-free job status, required Compose
   secrets, `SecretStr` credentials, isolated demo keys). Details in AI_HANDOFF.
@@ -79,20 +83,19 @@ gaps belong in `docs/KNOWN_ISSUES.md`.
 Background, always on: keep Docker/TimescaleDB up (missed collector hours are
 unrecoverable) and let the H-014 shadow cycle keep counting. No live enablement.
 
-1. User: follow the RUNBOOK to create the three-file orphan `public-status`
-   worktree, enable GitHub Pages, verify the first public page, and register the
-   daily refresh task. The implementation is complete but not published.
+1. User: follow `docs/RUNBOOK.md` §Public Research Status Page to create the
+   three-file orphan `public-status` worktree, enable GitHub Pages, verify the
+   first public page, and register the daily refresh task. Implementation is
+   complete but unpublished; `quant_strategy` is PUBLIC, so Pages is free.
 2. Worklog page is LIVE at frisk0316.github.io/quant_worklog (public repo,
    Pages on, daily 16:45 interactive task registered): work-time Gantt/week/
    month with union dedup, code-scrubbed daily activity digest, strategy cards
    for the vol-premium and funding-L/S candidates, and the 129-row weekly
-   rebalance table (holdings.json mapped into the page 2026-08-05). Remaining:
-   commit/merge the quant_strategy working tree; optionally re-register the
-   scheduler as S4U from an Administrator shell per RUNBOOK.
-3. User: close redundant PR #17 (fully contained in `main`).
-4. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
+   rebalance table (holdings.json mapped into the page 2026-08-05). Optional:
+   re-register the scheduler as S4U from an Administrator shell per RUNBOOK.
+3. WS-C C1/C2/C4/C6/C7/C8/C9/C11 and F2 remain ungated. Do not implement them
    without explicit per-item user authorization and required manifests.
-5. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
+4. ADR-0016 remains deferred by user decision 2026-08-04. I68 plus
    the `docs/ai/LESSONS.md` funnel diagnosis: across 38 Stage-2 artifacts the
    first failing check is `data_availability` 16 times and 11 of ~20 candidates
    reaching the power check have negative or zero Sharpe. The binding

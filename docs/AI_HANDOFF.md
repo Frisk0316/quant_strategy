@@ -23,12 +23,12 @@ status publication and the H-014 shadow/parity path remain separate work.
 
 ## Branch and working tree
 
-- The pushed task baseline is `3e7d26f`; H-038/E-094 and WS-C C3/C5/C10 are
-  local and unpushed, alongside the preserved public-status handoff/state
-  edits. The audit's
-  ungated work is fully landed: F1 + WS-A A1-A5 + B1 (`181f82b`), A6
-  (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the two research/
-  probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
+- PR #21 merged `feature/deribit-moneyness-hypotheses` into `main` at `c887a9f`
+  (2026-08-05), so H-038/E-094/E-095, WS-C C3/C5/C10, the worklog generators,
+  and the public-status implementation are all on `origin/main`. Verified
+  in-main: the audit's ungated work is fully landed — F1 + WS-A A1-A5 + B1
+  (`181f82b`), A6 (`8dd88ab`), B2-B5 (`081451b`, completed by `c9fa77b` for the
+  two research/probe DSNs outside Codex's ownership), and E1-E2 (`5bf2c42`).
 - Current branch: `feature/deribit-moneyness-hypotheses`. Registration is
   `4c84a18`; dated E-025 regeneration is `094742e`; ordered H-024/H-025/H-027/
   H-026 outcome commits are `8f053bb`, `0f572dd`, `084df47`, and `5ac02a8`.
@@ -103,13 +103,13 @@ status publication and the H-014 shadow/parity path remain separate work.
   binds fail closed without an API key; standalone destructive routers share
   auth; job status no longer carries DSNs and the OHLCV rotation child consumes
   them from `DATABASE_URL`; Compose is loopback-bound with required secrets;
-  and the OKX smoke reads only `OKX_DEMO_*`. Targeted safety
+  and the OKX smoke reads only `OKX_DEMO_*`. WS-A A6 and WS-B B2-B5 are also
+  landed and in `main` (see "Branch and working tree"). Targeted safety
   tests and Compose fail/pass validation are green. Claude reviewed and
   APPROVED the batch (`tasks/2026-08-03-security-batch-claude-review.md`); it
   is committed and pushed at `181f82b`. The review caught and Codex closed one
   regression (the rotation child needed a `DATABASE_URL` fallback once `--dsn`
-  left argv). WS-A A6 and WS-B B2-B5
-  remain separate follow-ups; WS-C/F2 remain authorization-gated.
+  left argv). WS-C's remaining items and F2 remain authorization-gated.
 - P0 hardening: artifact-ID containment and venue fail-closed behavior remain
   closed. The accepted finite-positive `ct_val <=1e7` rule now fails closed at
   DB/registry/caller-spec boundaries, and rejected fills leave ledger state
@@ -357,22 +357,34 @@ root cause was pagination, not an archive revision. All 17 new external
 datasets (FRED, COT, Cboe, six xvenue IV) are DB-verified; the H-039 hourly
 collector and the Sunday worklog generator are registered scheduled tasks.
 Keep Docker Desktop + TimescaleDB up or collector hours are permanently lost.
-Remaining user decisions: (a) authorize H-033/H-036 Stage-2 reruns and rule on
-research-only Yahoo `GC=F` as the H-036 gold proxy; (b) H-038 Stage-2 go/no-go;
-(c) merge decision for `feature/deribit-moneyness-hypotheses`. No H-031/H-035
-rerun is possible (Deribit first-20 history gap persists for pre-2024 ranges).
+All three then-pending user decisions are now RESOLVED: (a) H-033/H-036 need no
+action, closed by H-045/H-046; (b) H-038 was authorized and is terminal at
+E-095; (c) `feature/deribit-moneyness-hypotheses` merged via PR #21 (`c887a9f`).
+No H-031/H-035 rerun is possible (Deribit first-20 history gap persists for
+pre-2024 ranges).
 
-In parallel, Claude re-reviews the ADR-0017 H-014 review-fix wave and its
-honest-blocked differential-validation declaration. Continue the independent
-H-014 shadow cycle; do not enable the live block, register a live scheduler, or
+CLOSED 2026-08-05: the ADR-0017 H-014 review-fix wave re-review is DONE — the
+second round was recorded clean (all 10 findings addressed) in
+`tasks/2026-07-28-h014-live-execution-claude-review.md`, and the later
+ADR-0018 delta in `659a930` was reviewed 2026-08-05 as strictly narrowing
+(`LiveConfig.__post_init__` plus the private client's hard-pinned
+`test.deribit.com` base URL reject `enabled` + non-test before any client is
+constructed). Verified live state: `h014_live.enabled` is false, the only
+importer of `deribit_live` is `scripts/h014_live_panic.py`, and no H-014
+execution task is registered — Phase 2 has NOT occurred and there is nothing
+to give a go/no-go on. Phase 2 needs, in order: a trade-scoped no-withdrawal
+Deribit testnet key from the user, a Codex-built runner with real Phase 1
+outputs, then an explicit Claude go/no-go. Continue the independent H-014
+shadow cycle; do not enable the live block, register a live scheduler, or
 perform an authenticated order test before the remaining gate sequence and
 separate user capital approval.
 
 Also open (2026-08-03): a two-round whole-repo optimization audit produced
 `tasks/2026-08-03-project-optimization-codex-plan.md` (11 areas, 24 agents, all
 findings adversarially verified; Codex-ready). F1, WS-A's A1-A5 Codex task, and
-B1 were committed and pushed at `181f82b`. Remaining audit scope is
-WS-A A6, WS-B B2-B5, WS-D/E/F3-F8, and the authorization-gated work. WS-C
+B1 were committed and pushed at `181f82b`. WS-A A6, WS-B B2-B5, and WS-E E1-E2
+have since landed too, so the remaining audit scope is WS-D, WS-E's unlanded
+items, F3-F8, and the authorization-gated work. WS-C
 trading-safety and F2 (rate limiter) touch
 execution/risk/portfolio and each need explicit per-item authorization + a
 Change Manifest before Codex acts. Round 2 cleared five previously unaudited
@@ -697,12 +709,14 @@ recorded 2026-07-12" in `tasks/2026-07-12-project-diagnosis-followup-tasks.md`.
 
 ## Open decisions
 
-- Human review/merge decision for the separate PR #9 follow-up remains pending.
-  ADR-0001 local-task exception is approved; ADR-0006 accepted; E-038 stays
-  reserved-only; H-012 shelved; P1.4 operations decided.
+- CLOSED 2026-08-05: the PR #9 follow-up is merged — `6129f94`, `037b15f`, and
+  `d046978` are all ancestors of `origin/main`. ADR-0001 local-task exception is
+  approved; ADR-0006 accepted; E-038 stays reserved-only; H-012 shelved; P1.4
+  operations decided.
 - H-014 pre-2024 hourly-DVOL backfill and E-043 are complete. Any chain-history
   purchase or Stage-3 engine/accounting work still needs explicit human approval.
-- Claude should decide whether H-032's 0.561490 correlation with E-067 and
-  H-034's 0.494810 correlation with E-062 require durable family reassignment;
-  this task records the decisive failures but does not rewrite the
-  pre-registered family identities.
+- CLOSED 2026-07-29 (recorded in `docs/HYPOTHESIS_LEDGER.md`, re-confirmed
+  2026-08-05): Claude's I27 ASSIGN ruling reassigned H-032 to F-VRP-TIMING
+  (inheriting n_trials=4, K 0/2; F-VOL-OF-VOL dissolved) and H-034 to
+  F-XS-IDIOVOL (n_trials=0, K 0/2; F-VARIANCE-DECOMP dissolved). No family
+  decision is outstanding.

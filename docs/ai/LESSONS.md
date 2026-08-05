@@ -139,3 +139,21 @@ error to refuse before the run, per the I49 pattern.
 Rule: a task contract may only reference artifact inputs the author has
 verified exist, and thresholds it can give provenance for; anything else
 blocks registration, not the family's K budget.
+
+## 2026-08-05 Handoff re-advertised completed work as pending
+
+Trigger: a session-start status read produced three "next actions" that were
+already done — the ADR-0017 H-014 fix-wave re-review (recorded clean inside
+`tasks/2026-07-28-h014-live-execution-claude-review.md` itself, in a section
+appended below the original verdict), the H-032/H-034 family reassignment
+(ruled and written into `docs/HYPOTHESIS_LEDGER.md`), and the WS-A A6 / WS-B
+B2-B5 audit items (landed, with `AI_HANDOFF.md` contradicting itself 80 lines
+apart). Acting on them would have re-run two reviews and one ruling.
+Wrong: recording an outcome only where the work happened (the review file, the
+ledger) and leaving the request that spawned it standing in the handoff.
+Right: closing a handoff item is part of the work, not a session-end chore.
+When an outcome lands in a ledger or review file, strike the originating line
+in `docs/AI_HANDOFF.md` in the same pass and cite where the evidence now lives.
+Rule: every "next action" / "open decision" line names the artifact that will
+close it; before acting on one, check that artifact first — a still-open line
+is a claim about state, not evidence of it.
