@@ -157,3 +157,22 @@ in `docs/AI_HANDOFF.md` in the same pass and cite where the evidence now lives.
 Rule: every "next action" / "open decision" line names the artifact that will
 close it; before acting on one, check that artifact first — a still-open line
 is a claim about state, not evidence of it.
+
+## 2026-08-06 Relayed a stale pending decision to the user before verifying it
+
+Trigger: a status-summary request; the session relayed AI_HANDOFF's open
+"choose DB-backup restoration / source-revision acceptance / payload-only
+contract" decision. It had been closed four days earlier (`5920380` root-caused
+the -5 drift as pagination and landed the payload-only contract), and one of
+the three options had never existed (no DB backup was ever taken). The user
+began answering the dead question before the correction landed.
+Wrong: treating relay as weaker than action. The 2026-08-05 rule ("before
+acting on an open line, check the artifact that would close it") was on file
+and was skipped because the line was only being reported - but the user acts
+on reported state immediately, so relaying IS acting.
+Right: same-session repair - DATA_FLOW/workstreams/CHANGELOG reconciled with a
+dated correction, and the wrong root cause ("upstream archive revisions") that
+had stood in CHANGELOG_AI since 2026-07-30 was corrected rather than rewritten.
+Rule: any "open decision" or "current state" line must be verified against its
+closing artifact (git log, DB, review file) before it reaches the user, and an
+options list presented for decision may only contain options that exist.

@@ -13,13 +13,13 @@ workstreams:
     updated: 2026-08-04
 
   - name: Public status page (2026-08-04)
-    status: active
+    status: done
     milestones: [scope, implement, publish, schedule]
-    current: publish
-    state: "Orphan branch is PUSHED and correct: origin/public-status (329a5d7) holds exactly .nojekyll, index.html, status.json. Pages is NOT serving yet - https://frisk0316.github.io/quant_strategy/ returned HTTP 404 on 2026-08-05 while the quant_worklog control returned 200. Generator, page, daily wrapper, and leak-canary tests are implemented; inputs are local-file-only and output excludes equity curves, strategy parameters, and signal keys/values."
-    next: "User sets Settings > Pages to Deploy from a branch = public-status + / (root) (no workflow), re-checks the URL after the build, then registers quant_public_status_daily per docs/RUNBOOK.md."
+    current: schedule
+    state: "LIVE: Pages serves origin/public-status, and quant_public_status_daily (16:30, S4U/Limited, battery-safe) is registered; its first run pushed 8f4a7ca with exactly the three approved files. Publication boundary intact; inputs local-file-only; leak-canary tests in place."
+    next: "none - stream complete. Spot-check the page occasionally; a powered-off host just misses that day's refresh."
     links: [tasks/2026-08-04-public-status-page-codex-tasks.md]
-    updated: 2026-08-05
+    updated: 2026-08-06
 
   - name: Whole-repo optimization audit (2026-08-03)
     status: active
@@ -71,7 +71,7 @@ workstreams:
     milestones: [diagnose, draft_specs, user_review, checkpoint1_impl, ingestion_impl, orchestrator_spec_hardened, orchestrator_impl, first_batch_review, improvement_p1_p8, real_data_runs, p9_membership_rebuild, first_stage1_spec, first_stage3_checkpoint, checkpoint_review, slate_stage2_runners, full_round_contract]
     current: full_round_contract
     state: "ADR-0016 slice 1 and H-030..H-037 remain closed at Stage 2 with no complete round. H-038/E-095 is terminal for F-S5 at K 2/2: the authorized 0.95 data gate passed 17,271/17,272 PIT member-days, actual positions measured breadth 5.743875 over 898 days, and distinctness failed closed because E-014 has no dated return series. Cost/power were not evaluated; n_trials remains 72."
-    next: "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68; fix future candidate inputs before building more pipeline and do not chase gates."
+    next: "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68. The Candidate Admission Form was exercised 2026-08-06 on two data-first candidates (VIX term structure, cross-asset COT); both closed at B1 without spending a spec, runner, H-number, trial, or K. Highest-leverage next input: the OKX 2020+ raw-to-canonical promotion decision (crypto overlap 898 to ~2,400 days)."
     links: [docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md, docs/change_manifests/2026-07-27-genai-strategy-finding-pipeline.md, docs/superpowers/specs/2026-06-30-drafted-candidate-stage3-contract.md, docs/superpowers/specs/2026-07-04-f-funding-xs-dispersion-hypothesis.md, docs/superpowers/specs/2026-07-04-f-oi-positioning-hypothesis.md, tasks/2026-07-04-f-oi-positioning-stage3-codex-plan.md, docs/change_manifests/2026-07-03-funding-xs-dispersion-stage3.md, docs/change_manifests/2026-07-03-universe-membership-timestamp-precision.md, tasks/2026-07-03-pipeline-improvement-tasks.md, docs/superpowers/specs/2026-07-03-statistical-power-gates.md, docs/superpowers/specs/2026-06-30-stage3-idea-ingestion-design.md, docs/superpowers/specs/2026-06-30-mechanism-taxonomy.md, docs/superpowers/specs/2026-07-26-strategy-finding-round.md, results/strategy_finding_20260726/checkpoint_review.json, docs/HYPOTHESIS_LEDGER.md, docs/EXPERIMENT_REGISTRY.md, docs/STRATEGY_HISTORY.md]
     updated: 2026-08-04
 

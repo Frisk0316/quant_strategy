@@ -13,6 +13,30 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-08-06 - F78 ops repair, DB backup, inventory, first admission packets (Claude)
+
+- Found and fixed F78: the three DB-writing scheduled wrappers never sourced
+  `.env`, so a null `storage.timescale_dsn` plus a process-only `DATABASE_URL`
+  bridge made every run fail 2026-08-03→08-06 with only `Last Result 1`
+  recorded. 65 forward-only xvenue hours are permanently lost; the ADR-0011
+  shadow journal stalled at 08-03 (second stall). Fixed by
+  `scripts/_load_dotenv.cmd` with 5 tests; xvenue/liq re-verified to Last
+  Result 0 through Task Scheduler.
+- First-ever DB backup: `scripts/backup_db.ps1` (weekly SUN 03:00, S4U,
+  `C:\quant_backups`, keep 3, `market_klines` excluded, self-verifying via
+  `pg_restore --list`); first 11.6 GB archive verified.
+- Closed the stale optflow source-revision decision against `5920380`
+  (pagination, not archive revision) and corrected the 2026-07-30 CHANGELOG
+  root-cause claim with a dated correction.
+- Delivered `tasks/2026-08-06-data-inventory.md` (78 datasets; binding
+  constraint is the ~898-day crypto overlap) and the first two Candidate
+  Admission Form packets — both CLOSED at B1 after an authorized literature
+  search (001 contemporaneous-only evidence; 002 user data-gate + its
+  literature belongs to refuted H-044). No H-number, experiment, trial, or K.
+- Public-status page went live and scheduled (first push `8f4a7ca`). PR #22
+  opened with the seven session commits. No gate, verdict, or `results/**`
+  change by this session.
+
 ## 2026-08-05 - State reconciliation, input-quality review, E-043 ruling (Claude)
 
 - Closed three handoff items that were re-advertising completed work: the

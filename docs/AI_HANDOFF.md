@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -334,6 +334,21 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
   healthy server is explicitly provided.
 
 ## Next steps
+
+New (2026-08-06): F78 root-caused and fixed — the three DB-writing scheduled
+wrappers never sourced `.env`, so `DATABASE_URL` was absent and every run
+2026-08-03→08-06 failed with only `Last Result 1` recorded. 65 xvenue hours
+are permanently lost and the shadow journal stalled at 08-03 again.
+`scripts/_load_dotenv.cmd` + 5 tests landed; xvenue/liq re-verified Last
+Result 0 via Task Scheduler; confirm the 16:10 shadow run writes 2026-08-06.
+Weekly DB backup registered (`quant_db_backup_weekly`, SUN 03:00, S4U,
+`C:\quant_backups`, `market_klines` excluded; first 11.6 GB archive verified).
+Data inventory + the first two admission packets delivered and CLOSED (001 no
+predictive literature; 002 user data-gate + its literature belongs to refuted
+H-044). Public-status page live and scheduled. PR #22 holds all seven
+commits. Next: merge PR #22; decide OKX 2020+ raw→canonical promotion
+(crypto overlap 898→~2,400 days); supply the Deribit testnet key; decide the
+Cboe/COT/FRED recurring ingest schedule.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
