@@ -313,6 +313,16 @@ over time.
   config/source update.
 - Monitoring modules exist, but this map does not prove production alert coverage.
   Treat Telegram/metrics deployment readiness as a separate operational check.
+- No scheduled task raises an alert when it fails. Between 2026-08-03 and
+  2026-08-06 `quant_xvenue_options_iv`, `quant_liq_okx_ingest`, and
+  `quant_h014_shadow_daily` failed every run on a missing `DATABASE_URL` (F78,
+  fixed by `scripts/_load_dotenv.cmd`) while Task Scheduler recorded only
+  `Last Result 1`. 65 hours of forward-only H-039 `xvenue_opt_iv_*` observations
+  and the matching `liq_okx_*` window are permanently lost, and the ADR-0011
+  shadow journal stalled at 2026-08-03 for the second time. The fix stops this
+  cause; it does not add detection, so the next unrelated stall is equally
+  silent. Any claim about H-039's ~270-observation clock or the >=8-week shadow
+  count must be read off the data, not off the schedule existing.
 - Artifact identity is single-sourced for most Stage-2 evidence. Of the 35
   artifacts whose path `docs/EXPERIMENT_REGISTRY.md` names, only 4 carry an
   `experiment_id` field; the remaining 31 can be identified only by the
