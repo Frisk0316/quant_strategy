@@ -13,6 +13,33 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-08-06 - TimescaleDB columnstore compression, 78 GB to 33 GB (Claude)
+
+- Traced "repo is 1.8 GB but the dump is 11.6 GB" to the obvious answer with a
+  non-obvious tail: the data lives in the `docker_timescale-data` volume inside
+  WSL2, and two of the seven hypertables — `market_klines` (51 GB) and
+  `external_observations` (11 GB) — had compression disabled while the three
+  candle hypertables already ran it at a measured 5.2x/7.8x/6.1x.
+- Enabled columnstore on both (`segmentby (instrument_id, bar)` and
+  `(dataset_id)`, `compress_after 30 days` copied from the existing policies)
+  and backfilled: `market_klines` 51 -> 10.1 GB in 10m10s, `external_observations`
+  11 -> 4.8 GB in 1m23s. Trial chunk measured first: 532 MB -> 109 MB, 4.9x.
+  DB 78 -> 33 GB, volume 84.8 -> 36.5 GB, 366/535 chunks compressed.
+- Dropped `idx_market_klines_lookup`, `idx_canonical_candles_lookup` and
+  `idx_external_observations_lookup` — each a `(..., ts DESC)` restatement of an
+  existing PK/unique key that a btree already serves by backward scan.
+- `raw_payload` was left alone. It is ~16 GB of literal duplication of the typed
+  OHLCV columns, but it is the provenance record guarded by
+  `test_source_provenance_validation.py`, and compression made it cheap. Storage
+  layout only: no PnL/fee/funding/sizing/fill/gate semantics moved, no manifest.
+- `scripts/backup_db.ps1` now dumps byte-complete (19.2 GB, keep 2, MinFreeGB
+  45); the `market_klines` exclusion had traded a re-ingest for a saving that
+  compression already delivered. Verified with `pg_restore --list`.
+- The host `ext4.vhdx` did not shrink and four `fstrim` routes failed; recorded
+  in KNOWN_ISSUES with the export/import fix. Windows free space ended the
+  session 6.7 GB lower than it started (the larger dump), so the 45 GB is
+  future headroom rather than disk returned today.
+
 ## 2026-08-06 - Recurring external ingest: schedule nothing (Claude, user ruling)
 
 - Closed the standing "decide the recurring weekly/daily incremental ingest

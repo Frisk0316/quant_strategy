@@ -28,30 +28,30 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 - F78 incident (FIXED via `scripts/_load_dotenv.cmd`): the three DB-writing
   scheduled tasks failed every run 2026-08-03→08-06 on a missing process
-  `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` observations permanently lost;
-  shadow journal stalled at 2026-08-03 (second stall). xvenue/liq verified Last
-  Result 0. No task-failure alerting exists (KNOWN_ISSUES).
+  `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` obs permanently lost; shadow
+  journal stalled at 2026-08-03 (second stall). xvenue/liq verified Last Result
+  0. No task-failure alerting (KNOWN_ISSUES).
 - Weekly backup EXISTS: `quant_db_backup_weekly` SUN 03:00, S4U/Limited,
-  battery-safe → `C:\quant_backups`, keep 3, `market_klines` excluded. First
-  archive 11.6 GB verified (38 external_observations chunks, 0 market_klines).
+  battery-safe → `C:\quant_backups`, keep 2, no exclusions, 19.2 GB verified
+  (84+38+366 chunks). Open: re-exclude `market_klines` for ~10 GB of C: back?
+- Compression enabled 2026-08-06 (`tasks/2026-08-06-db-compression-handoff.md`):
+  `market_klines` 51 → 10.1 GB, `external_observations` 11 → 4.8 GB, DB 78 →
+  33 GB, 366/535 chunks, 30-day policies, 3 duplicate indexes dropped, counts
+  unchanged. Host `ext4.vhdx` did NOT shrink (KNOWN_ISSUES).
 - Canonical 30-symbol 1m 2024–2026 candles + funding unchanged. 78 external
   datasets; inventory in `tasks/2026-08-06-data-inventory.md`. Binding
-  constraint is the crypto overlap (~898 daily / 128 weekly obs), not external
-  history depth. `oi_binance_hist_shib` 0 rows is upstream, not a defect —
-  Binance Vision has no native SHIBUSDT metrics (E-036); `1000SHIB` passes.
-- Recurring-ingest question CLOSED 2026-08-06 (user): schedule nothing — every
-  unconsumed family is a re-downloadable archive, topped up on demand when a
-  candidate is admitted. Only unreproducible snapshots would earn a timer:
-  `optsurf_deribit_*` (3 rows) is deferred, and the 1h `oi_binance_*` series is
-  an unbackfillable duplicate of the 5m Vision history — a removal candidate.
-- ADR-0014 BTC/ETH-only OKX source-aware 1m history is verified over
+  constraint is the crypto overlap (~898 daily / 128 weekly obs), not history
+  depth. `oi_binance_hist_shib` 0 rows is upstream (E-036, no native SHIBUSDT
+  on Binance Vision), not a defect; `1000SHIB` passes.
+- Recurring-ingest CLOSED 2026-08-06 (user): schedule nothing — unconsumed
+  families are re-downloadable archives. `optsurf_deribit_*` (3 rows) deferred;
+  1h `oi_binance_*` is an unbackfillable 5m-Vision duplicate, removal candidate.
+- ADR-0014 BTC/ETH-only OKX source-aware 1m history verified over
   `[2020-01-01, 2026-06-17)`: 3,396,960 raw/venue rows per symbol, zero gaps or
-  OHLCV mismatches, 1.0 Binance/OKX alignment, and zero resolved OKX rows. The
-  extension had already run in `b40f15b`; two 2026-08-06 reruns changed zero
-  rows. This does not extend the 30-symbol cross-section or pre-2024 funding.
-- Optflow decision CLOSED: the -5 drift was pagination (`5920380`), not an
-  archive revision; resuming 2024+ enrichment is optional and does not unblock
-  H-031/H-035 (pre-2024 tape is not served).
+  mismatches, 1.0 alignment, zero resolved OKX rows; already run in `b40f15b`,
+  two 2026-08-06 reruns changed zero rows. Does not extend the 30-symbol
+  cross-section or pre-2024 funding.
+- Optflow CLOSED: -5 drift was pagination (`5920380`); H-031/H-035 stay blocked.
 
 ## Execution / testnet
 

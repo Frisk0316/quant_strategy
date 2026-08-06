@@ -196,3 +196,22 @@ Rule: before authoring a task, verify its premise against the artifact that
 would close it, and archive the completed task file in the same pass. Never make
 a fail-closed check's PASS an acceptance criterion; require running it and
 pasting output, with FAIL meaning stop and report.
+
+## 2026-08-06 Reported a saving the user could not measure
+
+Trigger: TimescaleDB compression took the DB 78 GB to 33 GB. I led with "saved
+48 GB". The user's Windows free space went 95 GB to 88.3 GB — worse, because
+the new byte-complete backup was 7.6 GB larger than the excluded one. Docker's
+WSL2 `ext4.vhdx` only ever grows, so freed database pages never reached the
+host filesystem.
+Wrong: reporting the number the tool prints instead of the number the user can
+check, and grading the host-side reclaim step as an optional nice-to-have when
+it was the only step that converted the work into the outcome the user asked
+for. Four failed attempts at it then cost more than the reclaim was worth,
+including a hung Docker engine and two DB outages.
+Also wrong: quoting TimescaleDB's `before/after_compression_total_bytes`, which
+exclude TOAST and so under-report by ~10x on jsonb-carrying tables.
+`hypertable_detailed_size` gives table/index/toast separately.
+Rule: state the saving in the units the user measures, and identify which step
+actually delivers it before starting. If that step is blocked, say the result is
+not yet realized rather than reporting the internal number as the outcome.

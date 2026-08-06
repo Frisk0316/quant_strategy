@@ -337,6 +337,21 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 
 ## Next steps
 
+New (2026-08-06, Claude): TimescaleDB columnstore compression enabled on
+`market_klines` and `external_observations`, the two hypertables that had it
+off. DB 78 → 33 GB (`market_klines` 51 → 10.1, `external_observations`
+11 → 4.8), 366/535 chunks compressed, policies compress after 30 days, three
+prefix-duplicate btree indexes dropped. Row counts, date ranges, and query
+plans verified after three Docker restarts; no data lost. `scripts/backup_db.ps1`
+now takes a byte-complete dump (19.2 GB, keep 2, MinFreeGB 45) because the
+`market_klines` exclusion no longer pays for a restore that needs a re-ingest.
+Not a business-rule change — `raw_payload` provenance columns were deliberately
+left in place. The host `ext4.vhdx` still holds 127.5 GB for 46 GB of ext4
+content: sparse is enabled but the historical allocation needs an `fstrim` that
+Docker Desktop's mount-namespace isolation blocks (KNOWN_ISSUES). Open question
+for the user: keep the full dump or re-exclude `market_klines` (~10 GB of C:
+back). Detail: `tasks/2026-08-06-db-compression-handoff.md`.
+
 New (2026-08-06): F78 root-caused and fixed — the three DB-writing scheduled
 wrappers never sourced `.env`, so `DATABASE_URL` was absent and every run
 2026-08-03→08-06 failed with only `Last Result 1` recorded. 65 xvenue hours
