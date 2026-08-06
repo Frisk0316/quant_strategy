@@ -211,5 +211,17 @@ paper exists, that is itself the answer: the mechanism is not
 literature-supported and does not belong in an ADR-0016 round's eight
 paper-backed slots.
 
+## User rulings 2026-08-06
+
+1. **Candidate 002 weekly distinctness grain mismatch:** no data → do not
+   proceed. 002 stays BLOCKED and additionally data-gated; it may be revisited
+   only if sufficient weekly-grain evidence becomes obtainable (a weekly dated
+   reference series, or an extended canonical crypto history that raises the
+   overlap materially above 128 weeks). No weekly-grain contract amendment is
+   authorized now.
+2. **B1 literature search authorized:** Claude searches for verified-paper
+   provenance for both mechanisms. A search that finds nothing closes the
+   candidate as not literature-supported rather than lowering the B1 bar.
+
 Related: `tasks/2026-08-05-candidate-input-quality-review.md`,
 `tasks/2026-08-06-data-inventory.md`, `docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md`.
