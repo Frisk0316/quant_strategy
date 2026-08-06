@@ -347,12 +347,16 @@ Weekly DB backup registered (`quant_db_backup_weekly`, SUN 03:00, S4U,
 `C:\quant_backups`, `market_klines` excluded; first 11.6 GB archive verified).
 Data inventory + the first two admission packets delivered and CLOSED (001 no
 predictive literature; 002 user data-gate + its literature belongs to refuted
-H-044). Public-status page live and scheduled. PR #22 holds all seven
-commits. The OKX 2020+ raw→canonical promotion was already complete and is now
+H-044). Public-status page live and scheduled. PR #22 (all seven commits)
+MERGED 2026-08-06 as `7cc7eb1`. The OKX 2020+ raw→canonical promotion was
+already complete and is now
 reverified; the dated ADR-0014 amendment was Claude-reviewed and ACCEPTED
-2026-08-06 (evidence relayed from the verifier run, not re-queried). Next:
-merge PR #22; supply the Deribit testnet key; decide the Cboe/COT/FRED recurring
-ingest schedule.
+2026-08-06 (evidence relayed from the verifier run, not re-queried). The
+recurring external-ingest question is CLOSED by user ruling: schedule nothing,
+because every unconsumed family is a re-downloadable archive (Binance Vision OI
+zips re-probed 2026-08-06); only unreproducible snapshots would earn a timer and
+`optsurf_deribit_*` is deferred. Next: open a PR for `5261de0`; supply the
+Deribit testnet key.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local

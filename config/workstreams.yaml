@@ -89,7 +89,7 @@ workstreams:
     milestones: [adapter, source_validation, db_backfill, recurring_ingest]
     current: recurring_ingest
     state: "Full backfills verified in DB 2026-08-02: six COT markets (ES/10Y/DXY/gold 1,051 rows each from 2006; CME BTC 434, ETH 278) all satisfying published_at >= observed_at + 2 days, and five Cboe series (VIX 9,241 rows from 1990; 9D/3M/6M term structure; total-PCR 3,253 rows ending 2019-10-04 as documented). FRED unblock for H-033/H-036 is data-complete."
-    next: "Decide the recurring weekly/daily incremental ingest schedule; keep total-PCR archive-only. H-033/H-036 Stage-2 reruns await user authorization."
+    next: "DECIDED 2026-08-06 (user): schedule nothing. Cboe/COT/FRED and Binance Vision OI are all re-downloadable full-history archives, so they are topped up on demand when a candidate is admitted, not on a timer; total-PCR stays archive-only (discontinued 2019-10-04). Only unreproducible snapshots earn a schedule; optsurf_deribit_* is the one such gap and the user deferred it. H-033/H-036 Stage-2 reruns await user authorization."
     links: [tasks/2026-07-31-xvenue-iv-collector-cot-cboe-codex-tasks.md, docs/DATA_FLOW.md, docs/RUNBOOK.md]
     updated: 2026-08-03
 

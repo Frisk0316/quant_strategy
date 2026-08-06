@@ -14,11 +14,10 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 ## Repository
 
-- PR #22 OPEN (`claude/ops-dsn-fix-and-db-backup`, 7 commits): F78 DSN fix for
-  the three DB-writing scheduled wrappers (+5 tests), weekly TimescaleDB
-  backup, stale optflow-decision reconciliation, data inventory, and two
-  Candidate Admission Form packets with user rulings and B1 closure. `main`
-  otherwise unchanged from 2026-08-05.
+- `main` = `7cc7eb1` (PR #22 merged 2026-08-06: F78 DSN fix +5 tests, weekly DB
+  backup, optflow reconciliation, data inventory, two B1-closed admission
+  packets). `claude/ops-dsn-fix-and-db-backup` is one commit ahead (`5261de0`,
+  OKX reverification + ADR-0014 review closure) and needs a new PR.
 - No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT is the only
   `supported` hypothesis (E-051 + E-052); promotion blocked per R7.2 pending
   >=8 valid shadow journal weeks plus reviews.
@@ -27,20 +26,24 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 ## Data
 
-- F78 incident: `quant_xvenue_options_iv`, `quant_liq_okx_ingest`, and
-  `quant_h014_shadow_daily` failed every run 2026-08-03→08-06 on a missing
-  process `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` observations are
-  permanently lost; the shadow journal stalled at 2026-08-03 (second stall).
-  Fixed via `scripts/_load_dotenv.cmd`; xvenue/liq verified Last Result 0
-  through Task Scheduler. No task-failure alerting exists (KNOWN_ISSUES).
+- F78 incident (FIXED via `scripts/_load_dotenv.cmd`): the three DB-writing
+  scheduled tasks failed every run 2026-08-03→08-06 on a missing process
+  `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` observations permanently lost;
+  shadow journal stalled at 2026-08-03 (second stall). xvenue/liq verified Last
+  Result 0. No task-failure alerting exists (KNOWN_ISSUES).
 - Weekly backup EXISTS: `quant_db_backup_weekly` SUN 03:00, S4U/Limited,
   battery-safe → `C:\quant_backups`, keep 3, `market_klines` excluded. First
   archive 11.6 GB verified (38 external_observations chunks, 0 market_klines).
 - Canonical 30-symbol 1m 2024–2026 candles + funding unchanged. 78 external
   datasets; inventory in `tasks/2026-08-06-data-inventory.md`. Binding
   constraint is the crypto overlap (~898 daily / 128 weekly obs), not external
-  history depth. Defects: `oi_binance_hist_shib` 0 rows; `optsurf_deribit_*`
-  3 rows, no scheduler. Only 3 external families have recurring ingest.
+  history depth. `oi_binance_hist_shib` 0 rows is upstream, not a defect —
+  Binance Vision has no native SHIBUSDT metrics (E-036); `1000SHIB` passes.
+- Recurring-ingest question CLOSED 2026-08-06 (user): schedule nothing — every
+  unconsumed family is a re-downloadable archive, topped up on demand when a
+  candidate is admitted. Only unreproducible snapshots would earn a timer:
+  `optsurf_deribit_*` (3 rows) is deferred, and the 1h `oi_binance_*` series is
+  an unbackfillable duplicate of the 5m Vision history — a removal candidate.
 - ADR-0014 BTC/ETH-only OKX source-aware 1m history is verified over
   `[2020-01-01, 2026-06-17)`: 3,396,960 raw/venue rows per symbol, zero gaps or
   OHLCV mismatches, 1.0 Binance/OKX alignment, and zero resolved OKX rows. The
@@ -80,10 +83,8 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 
 1. TODAY 16:10: confirm `quant_h014_shadow_daily` completes (Last Result 0,
    journal gains 2026-08-06) — end-to-end proof of the F78 fix.
-2. User reviews/merges PR #22.
+2. Open a PR for `5261de0` (OKX reverification + ADR-0014 review closure).
 3. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
    → Codex runner → Claude Phase-2 go/no-go.
-4. Decide the recurring ingest schedule for Cboe/COT/FRED — the live-path
-   prerequisite for any external-data candidate.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-06-ops-fix-candidate-closure-handoff.md`.

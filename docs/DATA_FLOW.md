@@ -197,7 +197,23 @@ fail-closed before ingesting 5m `sum_open_interest_value` observations with
 `provenance = binance_vision_metrics`, stores contract-count OI in
 `fields.open_interest_contracts`, and can derive PIT-universe dataset ids as
 `oi_binance_hist_<base>` from `data/universe/universe_membership.parquet`
-starting each symbol at its first eligible day. `OKXLiquidationClient` writes raw
+starting each symbol at its first eligible day.
+
+Recurring-ingest policy (user decision, 2026-08-06): schedule a family only if
+its history is **unreproducible**. Re-downloadable archives are topped up on
+demand when a candidate is admitted, never on a timer — that covers Cboe, COT,
+FRED, Coin Metrics, Wikimedia, Fear&Greed, Deribit funding/DVOL/HV/RV30, option
+flow, both Yahoo proxies, and `oi_binance_hist_*`, whose Binance Vision daily
+metrics zips were re-checked 2026-08-06 and served 200 for 2024-03-15,
+2026-06-16, and 2026-08-04 alike. Unreproducible snapshots are the exception:
+`optsurf_deribit_*` (book summary, 3 rows, no scheduler) is a real permanent-loss
+gap that the user deliberately deferred, and `oi_binance_btc`/`oi_binance_eth`
+cannot be backfilled at all — the `fapi` `openInterestHist` endpoint returned
+only 2026-07-16 to 2026-08-06 on a 2026-08-06 probe and rejected a 2025
+`startTime` outright. Those two 1h series are a low-resolution duplicate of the
+5m Vision history that the Stage-2 OI probe actually consumes, so they are
+candidates for removal rather than for a schedule; they remain `required: true`
+in `config/external_data.yaml` and no decision to drop them has been made. `OKXLiquidationClient` writes raw
 long/short liquidation event observations from OKX public REST when available;
 notional is source-provided or computed from `sz * bkPx * contract_value` and
 raw payloads are preserved. `DeribitDVOLClient` writes `dvol_deribit_btc` /

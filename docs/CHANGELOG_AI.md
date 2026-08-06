@@ -13,6 +13,27 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-08-06 - Recurring external ingest: schedule nothing (Claude, user ruling)
+
+- Closed the standing "decide the recurring weekly/daily incremental ingest
+  schedule" item with a rule instead of a scheduler: a family earns a timer only
+  if its history is unreproducible. Cboe, COT, FRED and the rest are
+  re-downloadable archives, topped up on demand when a candidate is admitted;
+  no admitted hypothesis consumes any of them today (both 2026-08-06 packets
+  closed at B1, H-040..H-046 closed the FRED macro direction on power).
+- Measured rather than assumed the two OI families, which had been conflated:
+  Binance Vision daily metrics zips (the 5m `oi_binance_hist_*` history the
+  Stage-2 probe consumes) served 200 for 2024-03-15, 2026-06-16 and 2026-08-04,
+  so that history is fully re-downloadable. The `fapi` `openInterestHist`
+  endpoint behind the 1h `oi_binance_btc/eth` returned only 2026-07-16 to
+  2026-08-06 and rejected a 2025 `startTime`, confirming the ~30-day cap its
+  config note already claimed. Those two 1h series are an unbackfillable
+  low-resolution duplicate and are flagged as removal candidates, not scheduled.
+- `optsurf_deribit_*` (book snapshots, 3 rows) is the one genuine
+  permanent-loss gap; the user deferred it. `oi_binance_hist_shib` 0 rows was
+  reclassified from defect to upstream absence (E-036). No ingestion, schema,
+  gate, or scheduled-task change was made.
+
 ## 2026-08-06 - OKX 2020+ canonical history reverified (Codex)
 
 - Reconciled a stale task/state claim against git (`b40f15b`), the runbook, and
@@ -49,8 +70,8 @@ on current state, current goal, do-not-touch constraints, and next actions.
   search (001 contemporaneous-only evidence; 002 user data-gate + its
   literature belongs to refuted H-044). No H-number, experiment, trial, or K.
 - Public-status page went live and scheduled (first push `8f4a7ca`). PR #22
-  opened with the seven session commits. No gate, verdict, or `results/**`
-  change by this session.
+  opened with the seven session commits and MERGED the same day as `7cc7eb1`.
+  No gate, verdict, or `results/**` change by this session.
 
 ## 2026-08-05 - State reconciliation, input-quality review, E-043 ruling (Claude)
 
