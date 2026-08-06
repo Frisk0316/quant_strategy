@@ -41,6 +41,11 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   constraint is the crypto overlap (~898 daily / 128 weekly obs), not external
   history depth. Defects: `oi_binance_hist_shib` 0 rows; `optsurf_deribit_*`
   3 rows, no scheduler. Only 3 external families have recurring ingest.
+- ADR-0014 BTC/ETH-only OKX source-aware 1m history is verified over
+  `[2020-01-01, 2026-06-17)`: 3,396,960 raw/venue rows per symbol, zero gaps or
+  OHLCV mismatches, 1.0 Binance/OKX alignment, and zero resolved OKX rows. The
+  extension had already run in `b40f15b`; two 2026-08-06 reruns changed zero
+  rows. This does not extend the 30-symbol cross-section or pre-2024 funding.
 - Optflow decision CLOSED: the -5 drift was pagination (`5920380`), not an
   archive revision; resuming 2024+ enrichment is optional and does not unblock
   H-031/H-035 (pre-2024 tape is not served).
@@ -76,13 +81,9 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 1. TODAY 16:10: confirm `quant_h014_shadow_daily` completes (Last Result 0,
    journal gains 2026-08-06) — end-to-end proof of the F78 fix.
 2. User reviews/merges PR #22.
-3. AUTHORIZED 2026-08-06 (user): OKX raw 2020+ 1m → canonical promotion.
-   Codex executes `tasks/2026-08-06-okx-2020-canonical-promotion-codex-tasks.md`
-   (measure-first, additive, idempotent; BTC/ETH overlap only; H-010 stays
-   shelved — no pre-2024 OKX funding). Claude reviews the delivery.
-4. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
+3. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
    → Codex runner → Claude Phase-2 go/no-go.
-5. Decide the recurring ingest schedule for Cboe/COT/FRED — the live-path
+4. Decide the recurring ingest schedule for Cboe/COT/FRED — the live-path
    prerequisite for any external-data candidate.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-06-ops-fix-candidate-closure-handoff.md`.

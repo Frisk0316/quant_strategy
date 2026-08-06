@@ -176,3 +176,23 @@ had stood in CHANGELOG_AI since 2026-07-30 was corrected rather than rewritten.
 Rule: any "open decision" or "current state" line must be verified against its
 closing artifact (git log, DB, review file) before it reaches the user, and an
 options list presented for decision may only contain options that exist.
+
+## 2026-08-06 Authored a Codex task whose premise was already false
+
+Trigger: user authorization to promote OKX 2020+ raw 1m to canonical. The task
+file asserted the window's "current 2024-01-01 start" and sent Codex to extend
+it. `b40f15b` had already done exactly that on 2026-07-18, under a near-identical
+task file (`tasks/2026-07-18-okx-history-promotion-codex-tasks.md`) that was
+still marked `status: current`. A full Codex session returned 0 rows changed.
+Wrong: applying the "verify state before relaying it" rule only to what reaches
+the user. A task file is state reaching an executor, and the executor acts on it
+harder than the user does. One `git log -- <script>` would have caught it.
+Also wrong in the spec: `PERMITTED FILES` opened the promotion scripts and their
+tests although both already accept `--start/--end`, and "verifier PASSes" was set
+as a binary acceptance criterion even though the verifier fails closed below 95%
+coverage/alignment - had a real pre-2024 gap existed, that criterion would have
+pushed Codex to move the threshold rather than report the gap.
+Rule: before authoring a task, verify its premise against the artifact that
+would close it, and archive the completed task file in the same pass. Never make
+a fail-closed check's PASS an acceptance criterion; require running it and
+pasting output, with FAIL meaning stop and report.

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-02
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,21 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-08-06 - OKX 2020+ canonical history reverified (Codex)
+
+- Reconciled a stale task/state claim against git (`b40f15b`), the runbook, and
+  the live DB: the additive ADR-0014 BTC/ETH OKX 1m extension had already been
+  executed on 2026-07-18.
+- Pre-write measurement found 2,103,840/2,103,840 pre-2024 raw minutes per
+  symbol, zero missing minutes/gap runs, and a largest gap of zero. Two
+  identical promotion runs changed zero venue and zero resolved rows.
+- Full-range verification PASSed with 3,396,960 raw/venue rows per symbol,
+  zero mismatches, 1.0 coverage/alignment, empty gap ranges, and zero resolved
+  OKX rows. Binance canonical counts stayed 3,396,960 per affected symbol.
+- Added the dated ADR-0014 amendment and synchronized data-flow, runbook, and
+  current-state docs. No Python, schema, funding, research, result artifact,
+  strategy, gate, or deployment state changed.
 
 ## 2026-08-06 - F78 ops repair, DB backup, inventory, first admission packets (Claude)
 

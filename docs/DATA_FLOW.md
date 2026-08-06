@@ -3,7 +3,7 @@ status: current
 type: architecture
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -48,6 +48,11 @@ simultaneous-venue probes use `canonical_candles_by_source`, which combines
 resolved rows with `venue_canonical_candles` keyed by
 `(source_primary, inst_id, bar, ts)`. Raw writers dual-write both layers;
 same-source corrected/validated resolved rows take precedence in the view.
+The source-aware OKX BTC/ETH 1m layer is verified gap-free over
+`[2020-01-01, 2026-06-17)` at 3,396,960 raw/venue rows per symbol with exact
+OHLCV parity. This widens only the BTC/ETH price-history path: the 30-symbol
+cross-section remains 2024+, and no pre-2024 OKX funding is present or
+substituted.
 
 Deribit BTC/ETH inverse-perpetual 1m candles use the credential-free
 `public/get_tradingview_chart_data` endpoint through

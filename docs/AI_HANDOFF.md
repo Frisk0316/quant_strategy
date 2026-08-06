@@ -210,10 +210,12 @@ status publication and the H-014 shadow/parity path remain separate work.
 - History/data boundary: the read-only scan completed over 68 canonical and 46
   external datasets. Under separately approved ADR-0014, the existing complete
   raw OKX BTC/ETH 1m window was promoted to an additive source-aware canonical
-  layer. Each symbol has 1,293,120 rows, raw mismatches 0,
-  coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0
-  rows. The later E-057 research task is separate from that promotion: full
-  candle alignment passes, but I48 correctly rejects missing OKX funding.
+  layer. The historical extension was already executed by `b40f15b` on
+  2026-07-18 and reverified 2026-08-06: each symbol has 3,396,960 rows over
+  `[2020-01-01, 2026-06-17)`, raw mismatches 0, coverage/alignment 1.0, no raw
+  gaps, resolved OKX rows 0, and two idempotent reruns changed 0 rows. The later
+  E-057 research task is separate from that promotion: full candle alignment
+  passes, but I48 correctly rejects missing OKX funding.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -346,9 +348,11 @@ Weekly DB backup registered (`quant_db_backup_weekly`, SUN 03:00, S4U,
 Data inventory + the first two admission packets delivered and CLOSED (001 no
 predictive literature; 002 user data-gate + its literature belongs to refuted
 H-044). Public-status page live and scheduled. PR #22 holds all seven
-commits. Next: merge PR #22; decide OKX 2020+ raw→canonical promotion
-(crypto overlap 898→~2,400 days); supply the Deribit testnet key; decide the
-Cboe/COT/FRED recurring ingest schedule.
+commits. The OKX 2020+ raw→canonical promotion was already complete and is now
+reverified; the dated ADR-0014 amendment was Claude-reviewed and ACCEPTED
+2026-08-06 (evidence relayed from the verifier run, not re-queried). Next:
+merge PR #22; supply the Deribit testnet key; decide the Cboe/COT/FRED recurring
+ingest schedule.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
