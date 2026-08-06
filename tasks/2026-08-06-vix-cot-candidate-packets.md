@@ -223,5 +223,50 @@ paper-backed slots.
    provenance for both mechanisms. A search that finds nothing closes the
    candidate as not literature-supported rather than lowering the B1 bar.
 
+## B1 literature search result (2026-08-06) — both candidates CLOSED
+
+Six web searches (three per mechanism, distinct phrasings). The packets above
+are preserved as filled at admission time; this section records the disposition.
+
+### 001 — CLOSED, not literature-supported
+
+- The only crypto-specific VIX-term-structure paper found is Luo, Tsai, Yen,
+  "Volatility Transmission to Bitcoin: The Role of VIX Term Structure and
+  Crypto Options Markets" (SSRN 6233752, 2026-02): the slope factor is a
+  primary determinant of **contemporaneous** Bitcoin returns, 2021-03..2025-05.
+  A contemporaneous loading supplies zero ex-ante expected gross for a lagged
+  trading signal, which is what B1 requires.
+- Predictive evidence for the VIX term structure exists only in other asset
+  classes: Johnson, "Risk Premia and the VIX Term Structure" (JFQA 2017) —
+  slope predicts variance-swap/VIX-futures/straddle excess returns; equity
+  slope-beta cross-section alpha ~5%/yr. Translating variance-asset premia into
+  a crypto directional expected gross is an assumption, not provenance, and is
+  the same cross-domain leap that H-033/H-036 → H-045/H-046 closed on power.
+- Per ruling 2 above, 001 closes rather than lowering the bar. It does not
+  qualify for an ADR-0016 paper-backed slot.
+
+### 002 — CLOSED, doubly
+
+- Literature on COT positioning predicting bitcoin **exists but is for
+  bitcoin's own CME futures positioning**: Hung, Liu, Yang (J. Empirical
+  Finance 2021, DOI 10.1016/j.jempfin.2021.03.001) — which is exactly the
+  paper and data (`cot_cme_btc/eth`) already consumed by
+  **H-044/F-CFTC-PARTICIPANT-REGIME, REFUTED** in the E-077..E-093 batch.
+  Baur & Dimpfl, "Trading behavior in bitcoin futures: Following the smart
+  money" (J. Futures Markets 2022, DOI 10.1002/fut.22332) supports the same
+  consumed direction.
+- For the packet's actual mechanism — **cross-asset** ES/gold/USD/10Y
+  positioning composition predicting crypto — no paper with a stated economic
+  magnitude was found; the cross-asset literature is price/volatility
+  spillover (e.g. IMF WP/2023/213), not positioning-based prediction.
+- Combined with ruling 1's data gate, 002 is closed on two independent grounds.
+
+Net effect of the first form exercise: two mechanisms fully dispositioned for
+the cost of documents and six searches. Neither a spec, a runner, a Stage-2
+execution, an H-number, a family trial, nor K was spent. The search also
+surfaced that the strongest-looking COT literature belongs to a family this
+repository has already refuted — which a literature-first process would have
+had to discover after registration.
+
 Related: `tasks/2026-08-05-candidate-input-quality-review.md`,
 `tasks/2026-08-06-data-inventory.md`, `docs/ADR/0016-genai-discovery-deterministic-strategy-evaluation.md`.
