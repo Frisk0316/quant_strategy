@@ -76,10 +76,10 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 1. TODAY 16:10: confirm `quant_h014_shadow_daily` completes (Last Result 0,
    journal gains 2026-08-06) — end-to-end proof of the F78 fix.
 2. User reviews/merges PR #22.
-3. Highest-leverage candidate-space decision: promote OKX raw 2020+ 1m into
-   canonical (ADR-0014 pattern). Extends the crypto overlap ~898→~2,400 days,
-   lowers every power floor, may reopen weekly-grain candidates. Needs user
-   authorization.
+3. AUTHORIZED 2026-08-06 (user): OKX raw 2020+ 1m → canonical promotion.
+   Codex executes `tasks/2026-08-06-okx-2020-canonical-promotion-codex-tasks.md`
+   (measure-first, additive, idempotent; BTC/ETH overlap only; H-010 stays
+   shelved — no pre-2024 OKX funding). Claude reviews the delivery.
 4. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
    → Codex runner → Claude Phase-2 go/no-go.
 5. Decide the recurring ingest schedule for Cboe/COT/FRED — the live-path
