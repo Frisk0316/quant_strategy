@@ -129,8 +129,11 @@ on current state, current goal, do-not-touch constraints, and next actions.
   aggregate values and full payload.
 - A six-hour real pre-flight passed exact `value_num`/fields equality and
   retained 2,182/2,182 trade IDs. The wider historical run nevertheless exposed
-  upstream archive revisions: BTC aggregate trades ended at 12,724,092 versus
-  the pre-task 12,724,097 baseline. All workers were stopped per the task's
+  what was then read as upstream archive revisions: BTC aggregate trades ended
+  at 12,724,092 versus the pre-task 12,724,097 baseline. **Corrected 2026-08-02
+  by `5920380`: the cause was our own count-dependent pagination dropping
+  trades when a page boundary fell inside a multi-trade millisecond, not an
+  archive revision.** All workers were stopped per the task's
   immutability rule. Only 2,304 BTC and 744 ETH hours are enriched; total hourly
   row counts remain 22,403/22,402. Partial hypertable growth is 76,021,760 bytes
   (optflow raw-payload growth 72,936,371 bytes), not a completed full-run size.
