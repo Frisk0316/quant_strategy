@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-06T00:56:16.417487+00:00",
+  "generated_at": "2026-08-06T08:30:00.870593+00:00",
   "workstreams": [
     {
       "name": "Worklog page (2026-08-04)",
@@ -21,16 +21,16 @@
     },
     {
       "name": "Public status page (2026-08-04)",
-      "status": "active",
+      "status": "done",
       "milestones": [
         "scope",
         "implement",
         "publish",
         "schedule"
       ],
-      "current": "publish",
-      "state": "Orphan branch is PUSHED and correct: origin/public-status (329a5d7) holds exactly .nojekyll, index.html, status.json. Pages is NOT serving yet - https://frisk0316.github.io/quant_strategy/ returned HTTP 404 on 2026-08-05 while the quant_worklog control returned 200. Generator, page, daily wrapper, and leak-canary tests are implemented; inputs are local-file-only and output excludes equity curves, strategy parameters, and signal keys/values.",
-      "next": "User sets Settings > Pages to Deploy from a branch = public-status + / (root) (no workflow), re-checks the URL after the build, then registers quant_public_status_daily per docs/RUNBOOK.md.",
+      "current": "schedule",
+      "state": "LIVE: Pages serves origin/public-status, and quant_public_status_daily (16:30, S4U/Limited, battery-safe) is registered; its first run pushed 8f4a7ca with exactly the three approved files. Publication boundary intact; inputs local-file-only; leak-canary tests in place.",
+      "next": "none - stream complete. Spot-check the page occasionally; a powered-off host just misses that day's refresh.",
       "links": [
         "2026-08-04-public-status-page-codex-tasks.md"
       ]
@@ -157,7 +157,7 @@
       ],
       "current": "full_round_contract",
       "state": "ADR-0016 slice 1 and H-030..H-037 remain closed at Stage 2 with no complete round. H-038/E-095 is terminal for F-S5 at K 2/2: the authorized 0.95 data gate passed 17,271/17,272 PIT member-days, actual positions measured breadth 5.743875 over 898 days, and distinctness failed closed because E-014 has no dated return series. Cost/power were not evaluated; n_trials remains 72.",
-      "next": "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68; fix future candidate inputs before building more pipeline and do not chase gates.",
+      "next": "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68. The Candidate Admission Form was exercised 2026-08-06 on two data-first candidates (VIX term structure, cross-asset COT); both closed at B1 without spending a spec, runner, H-number, trial, or K. The OKX 2020+ BTC/ETH source-aware canonical extension was already present from b40f15b and reverified 2026-08-06 at 3,396,960 gap-free rows per symbol; the ADR amendment awaits Claude/user review and H-010 remains shelved because pre-2024 OKX funding is absent.",
       "links": [
         "0016-genai-discovery-deterministic-strategy-evaluation.md",
         "2026-07-27-genai-strategy-finding-pipeline.md",
@@ -211,7 +211,7 @@
       ],
       "current": "recurring_ingest",
       "state": "Full backfills verified in DB 2026-08-02: six COT markets (ES/10Y/DXY/gold 1,051 rows each from 2006; CME BTC 434, ETH 278) all satisfying published_at >= observed_at + 2 days, and five Cboe series (VIX 9,241 rows from 1990; 9D/3M/6M term structure; total-PCR 3,253 rows ending 2019-10-04 as documented). FRED unblock for H-033/H-036 is data-complete.",
-      "next": "Decide the recurring weekly/daily incremental ingest schedule; keep total-PCR archive-only. H-033/H-036 Stage-2 reruns await user authorization.",
+      "next": "DECIDED 2026-08-06 (user): schedule nothing. Cboe/COT/FRED and Binance Vision OI are all re-downloadable full-history archives, so they are topped up on demand when a candidate is admitted, not on a timer; total-PCR stays archive-only (discontinued 2019-10-04). Only unreproducible snapshots earn a schedule; optsurf_deribit_* is the one such gap and the user deferred it. H-033/H-036 Stage-2 reruns await user authorization.",
       "links": [
         "2026-07-31-xvenue-iv-collector-cot-cboe-codex-tasks.md",
         "DATA_FLOW.md",
@@ -236,8 +236,8 @@
         "live_layer_review"
       ],
       "current": "live_layer_review",
-      "state": "D1-D5 and R1-R5 are accepted with DB evidence. Native hv_deribit_* remains limited to Deribit's rolling response. New option-flow ingests retain the complete inverse tape, but the 2024-01+ historical enrichment is STOPPED/PARTIAL: 2,304 BTC hours and 744 ETH hours are enriched, hourly row counts remain 22,403/22,402, and the current archive changed BTC aggregate trades from 12,724,097 to 12,724,092. H-014/F-VOL-REGIME-OPT remains supported on E-051/E-052; ADR-0017's inactive live layer remains unactivated and portable-validation blocked. ADR-0018 Phase 1 now hard-locks private execution to testnet and its mocked lifecycle passes, but no credential or authenticated call occurred. No Stage 3, retune, activation, scheduler, or settings mode flip occurred.",
-      "next": "Claude/user chooses DB-backup restoration, explicit source-revision acceptance, or a separately approved payload-only enrichment contract before any option-flow backfill resume. H-031/H-035 remain blocked. Separately, the user supplies trade-scoped Deribit testnet credentials and Claude reviews the real Phase 1 output before any h014_live enable change; continue ADR-0011 shadow evidence and do not register a scheduler or claim deployment readiness.",
+      "state": "D1-D5 and R1-R5 are accepted with DB evidence. Native hv_deribit_* remains limited to Deribit's rolling response. New option-flow ingests retain the complete inverse tape, but the 2024-01+ historical enrichment is STOPPED/PARTIAL: 2,304 BTC hours and 744 ETH hours are enriched, hourly row counts remain 22,403/22,402, and BTC aggregate trades read 12,724,092 versus the 12,724,097 pre-task baseline (count-dependent pagination defect, root-caused and fixed in 5920380). H-014/F-VOL-REGIME-OPT remains supported on E-051/E-052; ADR-0017's inactive live layer remains unactivated and portable-validation blocked. ADR-0018 Phase 1 now hard-locks private execution to testnet and its mocked lifecycle passes, but no credential or authenticated call occurred. No Stage 3, retune, activation, scheduler, or settings mode flip occurred.",
+      "next": "Option-flow decision CLOSED 2026-08-06: the -5 drift was root-caused in 5920380 as count-dependent pagination, not an archive revision, and the payload-only upsert contract already landed there, so no restoration/source-revision ruling is pending. Resuming the partial 2024-01+ enrichment is optional and does not unblock H-031/H-035 (pre-2024 tape is not served). Separately, the user supplies trade-scoped Deribit testnet credentials and Claude reviews the real Phase 1 output before any h014_live enable change; continue ADR-0011 shadow evidence and do not register a scheduler or claim deployment readiness.",
       "links": [
         "deribit_data_strategy_research.md",
         "2026-07-11-deribit-data-ingestion-tasks.md",
@@ -383,17 +383,17 @@
   ],
   "shadow_h014": {
     "available": true,
-    "journal_weeks": 3.0,
+    "journal_weeks": 3.4285714285714284,
     "distinct_journal_weeks": 3,
     "minimum_weeks": 8,
     "eight_week_journal_met": false,
-    "generated_at": "2026-08-03T08:10:56.825610Z",
+    "generated_at": "2026-08-06T08:10:59.494901Z",
     "event_counts": {
-      "total": 10,
+      "total": 12,
       "by_status": {
-        "not_rich": 10
+        "not_rich": 12
       },
-      "last_event_date": "2026-08-03"
+      "last_event_date": "2026-08-06"
     }
   },
   "research_funnel": [
