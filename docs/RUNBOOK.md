@@ -1286,6 +1286,71 @@ Activation remains a later, separate approval in this exact order:
 5. Only then review an `enabled` flip and any scheduler registration as their
    own deployment change.
 
+## Database Backup (weekly)
+
+`scripts/backup_db.ps1` writes a compressed `pg_dump -Fc` archive to
+`C:\quant_backups\quant-<yyyyMMdd-HHmmss>.dump` — deliberately **outside** the
+repository, so a dump can never be committed. It keeps the newest 3 and deletes
+the rest, aborts when C: has under 20 GB free, and runs `pg_restore --list`
+before pruning so an unreadable archive is discarded instead of replacing a good
+one. Measured 2026-08-06: 11.6 GB for a 78 GB database, about 36 minutes.
+
+`market_klines` chunk data is excluded: it is 51 of the 78 GB and is
+re-downloadable from Binance/OKX. Everything irreplaceable —
+`external_observations`, funding, registries, `backtest_artifact_rows` — is
+included. Verify an archive's contents with:
+
+```powershell
+$l = & "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" --list <dump>
+($l | Select-String "TABLE DATA" | Select-String "_hyper_11_").Count   # external_observations chunks, expect >0
+($l | Select-String "TABLE DATA" | Select-String "_hyper_9_").Count    # market_klines, expect 0
+```
+
+Restore into a **new** database, never over the live one:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" -h 127.0.0.1 -U quant -d <target> --clean --if-exists <dump>
+```
+
+pg_dump warns about circular foreign keys on the TimescaleDB catalog tables
+(`hypertable`, `chunk`, `continuous_agg`). That is expected for a Timescale
+database and does not indicate a bad archive.
+
+Registration (`/RU ... /NP` needs an Administrator PowerShell; without it the
+task registers as Interactive and only runs while the user is logged on):
+
+```powershell
+schtasks /Create /TN quant_db_backup_weekly /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\quant_strategy\scripts\backup_db.ps1" /SC WEEKLY /D SUN /ST 03:00 /RU "MAXWEL_FRIEDMAN\woody" /NP /RL LIMITED /F
+$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 6)
+Set-ScheduledTask -TaskName quant_db_backup_weekly -Settings $s
+```
+
+## Scheduled tasks that write to the database
+
+`config/settings.yaml` keeps `storage.timescale_dsn: null` and `load_config()`
+bridges the DSN only from a process-level `DATABASE_URL`, which exists solely in
+`.env`. A scheduled wrapper therefore **must** call `scripts\_load_dotenv.cmd`
+after its `cd /d` and before its interpreter, or every DB write fails with
+`storage.timescale_dsn is not set` while Task Scheduler records only
+`Last Result 1`. That is F78: it silently destroyed 65 hours of forward-only
+H-039 data between 2026-08-03 and 2026-08-06.
+
+`tests/unit/test_task_wrapper_dsn.py` enforces the call for
+`run_xvenue_options_snapshot_task.cmd`, `run_liq_ingest_task.cmd`, and
+`run_h014_shadow_task.cmd`. The worklog and public-status wrappers are
+intentionally excluded — they are local-file-only by design and must not
+receive a DSN. After any scheduled-task change, confirm the fix from the data,
+not from the schedule existing:
+
+```powershell
+schtasks /Run /TN <task>
+Get-ScheduledTaskInfo -TaskName <task> | Format-List LastRunTime,LastTaskResult
+docker exec docker-timescaledb-1 psql -U quant -d quant -tAc "select dataset_id, count(*), max(observed_at) from external_observations where dataset_id like '<prefix>%' group by 1"
+```
+
+No alerting exists for a failed task. Audit the logs and the `max(observed_at)`
+values periodically; see `docs/KNOWN_ISSUES.md`.
+
 ## Scheduled External Ingest (OKX liquidation)
 
 OKX's public liquidation-orders REST endpoint only retains a few hours of
