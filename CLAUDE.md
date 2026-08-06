@@ -43,6 +43,10 @@ the linked files — never inline it here.
 3. Any step needing >300 lines of reading, >5 search rounds, or edits to
    >5 files with a known pattern: dispatch a subagent per
    `docs/ai/MODEL_DISPATCH.md`. The main conversation does not bulk-read.
+4. Relaying state is acting on it: verify any "open decision / current
+   state" line against its closing artifact (git log, DB, review file)
+   before presenting it; label statements verified vs relayed; option
+   lists may only contain options that exist. `JUDGMENT_RUBRICS.md` §6.
 
 ## Task routing table
 

@@ -3,7 +3,7 @@ status: current
 type: reference
 owner: ai
 created: 2026-07-03
-last_reviewed: 2026-07-03
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -128,3 +128,63 @@ approach counts against the 2-round retry budget.
   paste the tail, then have the verifier read the files back.
 - **Wrong call:** treating `make backtest-smoke` printing a banner with
   zero cases executed as proof the backtest path works.
+
+## 6. Relayed state is an action — verify before presenting
+
+The user acts on reported state immediately, so relaying an unverified line
+IS acting on it (user-adopted rule, 2026-08-06; LESSONS 2026-08-05/06).
+
+- [ ] Before any "open decision / current state / next action" line reaches
+      the user, check the artifact that would close it: git log, DB query,
+      review file, ledger row — not the handoff doc that carries the line.
+- [ ] An options list presented for a decision contains ONLY options
+      verified to exist.
+- [ ] Every state statement is labeled: verified (name the closing artifact
+      checked) or relayed (name the doc it came from). Bare statements are
+      not presented.
+
+- **Right call:** the 2026-08-05 reconciliation — three "next actions" were
+  checked against the review file / ledger / `origin/main` ancestry and
+  found already done before anyone acted on them.
+- **Wrong call:** 2026-08-06 — relaying AI_HANDOFF's optflow three-option
+  decision closed four days earlier by `5920380`; one option ("restore the
+  DB backup") had never existed. The user began answering a dead question.
+
+## 7. Compute before judging
+
+If a decision input is computable from repo code or data, compute it before
+forming the judgment. A model not on the judgment path cannot err on it.
+
+- [ ] Power floor, gross/cost ratio, coverage, row counts, overlap windows:
+      computed and pasted BEFORE the recommendation that uses them.
+- [ ] Power floor command:
+      `python -c "from backtesting.pipeline_power_screen import min_detectable_sharpe as f; print(f(breadth=<b>, n_obs=<n>, n_trials=<t>, periods_per_year=<p>))"`
+- [ ] A judgment that contradicts the computed number is wrong until the
+      number itself is shown to be wrong.
+
+- **Right call:** the 2026-08-06 admission packets computed the 1.05 / 1.06
+  net-Sharpe floors before any spec or runner existed — two candidates
+  closed for the cost of a document.
+- **Wrong call:** E-057 and E-069 built full runners first and discovered
+  gross/cost 0.1704 and 0.0190 only in the frozen terminal artifact.
+
+## 8. Separate deciding from executing
+
+The most expensive in-the-moment errors come from deciding mid-execution.
+
+- [ ] Before deploying anything long-lived (scheduled task, collector,
+      wrapper), enumerate its environmental assumptions — credentials/DSN,
+      network, disk, privileges, power/battery, calendar — and verify each
+      in the TARGET environment, not the interactive shell.
+- [ ] An assumption that cannot be verified is a user decision, not a
+      default silently taken.
+- [ ] Discovering an unstated decision mid-execution → stop and surface it;
+      do not decide inline and keep going.
+
+- **Right call:** 2026-08-06 — the H-014 shadow cycle was NOT run manually
+  to "verify the fix" because an off-schedule journal entry would
+  contaminate the ≥8-week clock; the decision was surfaced and the 16:10
+  scheduled run left as the real test.
+- **Wrong call:** F78 — three DB-writing wrappers were deployed without
+  anyone asking "does the scheduled environment have the DSN?"; the
+  unasked question cost 65 unrecoverable hours.
