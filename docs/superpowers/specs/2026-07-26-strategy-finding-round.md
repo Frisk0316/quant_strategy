@@ -1,3 +1,13 @@
+---
+status: current
+type: spec
+owner: codex
+created: 2026-07-26
+last_reviewed: 2026-07-26
+expires: none
+superseded_by: null
+---
+
 # 2026-07-26 Strategy-Finding Round — Pre-registration
 
 Status: current for this research run only  

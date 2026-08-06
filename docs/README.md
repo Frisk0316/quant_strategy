@@ -3,7 +3,7 @@ status: current
 type: governance
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -68,6 +68,22 @@ Enforced by `scripts/docs/check_doc_impact.py` via `make docs-impact`
 | `docs/COMPRESSION_RULES.md` | What to preserve vs. compress. |
 | `docs/CONTEXT_PACKS/` | Curated reading lists per feature/area. |
 | `tasks/CONTEXT_HANDOFF_TEMPLATE.md` | End-of-session context handoff. |
+
+## AI Operating Protocols (`docs/ai/`)
+
+Read on demand from the `CLAUDE.md` router, except where `CLAUDE.md`'s
+session-start steps bind them (e.g. the verify-before-relay rule is
+`docs/ai/JUDGMENT_RUBRICS.md` §6).
+
+| Document | Purpose |
+|---|---|
+| `docs/ai/JUDGMENT_RUBRICS.md` | Judgment converted to checklists: escalation, done-ness, stop-and-ask, wrong-direction signals, quality floor, verify-before-relay, compute-before-judging, decide-vs-execute. |
+| `docs/ai/MODEL_DISPATCH.md` | Subagent model/effort choice, escalation ladder, report contract, fresh-agent verification. |
+| `docs/ai/TASK_TEMPLATES.md` | Fill-in dispatch prompts: search, implementation, refactor, research, review. |
+| `docs/ai/MAINTENANCE.md` | Which files may be edited freely, where lessons go, when to compact. |
+| `docs/ai/LESSONS.md` | Dated process lessons with trigger/wrong/right/rule. |
+| `docs/ai/HARNESS_DIAGNOSIS.md` | Why the CLAUDE.md context caps exist. |
+| `docs/ai/LETTER_TO_FUTURE_SESSIONS.md` | Read once before a major new workstream. |
 
 ## Historical Areas
 

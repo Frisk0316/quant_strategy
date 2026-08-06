@@ -273,11 +273,16 @@ trade keeps its Deribit `trade_id`. Duplicate-millisecond fills are valid, so
 timestamps are not a trade identity or deduplication key. The 2024-01 onward
 BTC+ETH enrichment is expected to add about 1.5-2.0 GB without changing the
 hourly primary key or aggregate fields. Current known gap: the historical
-re-backfill is stopped and partial because Deribit's current archive changed
-the previously stored BTC aggregate trade total by -5 despite a six-hour
-pre-flight passing. Most historical rows therefore still retain the old
-first-20 sample; Claude/user must resolve source-revision vs aggregate
-immutability policy before the bulk enrichment resumes.
+re-backfill is stopped and partial (2,304 BTC hours, 744 ETH hours), so most
+historical rows still retain the old first-20 sample. The -5 BTC aggregate
+drift that stopped it was root-caused in `5920380` as count-dependent
+pagination dropping trades at a page boundary inside a multi-trade
+millisecond, not an upstream archive revision; the same commit added the
+payload-only upsert mode so frozen aggregates are never rewritten on
+re-ingest. No source-revision policy ruling is outstanding. Resuming the
+enrichment is therefore a scheduling decision, not a governance one, and it
+does not unblock H-031/H-035, whose windows need pre-2024 tape that Deribit
+does not serve.
 Hours containing only excluded USDC-linear option trades still emit a row with
 `value_num = null` and `fields.excluded_linear_usdc_count > 0`, so inverse-only
 v1 coverage preserves the exclusion evidence. Empty option-flow backfill chunks
