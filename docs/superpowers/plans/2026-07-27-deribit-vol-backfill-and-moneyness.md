@@ -1,3 +1,13 @@
+---
+status: current
+type: plan
+owner: claude
+created: 2026-07-27
+last_reviewed: 2026-07-27
+expires: none
+superseded_by: null
+---
+
 # Deribit Vol Backfill + Option Moneyness Buckets Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
