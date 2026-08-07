@@ -16,8 +16,9 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 - `main` = `7cc7eb1` (PR #22 merged 2026-08-06: F78 DSN fix +5 tests, weekly DB
   backup, optflow reconciliation, data inventory, two B1-closed admission
-  packets). `claude/ops-dsn-fix-and-db-backup` is one commit ahead (`5261de0`,
-  OKX reverification + ADR-0014 review closure) and needs a new PR.
+  packets). `claude/ops-dsn-fix-and-db-backup` is three commits ahead
+  (`5261de0` OKX reverification, `26fd9de` ingest ruling, `df4e75d`
+  compression); PR #23 is OPEN for them and awaits review/merge.
 - No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT is the only
   `supported` hypothesis (E-051 + E-052); promotion blocked per R7.2 pending
   >=8 valid shadow journal weeks plus reviews.
@@ -31,9 +32,16 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` obs permanently lost; shadow
   journal stalled at 2026-08-03 (second stall). xvenue/liq verified Last Result
   0. No task-failure alerting (KNOWN_ISSUES).
-- Weekly backup EXISTS: `quant_db_backup_weekly` SUN 03:00, S4U/Limited,
-  battery-safe → `C:\quant_backups`, keep 2, no exclusions, 19.2 GB verified
-  (84+38+366 chunks). Open: re-exclude `market_klines` for ~10 GB of C: back?
+- Weekly backup: `quant_db_backup_weekly` SUN 03:00, S4U/Limited, battery-safe
+  → `C:\quant_backups`, keep 2. User ruled 2026-08-07: `market_klines`
+  EXCLUDED again — script now excludes BOTH `_hyper_9` and `compress_hyper_14`
+  chunk prefixes (compression moved the data). First scheduled run 08-09.
+- DB OUTAGE 2026-08-06 ~17:00 → 08-07 09:45 (Docker Desktop down): 16 hourly
+  `xvenue_opt_iv_*` obs/dataset permanently lost (on top of F78's 65).
+  Collection RESUMED, DB-verified at 08-07 02:00 UTC. Caveat: the collector
+  exits 1 on its own gap alert even when inserts succeed, so Last Result 1
+  can mean "wrote fine, complaining about history" — check the log. No
+  task-failure alerting (KNOWN_ISSUES).
 - Compression enabled 2026-08-06 (`tasks/2026-08-06-db-compression-handoff.md`):
   `market_klines` 51 → 10.1 GB, `external_observations` 11 → 4.8 GB, DB 78 →
   33 GB, 366/535 chunks, 30-day policies, 3 duplicate indexes dropped, counts
@@ -73,18 +81,25 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   already-refuted H-044/F-CFTC-PARTICIPANT-REGIME. No H-number, trial, or K.
 - Stage-2 power floors are computable ex ante: breadth-1 daily/898 obs needs
   ~1.05 net annualized Sharpe; weekly/128 needs ~1.06 (trials=1).
-- H-038/E-095 terminal (K 2/2); H-040..H-046 closed; ADR-0016 deferred under
-  I68. The 8/2/10 round contract is unmet; new candidates enter only through
-  the admission form, data-first.
+- H-038/E-095 terminal (K 2/2); H-040..H-046 closed. ADR-0016 deferral LIFTED
+  2026-08-07 (user) for infrastructure only: slice 2 (I68 validator +
+  one-command wiring) dispatched to Codex,
+  `tasks/2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md`. Real rounds
+  stay blocked on phases 2-3 + candidate supply; admission form unchanged.
 
 ## Next actions, in order
 
 Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 
-1. TODAY 16:10: confirm `quant_h014_shadow_daily` completes (Last Result 0,
-   journal gains 2026-08-06) — end-to-end proof of the F78 fix.
-2. Open a PR for `5261de0` (OKX reverification + ADR-0014 review closure).
-3. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
-   → Codex runner → Claude Phase-2 go/no-go.
+1. TODAY 16:10: confirm the shadow journal gains 2026-08-07. (F78 fix PROVEN
+   08-06; xvenue collection confirmed resumed 08-07 10:15.)
+2. Review/merge PR #23.
+3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
+   excluded dump present in `C:\quant_backups`).
+4. ADR-0016 slice 2 DELIVERED and Claude-reviewed APPROVE-WITH-FINDINGS
+   (`tasks/2026-08-07-adr0016-slice2-claude-review.md`, no blockers): commit
+   in two parts (ops/backup vs slice 2) and push to PR #23.
+5. DEFERRED by user 2026-08-07 (cannot log into Deribit): testnet key →
+   Codex runner → Claude Phase-2 go/no-go.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-06-ops-fix-candidate-closure-handoff.md`.

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-07
 expires: none
 superseded_by: null
 ---
@@ -370,8 +370,30 @@ reverified; the dated ADR-0014 amendment was Claude-reviewed and ACCEPTED
 recurring external-ingest question is CLOSED by user ruling: schedule nothing,
 because every unconsumed family is a re-downloadable archive (Binance Vision OI
 zips re-probed 2026-08-06); only unreproducible snapshots would earn a timer and
-`optsurf_deribit_*` is deferred. Next: open a PR for `5261de0`; supply the
-Deribit testnet key.
+`optsurf_deribit_*` is deferred.
+
+New (2026-08-07, Claude): PR #23 already covers `5261de0`+2 (open since
+08-06) — review/merge is the action, not opening one. F78 fix proven
+end-to-end (08-06 shadow Last Result 0, journal has 08-06). Docker outage
+08-06 ~17:00 → 08-07 ~09:40 cost ~16 xvenue hours (permanent). User rulings
+2026-08-07: Deribit testnet key DEFERRED (cannot log in — Phase 2 parked);
+backup re-excludes `market_klines` — `scripts/backup_db.ps1` now excludes
+both `_hyper_9` and `compress_hyper_14` chunk prefixes (post-compression the
+old single-prefix exclusion would silently dump the data anyway); the excluded
+dump was verified same day by a manual run (11.8 GB, pg_restore --list OK).
+ADR-0016 deferral LIFTED (user, infra build only): slice 2 = I68
+execution-ready validator (three verified numbers, DB-confirmed, breadth
+derived-else-1) + seal/execute/reconcile wired into one sequential command —
+`tasks/2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md`. Phases 2-3
+(DOI/arXiv identity, signal_ref registry) and any real round remain gated.
+
+Codex delivery 2026-08-07: slice 2 is implemented and synthetic tests cover
+live-DSN refusal/mismatch, gross/cost provenance, breadth hash/coercion,
+ordered execution, interruption resume, and mutated-manifest refusal. The
+one-command round path is build-only: no real round ran, its phase-3 runner
+registry is intentionally empty, and readiness remains unchanged. Next:
+Claude reviews the diff; phases 2-3 and candidate supply still block a real
+round.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
