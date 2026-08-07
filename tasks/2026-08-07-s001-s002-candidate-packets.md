@@ -164,6 +164,16 @@ breadth), or rule it an iteration of F-XS-MOMENTUM / F-S5 (→ CLOSED, no K
 remains in either). No other decision is pending; S-002 is closed without
 needing one.
 
+## RULED 2026-08-07 (user): new family — S-001 ADMITTED
+
+`F-XS-REVERSAL-MW` minted; H-047 + planned E-096 registered; spec at
+`docs/superpowers/specs/2026-08-07-f-xs-reversal-mw-hypothesis.md`; runner
+build + single frozen-cell Stage-2 execution dispatched via
+`tasks/2026-08-07-h047-stage2-codex-tasks.md`. Formula-string note: the
+breadth formula in this packet's C2 JSON is a paraphrase; the spec and any
+manifest entry must use the canonical `BREADTH_FORMULAS` string verbatim.
+This packet's JSON stays as filed at admission time.
+
 Related: `tasks/2026-08-07-literature-sweep-candidate-shortlist.md`,
 `tasks/2026-08-06-vix-cot-candidate-packets.md`,
 `docs/EXPERIMENT_REGISTRY.md` E-075, `docs/HYPOTHESIS_LEDGER.md`.

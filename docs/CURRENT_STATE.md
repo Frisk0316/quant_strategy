@@ -78,12 +78,12 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   already-refuted H-044/F-CFTC-PARTICIPANT-REGIME. No H-number, trial, or K.
 - Stage-2 power floors are computable ex ante: breadth-1 daily/898 obs needs
   ~1.05 net annualized Sharpe; weekly/128 needs ~1.06 (trials=1).
-- H-038/E-095 terminal (K 2/2); H-040..H-046 closed. ADR-0016 deferral LIFTED
-  2026-08-07 (user, infra only): slice 2 DELIVERED, reviewed
-  APPROVE-WITH-FINDINGS, pushed. Dual track: Codex phase 3 (task file
-  2026-08-07); Claude literature sweep DONE — 2 admission-worthy candidates
-  (S-001 multi-week reversal, S-002 jump-variance XS), macro + derivatives
-  axes BARREN (`tasks/2026-08-07-literature-sweep-candidate-shortlist.md`).
+- H-038/E-095 terminal (K 2/2); H-040..H-046 closed. ADR-0016 slices 2+3
+  (I68 validator, one-command round path, probe-adapter runners) DELIVERED
+  and reviewed. Literature sweep: macro + derivatives axes BARREN with
+  citations; S-002 closed at the form (consumed E-075 paper); S-001 →
+  **H-047/F-XS-REVERSAL-MW registered** (first new family since the sweep;
+  E-096 planned, frozen single cell, no grid).
 
 ## Next actions, in order
 
@@ -94,10 +94,10 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
    state).
 3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
    excluded dump present in `C:\quant_backups`).
-4. Codex executes phase 3. Packets DONE (`tasks/2026-08-07-s001-s002-
-   candidate-packets.md`): S-002 CLOSED (= consumed E-075 paper); S-001
-   ADMISSIBLE (B3 10.6) — USER RULES: mint F-XS-REVERSAL-MW, or assign to
-   F-XS-MOMENTUM/F-S5 (K-exhausted → dead).
+4. Phase 3 DELIVERED, reviewed APPROVE-WITH-FINDINGS. S-001 ADMITTED by
+   user I27 ruling: F-XS-REVERSAL-MW minted, H-047/E-096 registered with
+   spec. Next: Codex executes `tasks/2026-08-07-h047-stage2-codex-tasks.md`
+   (build probe + run the frozen cell); Claude reviews the outcome.
 5. DEFERRED by user 2026-08-07 (cannot log into Deribit): testnet key →
    Codex runner → Claude Phase-2 go/no-go.
 

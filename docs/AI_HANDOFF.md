@@ -126,12 +126,13 @@ status publication and the H-014 shadow/parity path remain separate work.
   10–15 execution-ready strategies before results, including at least eight
   verified-paper-backed new mechanisms and two eligible ex-ante
   existing-strategy iterations.
-  ADR-0016 slice 1 now supplies deterministic joined-input filtering,
-  10–15/8/2 executable validation, manifest sealing/hash-bound resume, and
-  terminal-artifact reconciliation. No real round ran. Complete-round
-  automation remains blocked on enough registered candidate-specific runners
-  and the one-command execution path; output remains advisory/limited until
-  those later slices ship.
+  ADR-0016 slices 1-2 and phase 3 now supply deterministic joined-input
+  filtering, 10–15/8/2/I68 sealing, hash-bound resume/reconciliation, and an
+  adapter from reviewed runner names to existing Stage-2 probes. Stage-2 pass
+  checkpoints then stops for explicit candidate-specific Stage-3 authorization.
+  No runner name is reviewed/registered yet and no real round ran. Complete-round
+  execution remains blocked on literature identity, candidate admission, and
+  reviewed per-candidate registrations.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
@@ -387,6 +388,19 @@ derived-else-1) + seal/execute/reconcile wired into one sequential command —
 `tasks/2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md`. Phases 2-3
 (DOI/arXiv identity, signal_ref registry) and any real round remain gated.
 
+Phase 3 delivered and Claude-reviewed same day: APPROVE-WITH-FINDINGS, no
+blockers (`tasks/2026-08-07-adr0016-phase3-claude-review.md`) — probe-adapter
+runners with empty reviewed registries, stage2-checkpoint-then-halt on pass
+(stage3 needs per-candidate authorization), pre-probe breadth recompute from
+the SHA-bound artifact, live MIN/MAX range queries. 29/29 tests green,
+probes untouched. User I27 ruling same day: S-001 ADMITTED — F-XS-REVERSAL-MW
+minted, H-047 + planned E-096 registered, spec
+`docs/superpowers/specs/2026-08-07-f-xs-reversal-mw-hypothesis.md`, execution
+task `tasks/2026-08-07-h047-stage2-codex-tasks.md` (frozen single cell, two
+0.30 mint-apart gates, derived-breadth power line, artifact must persist
+dated returns + positions). S-002 closed at the form as E-075's consumed
+paper.
+
 Codex delivery 2026-08-07: slice 2 is implemented and synthetic tests cover
 live-DSN refusal/mismatch, gross/cost provenance, breadth hash/coercion,
 ordered execution, interruption resume, and mutated-manifest refusal. The
@@ -413,6 +427,16 @@ attenuation ≤ 25%; fail-closed breadth 1 cannot pass). ONE user decision
 pending: I27 family ruling — mint F-XS-REVERSAL-MW (→ register H-047 with
 spec and runner) or assign to F-XS-MOMENTUM/F-S5 (both K-exhausted →
 closed).
+
+Codex delivery 2026-08-07: phase 3 runner plumbing is implemented with both
+live registries empty. The adapter calls existing `STAGE2_PROBES` unchanged,
+maps their four checks, recomputes hash-bound realized-position breadth before
+probe access, and refuses unregistered families/wildcards. Dataset validation
+now uses queried row count plus in-window min/max timestamps. A Stage-2 pass is
+written to `round_state.json` before the named Stage-3 authorization halt;
+resume does not repeat Stage 2 and accepts only an explicitly authorized
+candidate-id Stage-3 runner. Synthetic tests only: no real round, Stage 3,
+experiment, trial/K use, result artifact, gate, or readiness change occurred.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
@@ -473,15 +497,14 @@ latent (non-exploitable) markdown sink, and no untrusted deserialization exists.
 
 Before executing another full strategy-finding round:
 
-1. Wire the slice-1 manifest helper into the one-command orchestrator after
-   schema-valid GenAI drafts are available.
-2. Extend verified provenance identity from the current family/provenance key
+1. Extend verified provenance identity from the current family/provenance key
    to normalized DOI/arXiv/title identity at the literature adapter boundary.
-3. Reuse the drafted `signal_ref` registry contract so every counted strategy
-   has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
-4. Emit the slice-1 reconciled report from the real sequential execution path.
+2. Complete candidate admission and family rulings, then add only their reviewed
+   exact runner-name/family bindings; the registry has no live entries.
+3. Keep Stage 3 candidate-specific and user-authorized; never derive a Stage-3
+   result from Stage 2 or fall through to the legacy family registry.
 
-Keep the first implementation sequential. Add bounded concurrency only after
+Keep the implementation sequential. Add bounded concurrency only after
 runtime/DB profiling shows it is needed. A smaller user-approved batch remains
 a limited probe, not a completed round.
 
