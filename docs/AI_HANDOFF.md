@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-05-11
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-07
 expires: none
 superseded_by: null
 ---
@@ -126,12 +126,13 @@ status publication and the H-014 shadow/parity path remain separate work.
   10–15 execution-ready strategies before results, including at least eight
   verified-paper-backed new mechanisms and two eligible ex-ante
   existing-strategy iterations.
-  ADR-0016 slice 1 now supplies deterministic joined-input filtering,
-  10–15/8/2 executable validation, manifest sealing/hash-bound resume, and
-  terminal-artifact reconciliation. No real round ran. Complete-round
-  automation remains blocked on enough registered candidate-specific runners
-  and the one-command execution path; output remains advisory/limited until
-  those later slices ship.
+  ADR-0016 slices 1-2 and phase 3 now supply deterministic joined-input
+  filtering, 10–15/8/2/I68 sealing, hash-bound resume/reconciliation, and an
+  adapter from reviewed runner names to existing Stage-2 probes. Stage-2 pass
+  checkpoints then stops for explicit candidate-specific Stage-3 authorization.
+  No runner name is reviewed/registered yet and no real round ran. Complete-round
+  execution remains blocked on literature identity, candidate admission, and
+  reviewed per-candidate registrations.
   H-012 is user-shelved with no retry and E-037 remains immutable
   non-promotion evidence. H-010/E-057
   is now shelved at Stage 2: full source-aware candles pass, exact OKX funding is
@@ -210,10 +211,12 @@ status publication and the H-014 shadow/parity path remain separate work.
 - History/data boundary: the read-only scan completed over 68 canonical and 46
   external datasets. Under separately approved ADR-0014, the existing complete
   raw OKX BTC/ETH 1m window was promoted to an additive source-aware canonical
-  layer. Each symbol has 1,293,120 rows, raw mismatches 0,
-  coverage/alignment 1.0, resolved OKX rows 0, and an idempotent rerun changed 0
-  rows. The later E-057 research task is separate from that promotion: full
-  candle alignment passes, but I48 correctly rejects missing OKX funding.
+  layer. The historical extension was already executed by `b40f15b` on
+  2026-07-18 and reverified 2026-08-06: each symbol has 3,396,960 rows over
+  `[2020-01-01, 2026-06-17)`, raw mismatches 0, coverage/alignment 1.0, no raw
+  gaps, resolved OKX rows 0, and two idempotent reruns changed 0 rows. The later
+  E-057 research task is separate from that promotion: full candle alignment
+  passes, but I48 correctly rejects missing OKX funding.
 - Shelved/refuted: XS Momentum and Batch 2 C1/C2/C3. No gate may be chased by
   unregistered retries.
 
@@ -335,6 +338,21 @@ durable gaps are in `docs/KNOWN_ISSUES.md`.
 
 ## Next steps
 
+New (2026-08-06, Claude): TimescaleDB columnstore compression enabled on
+`market_klines` and `external_observations`, the two hypertables that had it
+off. DB 78 → 33 GB (`market_klines` 51 → 10.1, `external_observations`
+11 → 4.8), 366/535 chunks compressed, policies compress after 30 days, three
+prefix-duplicate btree indexes dropped. Row counts, date ranges, and query
+plans verified after three Docker restarts; no data lost. `scripts/backup_db.ps1`
+now takes a byte-complete dump (19.2 GB, keep 2, MinFreeGB 45) because the
+`market_klines` exclusion no longer pays for a restore that needs a re-ingest.
+Not a business-rule change — `raw_payload` provenance columns were deliberately
+left in place. The host `ext4.vhdx` still holds 127.5 GB for 46 GB of ext4
+content: sparse is enabled but the historical allocation needs an `fstrim` that
+Docker Desktop's mount-namespace isolation blocks (KNOWN_ISSUES). Open question
+for the user: keep the full dump or re-exclude `market_klines` (~10 GB of C:
+back). Detail: `tasks/2026-08-06-db-compression-handoff.md`.
+
 New (2026-08-06): F78 root-caused and fixed — the three DB-writing scheduled
 wrappers never sourced `.env`, so `DATABASE_URL` was absent and every run
 2026-08-03→08-06 failed with only `Last Result 1` recorded. 65 xvenue hours
@@ -345,10 +363,80 @@ Weekly DB backup registered (`quant_db_backup_weekly`, SUN 03:00, S4U,
 `C:\quant_backups`, `market_klines` excluded; first 11.6 GB archive verified).
 Data inventory + the first two admission packets delivered and CLOSED (001 no
 predictive literature; 002 user data-gate + its literature belongs to refuted
-H-044). Public-status page live and scheduled. PR #22 holds all seven
-commits. Next: merge PR #22; decide OKX 2020+ raw→canonical promotion
-(crypto overlap 898→~2,400 days); supply the Deribit testnet key; decide the
-Cboe/COT/FRED recurring ingest schedule.
+H-044). Public-status page live and scheduled. PR #22 (all seven commits)
+MERGED 2026-08-06 as `7cc7eb1`. The OKX 2020+ raw→canonical promotion was
+already complete and is now
+reverified; the dated ADR-0014 amendment was Claude-reviewed and ACCEPTED
+2026-08-06 (evidence relayed from the verifier run, not re-queried). The
+recurring external-ingest question is CLOSED by user ruling: schedule nothing,
+because every unconsumed family is a re-downloadable archive (Binance Vision OI
+zips re-probed 2026-08-06); only unreproducible snapshots would earn a timer and
+`optsurf_deribit_*` is deferred.
+
+New (2026-08-07, Claude): PR #23 already covers `5261de0`+2 (open since
+08-06) — review/merge is the action, not opening one. F78 fix proven
+end-to-end (08-06 shadow Last Result 0, journal has 08-06). Docker outage
+08-06 ~17:00 → 08-07 ~09:40 cost ~16 xvenue hours (permanent). User rulings
+2026-08-07: Deribit testnet key DEFERRED (cannot log in — Phase 2 parked);
+backup re-excludes `market_klines` — `scripts/backup_db.ps1` now excludes
+both `_hyper_9` and `compress_hyper_14` chunk prefixes (post-compression the
+old single-prefix exclusion would silently dump the data anyway); the excluded
+dump was verified same day by a manual run (11.8 GB, pg_restore --list OK).
+ADR-0016 deferral LIFTED (user, infra build only): slice 2 = I68
+execution-ready validator (three verified numbers, DB-confirmed, breadth
+derived-else-1) + seal/execute/reconcile wired into one sequential command —
+`tasks/2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md`. Phases 2-3
+(DOI/arXiv identity, signal_ref registry) and any real round remain gated.
+
+Phase 3 delivered and Claude-reviewed same day: APPROVE-WITH-FINDINGS, no
+blockers (`tasks/2026-08-07-adr0016-phase3-claude-review.md`) — probe-adapter
+runners with empty reviewed registries, stage2-checkpoint-then-halt on pass
+(stage3 needs per-candidate authorization), pre-probe breadth recompute from
+the SHA-bound artifact, live MIN/MAX range queries. 29/29 tests green,
+probes untouched. User I27 ruling same day: S-001 ADMITTED — F-XS-REVERSAL-MW
+minted, H-047 + planned E-096 registered, spec
+`docs/superpowers/specs/2026-08-07-f-xs-reversal-mw-hypothesis.md`, execution
+task `tasks/2026-08-07-h047-stage2-codex-tasks.md` (frozen single cell, two
+0.30 mint-apart gates, derived-breadth power line, artifact must persist
+dated returns + positions). S-002 closed at the form as E-075's consumed
+paper.
+
+Codex delivery 2026-08-07: slice 2 is implemented and synthetic tests cover
+live-DSN refusal/mismatch, gross/cost provenance, breadth hash/coercion,
+ordered execution, interruption resume, and mutated-manifest refusal. The
+one-command round path is build-only: no real round ran, its phase-3 runner
+registry is intentionally empty, and readiness remains unchanged. Claude
+review 2026-08-07: APPROVE-WITH-FINDINGS, no blockers
+(`tasks/2026-08-07-adr0016-slice2-claude-review.md`); findings 1-2 became
+phase-3 requirements. Committed and pushed to PR #23.
+
+Dual track started 2026-08-07 (user "雙軌並進"): (1) Codex phase 3 —
+`tasks/2026-08-07-adr0016-phase3-round-runners-codex-tasks.md` (probe
+adapter, stage3-authorization halt, breadth recompute, range min/max,
+reviewed registration surface). (2) Claude literature sweep DONE — verdicts
+in `tasks/2026-08-07-literature-sweep-candidate-shortlist.md`: S-001
+multi-week XS reversal (Kiefer-Nowotny SSRN 6703978) and S-002 jump-variance
+XS (Lee-Wang JFQA 2025) are admission-worthy; CTREND borderline-hold; macro
+and derivatives axes recorded BARREN with citations. Packets built same day
+(`tasks/2026-08-07-s001-s002-candidate-packets.md`): S-002 CLOSED at gate E
+— the sweep had resurfaced H-034/E-075's exact consumed paper (net Sharpe
+−0.971, distinctness 0.4948 > 0.30 vs E-062); sweep-briefing lesson added to
+LESSONS. S-001 passed every computable gate (A1 DB-verified, B3 = 10.6
+conservative; power pre-registered as viable only at derived breadth ≥ 3 and
+attenuation ≤ 25%; fail-closed breadth 1 cannot pass). ONE user decision
+pending: I27 family ruling — mint F-XS-REVERSAL-MW (→ register H-047 with
+spec and runner) or assign to F-XS-MOMENTUM/F-S5 (both K-exhausted →
+closed).
+
+Codex delivery 2026-08-07: phase 3 runner plumbing is implemented with both
+live registries empty. The adapter calls existing `STAGE2_PROBES` unchanged,
+maps their four checks, recomputes hash-bound realized-position breadth before
+probe access, and refuses unregistered families/wildcards. Dataset validation
+now uses queried row count plus in-window min/max timestamps. A Stage-2 pass is
+written to `round_state.json` before the named Stage-3 authorization halt;
+resume does not repeat Stage 2 and accepts only an explicitly authorized
+candidate-id Stage-3 runner. Synthetic tests only: no real round, Stage 3,
+experiment, trial/K use, result artifact, gate, or readiness change occurred.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
@@ -409,15 +497,14 @@ latent (non-exploitable) markdown sink, and no untrusted deserialization exists.
 
 Before executing another full strategy-finding round:
 
-1. Wire the slice-1 manifest helper into the one-command orchestrator after
-   schema-valid GenAI drafts are available.
-2. Extend verified provenance identity from the current family/provenance key
+1. Extend verified provenance identity from the current family/provenance key
    to normalized DOI/arXiv/title identity at the literature adapter boundary.
-3. Reuse the drafted `signal_ref` registry contract so every counted strategy
-   has a deterministic Stage-2 screening backtest; keep Stage 3 pass-only.
-4. Emit the slice-1 reconciled report from the real sequential execution path.
+2. Complete candidate admission and family rulings, then add only their reviewed
+   exact runner-name/family bindings; the registry has no live entries.
+3. Keep Stage 3 candidate-specific and user-authorized; never derive a Stage-3
+   result from Stage 2 or fall through to the legacy family registry.
 
-Keep the first implementation sequential. Add bounded concurrency only after
+Keep the implementation sequential. Add bounded concurrency only after
 runtime/DB profiling shows it is needed. A smaller user-approved batch remains
 a limited probe, not a completed round.
 
