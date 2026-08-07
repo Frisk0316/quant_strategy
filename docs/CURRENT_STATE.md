@@ -37,11 +37,9 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   EXCLUDED again — script now excludes BOTH `_hyper_9` and `compress_hyper_14`
   chunk prefixes (compression moved the data). First scheduled run 08-09.
 - DB OUTAGE 2026-08-06 ~17:00 → 08-07 09:45 (Docker Desktop down): 16 hourly
-  `xvenue_opt_iv_*` obs/dataset permanently lost (on top of F78's 65).
-  Collection RESUMED, DB-verified at 08-07 02:00 UTC. Caveat: the collector
-  exits 1 on its own gap alert even when inserts succeed, so Last Result 1
-  can mean "wrote fine, complaining about history" — check the log. No
-  task-failure alerting (KNOWN_ISSUES).
+  `xvenue_opt_iv_*` obs/dataset permanently lost (on top of F78's 65);
+  collection resumed, DB-verified. Caveat: the collector exits 1 on its gap
+  alert even when inserts succeed — check the log, not just Last Result.
 - Compression enabled 2026-08-06 (`tasks/2026-08-06-db-compression-handoff.md`):
   `market_klines` 51 → 10.1 GB, `external_observations` 11 → 4.8 GB, DB 78 →
   33 GB, 366/535 chunks, 30-day policies, 3 duplicate indexes dropped, counts
@@ -82,10 +80,11 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 - Stage-2 power floors are computable ex ante: breadth-1 daily/898 obs needs
   ~1.05 net annualized Sharpe; weekly/128 needs ~1.06 (trials=1).
 - H-038/E-095 terminal (K 2/2); H-040..H-046 closed. ADR-0016 deferral LIFTED
-  2026-08-07 (user) for infrastructure only: slice 2 (I68 validator +
-  one-command wiring) dispatched to Codex,
-  `tasks/2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md`. Real rounds
-  stay blocked on phases 2-3 + candidate supply; admission form unchanged.
+  2026-08-07 (user, infra only): slice 2 DELIVERED, reviewed
+  APPROVE-WITH-FINDINGS, pushed. Dual track: Codex phase 3 (task file
+  2026-08-07); Claude literature sweep DONE — 2 admission-worthy candidates
+  (S-001 multi-week reversal, S-002 jump-variance XS), macro + derivatives
+  axes BARREN (`tasks/2026-08-07-literature-sweep-candidate-shortlist.md`).
 
 ## Next actions, in order
 
@@ -93,12 +92,11 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 
 1. TODAY 16:10: confirm the shadow journal gains 2026-08-07. (F78 fix PROVEN
    08-06; xvenue collection confirmed resumed 08-07 10:15.)
-2. Review/merge PR #23.
+2. Merge PR #23 (6 commits: three pre-existing + ops/backup + slice 2 +
+   state).
 3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
    excluded dump present in `C:\quant_backups`).
-4. ADR-0016 slice 2 DELIVERED and Claude-reviewed APPROVE-WITH-FINDINGS
-   (`tasks/2026-08-07-adr0016-slice2-claude-review.md`, no blockers): commit
-   in two parts (ops/backup vs slice 2) and push to PR #23.
+4. Codex executes phase 3; Claude builds S-001/S-002 admission packets.
 5. DEFERRED by user 2026-08-07 (cannot log into Deribit): testnet key →
    Codex runner → Claude Phase-2 go/no-go.
 

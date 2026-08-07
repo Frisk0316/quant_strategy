@@ -215,3 +215,14 @@ exclude TOAST and so under-report by ~10x on jsonb-carrying tables.
 Rule: state the saving in the units the user measures, and identify which step
 actually delivers it before starting. If that step is blocked, say the result is
 not yet realized rather than reporting the internal number as the outcome.
+
+## 2026-08-07 - PS5.1 cmdlet round-trips corrupt UTF-8 repo files
+
+A one-line `Get-Content | ... | Set-Content -Encoding utf8` date bump on
+`config/workstreams.yaml` silently destroyed every non-ASCII character
+(em-dashes became `??`) and added a BOM: Windows PowerShell 5.1 reads
+BOM-less UTF-8 as ANSI, and its `utf8` writes a BOM. The corruption passed
+`yaml.safe_load` and was only caught in a later diff review.
+Rule: never round-trip repo text files through PS5.1 cmdlets. Use the Edit
+tool or Python for file edits; if PowerShell must write text another tool
+reads, verify the bytes afterward (`git diff` for stray `??`/BOM).

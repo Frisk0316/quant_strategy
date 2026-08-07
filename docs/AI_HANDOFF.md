@@ -391,9 +391,21 @@ Codex delivery 2026-08-07: slice 2 is implemented and synthetic tests cover
 live-DSN refusal/mismatch, gross/cost provenance, breadth hash/coercion,
 ordered execution, interruption resume, and mutated-manifest refusal. The
 one-command round path is build-only: no real round ran, its phase-3 runner
-registry is intentionally empty, and readiness remains unchanged. Next:
-Claude reviews the diff; phases 2-3 and candidate supply still block a real
-round.
+registry is intentionally empty, and readiness remains unchanged. Claude
+review 2026-08-07: APPROVE-WITH-FINDINGS, no blockers
+(`tasks/2026-08-07-adr0016-slice2-claude-review.md`); findings 1-2 became
+phase-3 requirements. Committed and pushed to PR #23.
+
+Dual track started 2026-08-07 (user "雙軌並進"): (1) Codex phase 3 —
+`tasks/2026-08-07-adr0016-phase3-round-runners-codex-tasks.md` (probe
+adapter, stage3-authorization halt, breadth recompute, range min/max,
+reviewed registration surface). (2) Claude literature sweep DONE — verdicts
+in `tasks/2026-08-07-literature-sweep-candidate-shortlist.md`: S-001
+multi-week XS reversal (Kiefer-Nowotny SSRN 6703978) and S-002 jump-variance
+XS (Lee-Wang JFQA 2025) are admission-worthy; CTREND borderline-hold; macro
+and derivatives axes recorded BARREN with citations. Next: build S-001/S-002
+admission packets (A1 DB queries, B1-B3 gross/cost, E accounting) paired
+with runner specs for phase-3 binding.
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local
