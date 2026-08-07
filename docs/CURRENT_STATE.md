@@ -36,10 +36,9 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   → `C:\quant_backups`, keep 2. User ruled 2026-08-07: `market_klines`
   EXCLUDED again — script now excludes BOTH `_hyper_9` and `compress_hyper_14`
   chunk prefixes (compression moved the data). First scheduled run 08-09.
-- DB OUTAGE 2026-08-06 ~17:00 → 08-07 09:45 (Docker Desktop down): 16 hourly
-  `xvenue_opt_iv_*` obs/dataset permanently lost (on top of F78's 65);
-  collection resumed, DB-verified. Caveat: the collector exits 1 on its gap
-  alert even when inserts succeed — check the log, not just Last Result.
+- DB OUTAGE 2026-08-06 ~17:00 → 08-07 09:45 (Docker down): 16 hourly
+  `xvenue_opt_iv_*` obs/dataset lost (on top of F78's 65); resumed,
+  DB-verified. Collector exits 1 on gap alerts even when inserts succeed.
 - Compression enabled 2026-08-06 (`tasks/2026-08-06-db-compression-handoff.md`):
   `market_klines` 51 → 10.1 GB, `external_observations` 11 → 4.8 GB, DB 78 →
   33 GB, 366/535 chunks, 30-day policies, 3 duplicate indexes dropped, counts
