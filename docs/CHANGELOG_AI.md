@@ -13,6 +13,21 @@ superseded_by: null
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
 
+## 2026-08-07 - ADR-0016 slice 2 I68 validator and sequential round path (Codex)
+
+- Manifest sealing now fails closed unless every counted candidate's named
+  dataset count and `[start, end)` range match a live DSN query, gross and cost
+  bps are finite positive with one-line gross provenance, and breadth has a
+  readable SHA-256-bound artifact. Missing breadth provenance is recorded as a
+  coercion to 1 and the candidate does not count.
+- `scripts/run_pipeline_orchestrator.py` now has one round mode that joins the
+  two candidate inputs, validates/seals, executes registered runners in order,
+  checkpoints after every candidate, resumes only under the same manifest
+  hash, and writes the reconciled report. The phase-3 runner registry remains
+  empty, so a real round still refuses before execution.
+- Synthetic tests passed; no real round, experiment, trial/K use, result
+  artifact, strategy/gate change, or readiness change occurred.
+
 ## 2026-08-06 - TimescaleDB columnstore compression, 78 GB to 33 GB (Claude)
 
 - Traced "repo is 1.8 GB but the dump is 11.6 GB" to the obvious answer with a

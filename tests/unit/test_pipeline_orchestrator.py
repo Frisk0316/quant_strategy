@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -196,6 +197,38 @@ def test_reprobe_cli_does_not_require_hypothesis_ids(tmp_path, monkeypatch):
     assert called["reprobe"] is True
     assert called["hypothesis_ids_path"] is None
     assert called["power_inputs"] == {}
+
+
+def test_round_cli_is_one_command_without_advisory_inputs(tmp_path, monkeypatch):
+    from scripts import run_pipeline_orchestrator as cli
+
+    called = {}
+
+    async def fake_run_round(**kwargs):
+        called.update(kwargs)
+        return tmp_path / "round" / "round_report.json"
+
+    monkeypatch.setattr(cli, "run_round", fake_run_round)
+    result = cli.main(
+        [
+            "--batch-id",
+            "round",
+            "--round-literature-path",
+            str(tmp_path / "literature.json"),
+            "--round-iterations-path",
+            str(tmp_path / "iterations.json"),
+            "--output-root",
+            str(tmp_path),
+            "--dsn",
+            "postgresql://mock",
+            "--artifact-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert result == 0
+    assert called["round_id"] == "round"
+    assert called["dsn"] == "postgresql://mock"
 
 
 @pytest.mark.asyncio
@@ -561,4 +594,109 @@ async def test_reprobe_fails_closed_when_state_candidate_missing_hypothesis_id(t
             start="2024-01-01",
             end_exclusive="2024-01-02",
             reprobe=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_round_real_path_resumes_in_order_and_refuses_mutated_manifest(tmp_path, monkeypatch):
+    from backtesting import pipeline_orchestrator as orchestrator
+
+    artifact = tmp_path / "positions.json"
+    artifact.write_text('{"positions": [{"symbol": "BTC", "weight": 1.0}]}', encoding="utf-8")
+    artifact_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    def candidate(index):
+        return {
+            "candidate_id": f"C-{index}",
+            "family_id": f"F-{index}",
+            "provenance_id": f"P-{index}",
+            "verified_paper": index < 8,
+            "iteration_rationale": "material ex-ante change" if index >= 8 else None,
+            "draft_status": "complete",
+            "execution_status": "ready",
+            "runner": "synthetic",
+            "datasets": [
+                {
+                    "dataset_id": f"dataset-{index}",
+                    "locator": "external_observations",
+                    "row_count": 100 + index,
+                    "start": "2024-01-01T00:00:00Z",
+                    "end": "2024-02-01T00:00:00Z",
+                }
+            ],
+            "expected_gross_capture_bps": 4.0,
+            "modeled_cost_bps": 8.0,
+            "gross_estimate_provenance": "paper section 4 ex-ante estimate",
+            "breadth": 1.0,
+            "breadth_provenance": {"path": str(artifact), "sha256": artifact_hash},
+        }
+
+    literature_path = tmp_path / "literature.json"
+    iterations_path = tmp_path / "iterations.json"
+    _write_json(literature_path, {"candidates": [candidate(index) for index in range(8)]})
+    _write_json(iterations_path, {"candidates": [candidate(index) for index in range(8, 10)]})
+
+    class Conn:
+        async def fetchrow(self, _sql, dataset_id, *_args):
+            return {"row_count": 100 + int(dataset_id.rsplit("-", 1)[1])}
+
+        async def close(self):
+            return None
+
+    async def fake_connect(_dsn):
+        return Conn()
+
+    monkeypatch.setattr(orchestrator, "_connect", fake_connect)
+    first_calls = []
+
+    def interrupted_runner(row, _context):
+        first_calls.append(row["candidate_id"])
+        if row["candidate_id"] == "C-3":
+            raise RuntimeError("synthetic interruption")
+        return {"stage2": {"status": "fail"}}
+
+    with pytest.raises(RuntimeError, match="synthetic interruption"):
+        await orchestrator.run_round(
+            literature_path=literature_path,
+            iterations_path=iterations_path,
+            round_id="synthetic-round",
+            output_root=tmp_path,
+            dsn="postgresql://mock",
+            artifact_root=tmp_path,
+            runners={"synthetic": interrupted_runner},
+        )
+    assert first_calls == ["C-0", "C-1", "C-2", "C-3"]
+
+    resumed_calls = []
+
+    def resumed_runner(row, _context):
+        resumed_calls.append(row["candidate_id"])
+        return {"stage2": {"status": "fail"}}
+
+    report_path = await orchestrator.run_round(
+        literature_path=literature_path,
+        iterations_path=iterations_path,
+        round_id="synthetic-round",
+        output_root=tmp_path,
+        dsn="postgresql://mock",
+        artifact_root=tmp_path,
+        runners={"synthetic": resumed_runner},
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert resumed_calls == [f"C-{index}" for index in range(3, 10)]
+    assert report["candidate_count"] == 10
+    assert [row["candidate_id"] for row in report["candidates"]] == [f"C-{index}" for index in range(10)]
+
+    mutated = json.loads(literature_path.read_text(encoding="utf-8"))
+    mutated["candidates"][0]["expected_gross_capture_bps"] = 5.0
+    _write_json(literature_path, mutated)
+    with pytest.raises(ValueError, match="manifest_hash_mismatch"):
+        await orchestrator.run_round(
+            literature_path=literature_path,
+            iterations_path=iterations_path,
+            round_id="synthetic-round",
+            output_root=tmp_path,
+            dsn="postgresql://mock",
+            artifact_root=tmp_path,
+            runners={"synthetic": resumed_runner},
         )

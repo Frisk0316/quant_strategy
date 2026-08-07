@@ -125,3 +125,23 @@ A9 research execution controls and A10 core governance contracts.
   identical/mutated resume, joined-input filtering, and a missing terminal
   artifact. A complete real round remains blocked on enough registered
   deterministic runners.
+
+## 2026-08-07 implementation update — ADR-0016 slice 2
+
+- Extended manifest sealing with I68: every counted candidate now needs live
+  DB-matched dataset counts and half-open ranges, finite positive gross/cost
+  bps plus one-line gross provenance, and SHA-256-bound breadth provenance.
+  Gross/cost is recorded without duplicating the admission form's ratio gate;
+  unsupported breadth is recorded at 1 and the candidate is not counted.
+- Added one sequential command path from joined inputs through validation,
+  sealing, registered-runner execution, atomic per-candidate resume state, and
+  manifest-bound reconciliation. The runner registry remains intentionally
+  empty until phase 3 supplies reviewed `signal_ref` registrations.
+- Trigger areas A5/A9 were reviewed. `docs/INVARIANTS.md` I68 now names the
+  enforcing tests. `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`, ADR-0005, and
+  the experiment ledgers were reviewed and unchanged: no schema, evaluation
+  gate, experiment, trial/K count, or data flow changed.
+- Synthetic tests cover absent DSN, dataset count/range mismatch, missing gross
+  inputs, breadth coercion/hash provenance, ordered execution, interruption
+  resume, and mutated-manifest refusal. No real round or result artifact ran;
+  promotion/demo/shadow/live readiness is unchanged.
