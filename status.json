@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T00:40:40.588689+00:00",
+  "generated_at": "2026-08-07T08:30:02.391358+00:00",
   "workstreams": [
     {
       "name": "Worklog page (2026-08-04)",
@@ -156,10 +156,11 @@
         "full_round_contract"
       ],
       "current": "full_round_contract",
-      "state": "ADR-0016 slice 1 and H-030..H-037 remain closed at Stage 2 with no complete round. H-038/E-095 is terminal for F-S5 at K 2/2: the authorized 0.95 data gate passed 17,271/17,272 PIT member-days, actual positions measured breadth 5.743875 over 898 days, and distinctness failed closed because E-014 has no dated return series. Cost/power were not evaluated; n_trials remains 72.",
-      "next": "No E-096, retune, Stage 3, or promotion for F-S5. ADR-0016 remains deferred under I68. The Candidate Admission Form was exercised 2026-08-06 on two data-first candidates (VIX term structure, cross-asset COT); both closed at B1 without spending a spec, runner, H-number, trial, or K. The OKX 2020+ BTC/ETH source-aware canonical extension was already present from b40f15b and reverified 2026-08-06 at 3,396,960 gap-free rows per symbol; the ADR amendment awaits Claude/user review and H-010 remains shelved because pre-2024 OKX funding is absent.",
+      "state": "ADR-0016 phase 3 plumbing is implemented: an explicit reviewed-name adapter reuses existing Stage-2 probes, recomputes hash-bound breadth before probe access, validates live min/max dataset timestamps, and checkpoints Stage-2 pass before the Stage-3 authorization halt. Both live registries remain empty; no real round or Stage 3 ran.",
+      "next": "Claude reviews phase 3. A real round remains blocked on phase-2 DOI/arXiv/title identity, completed admission packets, candidate supply, and reviewed exact runner registrations. No E-096, retune, Stage 3, promotion, demo, shadow, or live readiness change.",
       "links": [
         "0016-genai-discovery-deterministic-strategy-evaluation.md",
+        "2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md",
         "2026-07-27-genai-strategy-finding-pipeline.md",
         "2026-06-30-drafted-candidate-stage3-contract.md",
         "2026-07-04-f-funding-xs-dispersion-hypothesis.md",
@@ -383,17 +384,17 @@
   ],
   "shadow_h014": {
     "available": true,
-    "journal_weeks": 3.4285714285714284,
+    "journal_weeks": 3.5714285714285716,
     "distinct_journal_weeks": 3,
     "minimum_weeks": 8,
     "eight_week_journal_met": false,
-    "generated_at": "2026-08-06T08:10:59.494901Z",
+    "generated_at": "2026-08-07T08:10:40.140188Z",
     "event_counts": {
-      "total": 12,
+      "total": 14,
       "by_status": {
-        "not_rich": 12
+        "not_rich": 14
       },
-      "last_event_date": "2026-08-06"
+      "last_event_date": "2026-08-07"
     }
   },
   "research_funnel": [
