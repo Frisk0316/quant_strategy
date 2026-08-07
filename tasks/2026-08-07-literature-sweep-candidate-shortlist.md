@@ -98,3 +98,15 @@ pre-registered distinctness vs F-XS-IDIOVOL/E-062.
 2. Codex: `tasks/2026-08-07-adr0016-phase3-round-runners-codex-tasks.md`
    (parallel track 1).
 3. User: no decision needed until both packets pass/fail B3.
+
+## ADDENDUM (same day, packet outcome) — S-002 verdict was wrong
+
+Packet work (`tasks/2026-08-07-s001-s002-candidate-packets.md`) CLOSED
+S-002 at gate E before any other gate: Lee & Wang JFQA 2025 is the exact
+paper H-034/E-075 consumed on 2026-07-29 — frozen 7d/quintile positive-
+jump-variance XS, measured net Sharpe −0.971150, decisive distinctness
+FAIL vs E-062 (0.4948 > 0.30), family dissolved into F-XS-IDIOVOL. The
+sweep's "ADMISSION-WORTHY" verdict above stands corrected: the intraday
+agent's burned-list briefing omitted variance decomposition (present only
+in the derivatives agent's brief). S-001 survived all computable gates
+(B3 = 10.6) and awaits one user family ruling.

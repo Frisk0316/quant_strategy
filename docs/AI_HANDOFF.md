@@ -403,9 +403,16 @@ reviewed registration surface). (2) Claude literature sweep DONE — verdicts
 in `tasks/2026-08-07-literature-sweep-candidate-shortlist.md`: S-001
 multi-week XS reversal (Kiefer-Nowotny SSRN 6703978) and S-002 jump-variance
 XS (Lee-Wang JFQA 2025) are admission-worthy; CTREND borderline-hold; macro
-and derivatives axes recorded BARREN with citations. Next: build S-001/S-002
-admission packets (A1 DB queries, B1-B3 gross/cost, E accounting) paired
-with runner specs for phase-3 binding.
+and derivatives axes recorded BARREN with citations. Packets built same day
+(`tasks/2026-08-07-s001-s002-candidate-packets.md`): S-002 CLOSED at gate E
+— the sweep had resurfaced H-034/E-075's exact consumed paper (net Sharpe
+−0.971, distinctness 0.4948 > 0.30 vs E-062); sweep-briefing lesson added to
+LESSONS. S-001 passed every computable gate (A1 DB-verified, B3 = 10.6
+conservative; power pre-registered as viable only at derived breadth ≥ 3 and
+attenuation ≤ 25%; fail-closed breadth 1 cannot pass). ONE user decision
+pending: I27 family ruling — mint F-XS-REVERSAL-MW (→ register H-047 with
+spec and runner) or assign to F-XS-MOMENTUM/F-S5 (both K-exhausted →
+closed).
 
 New (2026-08-04, updated 2026-08-05): worklog page implementation is complete
 but not published; Claude review APPROVED. It collects timestamp-only local

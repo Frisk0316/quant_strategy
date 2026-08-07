@@ -96,7 +96,10 @@ Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
    state).
 3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
    excluded dump present in `C:\quant_backups`).
-4. Codex executes phase 3; Claude builds S-001/S-002 admission packets.
+4. Codex executes phase 3. Packets DONE (`tasks/2026-08-07-s001-s002-
+   candidate-packets.md`): S-002 CLOSED (= consumed E-075 paper); S-001
+   ADMISSIBLE (B3 10.6) — USER RULES: mint F-XS-REVERSAL-MW, or assign to
+   F-XS-MOMENTUM/F-S5 (K-exhausted → dead).
 5. DEFERRED by user 2026-08-07 (cannot log into Deribit): testnet key →
    Codex runner → Claude Phase-2 go/no-go.
 

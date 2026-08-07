@@ -226,3 +226,16 @@ BOM-less UTF-8 as ANSI, and its `utf8` writes a BOM. The corruption passed
 Rule: never round-trip repo text files through PS5.1 cmdlets. Use the Edit
 tool or Python for file edits; if PowerShell must write text another tool
 reads, verify the bytes afterward (`git diff` for stray `??`/BOM).
+
+## 2026-08-07 - Sweep exclusion lists must be generated, not recalled
+
+A four-axis literature sweep briefed each agent with a hand-recalled burned-
+family list. The intraday axis brief omitted variance decomposition (it was
+only in the derivatives brief), so the sweep returned H-034/E-075's exact
+paper (Lee-Wang JFQA 2025, net Sharpe -0.971 on 2026-07-29) as a fresh
+ADMISSION-WORTHY candidate. The admission form's selection-accounting gate
+caught it at document cost, but the sweep verdict itself was wrong.
+Rule: before any candidate-sourcing sweep, generate the exclusion list from
+docs/HYPOTHESIS_LEDGER.md families + spec titles + consumed paper
+identities, and give every agent the SAME complete list. Memory is not a
+registry.
