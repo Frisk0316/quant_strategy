@@ -21,6 +21,7 @@ from backtesting.pipeline_round import (
     seal_round_manifest,
     verify_resume,
 )
+from backtesting.pipeline_round_runners import AUTHORIZED_STAGE3_ROUND_RUNNERS, ROUND_RUNNERS
 from backtesting.pipeline_stage2_registry import (
     STAGE2_PROBES,
     Stage2Probe,
@@ -41,10 +42,6 @@ NOOP_STATUSES = {
     "checkpoint1_fail",
     "checkpoint1_needs_human",
 }
-
-# Populated only when phase 3 registers manifest-safe candidate runners.
-ROUND_RUNNERS: dict[str, Any] = {}
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -435,9 +432,11 @@ async def run_round(
     dsn: str | None,
     artifact_root: Path = Path("."),
     runners: Mapping[str, Any] | None = None,
+    stage3_runners: Mapping[str, Any] | None = None,
 ) -> Path:
     """Seal, sequentially execute, resume, and reconcile one ADR-0016 round."""
     active_runners = ROUND_RUNNERS if runners is None else runners
+    active_stage3_runners = AUTHORIZED_STAGE3_ROUND_RUNNERS if stage3_runners is None else stage3_runners
     joined = join_candidate_inputs(_round_candidates(literature_path), _round_candidates(iterations_path))
     proposed = {"round_id": round_id, "candidates": joined}
 
@@ -492,29 +491,59 @@ async def run_round(
     if not isinstance(stage2, dict) or not isinstance(stage3, dict):
         raise ValueError("round_state_invalid")
 
+    async def run_authorized_stage3(candidate: Mapping[str, Any], prior_stage2: Mapping[str, Any]) -> None:
+        candidate_id = str(candidate["candidate_id"])
+        runner = active_stage3_runners.get(candidate_id)
+        if runner is None:
+            raise RuntimeError(f"stage3_authorization_required:{candidate_id}")
+        context = {
+            "dsn": dsn,
+            "manifest_hash": expected_hash,
+            "output_dir": round_dir,
+            "artifact_root": artifact_root,
+            "stage2": dict(prior_stage2),
+        }
+        result = runner(candidate, context)
+        if inspect.isawaitable(result):
+            result = await result
+        if isinstance(result, Mapping) and isinstance(result.get("stage3"), Mapping):
+            result = result["stage3"]
+        if not isinstance(result, Mapping) or result.get("status") not in STAGE3_TERMINAL:
+            raise ValueError(f"{candidate_id}:runner_result_invalid_stage3")
+        terminal = dict(result)
+        terminal.update({"candidate_id": candidate_id, "manifest_hash": expected_hash})
+        stage3[candidate_id] = terminal
+        _write_json_atomic(state_path, state)
+
     # ponytail: sequential + one atomic checkpoint per candidate is enough until throughput is measured.
     for candidate in sealed["candidates"]:
         candidate_id = str(candidate["candidate_id"])
         prior_stage2 = stage2.get(candidate_id)
         prior_stage3 = stage3.get(candidate_id)
-        if (
-            isinstance(prior_stage2, Mapping)
-            and prior_stage2.get("manifest_hash") == expected_hash
-            and prior_stage2.get("status") in STAGE2_TERMINAL
-            and (
-                prior_stage2.get("status") != "pass"
-                or (
+        if isinstance(prior_stage2, Mapping) and prior_stage2.get("manifest_hash") == expected_hash:
+            if prior_stage2.get("status") in STAGE2_TERMINAL:
+                if prior_stage2.get("status") != "pass":
+                    continue
+                if (
                     isinstance(prior_stage3, Mapping)
                     and prior_stage3.get("manifest_hash") == expected_hash
                     and prior_stage3.get("status") in STAGE3_TERMINAL
-                )
-            )
-        ):
-            continue
+                ):
+                    continue
+                await run_authorized_stage3(candidate, prior_stage2)
+                continue
 
         runner_name = str(candidate["runner"])
         runner = active_runners[runner_name]
-        result = runner(candidate, {"dsn": dsn, "manifest_hash": expected_hash, "output_dir": round_dir})
+        result = runner(
+            candidate,
+            {
+                "dsn": dsn,
+                "manifest_hash": expected_hash,
+                "output_dir": round_dir,
+                "artifact_root": artifact_root,
+            },
+        )
         if inspect.isawaitable(result):
             result = await result
         if not isinstance(result, Mapping) or not isinstance(result.get("stage2"), Mapping):
@@ -523,19 +552,14 @@ async def run_round(
         candidate_stage3 = result.get("stage3")
         if candidate_stage2.get("status") not in STAGE2_TERMINAL:
             raise ValueError(f"{candidate_id}:runner_result_invalid_stage2")
-        if candidate_stage2["status"] == "pass":
-            if not isinstance(candidate_stage3, Mapping) or candidate_stage3.get("status") not in STAGE3_TERMINAL:
-                raise ValueError(f"{candidate_id}:runner_result_missing_stage3")
-        elif candidate_stage3 is not None:
+        if candidate_stage3 is not None:
             raise ValueError(f"{candidate_id}:runner_result_unexpected_stage3")
 
         candidate_stage2.update({"candidate_id": candidate_id, "manifest_hash": expected_hash})
         stage2[candidate_id] = candidate_stage2
-        if isinstance(candidate_stage3, Mapping):
-            bound_stage3 = dict(candidate_stage3)
-            bound_stage3.update({"candidate_id": candidate_id, "manifest_hash": expected_hash})
-            stage3[candidate_id] = bound_stage3
         _write_json_atomic(state_path, state)
+        if candidate_stage2["status"] == "pass":
+            raise RuntimeError(f"stage3_authorization_required:{candidate_id}")
 
     report = reconcile_round(sealed, stage2, stage3)
     report_path = round_dir / "round_report.json"

@@ -8,6 +8,7 @@ import pytest
 from backtesting.pipeline_round import (
     join_candidate_inputs,
     prepare_round_manifest,
+    query_dataset_claim,
     reconcile_round,
     seal_round_manifest,
     verify_resume,
@@ -54,7 +55,11 @@ def _manifest(tmp_path) -> tuple[dict, set[str]]:
 
 
 def _matching_dataset(_dsn, claim):
-    return {"row_count": claim["row_count"], "start": claim["start"], "end": claim["end"]}
+    return {
+        "row_count": claim["row_count"],
+        "min_timestamp": claim["start"],
+        "max_timestamp": "2024-01-31T23:59:59Z",
+    }
 
 
 @pytest.mark.asyncio
@@ -141,11 +146,17 @@ async def test_i68_refuses_missing_or_mismatched_numbers_and_requires_live_dsn(t
                 artifact_root=tmp_path,
             )
 
-    def mismatched_dataset(_dsn, claim):
-        observed = _matching_dataset(_dsn, claim)
-        if claim["dataset_id"] == "dataset-0":
-            observed = {**observed, "row_count": 99, "end": "2024-01-31T00:00:00Z"}
-        return observed
+    class Connection:
+        async def fetchrow(self, _sql, dataset_id, *_args):
+            index = int(dataset_id.rsplit("-", 1)[1])
+            return {
+                "row_count": 99 if index == 0 else 100 + index,
+                "min_timestamp": "2024-01-01T00:00:00Z",
+                "max_timestamp": "2024-02-01T00:00:00Z" if index == 0 else "2024-01-31T23:59:59Z",
+            }
+
+    async def mismatched_dataset(_dsn, claim):
+        return await query_dataset_claim(Connection(), claim)
 
     with pytest.raises(ValueError, match="C-0:dataset-0:dataset_row_count_mismatch") as exc:
         await seal_round_manifest(

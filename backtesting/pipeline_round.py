@@ -162,7 +162,7 @@ def _dataset_name(claim: Mapping[str, Any], index: int) -> str:
 
 
 async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Return the live row count for one allow-listed DB dataset and half-open window."""
+    """Return live row count and timestamp bounds for one allow-listed half-open window."""
     locator = str(claim.get("locator") or "").strip()
     dataset_id = str(claim.get("dataset_id") or "").strip()
     start = _timestamp(claim.get("start"))
@@ -173,7 +173,9 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
     if locator == "external_observations":
         row = await conn.fetchrow(
             """
-            SELECT COUNT(*)::bigint AS row_count
+            SELECT COUNT(*)::bigint AS row_count,
+                   MIN(observed_at) AS min_timestamp,
+                   MAX(observed_at) AS max_timestamp
             FROM external_observations
             WHERE dataset_id = $1 AND observed_at >= $2 AND observed_at < $3
             """,
@@ -186,7 +188,9 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
         if bar:
             row = await conn.fetchrow(
                 """
-                SELECT COUNT(*)::bigint AS row_count
+                SELECT COUNT(*)::bigint AS row_count,
+                       MIN(ts) AS min_timestamp,
+                       MAX(ts) AS max_timestamp
                 FROM canonical_candles
                 WHERE inst_id = $1 AND bar = $2 AND ts >= $3 AND ts < $4
                 """,
@@ -198,7 +202,9 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
         else:
             row = await conn.fetchrow(
                 """
-                SELECT COUNT(*)::bigint AS row_count
+                SELECT COUNT(*)::bigint AS row_count,
+                       MIN(ts) AS min_timestamp,
+                       MAX(ts) AS max_timestamp
                 FROM canonical_candles
                 WHERE inst_id = $1 AND ts >= $2 AND ts < $3
                 """,
@@ -211,7 +217,9 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
         if source:
             row = await conn.fetchrow(
                 """
-                SELECT COUNT(*)::bigint AS row_count
+                SELECT COUNT(*)::bigint AS row_count,
+                       MIN(ts) AS min_timestamp,
+                       MAX(ts) AS max_timestamp
                 FROM funding_rates
                 WHERE inst_id = $1 AND source = $2 AND ts >= $3 AND ts < $4
                 """,
@@ -223,7 +231,9 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
         else:
             row = await conn.fetchrow(
                 """
-                SELECT COUNT(*)::bigint AS row_count
+                SELECT COUNT(*)::bigint AS row_count,
+                       MIN(ts) AS min_timestamp,
+                       MAX(ts) AS max_timestamp
                 FROM funding_rates
                 WHERE inst_id = $1 AND ts >= $2 AND ts < $3
                 """,
@@ -237,6 +247,8 @@ async def query_dataset_claim(conn: Any, claim: Mapping[str, Any]) -> Mapping[st
         "row_count": int(row["row_count"]) if row else 0,
         "start": start,
         "end": end,
+        "min_timestamp": row["min_timestamp"] if row else None,
+        "max_timestamp": row["max_timestamp"] if row else None,
     }
 
 
@@ -360,14 +372,17 @@ async def _validate_prepared_manifest(
                 reject(index, candidate_id, f"{name}:dataset_missing")
                 continue
             observed_count = observed.get("row_count")
-            observed_start = _timestamp(observed.get("start"))
-            observed_end = _timestamp(observed.get("end"))
+            observed_start = _timestamp(observed.get("min_timestamp"))
+            observed_end = _timestamp(observed.get("max_timestamp"))
             if not isinstance(observed_count, int) or isinstance(observed_count, bool) or observed_count <= 0:
+                reject(index, candidate_id, f"{name}:dataset_missing")
+                continue
+            if observed_start is None or observed_end is None:
                 reject(index, candidate_id, f"{name}:dataset_missing")
                 continue
             if observed_count != claimed_count:
                 reject(index, candidate_id, f"{name}:dataset_row_count_mismatch")
-            if observed_start != claimed_start or observed_end != claimed_end:
+            if observed_start < claimed_start or observed_end >= claimed_end or observed_start > observed_end:
                 reject(index, candidate_id, f"{name}:dataset_range_mismatch")
 
     counted = [index for index in range(count) if index not in invalid]

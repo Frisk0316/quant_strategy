@@ -638,7 +638,11 @@ async def test_round_real_path_resumes_in_order_and_refuses_mutated_manifest(tmp
 
     class Conn:
         async def fetchrow(self, _sql, dataset_id, *_args):
-            return {"row_count": 100 + int(dataset_id.rsplit("-", 1)[1])}
+            return {
+                "row_count": 100 + int(dataset_id.rsplit("-", 1)[1]),
+                "min_timestamp": "2024-01-01T00:00:00Z",
+                "max_timestamp": "2024-01-31T23:59:59Z",
+            }
 
         async def close(self):
             return None
@@ -700,3 +704,99 @@ async def test_round_real_path_resumes_in_order_and_refuses_mutated_manifest(tmp
             artifact_root=tmp_path,
             runners={"synthetic": resumed_runner},
         )
+
+
+@pytest.mark.asyncio
+async def test_round_stage2_pass_checkpoints_before_stage3_authorization_and_resumes(tmp_path, monkeypatch):
+    from backtesting import pipeline_orchestrator as orchestrator
+
+    artifact = tmp_path / "positions.json"
+    artifact.write_text('{"positions": [{"symbol": "BTC", "weight": 1.0}]}', encoding="utf-8")
+    artifact_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    def candidate(index):
+        return {
+            "candidate_id": f"C-{index}",
+            "family_id": f"F-{index}",
+            "provenance_id": f"P-{index}",
+            "verified_paper": index < 8,
+            "iteration_rationale": "material ex-ante change" if index >= 8 else None,
+            "draft_status": "complete",
+            "execution_status": "ready",
+            "runner": "synthetic",
+            "datasets": [{
+                "dataset_id": f"dataset-{index}",
+                "locator": "external_observations",
+                "row_count": 100 + index,
+                "start": "2024-01-01T00:00:00Z",
+                "end": "2024-02-01T00:00:00Z",
+            }],
+            "expected_gross_capture_bps": 4.0,
+            "modeled_cost_bps": 8.0,
+            "gross_estimate_provenance": "paper section 4 ex-ante estimate",
+            "breadth": 1.0,
+            "breadth_provenance": {"path": str(artifact), "sha256": artifact_hash},
+        }
+
+    literature_path = tmp_path / "literature.json"
+    iterations_path = tmp_path / "iterations.json"
+    _write_json(literature_path, {"candidates": [candidate(index) for index in range(8)]})
+    _write_json(iterations_path, {"candidates": [candidate(index) for index in range(8, 10)]})
+
+    class Conn:
+        async def fetchrow(self, _sql, dataset_id, *_args):
+            return {
+                "row_count": 100 + int(dataset_id.rsplit("-", 1)[1]),
+                "min_timestamp": "2024-01-01T00:00:00Z",
+                "max_timestamp": "2024-01-31T23:59:59Z",
+            }
+
+        async def close(self):
+            return None
+
+    async def fake_connect(_dsn):
+        return Conn()
+
+    monkeypatch.setattr(orchestrator, "_connect", fake_connect)
+    stage2_calls = []
+
+    def stage2_runner(row, _context):
+        stage2_calls.append(row["candidate_id"])
+        return {"stage2": {"status": "pass" if row["candidate_id"] == "C-0" else "fail"}}
+
+    kwargs = {
+        "literature_path": literature_path,
+        "iterations_path": iterations_path,
+        "round_id": "stage3-gated-round",
+        "output_root": tmp_path,
+        "dsn": "postgresql://mock",
+        "artifact_root": tmp_path,
+        "runners": {"synthetic": stage2_runner},
+    }
+    with pytest.raises(RuntimeError, match="stage3_authorization_required:C-0"):
+        await orchestrator.run_round(**kwargs)
+    state_path = tmp_path / "stage3-gated-round" / "round_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["stage2"]["C-0"]["status"] == "pass"
+    assert stage2_calls == ["C-0"]
+
+    stage2_calls.clear()
+    with pytest.raises(RuntimeError, match="stage3_authorization_required:C-0"):
+        await orchestrator.run_round(**kwargs)
+    assert stage2_calls == []
+
+    stage3_calls = []
+
+    def authorized_stage3(row, context):
+        stage3_calls.append(row["candidate_id"])
+        assert context["stage2"]["status"] == "pass"
+        return {"status": "pass"}
+
+    report_path = await orchestrator.run_round(
+        **kwargs,
+        stage3_runners={"C-0": authorized_stage3},
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert stage3_calls == ["C-0"]
+    assert stage2_calls == [f"C-{index}" for index in range(1, 10)]
+    assert report["candidates"][0] == {"candidate_id": "C-0", "stage2": "pass", "stage3": "pass"}

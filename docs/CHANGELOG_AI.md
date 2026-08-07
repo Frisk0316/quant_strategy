@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-07
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,22 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-08-07 - ADR-0016 phase 3 reviewed round-runner plumbing (Codex)
+
+- Added an explicit empty reviewed-list mechanism that binds a runner name to
+  an existing family-keyed Stage-2 probe; no probe logic, threshold, or
+  `FeasibilityResult` semantics changed and no family was pre-registered.
+- Round runners recompute breadth from the hash-bound realized-position series
+  before DB/probe access. Live dataset validation now uses queried row count
+  plus in-window minimum/maximum timestamps instead of echoing claim bounds.
+- A Stage-2 pass is checkpointed before the round raises
+  `stage3_authorization_required:<candidate_id>`. Resume is Stage-2-safe and
+  can continue only through an explicitly authorized candidate-specific
+  Stage-3 runner; both default registries remain empty.
+- Synthetic targeted tests and Ruff passed. No real round, Stage 3, experiment,
+  trial/K use, result artifact, strategy/gate change, or readiness change
+  occurred.
 
 ## 2026-08-07 - ADR-0016 slice 2 I68 validator and sequential round path (Codex)
 
