@@ -89,8 +89,7 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 
-1. TODAY 16:10: confirm the shadow journal gains 2026-08-07. (F78 fix PROVEN
-   08-06; xvenue collection confirmed resumed 08-07 10:15.)
+1. TODAY 16:10: confirm the shadow journal gains 2026-08-07.
 2. Merge PR #23 (6 commits: three pre-existing + ops/backup + slice 2 +
    state).
 3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
