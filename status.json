@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-10T00:42:15.595712+00:00",
+  "generated_at": "2026-08-10T08:30:02.411754+00:00",
   "workstreams": [
     {
       "name": "Worklog page (2026-08-04)",
@@ -156,11 +156,14 @@
         "full_round_contract"
       ],
       "current": "full_round_contract",
-      "state": "ADR-0016 phase 3 plumbing is implemented: an explicit reviewed-name adapter reuses existing Stage-2 probes, recomputes hash-bound breadth before probe access, validates live min/max dataset timestamps, and checkpoints Stage-2 pass before the Stage-3 authorization halt. Both live registries remain empty; no real round or Stage 3 ran.",
-      "next": "Claude reviews phase 3. A real round remains blocked on phase-2 DOI/arXiv/title identity, completed admission packets, candidate supply, and reviewed exact runner registrations. No E-096, retune, Stage 3, promotion, demo, shadow, or live readiness change.",
+      "state": "ADR-0016 phase 3 plumbing remains implemented with both round registries empty and no real round. Separately, the reviewed H-047/E-096 single-cell probe ran once: declared member-day coverage passed at 24,744/24,745, but active-hold SOL price gaps caused a Stage-2 data fail; correlation/cost/power were not evaluated and family trials/K remain 0.",
+      "next": "Claude reviews E-096 and the active-hold data-gap boundary. No rerun is authorized. A real round remains blocked on phase-2 identity, completed admission packets, candidate supply, and reviewed exact runner registrations; no Stage 3, promotion, demo, shadow, or live readiness change.",
       "links": [
         "0016-genai-discovery-deterministic-strategy-evaluation.md",
         "2026-08-07-adr0016-slice2-i68-validator-codex-tasks.md",
+        "2026-08-07-h047-stage2-codex-tasks.md",
+        "2026-08-07-f-xs-reversal-mw-hypothesis.md",
+        "stage2_feasibility.json",
         "2026-07-27-genai-strategy-finding-pipeline.md",
         "2026-06-30-drafted-candidate-stage3-contract.md",
         "2026-07-04-f-funding-xs-dispersion-hypothesis.md",
@@ -384,17 +387,17 @@
   ],
   "shadow_h014": {
     "available": true,
-    "journal_weeks": 3.5714285714285716,
-    "distinct_journal_weeks": 3,
+    "journal_weeks": 4.0,
+    "distinct_journal_weeks": 4,
     "minimum_weeks": 8,
     "eight_week_journal_met": false,
-    "generated_at": "2026-08-07T08:10:40.140188Z",
+    "generated_at": "2026-08-10T08:10:42.782719Z",
     "event_counts": {
-      "total": 14,
+      "total": 16,
       "by_status": {
-        "not_rich": 14
+        "not_rich": 16
       },
-      "last_event_date": "2026-08-07"
+      "last_event_date": "2026-08-10"
     }
   },
   "research_funnel": [
