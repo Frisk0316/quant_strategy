@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-28T08:30:01.899018+00:00",
+  "generated_at": "2026-08-29T08:30:01.889714+00:00",
   "workstreams": [
     {
       "name": "Worklog page (2026-08-04)",
@@ -387,17 +387,17 @@
   ],
   "shadow_h014": {
     "available": true,
-    "journal_weeks": 6.571428571428571,
+    "journal_weeks": 6.714285714285714,
     "distinct_journal_weeks": 5,
     "minimum_weeks": 8,
     "eight_week_journal_met": false,
-    "generated_at": "2026-08-28T08:10:36.839468Z",
+    "generated_at": "2026-08-29T08:10:53.761358Z",
     "event_counts": {
-      "total": 26,
+      "total": 28,
       "by_status": {
-        "not_rich": 26
+        "not_rich": 28
       },
-      "last_event_date": "2026-08-28"
+      "last_event_date": "2026-08-29"
     }
   },
   "research_funnel": [
