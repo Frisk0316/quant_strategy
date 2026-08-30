@@ -1,5 +1,5 @@
 ---
-status: current
+status: archived
 type: task
 owner: codex
 created: 2026-08-06
@@ -9,6 +9,13 @@ superseded_by: null
 ---
 
 # Codex task: extend the OKX source-aware canonical 1m window back to 2020
+
+CLOSED 2026-08-06 as a no-op duplicate. Its premise ("current 2024-01-01
+start") was already false: `b40f15b` had performed the extension on 2026-07-18
+under `tasks/2026-07-18-okx-history-promotion-codex-tasks.md`. Codex measured
+first, found 0 rows to promote, and recorded the evidence in the ADR-0014
+amendment. Do not re-run. Review notes on the spec itself are in
+`docs/ai/LESSONS.md` (2026-08-06 entry).
 
 Read AGENTS.md first, then execute. Also read docs/ai/JUDGMENT_RUBRICS.md §2
 (definition of done) and §5 (quality floor) before reporting completion.
