@@ -34,7 +34,11 @@ ruled on, literature-searched, and CLOSED. PR #22 opened.
   S4U SUN 03:00 (user re-registered elevated); public-status live, first
   scheduled push `8f4a7ca`; 11.6 GB archive verified restorable-listable.
 - Unfinished: 16:10 shadow run unobserved (proves F78 fix end-to-end); PR #22
-  unmerged; no task-failure alerting exists.
+  unmerged; no task-failure alerting exists. Codex preflight at 11:05 +08:00
+  confirmed the task is Ready, its next run is 16:10 with zero missed runs,
+  both TimescaleDB containers are healthy, and the wrapper loads a non-empty
+  `DATABASE_URL` without exposing it. Do not replace the scheduled-run proof
+  with a manual cycle.
 
 ## Business-rule change? / Source-of-truth / Experiments
 
@@ -67,6 +71,13 @@ ruled on, literature-searched, and CLOSED. PR #22 opened.
 - docs metadata / feature-map links / ledger consistency / check-config — pass.
 - Task Scheduler re-runs: xvenue + liq → Last Result 0; DB row counts confirm.
 - Backup: `pg_restore --list` — 743 TABLE DATA, 38 `_hyper_11_*`, 0 `_hyper_9_*`.
+- Codex continuation preflight 2026-08-06 11:05 +08:00:
+  `Get-ScheduledTaskInfo -TaskName quant_h014_shadow_daily` reported last
+  result 1 from 2026-08-05 and next run 2026-08-06 16:10; `docker ps` reported
+  both TimescaleDB containers healthy; the five F78 tests, targeted Python
+  Ruff, check-config, docs metadata, feature-map links, and ledger consistency
+  all passed. `pwsh` is unavailable on this host, so the documented Python
+  equivalents were run directly.
 
 ## Known limitations / risks / Rollback
 
@@ -76,9 +87,11 @@ ruled on, literature-searched, and CLOSED. PR #22 opened.
 
 ## Questions for human review / Next recommended task
 
-- Merge PR #22. Then: authorize (or decline) OKX 2020+ raw→canonical
-  promotion — the single highest-leverage candidate-space input. Supply the
-  Deribit testnet key. Decide Cboe/COT/FRED recurring ingest.
+- After 16:10, require both `LastTaskResult == 0` and new 2026-08-06 BTC/ETH
+  journal records before closing F78 end-to-end; then merge PR #22. The OKX
+  2020+ raw→canonical promotion is now separately authorized in
+  `tasks/2026-08-06-okx-2020-canonical-promotion-codex-tasks.md`. Supply the
+  Deribit testnet key and decide Cboe/COT/FRED recurring ingest separately.
 
 ## Human Learning Notes (required)
 

@@ -14,11 +14,11 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 ## Repository
 
-- PR #22 OPEN (`claude/ops-dsn-fix-and-db-backup`, 7 commits): F78 DSN fix for
-  the three DB-writing scheduled wrappers (+5 tests), weekly TimescaleDB
-  backup, stale optflow-decision reconciliation, data inventory, and two
-  Candidate Admission Form packets with user rulings and B1 closure. `main`
-  otherwise unchanged from 2026-08-05.
+- `main` = `7cc7eb1` (PR #22 merged 2026-08-06: F78 DSN fix +5 tests, weekly DB
+  backup, optflow reconciliation, data inventory, two B1-closed admission
+  packets). `claude/ops-dsn-fix-and-db-backup` is three commits ahead
+  (`5261de0` OKX reverification, `26fd9de` ingest ruling, `df4e75d`
+  compression); PR #23 is OPEN for them and awaits review/merge.
 - No strategy is promotion/demo/live ready. H-014/F-VOL-REGIME-OPT is the only
   `supported` hypothesis (E-051 + E-052); promotion blocked per R7.2 pending
   >=8 valid shadow journal weeks plus reviews.
@@ -27,23 +27,36 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
 
 ## Data
 
-- F78 incident: `quant_xvenue_options_iv`, `quant_liq_okx_ingest`, and
-  `quant_h014_shadow_daily` failed every run 2026-08-03→08-06 on a missing
-  process `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` observations are
-  permanently lost; the shadow journal stalled at 2026-08-03 (second stall).
-  Fixed via `scripts/_load_dotenv.cmd`; xvenue/liq verified Last Result 0
-  through Task Scheduler. No task-failure alerting exists (KNOWN_ISSUES).
-- Weekly backup EXISTS: `quant_db_backup_weekly` SUN 03:00, S4U/Limited,
-  battery-safe → `C:\quant_backups`, keep 3, `market_klines` excluded. First
-  archive 11.6 GB verified (38 external_observations chunks, 0 market_klines).
+- F78 incident (FIXED via `scripts/_load_dotenv.cmd`): the three DB-writing
+  scheduled tasks failed every run 2026-08-03→08-06 on a missing process
+  `DATABASE_URL`. 65 hourly `xvenue_opt_iv_*` obs permanently lost; shadow
+  journal stalled at 2026-08-03 (second stall). xvenue/liq verified Last Result
+  0. No task-failure alerting (KNOWN_ISSUES).
+- Weekly backup: `quant_db_backup_weekly` SUN 03:00, S4U/Limited, battery-safe
+  → `C:\quant_backups`, keep 2. User ruled 2026-08-07: `market_klines`
+  EXCLUDED again — script now excludes BOTH `_hyper_9` and `compress_hyper_14`
+  chunk prefixes (compression moved the data). First scheduled run 08-09.
+- DB OUTAGE 2026-08-06 ~17:00 → 08-07 09:45 (Docker down): 16 hourly
+  `xvenue_opt_iv_*` obs/dataset lost (on top of F78's 65); resumed,
+  DB-verified. Collector exits 1 on gap alerts even when inserts succeed.
+- Compression enabled 2026-08-06 (`tasks/2026-08-06-db-compression-handoff.md`):
+  `market_klines` 51 → 10.1 GB, `external_observations` 11 → 4.8 GB, DB 78 →
+  33 GB, 366/535 chunks, 30-day policies, 3 duplicate indexes dropped, counts
+  unchanged. Host `ext4.vhdx` did NOT shrink (KNOWN_ISSUES).
 - Canonical 30-symbol 1m 2024–2026 candles + funding unchanged. 78 external
   datasets; inventory in `tasks/2026-08-06-data-inventory.md`. Binding
-  constraint is the crypto overlap (~898 daily / 128 weekly obs), not external
-  history depth. Defects: `oi_binance_hist_shib` 0 rows; `optsurf_deribit_*`
-  3 rows, no scheduler. Only 3 external families have recurring ingest.
-- Optflow decision CLOSED: the -5 drift was pagination (`5920380`), not an
-  archive revision; resuming 2024+ enrichment is optional and does not unblock
-  H-031/H-035 (pre-2024 tape is not served).
+  constraint is the crypto overlap (~898 daily / 128 weekly obs), not history
+  depth. `oi_binance_hist_shib` 0 rows is upstream (E-036, no native SHIBUSDT
+  on Binance Vision), not a defect; `1000SHIB` passes.
+- Recurring-ingest CLOSED 2026-08-06 (user): schedule nothing — unconsumed
+  families are re-downloadable archives. `optsurf_deribit_*` (3 rows) deferred;
+  1h `oi_binance_*` is an unbackfillable 5m-Vision duplicate, removal candidate.
+- ADR-0014 BTC/ETH-only OKX source-aware 1m history verified over
+  `[2020-01-01, 2026-06-17)`: 3,396,960 raw/venue rows per symbol, zero gaps or
+  mismatches, 1.0 alignment, zero resolved OKX rows; already run in `b40f15b`,
+  two 2026-08-06 reruns changed zero rows. Does not extend the 30-symbol
+  cross-section or pre-2024 funding.
+- Optflow CLOSED: -5 drift was pagination (`5920380`); H-031/H-035 stay blocked.
 
 ## Execution / testnet
 
@@ -65,24 +78,27 @@ Present-tense snapshot. History: `docs/CHANGELOG_AI.md`. Gaps: `docs/KNOWN_ISSUE
   already-refuted H-044/F-CFTC-PARTICIPANT-REGIME. No H-number, trial, or K.
 - Stage-2 power floors are computable ex ante: breadth-1 daily/898 obs needs
   ~1.05 net annualized Sharpe; weekly/128 needs ~1.06 (trials=1).
-- H-038/E-095 terminal (K 2/2); H-040..H-046 closed; ADR-0016 deferred under
-  I68. The 8/2/10 round contract is unmet; new candidates enter only through
-  the admission form, data-first.
+- H-038/E-095 terminal (K 2/2); H-040..H-046 closed. ADR-0016 slices 2+3
+  (I68 validator, one-command round path, probe-adapter runners) DELIVERED
+  and reviewed. Literature sweep: macro + derivatives axes BARREN with
+  citations; S-002 closed at the form (consumed E-075 paper); S-001 →
+  **H-047/F-XS-REVERSAL-MW registered** (first new family since the sweep;
+  E-096 planned, frozen single cell, no grid).
 
 ## Next actions, in order
 
 Always on: keep Docker/TimescaleDB up — missed collector hours are permanent.
 
-1. TODAY 16:10: confirm `quant_h014_shadow_daily` completes (Last Result 0,
-   journal gains 2026-08-06) — end-to-end proof of the F78 fix.
-2. User reviews/merges PR #22.
-3. AUTHORIZED 2026-08-06 (user): OKX raw 2020+ 1m → canonical promotion.
-   Codex executes `tasks/2026-08-06-okx-2020-canonical-promotion-codex-tasks.md`
-   (measure-first, additive, idempotent; BTC/ETH overlap only; H-010 stays
-   shelved — no pre-2024 OKX funding). Claude reviews the delivery.
-4. Deribit testnet key (test.deribit.com; trade read_write, wallet none/read)
-   → Codex runner → Claude Phase-2 go/no-go.
-5. Decide the recurring ingest schedule for Cboe/COT/FRED — the live-path
-   prerequisite for any external-data candidate.
+1. TODAY 16:10: confirm the shadow journal gains 2026-08-07.
+2. Merge PR #23 (6 commits: three pre-existing + ops/backup + slice 2 +
+   state).
+3. SUN 08-09 03:00: confirm first scheduled backup run (Last Result 0,
+   excluded dump present in `C:\quant_backups`).
+4. Phase 3 DELIVERED, reviewed APPROVE-WITH-FINDINGS. S-001 ADMITTED by
+   user I27 ruling: F-XS-REVERSAL-MW minted, H-047/E-096 registered with
+   spec. Next: Codex executes `tasks/2026-08-07-h047-stage2-codex-tasks.md`
+   (build probe + run the frozen cell); Claude reviews the outcome.
+5. DEFERRED by user 2026-08-07 (cannot log into Deribit): testnet key →
+   Codex runner → Claude Phase-2 go/no-go.
 
 Related: `docs/AI_HANDOFF.md`, `docs/KNOWN_ISSUES.md`, `config/workstreams.yaml`, `tasks/2026-08-06-ops-fix-candidate-closure-handoff.md`.

@@ -3,7 +3,7 @@ status: current
 type: handoff
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-02
+last_reviewed: 2026-08-07
 expires: none
 superseded_by: null
 ---
@@ -12,6 +12,100 @@ superseded_by: null
 
 Durable history for AI-assisted sessions. `docs/AI_HANDOFF.md` should stay focused
 on current state, current goal, do-not-touch constraints, and next actions.
+
+## 2026-08-07 - ADR-0016 phase 3 reviewed round-runner plumbing (Codex)
+
+- Added an explicit empty reviewed-list mechanism that binds a runner name to
+  an existing family-keyed Stage-2 probe; no probe logic, threshold, or
+  `FeasibilityResult` semantics changed and no family was pre-registered.
+- Round runners recompute breadth from the hash-bound realized-position series
+  before DB/probe access. Live dataset validation now uses queried row count
+  plus in-window minimum/maximum timestamps instead of echoing claim bounds.
+- A Stage-2 pass is checkpointed before the round raises
+  `stage3_authorization_required:<candidate_id>`. Resume is Stage-2-safe and
+  can continue only through an explicitly authorized candidate-specific
+  Stage-3 runner; both default registries remain empty.
+- Synthetic targeted tests and Ruff passed. No real round, Stage 3, experiment,
+  trial/K use, result artifact, strategy/gate change, or readiness change
+  occurred.
+
+## 2026-08-07 - ADR-0016 slice 2 I68 validator and sequential round path (Codex)
+
+- Manifest sealing now fails closed unless every counted candidate's named
+  dataset count and `[start, end)` range match a live DSN query, gross and cost
+  bps are finite positive with one-line gross provenance, and breadth has a
+  readable SHA-256-bound artifact. Missing breadth provenance is recorded as a
+  coercion to 1 and the candidate does not count.
+- `scripts/run_pipeline_orchestrator.py` now has one round mode that joins the
+  two candidate inputs, validates/seals, executes registered runners in order,
+  checkpoints after every candidate, resumes only under the same manifest
+  hash, and writes the reconciled report. The phase-3 runner registry remains
+  empty, so a real round still refuses before execution.
+- Synthetic tests passed; no real round, experiment, trial/K use, result
+  artifact, strategy/gate change, or readiness change occurred.
+
+## 2026-08-06 - TimescaleDB columnstore compression, 78 GB to 33 GB (Claude)
+
+- Traced "repo is 1.8 GB but the dump is 11.6 GB" to the obvious answer with a
+  non-obvious tail: the data lives in the `docker_timescale-data` volume inside
+  WSL2, and two of the seven hypertables — `market_klines` (51 GB) and
+  `external_observations` (11 GB) — had compression disabled while the three
+  candle hypertables already ran it at a measured 5.2x/7.8x/6.1x.
+- Enabled columnstore on both (`segmentby (instrument_id, bar)` and
+  `(dataset_id)`, `compress_after 30 days` copied from the existing policies)
+  and backfilled: `market_klines` 51 -> 10.1 GB in 10m10s, `external_observations`
+  11 -> 4.8 GB in 1m23s. Trial chunk measured first: 532 MB -> 109 MB, 4.9x.
+  DB 78 -> 33 GB, volume 84.8 -> 36.5 GB, 366/535 chunks compressed.
+- Dropped `idx_market_klines_lookup`, `idx_canonical_candles_lookup` and
+  `idx_external_observations_lookup` — each a `(..., ts DESC)` restatement of an
+  existing PK/unique key that a btree already serves by backward scan.
+- `raw_payload` was left alone. It is ~16 GB of literal duplication of the typed
+  OHLCV columns, but it is the provenance record guarded by
+  `test_source_provenance_validation.py`, and compression made it cheap. Storage
+  layout only: no PnL/fee/funding/sizing/fill/gate semantics moved, no manifest.
+- `scripts/backup_db.ps1` now dumps byte-complete (19.2 GB, keep 2, MinFreeGB
+  45); the `market_klines` exclusion had traded a re-ingest for a saving that
+  compression already delivered. Verified with `pg_restore --list`.
+- The host `ext4.vhdx` did not shrink and four `fstrim` routes failed; recorded
+  in KNOWN_ISSUES with the export/import fix. Windows free space ended the
+  session 6.7 GB lower than it started (the larger dump), so the 45 GB is
+  future headroom rather than disk returned today.
+
+## 2026-08-06 - Recurring external ingest: schedule nothing (Claude, user ruling)
+
+- Closed the standing "decide the recurring weekly/daily incremental ingest
+  schedule" item with a rule instead of a scheduler: a family earns a timer only
+  if its history is unreproducible. Cboe, COT, FRED and the rest are
+  re-downloadable archives, topped up on demand when a candidate is admitted;
+  no admitted hypothesis consumes any of them today (both 2026-08-06 packets
+  closed at B1, H-040..H-046 closed the FRED macro direction on power).
+- Measured rather than assumed the two OI families, which had been conflated:
+  Binance Vision daily metrics zips (the 5m `oi_binance_hist_*` history the
+  Stage-2 probe consumes) served 200 for 2024-03-15, 2026-06-16 and 2026-08-04,
+  so that history is fully re-downloadable. The `fapi` `openInterestHist`
+  endpoint behind the 1h `oi_binance_btc/eth` returned only 2026-07-16 to
+  2026-08-06 and rejected a 2025 `startTime`, confirming the ~30-day cap its
+  config note already claimed. Those two 1h series are an unbackfillable
+  low-resolution duplicate and are flagged as removal candidates, not scheduled.
+- `optsurf_deribit_*` (book snapshots, 3 rows) is the one genuine
+  permanent-loss gap; the user deferred it. `oi_binance_hist_shib` 0 rows was
+  reclassified from defect to upstream absence (E-036). No ingestion, schema,
+  gate, or scheduled-task change was made.
+
+## 2026-08-06 - OKX 2020+ canonical history reverified (Codex)
+
+- Reconciled a stale task/state claim against git (`b40f15b`), the runbook, and
+  the live DB: the additive ADR-0014 BTC/ETH OKX 1m extension had already been
+  executed on 2026-07-18.
+- Pre-write measurement found 2,103,840/2,103,840 pre-2024 raw minutes per
+  symbol, zero missing minutes/gap runs, and a largest gap of zero. Two
+  identical promotion runs changed zero venue and zero resolved rows.
+- Full-range verification PASSed with 3,396,960 raw/venue rows per symbol,
+  zero mismatches, 1.0 coverage/alignment, empty gap ranges, and zero resolved
+  OKX rows. Binance canonical counts stayed 3,396,960 per affected symbol.
+- Added the dated ADR-0014 amendment and synchronized data-flow, runbook, and
+  current-state docs. No Python, schema, funding, research, result artifact,
+  strategy, gate, or deployment state changed.
 
 ## 2026-08-06 - F78 ops repair, DB backup, inventory, first admission packets (Claude)
 
@@ -34,8 +128,8 @@ on current state, current goal, do-not-touch constraints, and next actions.
   search (001 contemporaneous-only evidence; 002 user data-gate + its
   literature belongs to refuted H-044). No H-number, experiment, trial, or K.
 - Public-status page went live and scheduled (first push `8f4a7ca`). PR #22
-  opened with the seven session commits. No gate, verdict, or `results/**`
-  change by this session.
+  opened with the seven session commits and MERGED the same day as `7cc7eb1`.
+  No gate, verdict, or `results/**` change by this session.
 
 ## 2026-08-05 - State reconciliation, input-quality review, E-043 ruling (Claude)
 

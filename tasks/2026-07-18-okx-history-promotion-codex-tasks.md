@@ -1,9 +1,9 @@
 ---
-status: current
+status: archived
 type: task
 owner: claude
 created: 2026-07-18
-last_reviewed: 2026-07-18
+last_reviewed: 2026-08-06
 expires: 2026-10-18
 superseded_by: null
 ---

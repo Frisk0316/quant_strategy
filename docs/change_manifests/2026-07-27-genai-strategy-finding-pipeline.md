@@ -3,7 +3,7 @@ status: current
 type: manifest
 owner: codex
 created: 2026-07-27
-last_reviewed: 2026-07-27
+last_reviewed: 2026-08-07
 expires: none
 superseded_by: null
 ---
@@ -125,3 +125,51 @@ A9 research execution controls and A10 core governance contracts.
   identical/mutated resume, joined-input filtering, and a missing terminal
   artifact. A complete real round remains blocked on enough registered
   deterministic runners.
+
+## 2026-08-07 implementation update — ADR-0016 slice 2
+
+- Extended manifest sealing with I68: every counted candidate now needs live
+  DB-matched dataset counts and half-open ranges, finite positive gross/cost
+  bps plus one-line gross provenance, and SHA-256-bound breadth provenance.
+  Gross/cost is recorded without duplicating the admission form's ratio gate;
+  unsupported breadth is recorded at 1 and the candidate is not counted.
+- Added one sequential command path from joined inputs through validation,
+  sealing, registered-runner execution, atomic per-candidate resume state, and
+  manifest-bound reconciliation. The runner registry remains intentionally
+  empty until phase 3 supplies reviewed `signal_ref` registrations.
+- Trigger areas A5/A9 were reviewed. `docs/INVARIANTS.md` I68 now names the
+  enforcing tests. `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`, ADR-0005, and
+  the experiment ledgers were reviewed and unchanged: no schema, evaluation
+  gate, experiment, trial/K count, or data flow changed.
+- Synthetic tests cover absent DSN, dataset count/range mismatch, missing gross
+  inputs, breadth coercion/hash provenance, ordered execution, interruption
+  resume, and mutated-manifest refusal. No real round or result artifact ran;
+  promotion/demo/shadow/live readiness is unchanged.
+
+## 2026-08-07 implementation update — ADR-0016 phase 3 round runners
+
+- Added a thin adapter from an explicit reviewed runner-name/family map to the
+  existing `STAGE2_PROBES` functions. It builds only manifest-sourced window,
+  universe, and power context; maps the unchanged four-check result to a round
+  terminal; and records probe exceptions as named Stage-2 errors. The reviewed
+  Stage-2 map and candidate-specific authorized Stage-3 map both start empty.
+- A runner now re-hashes and reads the sealed realized-position artifact and
+  recomputes the recorded breadth formula/window before connecting or invoking
+  a probe. A disagreement above `1e-9` refuses execution. Live dataset queries
+  now return `MIN`/`MAX` timestamps as well as counts, and range validation
+  enforces non-empty `min >= start` and `max < end` results.
+- A new Stage-2 pass is atomically checkpointed and then raises
+  `stage3_authorization_required:<candidate_id>`. Resume without an explicitly
+  authorized candidate runner re-raises without repeating Stage 2; a synthetic
+  authorized runner test proves checkpoint continuation and reconciliation.
+- Trigger areas A5/A9 were reviewed. `docs/FEATURE_MAP.md`, `docs/DATA_FLOW.md`,
+  `docs/GOLDEN_CASES.md`, `docs/INVARIANTS.md`, ADR-0005, and the experiment
+  ledgers remain unchanged because no result schema, probe/gate semantics,
+  experiment, trial/K count, or persistent data path changed.
+- No real round, Stage 3, experiment, or result artifact ran. Readiness and all
+  promotion/demo/shadow/live gates remain unchanged.
+- Verification: 46 targeted tests passed; targeted Ruff, docs metadata/links,
+  ledger consistency, config validation, and `git diff --check` passed.
+  Doc-impact advisory exited 0 with its expected A5 warning: the task did not
+  permit `FEATURE_MAP`/`DATA_FLOW`/`GOLDEN_CASES` edits, and those documents
+  were reviewed unchanged because this slice adds no result/data-flow contract.

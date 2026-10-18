@@ -33,6 +33,22 @@ over time.
 
 ## Research and operations state
 
+- **Open — Docker `ext4.vhdx` holds 127.5 GB for 46 GB of content
+  (2026-08-06):** compression took the DB 78 → 33 GB and the
+  `docker_timescale-data` volume 84.8 → 36.5 GB, but WSL2's virtual disk only
+  grows. `wsl --manage docker-desktop-data --set-sparse true` is now set, so
+  *future* deletes return space; the ~80 GB of historical allocation needs an
+  explicit `fstrim`, which four attempts could not reach — Docker Desktop runs
+  dockerd in a mount namespace where `/proc` exposes only PID 1, so
+  `nsenter -t 1 -m` lands in a namespace that has no data disk mounted and
+  `fstrim -av` exits silently. A privileged container's `-v /:/host` bind also
+  fails (`the discard operation is not supported`). One attempt left the engine
+  hung and needed every `com.docker.backend` / `Docker Desktop` process killed;
+  the DB was verified intact afterwards. Not urgent: ext4 reuses the allocation
+  and at 33 GB the headroom lasts years. The guaranteed fix if it ever matters
+  is `wsl --export docker-desktop-data` + `--unregister` + `--import`, which
+  rebuilds the vhdx at true size — schedule it, do not do it opportunistically.
+
 - **Open — funding-carry cross-leg atomicity:** OKX Demo connectivity, private
   fill subscriptions, venue formatting, and the synthetic/replay dual-leg path
   pass. Perp and Spot orders are still independent venue submissions; one leg

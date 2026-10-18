@@ -3,7 +3,7 @@ status: current
 type: runbook
 owner: human
 created: 2026-06-12
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-06
 expires: none
 superseded_by: null
 ---
@@ -335,8 +335,8 @@ python scripts\verify_okx_1m_backfill.py `
     --end 2026-06-17
 ```
 
-The verifier reuses `pipeline_stage2_registry.probe_xvenue` over
-`[2024-01-01, 2026-06-17)` and exits nonzero unless each symbol has OKX
+The verifier reuses `pipeline_stage2_registry.probe_xvenue` over the requested
+half-open window and exits nonzero unless each symbol has OKX
 `coverage_ratio >= 0.95` and Binance/OKX `alignment_ratio >= 0.95`. No alternate
 venue may fill a failed leg (I19). It also requires exact raw-to-venue OHLCV
 parity and zero OKX rows in the priority-resolved table for this window.
@@ -357,6 +357,17 @@ empty `raw_gap_ranges` list. No Binance row filled an OKX gap.
 Resolved global counts were identical before and after (`binance/raw`
 93,445,900; `deribit/raw` 2,667,850; `okx/raw` 333,723), and two-seed
 full-row fingerprints over both historical symbol scopes were also identical.
+
+Reverified 2026-08-06 after a stale state note re-advertised this completed
+operation. Before any write, both `market_klines` and `raw_candles` showed OKX
+BTC/ETH starting `2020-01-01 00:00:00+00`; the pre-2024 window contained
+2,103,840 of 2,103,840 expected minutes per symbol, with zero missing minutes,
+zero gap runs, and a largest gap of zero minutes. Two identical historical
+promotion commands each returned `promoted: 0` and `venue_promoted: 0` for both
+symbols. The full-range verifier PASSed at 3,396,960 raw/venue rows per symbol,
+zero mismatches, 1.0 coverage/alignment, empty gap ranges, and zero resolved OKX
+rows. Affected-window Binance canonical counts were 3,396,960 per symbol both
+before and after.
 
 ### H-010 Stage-2 calibration and registered probe
 
@@ -1290,20 +1301,20 @@ Activation remains a later, separate approval in this exact order:
 
 `scripts/backup_db.ps1` writes a compressed `pg_dump -Fc` archive to
 `C:\quant_backups\quant-<yyyyMMdd-HHmmss>.dump` — deliberately **outside** the
-repository, so a dump can never be committed. It keeps the newest 3 and deletes
-the rest, aborts when C: has under 20 GB free, and runs `pg_restore --list`
+repository, so a dump can never be committed. It keeps the newest 2 and deletes
+the rest, aborts when C: has under 45 GB free, and runs `pg_restore --list`
 before pruning so an unreadable archive is discarded instead of replacing a good
-one. Measured 2026-08-06: 11.6 GB for a 78 GB database, about 36 minutes.
+one. Measured 2026-08-06: 19.2 GB for the 33 GB database.
 
-`market_klines` chunk data is excluded: it is 51 of the 78 GB and is
-re-downloadable from Binance/OKX. Everything irreplaceable —
-`external_observations`, funding, registries, `backtest_artifact_rows` — is
-included. Verify an archive's contents with:
+The dump is byte-complete — every table, no exclusions. It used to exclude
+`market_klines` chunk data, which was 51 of the then-78 GB; columnstore
+compression (2026-08-06) took the database to 33 GB, so the saving no longer
+paid for a restore that needed a re-ingest. Verify an archive's contents with:
 
 ```powershell
 $l = & "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" --list <dump>
 ($l | Select-String "TABLE DATA" | Select-String "_hyper_11_").Count   # external_observations chunks, expect >0
-($l | Select-String "TABLE DATA" | Select-String "_hyper_9_").Count    # market_klines, expect 0
+($l | Select-String "TABLE DATA" | Select-String "_hyper_9_").Count    # market_klines chunks, expect >0
 ```
 
 Restore into a **new** database, never over the live one:

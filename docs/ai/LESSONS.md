@@ -176,3 +176,66 @@ had stood in CHANGELOG_AI since 2026-07-30 was corrected rather than rewritten.
 Rule: any "open decision" or "current state" line must be verified against its
 closing artifact (git log, DB, review file) before it reaches the user, and an
 options list presented for decision may only contain options that exist.
+
+## 2026-08-06 Authored a Codex task whose premise was already false
+
+Trigger: user authorization to promote OKX 2020+ raw 1m to canonical. The task
+file asserted the window's "current 2024-01-01 start" and sent Codex to extend
+it. `b40f15b` had already done exactly that on 2026-07-18, under a near-identical
+task file (`tasks/2026-07-18-okx-history-promotion-codex-tasks.md`) that was
+still marked `status: current`. A full Codex session returned 0 rows changed.
+Wrong: applying the "verify state before relaying it" rule only to what reaches
+the user. A task file is state reaching an executor, and the executor acts on it
+harder than the user does. One `git log -- <script>` would have caught it.
+Also wrong in the spec: `PERMITTED FILES` opened the promotion scripts and their
+tests although both already accept `--start/--end`, and "verifier PASSes" was set
+as a binary acceptance criterion even though the verifier fails closed below 95%
+coverage/alignment - had a real pre-2024 gap existed, that criterion would have
+pushed Codex to move the threshold rather than report the gap.
+Rule: before authoring a task, verify its premise against the artifact that
+would close it, and archive the completed task file in the same pass. Never make
+a fail-closed check's PASS an acceptance criterion; require running it and
+pasting output, with FAIL meaning stop and report.
+
+## 2026-08-06 Reported a saving the user could not measure
+
+Trigger: TimescaleDB compression took the DB 78 GB to 33 GB. I led with "saved
+48 GB". The user's Windows free space went 95 GB to 88.3 GB — worse, because
+the new byte-complete backup was 7.6 GB larger than the excluded one. Docker's
+WSL2 `ext4.vhdx` only ever grows, so freed database pages never reached the
+host filesystem.
+Wrong: reporting the number the tool prints instead of the number the user can
+check, and grading the host-side reclaim step as an optional nice-to-have when
+it was the only step that converted the work into the outcome the user asked
+for. Four failed attempts at it then cost more than the reclaim was worth,
+including a hung Docker engine and two DB outages.
+Also wrong: quoting TimescaleDB's `before/after_compression_total_bytes`, which
+exclude TOAST and so under-report by ~10x on jsonb-carrying tables.
+`hypertable_detailed_size` gives table/index/toast separately.
+Rule: state the saving in the units the user measures, and identify which step
+actually delivers it before starting. If that step is blocked, say the result is
+not yet realized rather than reporting the internal number as the outcome.
+
+## 2026-08-07 - PS5.1 cmdlet round-trips corrupt UTF-8 repo files
+
+A one-line `Get-Content | ... | Set-Content -Encoding utf8` date bump on
+`config/workstreams.yaml` silently destroyed every non-ASCII character
+(em-dashes became `??`) and added a BOM: Windows PowerShell 5.1 reads
+BOM-less UTF-8 as ANSI, and its `utf8` writes a BOM. The corruption passed
+`yaml.safe_load` and was only caught in a later diff review.
+Rule: never round-trip repo text files through PS5.1 cmdlets. Use the Edit
+tool or Python for file edits; if PowerShell must write text another tool
+reads, verify the bytes afterward (`git diff` for stray `??`/BOM).
+
+## 2026-08-07 - Sweep exclusion lists must be generated, not recalled
+
+A four-axis literature sweep briefed each agent with a hand-recalled burned-
+family list. The intraday axis brief omitted variance decomposition (it was
+only in the derivatives brief), so the sweep returned H-034/E-075's exact
+paper (Lee-Wang JFQA 2025, net Sharpe -0.971 on 2026-07-29) as a fresh
+ADMISSION-WORTHY candidate. The admission form's selection-accounting gate
+caught it at document cost, but the sweep verdict itself was wrong.
+Rule: before any candidate-sourcing sweep, generate the exclusion list from
+docs/HYPOTHESIS_LEDGER.md families + spec titles + consumed paper
+identities, and give every agent the SAME complete list. Memory is not a
+registry.
